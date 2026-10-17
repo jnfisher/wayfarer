@@ -1,0 +1,7 @@
+[profile.default]
+# A test over one second needs a reason in its comment (docs/plan/tasks/README.md).
+slow-timeout = { period = "1s" }
+
+[profile.ci]
+fail-fast = false
+slow-timeout = { period = "1s" }

@@ -1,0 +1,161 @@
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying quarterstaff (Two handed), torch, quarterstaff
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 240/1920 - None [12%]
+[HP=32/MA=22]:
+### Gear: quarterstaff for 0 copper (replaces nothing), shop Newhaven, Weapons Shop
+
+>>> 'buy quarterstaff'
+buy quarterstaff
+You just bought quarterstaff for nothing.
+[HP=32/MA=22]:
+>>> 'wield quarterstaff'
+wield quarterstaff
+You do not have quarterstaff left unequipped.
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying quarterstaff (Two handed), torch, 2 quarterstaff
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 340/1920 - Light [17%]
+[HP=32/MA=22]:
+### Gear: quarterstaff for 0 copper (replaces nothing), shop Newhaven, Weapons Shop
+
+>>> 'buy quarterstaff'
+buy quarterstaff
+You just bought quarterstaff for nothing.
+[HP=32/MA=22]:
+>>> 'wield quarterstaff'
+wield quarterstaff
+You do not have quarterstaff left unequipped.
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying quarterstaff (Two handed), torch, 3 quarterstaff
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 440/1920 - Light [22%]
+[HP=32/MA=22]:
+>>> 'drop quarterstaff'
+drop quarterstaff
+You dropped quarterstaff.
+[HP=32/MA=22]:
+### Dropped unused quarterstaff (worth 0 copper)
+
+>>> 'i'
+i
+You are carrying quarterstaff (Two handed), torch, 2 quarterstaff
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 340/1920 - Light [17%]
+[HP=32/MA=22]:
+### Hunting ground: Newhaven, Arena (1:2150), 17 rooms
+
+### Walking 4 steps to Newhaven, Arena to hunt
+
+>>> 's'
+s
+Newhaven, Village Entrance
+You notice large sign, newbie manual here.
+Obvious exits: north, south, west, southeast
+[HP=32/MA=22]:
+>>> 'w'
+w
+Newhaven, Narrow Path
+Obvious exits: north, south, east, west
+[HP=32/MA=22]:
+>>> 'w'
+w
+Newhaven, Narrow Road
+Obvious exits: north, east, west, down
+[HP=32/MA=22]:
+>>> 'd'
+d
+Newhaven, Arena
+You notice torch, padded boots, padded gloves, padded helm, padded pants,
+padded vest, quarterstaff here.
+Also here: acid slime, fierce kobold thief.
+Obvious exits: closed door north, up
+[HP=32/MA=22]:
+>>> 'vine slime'
+vine slime
+*Combat Engaged*
+[HP=32/MA=22]:You cast vine strike at acid slime for 7 damage!
+[HP=32/MA=21]:The acid slime whips you with its pseudopod for 7 damage!
+[HP=25/MA=21]:Acid burns you for 1 damage!
+[HP=24/MA=21]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=24/MA=21]:[HP=25/MA=22]:You cast vine strike at acid slime for 9 damage!
+[HP=25/MA=21]:The acid slime lashes at you, but you dodge out of the way!
+[HP=25/MA=21]:The acid slime whips you with its pseudopod for 6 damage!
+[HP=19/MA=21]:Acid burns you for 3 damage!
+[HP=16/MA=21]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=16/MA=21]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=16/MA=21]:You cast vine strike at acid slime for 4 damage!
+[HP=16/MA=20]:You attempt to cast vine strike, but fail.
+[HP=16/MA=20]:The acid slime whips you with its pseudopod for 6 damage!
+[HP=10/MA=20]:Acid burns you for 3 damage!
+[HP=7/MA=20]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=7/MA=20]:You cast vine strike at acid slime for 4 damage!
+[HP=7/MA=19]:The acid slime lashes at you, but you dodge out of the way!
+[HP=7/MA=19]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=7/MA=19]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=7/MA=19]:
+### HP 7/32: fleeing north
+
+>>> 'n'
+n
+The door is closed!
+[HP=7/MA=19]:
+### HP 7/32, mana 19/22: resting
+
+>>> 'rest'
+rest
+*Combat Off*
+[HP=7/MA=19]:You are now resting.
+[HP=7/MA=19]: (Resting) The acid slime whips you with its pseudopod for 5 damage!
+[HP=2/MA=19]:Acid burns you for 3 damage!
+[HP=-1/MA=19]:Thornwyn drops to the ground!
+[HP=-1/MA=19]:Thornwyn drops to the ground!
+[HP=-1/MA=19]:The fierce kobold thief stabs you for 7 damage!
+[HP=-8/MA=19]:The acid slime whips you with its pseudopod for 9 damage!
+[HP=-17/MA=19]:Acid burns you for 2 damage!
+[HP=-19/MA=19]:The fierce kobold thief stabs you for 6 damage!
+[HP=-25/MA=19]:The fierce kobold thief stabs you for 1 damage!
+[HP=-26/MA=19]:[HP=-27/MA=22]:
+>>> 'rest'
+rest
+You may not do that while you are mortally wounded!
+[HP=-27/MA=22]:The acid slime whips you with its pseudopod for 4 damage!
+[HP=-31/MA=22]:Acid burns you for 2 damage!
+[HP=-33/MA=22]:The fierce kobold thief stabs you for 6 damage!
+[HP=-39/MA=22]:The acid slime whips you with its pseudopod for 3 damage!
+[HP=-42/MA=22]:Acid burns you for 2 damage!
+[HP=-44/MA=22]:The fierce kobold thief stabs you for 8 damage!
+[HP=-52/MA=22]:The fierce kobold thief stabs you for 4 damage!
+[HP=-56/MA=22]:
+>>> ''
+
+Newhaven, Arena
+You notice torch, padded boots, padded gloves, padded helm, padded pants,
+padded vest, quarterstaff here.
+Also here: acid slime, fierce kobold thief.
+Obvious exits: closed door north, up
+[HP=-56/MA=22]:The acid slime whips you with its pseudopod for 6 damage!
+[HP=-62/MA=22]:Acid burns you for 1 damage!
+[HP=-63/MA=22]:The fierce kobold thief stabs you for 6 damage!
+[HP=-69/MA=22]:
+>>> ''
+
+Newhaven, Healer
+You notice small sign here.
+Also here: healer.
+Obvious exits: east
+[HP=32/MA=22]:
+>>> ''
+
+Newhaven, Healer
+You notice small sign here.

@@ -1,0 +1,66 @@
+Western Road
+Obvious exits: west, northeast
+[HP=84]:[HP=84]:
+>>> 'w'
+w
+The dark monk punches you in the head for 8 damage!
+[HP=76]:Dark monk invokes the way of the swan!
+[HP=76]:Western Road
+Obvious exits: east, southwest
+dark monk moves into the room from the east.
+[HP=76]:[HP=76]:
+>>> ''
+
+Western Road
+Also here: dark monk.
+Obvious exits: east, southwest
+[HP=76]:
+>>> 'bash monk'
+bash monk
+*Combat Engaged*
+[HP=76]:You hack dark monk for 12 damage!
+[HP=76]:The dark monk punches you in the head for 8 damage!
+[HP=68]:The dark monk spins and kicks at you, but misses!
+[HP=68]:Dark monk invokes the way of the tiger on itself!
+[HP=68]:You swing at dark monk who dodges your attack!
+The dark monk leaps into the air and kicks you for 21 damage!
+[HP=47]:Dark monk invokes the way of the swan!
+[HP=47]:The dark monk kicks you in the stomach for 11 damage!
+[HP=36]:The dark monk punches you in the head for 9 damage!
+[HP=27]:The dark monk leaps into the air and kicks you for 26 damage!
+[HP=1]:
+### HP 1/85: fleeing southwest
+
+>>> 'sw'
+[HP=3]:sw
+Western Road
+Obvious exits: northeast, southwest
+dark monk moves into the room from the northeast.
+[HP=3]:[HP=3]:
+### Walking 2 steps to Western Road, Silvermere Entrance to a quiet room
+
+>>> 'ne'
+ne
+Western Road
+Obvious exits: east, southwest
+[HP=3]:
+### Walking 1 steps to Western Road, Silvermere Entrance to a quiet room
+
+>>> 'e'
+e
+*Combat Off*
+[HP=3]:Western Road
+Obvious exits: west, northeast
+[HP=3]:You hear movement to the west.
+[HP=3]:dark monk moves into the room from the west.
+[HP=3]:
+>>> ''
+
+Western Road
+Also here: dark monk.
+Obvious exits: west, northeast
+[HP=3]:
+### Walking 3 steps to Western Road, Silvermere Entrance to a quiet room
+
+>>> 'ne'
+ne

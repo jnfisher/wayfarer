@@ -1,0 +1,1500 @@
+╔══════════════════════════════════════════════════════════╗
+║█████████████████▄███████▄███████▄████████████████████████║
+║██████████████▀▀██████▀▀██████▀▀▀▀███▀▀▀▀█████████████████║
+║██████████████████▀███████▀███████████████████████████████║
+║███▀███▀██████▀▀██████▀▀███▀▀▀▀██████▀▀▀████▀███▀█████████║
+║████▀▀▀███████████▀███████▀██████████████████▀▀▀████▀████▀║
+║▀▀▀█████▀▀▀▀▀▀▀▀▀▀█▀▀▀▀▀▀▀█▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀█████▀▀▀█▀▀▀▀▀║
+║██████████████╘═╡ The MajorBBS Emulator ╞═╛███████████████║
+║████████████████│ By: MBBSEmu Community │█████████████████║
+║                │https://www.mbbsemu.com│                 ║
+╚══════════════════════════════════════════════════════════╝
+ 
+Enter Username or enter "NEW" to create a new Account
+Username: 
+### New character: Thornwyn, Half-Elf Druid
+
+>>> 'NEW'
+NEW
+╔═══════════════════════════════════════════╗
+║     Welcome to The MajorBBS Emulator      ║
+║                                           ║
+║    Bringing The MajorBBS & Worldgroup     ║
+║              BACK TO LIFE                 ║
+╠═══════════════════════════════════════════╣
+║  Creating an account in MBBSEmu is easy!  ║
+║  You will only need to provide a unique   ║
+║  Username, secure Password, Gender and    ║
+║  a valid e-Mail address.                  ║
+╚═══════════════════════════════════════════╝
+
+Please enter a unique Username (Max. 29 Characters):
+
+>>> 'Thornwyn'
+Thornwyn
+
+NOTE: Passwords are stored in a local database hashed with SHA-512+unique salt.
+The MajorBBS and Worldgroup have a maximum password size of only 9 characters,
+so please select a strong, unique password that you have never used before
+and will only use on this system.
+
+Please enter a strong Password:
+
+>>> 'druidtest'
+*********
+
+Please re-enter your password to confirm:
+
+>>> 'druidtest'
+*********
+
+Please enter a valid e-Mail Address:
+
+>>> 'thornwyn@example.test'
+thornwyn@example.test
+
+Please enter your gender 'M' or 'F' (can be changed later):
+
+>>> 'F'
+F
+
+Fantasy awaits you in MajorMUD v1.11p-WG!
+
+Please select one of the following:
+
+   M ... MajorMUD
+
+Main Menu
+Make your selection (X to exit): 
+>>> 'M'
+M
+
+ M A J O R  M U D v1.11p-WG (Dec 30 2005 14:20:05)
+{Realm Of Legends}
+*ANSI RECOMMENDED*
+
+[E] . Enter the Realm
+[H] . Help
+[A] . About the Game
+[C] . Game Counts
+[T] . Topten Adventurers
+[G] . Topten Gangs
+[W] . Who's in the Realm
+[R] . Release Notes
+[I] . Information
+[X] . Exit Game
+
+[MAJORMUD]: 
+>>> 'E'
+E
+Please choose a race from the following list:
+[1]  Human
+[2]  Dwarf
+[3]  Gnome
+[4]  Halfling
+[5]  Elf
+[6]  Half-Elf
+[7]  Dark-Elf
+[8]  Half-Orc
+[9]  Goblin
+[10] Half-Ogre
+[11] Kang
+[12] Nekojin
+[13] Gaunt One
+
+Please choose your race [ ? for help ] : 
+>>> '6'
+6
+Please choose a class from the following list:
+[1]  Warrior
+[2]  Witchunter
+[3]  Paladin
+[4]  Cleric
+[5]  Priest
+[6]  Missionary
+[7]  Ninja
+[8]  Thief
+[9]  Bard
+[10] Gypsy
+[11] Warlock
+[12] Mage
+[13] Druid
+[14] Ranger
+[15] Mystic
+
+Please choose your class [ ? for help ] : 
+>>> '13'
+13
+
+You must now choose if you want to be a truly 'lawful' citizen of the realm.
+If you answer YES to this question then you will never be allowed to instigate
+any action which would give you evil points, and any player that attacks or
+robs from you will receive three times the regular evil points in return. You
+can still attack those with a bad reputation. This option is designed
+solely for those who want to stay away from the player combat aspects of the
+game, and choosing it for any other reason (Item storage, etc...) is strictly
+prohibited.
+
+Remember, this is a very important choice. Once you have chosen Lawfulness,
+you may not remove this title, unless you start a new character.
+
+Do you want to be Lawful?  [Yes/No] 
+>>> 'N'
+N
+    .─────────────────────────────────────.──.
+   / M A J O R  M U D Character Creation /    \  ┌─    Point Cost Chart    ─┐
+  │                                     ├──.   │ │                          │
+  │ » Given Name   ?????????????????? « │___\_/  │ 1st 10 points: 1 CP each │
+  │ » Family Name  ?????????????????? « │        │ 2nd 10 points: 2 CP each │
+  │ » Race         ?????????????????? « │        │ 3rd 10 points: 3 CP each │
+  │ » Class        ?????????????????? « │        │     ... and so on ...    │
+  │                                     │        │                          │
+  │ » Strength   ($$$$ to $$$$)  $$$$ « │        │ +10 to base stat:  10 CP │
+  │ » Intellect  ($$$$ to $$$$)  $$$$ « │ ──────┤ +20 to base stat:  30 CP │
+  │ » Willpower  ($$$$ to $$$$)  $$$$ « │        │ +30 to base stat:  60 CP │
+  │ » Agility    ($$$$ to $$$$)  $$$$ « │        │ +40 to base stat: 100 CP │
+  │ » Health     ($$$$ to $$$$)  $$$$ « │        │ +50 to base stat: 150 CP │
+  │ » Charm      ($$$$ to $$$$)  $$$$ « │        └─    ... and so on ...   ─┘
+  │                                     │
+  │ »  Hair Length   ???????????????  « │        ┌ Use the Space Bar to
+  │ »  Hair Colour   ???????????????  « │ ──────┤ toggle between choices for
+  │ »  Eye Colour    ???????????????  « │        └ your physical description
+  │                                     │
+  │ »  Exit: ???? «  » CP Left:       « │ ─────── SAVE your character or EXIT
+ ⌐┴───────────────────────────────.     │
+ \_________________________________\___/
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 100                  Thornwyn                                    Half-Elf                  Druid    40    90    40    45    110    45    40    100    40    45    110    45    30    100    30    50    110    50               none               black               black    SAVE                                                                               Thornwyn
+### Stats: Int 60, Wil 66, Hea 50 (98 CP), per kb/classes/druid.md
+
+>>> ''
+                                                                               Thornwyn                  
+>>> 'Oakenshade'
+Oakenshade 100                                                                               Oakenshade    40
+>>> ''
+ 100                                                                 40    45
+>>> '60'
+    60  80                                                                 60    40
+>>> '66'
+    66  32                                                                 66    45
+>>> ''
+  32                                                                 45    30
+>>> '50'
+    50   2                                                                 50    50
+>>> ''
+   2                                                                 50               none
+>>> ''
+                                                                            none               black
+>>> ''
+                                                                            black               black
+>>> ''
+                                                                            black    SAVE
+>>> ''
+                                                                 SAVE
+To prevent accidental suicide or reroll, these commands
+have been password protected.  You have not yet entered
+your suicide password, so please do so soon using the
+SET SUICIDE command.
+Please wait - Validating your name.
+ Validating your name, please wait.
+Name: Thornwyn Oakenshade              Lives/CP:      9/2    
+Race: Half-Elf    Exp: 0               Perception:     60
+Class: Druid      Level: 1             Stealth:         0
+Hits:    32/32    Armour Class:   0/0  Thievery:        0
+Mana: *  22/22    Spellcasting: 59     Traps:           0
+                                       Picklocks:       0
+Strength:  40     Agility: 45          Tracking:        0
+Intellect: 60     Health:  50          Martial Arts:   15
+Willpower: 66     Charm:   50          MagicRes:       64
+[HP=32/MA=22]:
+### Starter kit: free staff, padded armour, torch; then free spell scrolls
+
+>>> 'quiet'
+quiet
+Quiet mode set
+[HP=32/MA=22]:
+>>> 'n'
+n
+Newhaven, Weapons Shop
+Also here: Nathaniel.
+Obvious exits: south
+[HP=32/MA=22]:
+>>> 'buy quarterstaff'
+buy quarterstaff
+You just bought quarterstaff for nothing.
+[HP=32/MA=22]:
+>>> 'wield quarterstaff'
+wield quarterstaff
+You are now holding quarterstaff.
+[HP=32/MA=22]:
+>>> 's'
+s
+Newhaven, Village Entrance
+You notice large sign, newbie manual here.
+Obvious exits: north, south, west, southeast
+[HP=32/MA=22]:
+>>> 's'
+s
+Newhaven, Armour Shop
+Also here: Betram.
+Obvious exits: north
+[HP=32/MA=22]:
+>>> 'buy padded vest'
+buy padded vest
+You just bought padded vest for nothing.
+[HP=32/MA=22]:
+>>> 'wear padded vest'
+wear padded vest
+You are now wearing padded vest.
+[HP=32/MA=22]:
+>>> 'buy padded pants'
+buy padded pants
+You just bought padded pants for nothing.
+[HP=32/MA=22]:
+>>> 'wear padded pants'
+wear padded pants
+You are now wearing padded pants.
+[HP=32/MA=22]:
+>>> 'buy padded helm'
+buy padded helm
+You just bought padded helm for nothing.
+[HP=32/MA=22]:
+>>> 'wear padded helm'
+wear padded helm
+You are now wearing padded helm.
+[HP=32/MA=22]:
+>>> 'buy padded gloves'
+buy padded gloves
+You just bought padded gloves for nothing.
+[HP=32/MA=22]:
+>>> 'wear padded gloves'
+wear padded gloves
+You are now wearing padded gloves.
+[HP=32/MA=22]:
+>>> 'buy padded boots'
+buy padded boots
+You just bought padded boots for nothing.
+[HP=32/MA=22]:
+>>> 'wear padded boots'
+wear padded boots
+You are now wearing padded boots.
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying padded vest (Torso), padded pants (Legs), padded helm (Head),
+padded gloves (Hands), padded boots (Feet), quarterstaff (Two handed)
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 500/1920 - Light [26%]
+[HP=32/MA=22]:
+>>> 'n'
+n
+Newhaven, Village Entrance
+You notice large sign, newbie manual here.
+Obvious exits: north, south, west, southeast
+[HP=32/MA=22]:
+>>> 'w'
+w
+Newhaven, Narrow Path
+Obvious exits: north, south, east, west
+[HP=32/MA=22]:
+>>> 's'
+s
+Newhaven, General Store
+Also here: Dathalar.
+Obvious exits: north
+[HP=32/MA=22]:
+>>> 'buy torch'
+buy torch
+You just bought torch for nothing.
+[HP=32/MA=22]:
+>>> 'n'
+n
+Newhaven, Narrow Path
+Obvious exits: north, south, east, west
+[HP=32/MA=22]:
+>>> 'n'
+n
+Newhaven, Spell Shop
+Also here: Rayth.
+Obvious exits: south
+[HP=32/MA=22]:
+>>> 'list'
+list
+The following items are for sale here:
+
+Item                          Quantity    Price
+------------------------------------------------------
+scroll of magic missile       120          Free (You can't use)
+scroll of illuminate          100          4 gold crowns (You can't use)
+scroll of blur                105          Free (You can't use)
+scroll of smite               60           8 gold crowns (You can't use)
+scroll of cause harm          125          Free (You can't use)
+scroll of minor healing       140          Free (You can't use)
+scroll of bless               110          4 gold crowns (You can't use)
+scroll of vine strike         118          Free
+scroll of starlight           95           Free
+scroll of mend                80           8 gold crowns (Too powerful)
+songsheet of valour           100          4 gold crowns (You can't use)
+songsheet of misfortune       82           8 gold crowns (You can't use)
+songsheet of discord          65           8 gold crowns (You can't use)
+[HP=32/MA=22]:
+>>> 'buy scroll of vine strike'
+buy scroll of vine strike
+You just bought scroll of vine strike for nothing.
+[HP=32/MA=22]:
+>>> 'use scroll of vine strike'
+use scroll of vine strike
+You read scroll of vine strike and learn the spell vine strike.
+
+[HP=32/MA=22]:
+>>> 'buy scroll of starlight'
+buy scroll of starlight
+You just bought scroll of starlight for nothing.
+[HP=32/MA=22]:
+>>> 'use scroll of starlight'
+use scroll of starlight
+You read scroll of starlight and learn the spell starlight.
+
+[HP=32/MA=22]:
+>>> 'spells'
+spells
+You have the following spells:
+Level Mana Short Spell Name
+  1   4    star  starlight                     
+  1   1    vine  vine strike                   
+
+[HP=32/MA=22]:
+### Testing vine strike in the arena
+
+>>> 's'
+s
+Newhaven, Narrow Path
+Obvious exits: north, south, east, west
+[HP=32/MA=22]:
+>>> 'w'
+w
+Newhaven, Narrow Road
+Obvious exits: north, east, west, down
+[HP=32/MA=22]:
+>>> 'd'
+d
+Newhaven, Arena
+Also here: Kasimir.
+Obvious exits: closed door north, up
+[HP=32/MA=22]:A filthbug scuttles into the room from nowhere.
+[HP=32/MA=22]:A angry kobold thief sneaks into the room from nowhere.
+[HP=32/MA=22]:The filthbug swipes at Kasimir with its claws!
+[HP=32/MA=22]:The angry kobold thief lunges at you with their shortsword!
+[HP=32/MA=22]:
+>>> 'vine kobold'
+vine kobold
+*Combat Engaged*
+[HP=32/MA=22]:Kasimir moves to attack short kobold thief.
+[HP=32/MA=22]:You cast vine strike at short kobold thief for 5 damage!
+[HP=32/MA=21]:Kasimir swings at short kobold thief!
+[HP=32/MA=21]:The short kobold thief stabs Kasimir for 1 damage!
+[HP=32/MA=21]:The angry kobold thief lunges at Kasimir with their shortsword!
+[HP=32/MA=21]:You cast vine strike at short kobold thief for 4 damage!
+[HP=32/MA=20]:Kasimir chops short kobold thief for 36 damage!
+[HP=32/MA=20]:The kobold thief falls to the ground with a shrill cry.
+[HP=32/MA=20]:You gain 6 experience.
+[HP=32/MA=20]:
+>>> ''
+
+Newhaven, Arena
+Also here: Kasimir, giant rat, acid slime.
+Obvious exits: closed door north, up
+[HP=28/MA=22]:Kasimir moves to attack giant rat.
+[HP=28/MA=22]:
+>>> ''
+
+Newhaven, Arena
+Also here: Kasimir, giant rat, acid slime.
+Obvious exits: closed door north, up
+[HP=28/MA=22]:
+>>> 'st'
+st
+Name: Thornwyn Oakenshade              Lives/CP:      9/2    
+Race: Half-Elf    Exp: 6               Perception:     60
+Class: Druid      Level: 1             Stealth:         0
+Hits:    28/32    Armour Class:  11/0  Thievery:        0
+Mana: *  22/22    Spellcasting: 59     Traps:           0
+                                       Picklocks:       0
+Strength:  40     Agility: 45          Tracking:        0
+Intellect: 60     Health:  50          Martial Arts:   15
+Willpower: 66     Charm:   50          MagicRes:       64
+[HP=28/MA=22]:The giant rat lunges at Kasimir! 
+[HP=28/MA=22]:The acid slime flails at you!
+[HP=28/MA=22]:Kasimir cuts giant rat for 21 damage!
+[HP=28/MA=22]:The giant rat falls to the ground with a tortured squeak.
+[HP=28/MA=22]:[HP=29/MA=22]:
+>>> 'exp'
+exp
+Exp: 6 Level: 1 Exp needed for next level: 2044 (2050) [0%]
+[HP=29/MA=22]:
+>>> 'spells'
+spells
+You have the following spells:
+Level Mana Short Spell Name
+  1   4    star  starlight                     
+  1   1    vine  vine strike                   
+
+[HP=29/MA=22]:
+### Progress bot: level 1, exp 6/2050, HP 32, at Newhaven, Arena
+
+>>> 'i'
+i
+You are carrying padded vest (Torso), padded pants (Legs), padded helm (Head),
+padded gloves (Hands), padded boots (Feet), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 540/1920 - Light [28%]
+[HP=29/MA=22]:
+>>> 'spells'
+spells
+You have the following spells:
+Level Mana Short Spell Name
+  1   4    star  starlight                     
+  1   1    vine  vine strike                   
+
+[HP=29/MA=22]:The acid slime flails at you!
+[HP=29/MA=22]:A big giant rat creeps into the room from nowhere.
+[HP=29/MA=22]:
+>>> 'i'
+i
+You are carrying padded vest (Torso), padded pants (Legs), padded helm (Head),
+padded gloves (Hands), padded boots (Feet), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 540/1920 - Light [28%]
+[HP=29/MA=22]:
+>>> 'i'
+i
+You are carrying padded vest (Torso), padded pants (Legs), padded helm (Head),
+padded gloves (Hands), padded boots (Feet), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 540/1920 - Light [28%]
+[HP=29/MA=22]:
+>>> 'i'
+i
+You are carrying padded vest (Torso), padded pants (Legs), padded helm (Head),
+padded gloves (Hands), padded boots (Feet), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 540/1920 - Light [28%]
+[HP=29/MA=22]:
+>>> 'i'
+i
+You are carrying padded vest (Torso), padded pants (Legs), padded helm (Head),
+padded gloves (Hands), padded boots (Feet), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 540/1920 - Light [28%]
+[HP=29/MA=22]:The big giant rat lunges at you!
+[HP=29/MA=22]:The acid slime flails at you!
+[HP=29/MA=22]:
+>>> 'i'
+i
+You are carrying padded vest (Torso), padded pants (Legs), padded helm (Head),
+padded gloves (Hands), padded boots (Feet), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 540/1920 - Light [28%]
+[HP=29/MA=22]:
+### No safe hunting ground found
+
+>>> 'st'
+st
+Name: Thornwyn Oakenshade              Lives/CP:      9/2    
+Race: Half-Elf    Exp: 6               Perception:     60
+Class: Druid      Level: 1             Stealth:         0
+Hits:    29/32    Armour Class:  11/0  Thievery:        0
+Mana: *  22/22    Spellcasting: 59     Traps:           0
+                                       Picklocks:       0
+Strength:  40     Agility: 45          Tracking:        0
+Intellect: 60     Health:  50          Martial Arts:   15
+Willpower: 66     Charm:   50          MagicRes:       64
+[HP=29/MA=22]:
+>>> 'exp'
+exp
+Exp: 6 Level: 1 Exp needed for next level: 2044 (2050) [0%]
+[HP=29/MA=22]:
+### Progress bot done: level 1 exp 6/2050 kills 0 coins {}
+
+### Bot stopped; fighting off the rat and slime by hand
+
+>>> 'vine rat'
+vine rat
+You say "vine rat"
+[HP=-134/MA=22]:The acid slime whips you with its pseudopod for 8 damage!
+[HP=-142/MA=22]:Acid burns you for 2 damage!
+[HP=-144/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-144/MA=22]:The acid slime flails at you!
+[HP=-144/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-144/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-144/MA=22]:The acid slime whips you with its pseudopod for 7 damage!
+[HP=-151/MA=22]:Acid burns you for 2 damage!
+[HP=-153/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-153/MA=22]:The acid slime whips you with its pseudopod for 8 damage!
+[HP=-161/MA=22]:Acid burns you for 3 damage!
+[HP=-164/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-164/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-164/MA=22]:[HP=-165/MA=22]:The acid slime flails at you!
+[HP=-165/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-165/MA=22]:The acid slime flails at you!
+[HP=-165/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-165/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-165/MA=22]:
+>>> 'vine slime'
+vine slime
+You say "vine slime"
+[HP=-165/MA=22]:The acid slime whips you with its pseudopod for 7 damage!
+[HP=-172/MA=22]:Acid burns you for 3 damage!
+[HP=-175/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-175/MA=22]:The acid slime flails at you!
+[HP=-175/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-175/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-175/MA=22]:The acid slime flails at you!
+[HP=-175/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-175/MA=22]:The acid slime whips you with its pseudopod for 7 damage!
+[HP=-182/MA=22]:Acid burns you for 3 damage!
+[HP=-185/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-185/MA=22]:The fierce kobold thief stabs you for 1 damage!
+[HP=-186/MA=22]:[HP=-187/MA=22]:The acid slime flails at you!
+[HP=-187/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-187/MA=22]:The acid slime whips you with its pseudopod for 7 damage!
+[HP=-194/MA=22]:Acid burns you for 1 damage!
+[HP=-195/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-195/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-195/MA=22]:The acid slime flails at you!
+[HP=-195/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-195/MA=22]:The acid slime flails at you!
+[HP=-195/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-195/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-195/MA=22]:
+>>> ''
+
+Newhaven, Arena
+Also here: acid slime, fierce kobold thief.
+Obvious exits: closed door north, up
+[HP=-195/MA=22]:
+>>> ''
+
+Newhaven, Healer
+You notice small sign here.
+Also here: healer.
+Obvious exits: east
+[HP=32/MA=22]:
+>>> 'st'
+st
+Name: Thornwyn Oakenshade              Lives/CP:      8/2    
+Race: Half-Elf    Exp: 6               Perception:     60
+Class: Druid      Level: 1             Stealth:         0
+Hits:    32/32    Armour Class:   0/0  Thievery:        0
+Mana: *  22/22    Spellcasting: 59     Traps:           0
+                                       Picklocks:       0
+Strength:  40     Agility: 45          Tracking:        0
+Intellect: 60     Health:  50          Martial Arts:   15
+Willpower: 66     Charm:   50          MagicRes:       64
+[HP=32/MA=22]:
+>>> ''
+
+Newhaven, Healer
+You notice small sign here.
+Also here: healer.
+Obvious exits: east
+[HP=32/MA=22]:
+>>> ''
+
+Newhaven, Healer
+You notice small sign here.
+Also here: healer.
+Obvious exits: east
+[HP=32/MA=22]:
+>>> 'st'
+st
+Name: Thornwyn Oakenshade              Lives/CP:      8/2    
+Race: Half-Elf    Exp: 6               Perception:     60
+Class: Druid      Level: 1             Stealth:         0
+Hits:    32/32    Armour Class:   0/0  Thievery:        0
+Mana: *  22/22    Spellcasting: 59     Traps:           0
+                                       Picklocks:       0
+Strength:  40     Agility: 45          Tracking:        0
+Intellect: 60     Health:  50          Martial Arts:   15
+Willpower: 66     Charm:   50          MagicRes:       64
+[HP=32/MA=22]:
+>>> 'exp'
+exp
+Exp: 6 Level: 1 Exp needed for next level: 2044 (2050) [0%]
+[HP=32/MA=22]:
+>>> 'spells'
+spells
+You have the following spells:
+Level Mana Short Spell Name
+  1   4    star  starlight                     
+  1   1    vine  vine strike                   
+
+[HP=32/MA=22]:
+### Progress bot: level 1, exp 6/2050, HP 32, at Newhaven, Healer
+
+>>> 'i'
+i
+You are carrying Nothing!
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 0/1920 - None [0%]
+[HP=32/MA=22]:
+>>> 'spells'
+spells
+You have the following spells:
+Level Mana Short Spell Name
+  1   4    star  starlight                     
+  1   1    vine  vine strike                   
+
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying Nothing!
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 0/1920 - None [0%]
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying Nothing!
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 0/1920 - None [0%]
+[HP=32/MA=22]:
+### Buying a light: torch for 0 copper at Newhaven, General Store
+
+### Walking 3 steps to Newhaven, General Store for a light
+
+>>> 'e'
+e
+Newhaven, Narrow Road
+Obvious exits: north, east, west, down
+[HP=32/MA=22]:
+>>> 'e'
+e
+Newhaven, Narrow Path
+Obvious exits: north, south, east, west
+[HP=32/MA=22]:
+>>> ''
+
+Newhaven, Narrow Path
+Obvious exits: north, south, east, west
+[HP=32/MA=22]:
+>>> ''
+
+Newhaven, Narrow Path
+Obvious exits: north, south, east, west
+[HP=32/MA=22]:
+>>> 'st'
+st
+Name: Thornwyn Oakenshade              Lives/CP:      8/2    
+Race: Half-Elf    Exp: 6               Perception:     60
+Class: Druid      Level: 1             Stealth:         0
+Hits:    32/32    Armour Class:   0/0  Thievery:        0
+Mana: *  22/22    Spellcasting: 59     Traps:           0
+                                       Picklocks:       0
+Strength:  40     Agility: 45          Tracking:        0
+Intellect: 60     Health:  50          Martial Arts:   15
+Willpower: 66     Charm:   50          MagicRes:       64
+[HP=32/MA=22]:
+>>> 'exp'
+exp
+Exp: 6 Level: 1 Exp needed for next level: 2044 (2050) [0%]
+[HP=32/MA=22]:
+>>> 'spells'
+spells
+You have the following spells:
+Level Mana Short Spell Name
+  1   4    star  starlight                     
+  1   1    vine  vine strike                   
+
+[HP=32/MA=22]:
+### Progress bot: level 1, exp 6/2050, HP 32, at Newhaven, Narrow Path
+
+>>> 'i'
+i
+You are carrying Nothing!
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 0/1920 - None [0%]
+[HP=32/MA=22]:
+>>> 'spells'
+spells
+You have the following spells:
+Level Mana Short Spell Name
+  1   4    star  starlight                     
+  1   1    vine  vine strike                   
+
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying Nothing!
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 0/1920 - None [0%]
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying Nothing!
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 0/1920 - None [0%]
+[HP=32/MA=22]:
+### Buying a light: torch for 0 copper at Newhaven, General Store
+
+### Walking 1 steps to Newhaven, General Store for a light
+
+>>> 's'
+s
+Newhaven, General Store
+Also here: Dathalar.
+Obvious exits: north
+[HP=32/MA=22]:
+>>> 'buy torch'
+buy torch
+You just bought torch for nothing.
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying torch
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 40/1920 - None [2%]
+[HP=32/MA=22]:
+### Gear: quarterstaff for 0 copper (replaces nothing), shop Newhaven, Weapons Shop
+
+### Walking 3 steps to Newhaven, Weapons Shop to shop
+
+>>> 'n'
+n
+Newhaven, Narrow Path
+Obvious exits: north, south, east, west
+[HP=32/MA=22]:
+>>> 'e'
+e
+Newhaven, Village Entrance
+You notice large sign, newbie manual here.
+Obvious exits: north, south, west, southeast
+[HP=32/MA=22]:
+>>> 'n'
+n
+Newhaven, Weapons Shop
+Also here: Nathaniel.
+Obvious exits: south
+[HP=32/MA=22]:
+>>> 'buy quarterstaff'
+buy quarterstaff
+You just bought quarterstaff for nothing.
+[HP=32/MA=22]:
+>>> 'wield quarterstaff'
+wield quarterstaff
+You are now holding quarterstaff.
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 140/1920 - None [7%]
+[HP=32/MA=22]:
+### Gear: quarterstaff for 0 copper (replaces nothing), shop Newhaven, Weapons Shop
+
+>>> 'buy quarterstaff'
+buy quarterstaff
+You just bought quarterstaff for nothing.
+[HP=32/MA=22]:
+>>> 'wield quarterstaff'
+wield quarterstaff
+You do not have quarterstaff left unequipped.
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying quarterstaff (Two handed), torch, quarterstaff
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 240/1920 - None [12%]
+[HP=32/MA=22]:
+### Gear: quarterstaff for 0 copper (replaces nothing), shop Newhaven, Weapons Shop
+
+>>> 'buy quarterstaff'
+buy quarterstaff
+You just bought quarterstaff for nothing.
+[HP=32/MA=22]:
+>>> 'wield quarterstaff'
+wield quarterstaff
+You do not have quarterstaff left unequipped.
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying quarterstaff (Two handed), torch, 2 quarterstaff
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 340/1920 - Light [17%]
+[HP=32/MA=22]:
+### Gear: quarterstaff for 0 copper (replaces nothing), shop Newhaven, Weapons Shop
+
+>>> 'buy quarterstaff'
+buy quarterstaff
+You just bought quarterstaff for nothing.
+[HP=32/MA=22]:
+>>> 'wield quarterstaff'
+wield quarterstaff
+You do not have quarterstaff left unequipped.
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying quarterstaff (Two handed), torch, 3 quarterstaff
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 440/1920 - Light [22%]
+[HP=32/MA=22]:
+>>> 'drop quarterstaff'
+drop quarterstaff
+You dropped quarterstaff.
+[HP=32/MA=22]:
+### Dropped unused quarterstaff (worth 0 copper)
+
+>>> 'i'
+i
+You are carrying quarterstaff (Two handed), torch, 2 quarterstaff
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 340/1920 - Light [17%]
+[HP=32/MA=22]:
+### Hunting ground: Newhaven, Arena (1:2150), 17 rooms
+
+### Walking 4 steps to Newhaven, Arena to hunt
+
+>>> 's'
+s
+Newhaven, Village Entrance
+You notice large sign, newbie manual here.
+Obvious exits: north, south, west, southeast
+[HP=32/MA=22]:
+>>> 'w'
+w
+Newhaven, Narrow Path
+Obvious exits: north, south, east, west
+[HP=32/MA=22]:
+>>> 'w'
+w
+Newhaven, Narrow Road
+Obvious exits: north, east, west, down
+[HP=32/MA=22]:
+>>> 'd'
+d
+Newhaven, Arena
+You notice torch, padded boots, padded gloves, padded helm, padded pants,
+padded vest, quarterstaff here.
+Also here: acid slime, fierce kobold thief.
+Obvious exits: closed door north, up
+[HP=32/MA=22]:
+>>> 'vine slime'
+vine slime
+*Combat Engaged*
+[HP=32/MA=22]:You cast vine strike at acid slime for 7 damage!
+[HP=32/MA=21]:The acid slime whips you with its pseudopod for 7 damage!
+[HP=25/MA=21]:Acid burns you for 1 damage!
+[HP=24/MA=21]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=24/MA=21]:[HP=25/MA=22]:You cast vine strike at acid slime for 9 damage!
+[HP=25/MA=21]:The acid slime lashes at you, but you dodge out of the way!
+[HP=25/MA=21]:The acid slime whips you with its pseudopod for 6 damage!
+[HP=19/MA=21]:Acid burns you for 3 damage!
+[HP=16/MA=21]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=16/MA=21]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=16/MA=21]:You cast vine strike at acid slime for 4 damage!
+[HP=16/MA=20]:You attempt to cast vine strike, but fail.
+[HP=16/MA=20]:The acid slime whips you with its pseudopod for 6 damage!
+[HP=10/MA=20]:Acid burns you for 3 damage!
+[HP=7/MA=20]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=7/MA=20]:You cast vine strike at acid slime for 4 damage!
+[HP=7/MA=19]:The acid slime lashes at you, but you dodge out of the way!
+[HP=7/MA=19]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=7/MA=19]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=7/MA=19]:
+### HP 7/32: fleeing north
+
+>>> 'n'
+n
+The door is closed!
+[HP=7/MA=19]:
+### HP 7/32, mana 19/22: resting
+
+>>> 'rest'
+rest
+*Combat Off*
+[HP=7/MA=19]:You are now resting.
+[HP=7/MA=19]: (Resting) The acid slime whips you with its pseudopod for 5 damage!
+[HP=2/MA=19]:Acid burns you for 3 damage!
+[HP=-1/MA=19]:Thornwyn drops to the ground!
+[HP=-1/MA=19]:Thornwyn drops to the ground!
+[HP=-1/MA=19]:The fierce kobold thief stabs you for 7 damage!
+[HP=-8/MA=19]:The acid slime whips you with its pseudopod for 9 damage!
+[HP=-17/MA=19]:Acid burns you for 2 damage!
+[HP=-19/MA=19]:The fierce kobold thief stabs you for 6 damage!
+[HP=-25/MA=19]:The fierce kobold thief stabs you for 1 damage!
+[HP=-26/MA=19]:[HP=-27/MA=22]:
+>>> 'rest'
+rest
+You may not do that while you are mortally wounded!
+[HP=-27/MA=22]:The acid slime whips you with its pseudopod for 4 damage!
+[HP=-31/MA=22]:Acid burns you for 2 damage!
+[HP=-33/MA=22]:The fierce kobold thief stabs you for 6 damage!
+[HP=-39/MA=22]:The acid slime whips you with its pseudopod for 3 damage!
+[HP=-42/MA=22]:Acid burns you for 2 damage!
+[HP=-44/MA=22]:The fierce kobold thief stabs you for 8 damage!
+[HP=-52/MA=22]:The fierce kobold thief stabs you for 4 damage!
+[HP=-56/MA=22]:
+>>> ''
+
+Newhaven, Arena
+You notice torch, padded boots, padded gloves, padded helm, padded pants,
+padded vest, quarterstaff here.
+Also here: acid slime, fierce kobold thief.
+Obvious exits: closed door north, up
+[HP=-56/MA=22]:The acid slime whips you with its pseudopod for 6 damage!
+[HP=-62/MA=22]:Acid burns you for 1 damage!
+[HP=-63/MA=22]:The fierce kobold thief stabs you for 6 damage!
+[HP=-69/MA=22]:
+>>> ''
+
+Newhaven, Healer
+You notice small sign here.
+Also here: healer.
+Obvious exits: east
+[HP=32/MA=22]:
+>>> ''
+
+Newhaven, Healer
+You notice small sign here.
+Also here: healer.
+Obvious exits: east
+[HP=32/MA=22]:
+>>> ''
+
+Newhaven, Healer
+You notice small sign here.
+Also here: healer.
+Obvious exits: east
+[HP=32/MA=22]:
+>>> 'st'
+st
+Name: Thornwyn Oakenshade              Lives/CP:      7/2    
+Race: Half-Elf    Exp: 6               Perception:     60
+Class: Druid      Level: 1             Stealth:         0
+Hits:    32/32    Armour Class:   0/0  Thievery:        0
+Mana: *  22/22    Spellcasting: 59     Traps:           0
+                                       Picklocks:       0
+Strength:  40     Agility: 45          Tracking:        0
+Intellect: 60     Health:  50          Martial Arts:   15
+Willpower: 66     Charm:   50          MagicRes:       64
+[HP=32/MA=22]:
+>>> 'exp'
+exp
+Exp: 6 Level: 1 Exp needed for next level: 2044 (2050) [0%]
+[HP=32/MA=22]:
+>>> 'spells'
+spells
+You have the following spells:
+Level Mana Short Spell Name
+  1   4    star  starlight                     
+  1   1    vine  vine strike                   
+
+[HP=32/MA=22]:
+### Progress bot: level 1, exp 6/2050, HP 32, at Newhaven, Healer
+
+>>> 'i'
+i
+You are carrying Nothing!
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 0/1920 - None [0%]
+[HP=32/MA=22]:
+>>> 'spells'
+spells
+You have the following spells:
+Level Mana Short Spell Name
+  1   4    star  starlight                     
+  1   1    vine  vine strike                   
+
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying Nothing!
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 0/1920 - None [0%]
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying Nothing!
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 0/1920 - None [0%]
+[HP=32/MA=22]:
+### Buying a light: torch for 0 copper at Newhaven, General Store
+
+### Walking 3 steps to Newhaven, General Store for a light
+
+>>> 'e'
+e
+Newhaven, Narrow Road
+Obvious exits: north, east, west, down
+[HP=32/MA=22]:
+>>> 'e'
+e
+Newhaven, Narrow Path
+Obvious exits: north, south, east, west
+[HP=32/MA=22]:
+>>> 's'
+s
+Newhaven, General Store
+Also here: Dathalar.
+Obvious exits: north
+[HP=32/MA=22]:
+>>> 'buy torch'
+buy torch
+You just bought torch for nothing.
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying torch
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 40/1920 - None [2%]
+[HP=32/MA=22]:
+### Gear: quarterstaff for 0 copper (replaces nothing), shop Newhaven, Weapons Shop
+
+### Walking 3 steps to Newhaven, Weapons Shop to shop
+
+>>> 'n'
+n
+Newhaven, Narrow Path
+Obvious exits: north, south, east, west
+[HP=32/MA=22]:
+>>> 'e'
+e
+Newhaven, Village Entrance
+You notice large sign, newbie manual here.
+Obvious exits: north, south, west, southeast
+[HP=32/MA=22]:
+>>> 'n'
+n
+Newhaven, Weapons Shop
+You notice quarterstaff here.
+Also here: Nathaniel.
+Obvious exits: south
+[HP=32/MA=22]:
+>>> 'buy quarterstaff'
+buy quarterstaff
+You just bought quarterstaff for nothing.
+[HP=32/MA=22]:
+>>> 'wield quarterstaff'
+wield quarterstaff
+You are now holding quarterstaff.
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 140/1920 - None [7%]
+[HP=32/MA=22]:
+### Gear: quarterstaff for 0 copper (replaces nothing), shop Newhaven, Weapons Shop
+
+>>> 'buy quarterstaff'
+buy quarterstaff
+You just bought quarterstaff for nothing.
+[HP=32/MA=22]:
+>>> 'wield quarterstaff'
+wield quarterstaff
+You do not have quarterstaff left unequipped.
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying quarterstaff (Two handed), torch, quarterstaff
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 240/1920 - None [12%]
+[HP=32/MA=22]:
+### Gear: quarterstaff for 0 copper (replaces nothing), shop Newhaven, Weapons Shop
+
+>>> 'buy quarterstaff'
+buy quarterstaff
+You just bought quarterstaff for nothing.
+[HP=32/MA=22]:
+>>> 'wield quarterstaff'
+wield quarterstaff
+You do not have quarterstaff left unequipped.
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying quarterstaff (Two handed), torch, 2 quarterstaff
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 340/1920 - Light [17%]
+[HP=32/MA=22]:
+### Gear: quarterstaff for 0 copper (replaces nothing), shop Newhaven, Weapons Shop
+
+>>> 'buy quarterstaff'
+buy quarterstaff
+You just bought quarterstaff for nothing.
+[HP=32/MA=22]:
+>>> 'wield quarterstaff'
+wield quarterstaff
+You do not have quarterstaff left unequipped.
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying quarterstaff (Two handed), torch, 3 quarterstaff
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 440/1920 - Light [22%]
+[HP=32/MA=22]:
+### Gear: quarterstaff for 0 copper (replaces nothing), shop Newhaven, Weapons Shop
+
+>>> 'buy quarterstaff'
+buy quarterstaff
+You just bought quarterstaff for nothing.
+[HP=32/MA=22]:
+>>> 'wield quarterstaff'
+wield quarterstaff
+You do not have quarterstaff left unequipped.
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying quarterstaff (Two handed), torch, 4 quarterstaff
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 540/1920 - Light [28%]
+[HP=32/MA=22]:
+### Gear: quarterstaff for 0 copper (replaces nothing), shop Newhaven, Weapons Shop
+
+>>> 'buy quarterstaff'
+buy quarterstaff
+You just bought quarterstaff for nothing.
+[HP=32/MA=22]:
+>>> 'wield quarterstaff'
+wield quarterstaff
+You do not have quarterstaff left unequipped.
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying quarterstaff (Two handed), torch, 5 quarterstaff
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 640/1920 - Light [33%]
+[HP=32/MA=22]:
+### Gear: quarterstaff for 0 copper (replaces nothing), shop Newhaven, Weapons Shop
+
+>>> 'buy quarterstaff'
+buy quarterstaff
+You just bought quarterstaff for nothing.
+[HP=32/MA=22]:
+>>> 'wield quarterstaff'
+wield quarterstaff
+You do not have quarterstaff left unequipped.
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying quarterstaff (Two handed), torch, 6 quarterstaff
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 740/1920 - Medium [38%]
+[HP=32/MA=22]:
+### Gear: quarterstaff for 0 copper (replaces nothing), shop Newhaven, Weapons Shop
+
+>>> 'buy quarterstaff'
+buy quarterstaff
+You just bought quarterstaff for nothing.
+[HP=32/MA=22]:
+>>> 'wield quarterstaff'
+wield quarterstaff
+You do not have quarterstaff left unequipped.
+[HP=32/MA=22]:
+>>> 'i'
+i
+You are carrying quarterstaff (Two handed), torch, 7 quarterstaff
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 840/1920 - Medium [43%]
+[HP=32/MA=22]:
+>>> 'drop quarterstaff'
+drop quarterstaff
+You dropped quarterstaff.
+[HP=32/MA=22]:
+### Dropped unused quarterstaff (worth 0 copper)
+
+>>> 'i'
+i
+You are carrying quarterstaff (Two handed), torch, 6 quarterstaff
+You have no keys.
+Wealth: 0 copper farthings
+Encumbrance: 740/1920 - Medium [38%]
+[HP=32/MA=22]:
+### Hunting ground: Newhaven, Arena (1:2150), 17 rooms
+
+### Walking 4 steps to Newhaven, Arena to hunt
+
+>>> 's'
+s
+Newhaven, Village Entrance
+You notice large sign, newbie manual here.
+Obvious exits: north, south, west, southeast
+[HP=32/MA=22]:
+>>> 'w'
+w
+Newhaven, Narrow Path
+Obvious exits: north, south, east, west
+[HP=32/MA=22]:
+>>> 'w'
+w
+Newhaven, Narrow Road
+Obvious exits: north, east, west, down
+[HP=32/MA=22]:
+>>> 'd'
+d
+Newhaven, Arena
+You notice 2 torch, padded boots, padded gloves, padded helm, padded pants,
+padded vest, 4 quarterstaff here.
+Also here: acid slime, fierce kobold thief.
+Obvious exits: closed door north, up
+[HP=32/MA=22]:
+>>> 'vine slime'
+vine slime
+*Combat Engaged*
+[HP=32/MA=22]:You cast vine strike at acid slime for 5 damage!
+[HP=32/MA=21]:The acid slime whips you with its pseudopod for 6 damage!
+[HP=26/MA=21]:Acid burns you for 2 damage!
+[HP=24/MA=21]:The fierce kobold thief stabs you for 7 damage!
+[HP=17/MA=21]:You cast vine strike at acid slime for 9 damage!
+[HP=17/MA=20]:The acid slime whips you with its pseudopod for 4 damage!
+[HP=13/MA=20]:Acid burns you for 3 damage!
+[HP=10/MA=20]:The fierce kobold thief lunges at you with their shortsword!
+[HP=10/MA=20]:The fierce kobold thief stabs you for 6 damage!
+[HP=4/MA=20]:You cast vine strike at acid slime for 7 damage!
+[HP=4/MA=19]:The acid slime whips you with its pseudopod for 9 damage!
+[HP=-5/MA=19]:Acid burns you for 2 damage!
+[HP=-7/MA=19]:Thornwyn drops to the ground!
+[HP=-7/MA=19]:The fierce kobold thief stabs you for 7 damage!
+[HP=-14/MA=19]:*Combat Off*
+[HP=-14/MA=19]:
+### Died: o the ground! [HP=-7/MA=19]:The fierce kobold thief stabs you for 7 damage! [HP=-14/MA=19]:*Combat Off* [HP=-14/MA=19]:
+The acid slime whips you with its pseudopod for 5 damage!
+[HP=-19/MA=19]:Acid burns you for 1 damage!
+[HP=-20/MA=19]:The fierce kobold thief stabs you for 6 damage!
+[HP=-26/MA=19]:The fierce kobold thief stabs you for 1 damage!
+[HP=-27/MA=19]:The acid slime whips you with its pseudopod for 2 damage!
+[HP=-29/MA=19]:Acid burns you for 3 damage!
+[HP=-32/MA=19]:The fierce kobold thief stabs you for 6 damage!
+[HP=-38/MA=19]:The acid slime whips you with its pseudopod for 4 damage!
+[HP=-42/MA=19]:Acid burns you for 1 damage!
+[HP=-43/MA=19]:The fierce kobold thief stabs you for 2 damage!
+[HP=-45/MA=19]:The fierce kobold thief stabs you for 6 damage!
+[HP=-51/MA=19]:[HP=-52/MA=22]:The acid slime whips you with its pseudopod for 2 damage!
+[HP=-54/MA=22]:Acid burns you for 1 damage!
+[HP=-55/MA=22]:The fierce kobold thief stabs you for 3 damage!
+[HP=-58/MA=22]:The acid slime whips you with its pseudopod for 3 damage!
+[HP=-61/MA=22]:Acid burns you for 1 damage!
+[HP=-62/MA=22]:The fierce kobold thief lunges at you with their shortsword!
+[HP=-62/MA=22]:The fierce kobold thief stabs you for 5 damage!
+[HP=-67/MA=22]:The acid slime whips you with its pseudopod for 7 damage!
+[HP=-74/MA=22]:Acid burns you for 2 damage!
+[HP=-76/MA=22]:The fierce kobold thief stabs you for 4 damage!
+[HP=-80/MA=22]:The acid slime whips you with its pseudopod for 3 damage!
+[HP=-83/MA=22]:Acid burns you for 1 damage!
+[HP=-84/MA=22]:The fierce kobold thief stabs you for 2 damage!
+[HP=-86/MA=22]:The fierce kobold thief stabs you for 4 damage!
+[HP=-90/MA=22]:The acid slime whips you with its pseudopod for 5 damage!
+[HP=-95/MA=22]:Acid burns you for 1 damage!
+[HP=-96/MA=22]:The fierce kobold thief stabs you for 6 damage!
+[HP=-102/MA=22]:The acid slime whips you with its pseudopod for 8 damage!
+[HP=-110/MA=22]:Acid burns you for 1 damage!
+[HP=-111/MA=22]:The fierce kobold thief stabs you for 8 damage!
+[HP=-119/MA=22]:The fierce kobold thief stabs you for 5 damage!
+[HP=-124/MA=22]:[HP=-125/MA=22]:The acid slime whips you with its pseudopod for 6 damage!
+[HP=-131/MA=22]:Acid burns you for 2 damage!
+[HP=-133/MA=22]:The fierce kobold thief stabs you for 4 damage!
+[HP=-137/MA=22]:The acid slime whips you with its pseudopod for 6 damage!
+[HP=-143/MA=22]:Acid burns you for 3 damage!
+[HP=-146/MA=22]:The fierce kobold thief stabs you for 8 damage!
+[HP=-154/MA=22]:The fierce kobold thief stabs you for 6 damage!
+[HP=-160/MA=22]:The acid slime whips you with its pseudopod for 7 damage!
+[HP=-167/MA=22]:Acid burns you for 1 damage!
+[HP=-168/MA=22]:The fierce kobold thief stabs you for 4 damage!
+[HP=-172/MA=22]:The acid slime whips you with its pseudopod for 8 damage!
+[HP=-180/MA=22]:Acid burns you for 2 damage!
+[HP=-182/MA=22]:The fierce kobold thief stabs you for 7 damage!
+[HP=-189/MA=22]:The fierce kobold thief stabs you for 7 damage!
+[HP=-196/MA=22]:The acid slime whips you with its pseudopod for 4 damage!
+[HP=-200/MA=22]:Acid burns you for 2 damage!
+[HP=-202/MA=22]:You have been killed!
+But, due to a miracle, you have been saved.
+You have 6 lives left.
+[HP=32/MA=22]:
+>>> ''
+
+Newhaven, Healer
+You notice small sign here.
+Also here: healer.
+Obvious exits: east
+[HP=32/MA=22]:
+>>> 'st'
+st
+Name: Thornwyn Oakenshade              Lives/CP:      6/2    
+Race: Half-Elf    Exp: 6               Perception:     60
+Class: Druid      Level: 1             Stealth:         0
+Hits:    32/32    Armour Class:   0/0  Thievery:        0
+Mana: *  22/22    Spellcasting: 59     Traps:           0
+                                       Picklocks:       0
+Strength:  40     Agility: 45          Tracking:        0
+Intellect: 60     Health:  50          Martial Arts:   15
+Willpower: 66     Charm:   50          MagicRes:       64
+[HP=32/MA=22]:
+>>> 'exp'
+exp
+Exp: 6 Level: 1 Exp needed for next level: 2044 (2050) [0%]
+[HP=32/MA=22]:
+### Recovering the death pile at Newhaven, Arena
+
+### Walking 2 steps to Newhaven, Arena to the death pile
+
+>>> 'e'
+e
+Newhaven, Narrow Road
+Obvious exits: north, east, west, down
+[HP=32/MA=22]:
+>>> 'd'
+d
+Newhaven, Arena
+You notice 3 torch, padded boots, padded gloves, padded helm, padded pants,
+padded vest, 11 quarterstaff here.
+Also here: acid slime, fierce kobold thief.
+Obvious exits: closed door north, up
+[HP=32/MA=22]:
+>>> 'vine slime'
+vine slime
+*Combat Engaged*
+[HP=32/MA=22]:The acid slime whips you with its pseudopod for 3 damage!
+[HP=29/MA=22]:Acid burns you for 3 damage!
+[HP=26/MA=22]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=26/MA=22]:You cast vine strike at acid slime for 4 damage!
+[HP=26/MA=21]:You cast vine strike at acid slime for 7 damage!
+[HP=26/MA=20]:The acid slime dissolves into a puddle of bluish goo.
+[HP=26/MA=20]:You gain 16 experience.
+[HP=26/MA=20]:*Combat Off*
+[HP=26/MA=20]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=26/MA=20]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=26/MA=20]:
+>>> ''
+
+Newhaven, Arena
+You notice 3 torch, padded boots, padded gloves, padded helm, padded pants,
+padded vest, 11 quarterstaff here.
+Also here: fierce kobold thief.
+Obvious exits: closed door north, up
+[HP=26/MA=20]:
+>>> 'vine thief'
+vine thief
+*Combat Engaged*
+[HP=26/MA=20]:You attempt to cast vine strike, but fail.
+[HP=26/MA=20]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=26/MA=20]:You cast vine strike at fierce kobold thief for 10 damage!
+[HP=26/MA=19]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=26/MA=19]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=26/MA=19]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=26/MA=19]:You cast vine strike at fierce kobold thief for 7 damage!
+[HP=26/MA=18]:[HP=27/MA=22]:The fierce kobold thief stabs you for 3 damage!
+[HP=24/MA=22]:The fierce kobold thief lunges at you with their shortsword, but you dodge!
+[HP=24/MA=22]:You cast vine strike at fierce kobold thief for 8 damage!
+[HP=24/MA=21]:3 silver drop to the ground.
+14 copper drop to the ground.
+The kobold thief falls to the ground with a shrill cry.
+[HP=24/MA=21]:You gain 13 experience.
+[HP=24/MA=21]:*Combat Off*
+[HP=24/MA=21]:A giant rat creeps into the room from nowhere.
+[HP=24/MA=21]:
+>>> 'get silver'
+get silver
+You picked up 3 silver nobles
+[HP=24/MA=21]:
+>>> 'get copper'
+get copper
+You picked up 14 copper farthings
+[HP=24/MA=21]:
+>>> ''
+
+Newhaven, Arena
+You notice 3 torch, padded boots, padded gloves, padded helm, padded pants,
+padded vest, 11 quarterstaff here.
+Also here: giant rat.
+Obvious exits: closed door north, up
+[HP=24/MA=21]:
+>>> 'vine rat'
+vine rat
+*Combat Engaged*
+[HP=24/MA=21]:You cast vine strike at giant rat for 9 damage!
+[HP=24/MA=20]:The giant rat lunges at you!
+[HP=24/MA=20]:You cast vine strike at giant rat for 7 damage!
+[HP=24/MA=19]:The giant rat falls to the ground with a tortured squeak.
+[HP=24/MA=19]:You gain 9 experience.
+[HP=24/MA=19]:*Combat Off*
+[HP=24/MA=19]:A small lashworm crawls into the room from nowhere.
+[HP=24/MA=19]:
+>>> ''
+
+Newhaven, Arena
+You notice 3 torch, padded boots, padded gloves, padded helm, padded pants,
+padded vest, 11 quarterstaff here.
+Also here: small lashworm.
+Obvious exits: closed door north, up
+[HP=24/MA=19]:
+>>> 'vine lashworm'
+vine lashworm
+*Combat Engaged*
+[HP=24/MA=19]:The small lashworm lunges at you!
+[HP=24/MA=19]:The small lashworm lunges at you!
+[HP=24/MA=19]:You cast vine strike at small lashworm for 10 damage!
+[HP=24/MA=18]:You cast vine strike at small lashworm for 6 damage!
+[HP=24/MA=17]:The lashworm falls dead at your feet.
+[HP=24/MA=17]:You gain 12 experience.
+[HP=24/MA=17]:*Combat Off*
+[HP=24/MA=17]:A giant rat creeps into the room from nowhere.
+[HP=24/MA=17]:
+>>> ''
+
+Newhaven, Arena
+You notice 3 torch, padded boots, padded gloves, padded helm, padded pants,
+padded vest, 11 quarterstaff here.
+Also here: giant rat.
+Obvious exits: closed door north, up
+[HP=24/MA=17]:
+>>> 'vine rat'
+vine rat
+*Combat Engaged*
+[HP=24/MA=17]:You cast vine strike at giant rat for 10 damage!
+[HP=24/MA=16]:The giant rat lunges at you!
+[HP=24/MA=16]:[HP=25/MA=20]:The giant rat lunges at you!
+[HP=25/MA=20]:You cast vine strike at giant rat for 4 damage!
+[HP=25/MA=19]:The giant rat falls to the ground with a tortured squeak.
+[HP=25/MA=19]:You gain 9 experience.
+[HP=25/MA=19]:*Combat Off*
+[HP=25/MA=19]:A giant rat creeps into the room from nowhere.
+[HP=25/MA=19]:
+>>> ''
+
+Newhaven, Arena
+You notice 3 torch, padded boots, padded gloves, padded helm, padded pants,
+padded vest, 11 quarterstaff here.
+Also here: giant rat.
+Obvious exits: closed door north, up
+[HP=25/MA=19]:
+>>> 'vine rat'
+vine rat
+*Combat Engaged*

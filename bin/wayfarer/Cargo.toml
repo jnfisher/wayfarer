@@ -1,0 +1,10 @@
+[package]
+name = "wayfarer"
+description = "A MajorMUD playing client and bot."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+clap.workspace = true

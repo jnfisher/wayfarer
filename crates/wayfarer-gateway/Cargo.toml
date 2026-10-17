@@ -1,0 +1,9 @@
+[package]
+name = "wayfarer-gateway"
+description = "The gateway: telnet sessions, output log, logon scripts, fan-out to UIs (docs/plan/02-architecture.md)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
