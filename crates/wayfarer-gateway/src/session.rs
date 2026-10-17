@@ -162,8 +162,8 @@ async fn connected(
     };
     let _ = stream.set_nodelay(true);
     tracing::info!(session = %slot.id, "connected to {}:{}", slot.host, slot.port);
-    // Connected: C-005's logon script runs from here; until then the player logs on by hand.
-    slot.set_state(SessionState::Logon);
+    // No logon script yet (C-005 runs one from here): the player logs on by hand.
+    slot.set_state(SessionState::Connected);
 
     let (mut reader, mut writer) = stream.into_split();
     let mut telnet = Telnet::new();

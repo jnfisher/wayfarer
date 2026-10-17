@@ -29,6 +29,7 @@ latest output, 0 before any. `state` is one of:
 | State | Meaning |
 |---|---|
 | `connecting` | Opening the connection |
+| `connected` | Connected, with no logon script running (none configured, or it stopped and the player has the session) |
 | `logon` | Connected; the logon script is running |
 | `menu` | At the game's menus, outside the realm |
 | `realm` | In the realm |

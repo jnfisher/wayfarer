@@ -151,7 +151,7 @@ impl Gateway {
         self.inner.states.subscribe()
     }
 
-    /// Connect a session (state `connecting`, then `logon` once connected, `lost` if the
+    /// Connect a session (state `connecting`, then `connected`, `lost` if the
     /// connection fails or drops). Does nothing if it is already connecting or connected.
     pub fn open(&self, id: &str) -> Result<(), GatewayError> {
         let slot = self.slot(id)?;

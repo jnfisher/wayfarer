@@ -35,6 +35,9 @@ pub enum ClientKind {
 pub enum SessionState {
     /// Opening the connection to the game server.
     Connecting,
+    /// Connected, with no logon script running: none is configured, or it stopped and the
+    /// player has the session (character creation, say).
+    Connected,
     /// Connected; the logon script is running.
     Logon,
     /// At the game's menus, outside the realm.

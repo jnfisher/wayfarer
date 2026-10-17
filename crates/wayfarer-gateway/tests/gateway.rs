@@ -143,7 +143,7 @@ async fn a_capture_in_random_pieces_arrives_whole_and_numbered() {
     let info = &gw.sessions()[0];
     assert_eq!(
         (info.state, info.last_seq),
-        (SessionState::Logon, chunks.len() as u64)
+        (SessionState::Connected, chunks.len() as u64)
     );
 }
 
@@ -282,7 +282,7 @@ async fn input_goes_out_whole_and_is_captured() {
     gw.open(ID).unwrap();
     let mut sock = accept(&listener).await;
     assert_eq!(next_state(&mut states).await, SessionState::Connecting);
-    assert_eq!(next_state(&mut states).await, SessionState::Logon);
+    assert_eq!(next_state(&mut states).await, SessionState::Connected);
 
     gw.send_line(ID, "look north").await.unwrap();
     gw.send_keys(ID, &[b'n', 255, 13]).await.unwrap();
@@ -337,7 +337,7 @@ async fn states_lost_and_closed() {
     gw.open(ID).unwrap();
     drop(accept(&listener).await);
     assert_eq!(next_state(&mut states).await, SessionState::Connecting);
-    assert_eq!(next_state(&mut states).await, SessionState::Logon);
+    assert_eq!(next_state(&mut states).await, SessionState::Connected);
     assert_eq!(next_state(&mut states).await, SessionState::Lost);
     assert!(matches!(
         gw.send_line(ID, "x").await,
@@ -349,7 +349,7 @@ async fn states_lost_and_closed() {
     gw.open(ID).unwrap(); // already connecting: nothing happens
     let mut sock = accept(&listener).await;
     assert_eq!(next_state(&mut states).await, SessionState::Connecting);
-    assert_eq!(next_state(&mut states).await, SessionState::Logon);
+    assert_eq!(next_state(&mut states).await, SessionState::Connected);
     gw.close(ID).await.unwrap();
     assert_eq!(next_state(&mut states).await, SessionState::Closed);
     assert_eq!(gw.state(ID).unwrap(), SessionState::Closed);

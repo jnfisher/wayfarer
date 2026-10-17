@@ -8,7 +8,7 @@ it) and no logon scripts (C-005). How to configure it: [`docs/gateway.md`](../..
 ```rust
 let gw = Gateway::start(&Paths::in_dir(data_dir), Options::default())?; // autostart sessions
 let mut output = gw.subscribe("kasimir")?;          // broadcast::Receiver<Chunk>
-gw.open("kasimir")?;                                // connecting, then logon
+gw.open("kasimir")?;                                // connecting, then connected
 gw.send_line("kasimir", "look").await?;             // CP437 plus CR
 gw.send_keys("kasimir", &[13]).await?;              // bytes as given
 let h = gw.history("kasimir", HistoryQuery::after(42, 2000)).await?;
@@ -24,7 +24,7 @@ gw.close("kasimir").await?;                         // closed
   `Chunk` with the next `seq`, written to disk, kept in memory and then published. Input is a
   queue the task drains one command at a time, so lines from two clients never interleave.
 - **States** (M0): `closed` before the first `open` and after `close`, `connecting` while the
-  connection opens, `logon` once connected (the player logs on by hand until C-005's scripts),
+  connection opens, `connected` once it is up (the player logs on by hand until C-005's scripts),
   `lost` when the connection fails or drops. No reconnect here (C-005). Input is refused
   (`NotConnected`) unless the session is connected.
 - **Subscribers** get a `tokio::sync::broadcast` receiver of `Options::subscriber_capacity`
