@@ -1,0 +1,501 @@
+//! Reading a world pack. Opening is cheap: nothing is loaded until asked for.
+
+use std::path::Path;
+
+use rusqlite::{Connection, OpenFlags, OptionalExtension, Row, params};
+
+use crate::Error;
+use crate::schema::SCHEMA_VERSION;
+
+/// An open world pack, read only.
+pub struct WorldPack {
+    conn: Connection,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Room {
+    pub map: i64,
+    pub room: i64,
+    pub name: String,
+    pub light: i64,
+    pub room_type: i64,
+    pub shop_num: i64,
+    pub min_level: i64,
+    pub max_level: i64,
+    pub gen_monster: i64,
+    pub max_monsters: i64,
+    pub mon_group: i64,
+    pub regen_delay: i64,
+    pub spec_mon: i64,
+    pub flags: i64,
+    pub mm_id: u32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Exit {
+    /// 0-9: N S E W NE NW SE SW U D.
+    pub dir: u8,
+    pub to_map: i64,
+    pub to_room: i64,
+    /// The exit type by name: "Normal", "Door", "Text", ...
+    pub exit_type: String,
+    pub type_code: i64,
+    /// `exitpar1s`..`exitpar4s`, raw.
+    pub params: [i64; 4],
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Monster {
+    pub number: i64,
+    pub name: String,
+    pub level: i64,
+    pub exp: i64,
+    pub max_hp: i64,
+    pub mon_type: i64,
+    pub gen_index: i64,
+    pub alignment: i64,
+    /// The export's full record (JSON).
+    pub raw: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Item {
+    pub number: i64,
+    pub name: String,
+    pub item_type: i64,
+    pub weight: i64,
+    pub cost: i64,
+    pub currency: i64,
+    pub raw: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Spell {
+    pub number: i64,
+    pub name: String,
+    pub short_name: String,
+    pub level: i64,
+    pub mana: i64,
+    pub spell_type: i64,
+    pub target: i64,
+    pub raw: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Shop {
+    pub number: i64,
+    pub name: String,
+    pub shop_type: i64,
+    pub min_level: i64,
+    pub max_level: i64,
+    pub markup: i64,
+    pub train_class: i64,
+    /// (item number, maximum quantity) per stocked slot, in record order.
+    pub stock: Vec<(i64, i64)>,
+    pub raw: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Waypoint {
+    pub code: String,
+    pub mm_id: u32,
+    pub flags: u32,
+    pub is_shop: bool,
+    pub is_bank: bool,
+    pub is_trainer: bool,
+    pub is_boss: bool,
+    pub min_level: i64,
+    pub max_level: i64,
+    pub class: i64,
+    pub group: String,
+    pub name: String,
+    /// The game rooms whose `mm_id` equals the waypoint's.
+    pub rooms: Vec<(i64, i64)>,
+}
+
+/// How a path's best walk through the rooms went.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Verification {
+    pub start_candidates: i64,
+    pub start: Option<(i64, i64)>,
+    pub end: Option<(i64, i64)>,
+    pub walked: bool,
+    pub closes: bool,
+    pub steps_checked: i64,
+    pub steps_exact: i64,
+    pub steps_title: i64,
+    pub steps_none: i64,
+    pub steps_wildcard: i64,
+    pub broke_at: Option<i64>,
+    pub broke_reason: Option<String>,
+}
+
+/// One MegaMud `.mp` file.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MmPath {
+    pub file: String,
+    pub description: String,
+    pub author: String,
+    pub from_id: u32,
+    pub to_id: u32,
+    pub is_loop: bool,
+    pub item: String,
+    pub prepath: String,
+    pub nextpath: String,
+    pub verification: Verification,
+}
+
+/// One step of a path.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MmStep {
+    pub mm_id: u32,
+    pub flags: u16,
+    pub command: String,
+    pub base: String,
+    pub actions: Option<Vec<String>>,
+    /// The room the walk typed it in, and how the id matched ("exact", "title", ...).
+    pub walk: Option<((i64, i64), String)>,
+}
+
+fn room_row(r: &Row) -> rusqlite::Result<Room> {
+    Ok(Room {
+        map: r.get(0)?,
+        room: r.get(1)?,
+        name: r.get(2)?,
+        light: r.get(3)?,
+        room_type: r.get(4)?,
+        shop_num: r.get(5)?,
+        min_level: r.get(6)?,
+        max_level: r.get(7)?,
+        gen_monster: r.get(8)?,
+        max_monsters: r.get(9)?,
+        mon_group: r.get(10)?,
+        regen_delay: r.get(11)?,
+        spec_mon: r.get(12)?,
+        flags: r.get(13)?,
+        mm_id: r.get(14)?,
+    })
+}
+
+const ROOM_COLS: &str = "map, room, name, light, type, shop_num, min_level, max_level, \
+                         gen_monster, max_monsters, mon_group, regen_delay, spec_mon, flags, mm_id";
+
+fn path_row(r: &Row) -> rusqlite::Result<MmPath> {
+    let pair = |a: Option<i64>, b: Option<i64>| a.zip(b);
+    Ok(MmPath {
+        file: r.get("file")?,
+        description: r.get("description")?,
+        author: r.get("author")?,
+        from_id: r.get("from_id")?,
+        to_id: r.get("to_id")?,
+        is_loop: r.get("is_loop")?,
+        item: r.get("item")?,
+        prepath: r.get("prepath")?,
+        nextpath: r.get("nextpath")?,
+        verification: Verification {
+            start_candidates: r.get("start_candidates")?,
+            start: pair(r.get("start_map")?, r.get("start_room")?),
+            end: pair(r.get("end_map")?, r.get("end_room")?),
+            walked: r.get("walked")?,
+            closes: r.get("closes")?,
+            steps_checked: r.get("steps_checked")?,
+            steps_exact: r.get("steps_exact")?,
+            steps_title: r.get("steps_title")?,
+            steps_none: r.get("steps_none")?,
+            steps_wildcard: r.get("steps_wildcard")?,
+            broke_at: r.get("broke_at")?,
+            broke_reason: r.get("broke_reason")?,
+        },
+    })
+}
+
+impl WorldPack {
+    /// Open a pack read only and check its schema version.
+    pub fn open(path: &Path) -> Result<WorldPack, Error> {
+        let conn = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        let pack = WorldPack { conn };
+        let version: Option<String> = pack.meta("schema_version")?;
+        if version.as_deref() != Some(&SCHEMA_VERSION.to_string()) {
+            return Err(Error::Format(format!(
+                "{}: schema version {version:?}, this build reads {SCHEMA_VERSION}",
+                path.display()
+            )));
+        }
+        Ok(pack)
+    }
+
+    /// A `pack_meta` value: `schema_version`, `builder`, `source.<TABLE>.file_sha256`, ...
+    pub fn meta(&self, key: &str) -> Result<Option<String>, Error> {
+        Ok(self
+            .conn
+            .query_row("SELECT value FROM pack_meta WHERE key = ?1", [key], |r| {
+                r.get(0)
+            })
+            .optional()?)
+    }
+
+    pub fn room(&self, map: i64, room: i64) -> Result<Option<Room>, Error> {
+        Ok(self
+            .conn
+            .prepare_cached(&format!(
+                "SELECT {ROOM_COLS} FROM rooms WHERE map = ?1 AND room = ?2"
+            ))?
+            .query_row(params![map, room], room_row)
+            .optional()?)
+    }
+
+    /// The export's full record of a room (JSON).
+    pub fn room_raw(&self, map: i64, room: i64) -> Result<Option<String>, Error> {
+        Ok(self
+            .conn
+            .prepare_cached("SELECT raw FROM rooms WHERE map = ?1 AND room = ?2")?
+            .query_row(params![map, room], |r| r.get(0))
+            .optional()?)
+    }
+
+    /// A room's exits, in direction order.
+    pub fn exits(&self, map: i64, room: i64) -> Result<Vec<Exit>, Error> {
+        let mut st = self.conn.prepare_cached(
+            "SELECT dir, to_map, to_room, type, type_code, par1, par2, par3, par4 FROM exits \
+             WHERE from_map = ?1 AND from_room = ?2 ORDER BY dir",
+        )?;
+        let rows = st.query_map(params![map, room], |r| {
+            Ok(Exit {
+                dir: r.get(0)?,
+                to_map: r.get(1)?,
+                to_room: r.get(2)?,
+                exit_type: r.get(3)?,
+                type_code: r.get(4)?,
+                params: [r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?],
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    fn rooms_where(&self, cond: &str, arg: impl rusqlite::ToSql) -> Result<Vec<Room>, Error> {
+        let mut st = self.conn.prepare_cached(&format!(
+            "SELECT {ROOM_COLS} FROM rooms WHERE {cond} ORDER BY map, room"
+        ))?;
+        let rows = st.query_map([arg], room_row)?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Rooms with exactly this name.
+    pub fn rooms_by_name(&self, name: &str) -> Result<Vec<Room>, Error> {
+        self.rooms_where("name = ?1", name)
+    }
+
+    /// Rooms whose MegaMud room id is `mm_id`.
+    pub fn rooms_by_mm_id(&self, mm_id: u32) -> Result<Vec<Room>, Error> {
+        self.rooms_where("mm_id = ?1", mm_id)
+    }
+
+    pub fn monster(&self, number: i64) -> Result<Option<Monster>, Error> {
+        Ok(self
+            .conn
+            .prepare_cached(
+                "SELECT number, name, level, exp, max_hp, mon_type, gen_index, alignment, raw \
+                 FROM monsters WHERE number = ?1",
+            )?
+            .query_row([number], |r| {
+                Ok(Monster {
+                    number: r.get(0)?,
+                    name: r.get(1)?,
+                    level: r.get(2)?,
+                    exp: r.get(3)?,
+                    max_hp: r.get(4)?,
+                    mon_type: r.get(5)?,
+                    gen_index: r.get(6)?,
+                    alignment: r.get(7)?,
+                    raw: r.get(8)?,
+                })
+            })
+            .optional()?)
+    }
+
+    pub fn item(&self, number: i64) -> Result<Option<Item>, Error> {
+        Ok(self
+            .conn
+            .prepare_cached(
+                "SELECT number, name, type, weight, cost, currency, raw FROM items \
+                 WHERE number = ?1",
+            )?
+            .query_row([number], |r| {
+                Ok(Item {
+                    number: r.get(0)?,
+                    name: r.get(1)?,
+                    item_type: r.get(2)?,
+                    weight: r.get(3)?,
+                    cost: r.get(4)?,
+                    currency: r.get(5)?,
+                    raw: r.get(6)?,
+                })
+            })
+            .optional()?)
+    }
+
+    pub fn spell(&self, number: i64) -> Result<Option<Spell>, Error> {
+        Ok(self
+            .conn
+            .prepare_cached(
+                "SELECT number, name, short_name, level, mana, type, target, raw FROM spells \
+                 WHERE number = ?1",
+            )?
+            .query_row([number], |r| {
+                Ok(Spell {
+                    number: r.get(0)?,
+                    name: r.get(1)?,
+                    short_name: r.get(2)?,
+                    level: r.get(3)?,
+                    mana: r.get(4)?,
+                    spell_type: r.get(5)?,
+                    target: r.get(6)?,
+                    raw: r.get(7)?,
+                })
+            })
+            .optional()?)
+    }
+
+    pub fn shop(&self, number: i64) -> Result<Option<Shop>, Error> {
+        let shop = self
+            .conn
+            .prepare_cached(
+                "SELECT number, name, type, min_level, max_level, markup, train_class, raw \
+                 FROM shops WHERE number = ?1",
+            )?
+            .query_row([number], |r| {
+                Ok(Shop {
+                    number: r.get(0)?,
+                    name: r.get(1)?,
+                    shop_type: r.get(2)?,
+                    min_level: r.get(3)?,
+                    max_level: r.get(4)?,
+                    markup: r.get(5)?,
+                    train_class: r.get(6)?,
+                    stock: Vec::new(),
+                    raw: r.get(7)?,
+                })
+            })
+            .optional()?;
+        let Some(mut shop) = shop else {
+            return Ok(None);
+        };
+        let mut st = self
+            .conn
+            .prepare_cached("SELECT item, max_qty FROM shop_stock WHERE shop = ?1 ORDER BY slot")?;
+        shop.stock = st
+            .query_map([number], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<_, _>>()?;
+        Ok(Some(shop))
+    }
+
+    /// A message (WCCMSG): its three texts.
+    pub fn message(&self, number: i64) -> Result<Option<[String; 3]>, Error> {
+        Ok(self
+            .conn
+            .prepare_cached("SELECT msg1, msg2, msg3 FROM messages WHERE number = ?1")?
+            .query_row([number], |r| Ok([r.get(0)?, r.get(1)?, r.get(2)?]))
+            .optional()?)
+    }
+
+    /// A text block (WCCTEXT): its parts in order, joined; `None` if there is no part 0.
+    pub fn text_block(&self, number: i64) -> Result<Option<String>, Error> {
+        let mut st = self
+            .conn
+            .prepare_cached("SELECT part, text FROM texts WHERE number = ?1 ORDER BY part")?;
+        let parts: Vec<(i64, String)> = st
+            .query_map([number], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<_, _>>()?;
+        if parts.first().is_none_or(|(p, _)| *p != 0) {
+            return Ok(None);
+        }
+        // Like display_long_text: stop at the first missing part.
+        let mut out = String::new();
+        for (i, (part, text)) in parts.iter().enumerate() {
+            if *part != i as i64 {
+                break;
+            }
+            out.push_str(text);
+        }
+        Ok(Some(out))
+    }
+
+    /// MegaMud's named waypoints (`Rooms.md`), in file order.
+    pub fn waypoints(&self) -> Result<Vec<Waypoint>, Error> {
+        let mut st = self.conn.prepare_cached(
+            "SELECT code, mm_id, flags, is_shop, is_bank, is_trainer, is_boss, min_level, \
+             max_level, class, grp, name FROM mm_waypoints ORDER BY line",
+        )?;
+        let mut out: Vec<Waypoint> = st
+            .query_map([], |r| {
+                Ok(Waypoint {
+                    code: r.get(0)?,
+                    mm_id: r.get(1)?,
+                    flags: r.get(2)?,
+                    is_shop: r.get(3)?,
+                    is_bank: r.get(4)?,
+                    is_trainer: r.get(5)?,
+                    is_boss: r.get(6)?,
+                    min_level: r.get(7)?,
+                    max_level: r.get(8)?,
+                    class: r.get(9)?,
+                    group: r.get(10)?,
+                    name: r.get(11)?,
+                    rooms: Vec::new(),
+                })
+            })?
+            .collect::<Result<_, _>>()?;
+        let mut st = self
+            .conn
+            .prepare_cached("SELECT map, room FROM mm_waypoint_rooms WHERE code = ?1")?;
+        for w in &mut out {
+            w.rooms = st
+                .query_map([&w.code], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<Result<_, _>>()?;
+        }
+        Ok(out)
+    }
+
+    /// Every MegaMud path file, by file name.
+    pub fn paths(&self) -> Result<Vec<MmPath>, Error> {
+        let mut st = self
+            .conn
+            .prepare_cached("SELECT * FROM mm_paths ORDER BY file")?;
+        let rows = st.query_map([], path_row)?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// The loops (FROMID = TOID) with their verification, by file name.
+    pub fn loops(&self) -> Result<Vec<MmPath>, Error> {
+        let mut st = self
+            .conn
+            .prepare_cached("SELECT * FROM mm_loops ORDER BY file")?;
+        let rows = st.query_map([], path_row)?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// The steps of one path file, in order.
+    pub fn path_steps(&self, file: &str) -> Result<Vec<MmStep>, Error> {
+        let mut st = self.conn.prepare_cached(
+            "SELECT mm_id, flags, command, base, actions, walk_map, walk_room, id_match \
+             FROM mm_path_steps WHERE file = ?1 ORDER BY step",
+        )?;
+        let rows = st.query_map([file], |r| {
+            let actions: Option<String> = r.get(4)?;
+            let at: Option<(i64, i64)> = r.get::<_, Option<i64>>(5)?.zip(r.get(6)?);
+            let m: Option<String> = r.get(7)?;
+            Ok(MmStep {
+                mm_id: r.get(0)?,
+                flags: r.get(1)?,
+                command: r.get(2)?,
+                base: r.get(3)?,
+                actions: actions.and_then(|a| serde_json::from_str(&a).ok()),
+                walk: at.zip(m),
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+}

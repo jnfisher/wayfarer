@@ -4,6 +4,7 @@ members = [
     "crates/wayfarer-proto",
     "crates/wayfarer-telnet",
     "crates/wayfarer-gateway",
+    "crates/wayfarer-world",
     "bin/wayfarer",
 ]
 
@@ -30,3 +31,12 @@ debug = 0
 
 [profile.test]
 debug = 0
+
+# wayfarer-world's pack build (its one slow test) parses, inflates, hashes and stores ~60 MB:
+# 5 s unoptimised, 2 s like this. The crate itself is in the list because the serde_json and
+# rusqlite code it calls is generic, so it is compiled there.
+[profile.dev.package]
+wayfarer-world.opt-level = 2
+libsqlite3-sys.opt-level = 2
+miniz_oxide.opt-level = 2
+sha2.opt-level = 2
