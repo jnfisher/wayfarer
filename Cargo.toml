@@ -5,6 +5,7 @@ members = [
     "crates/wayfarer-telnet",
     "crates/wayfarer-gateway",
     "crates/wayfarer-parse",
+    "crates/wayfarer-world",
     "bin/wayfarer",
 ]
 
@@ -24,6 +25,7 @@ thiserror = "2"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ts-rs = "12"
 
 # Fast builds and tests: no debug info, which is most of the link time.
 [profile.dev]
@@ -32,11 +34,16 @@ debug = 0
 [profile.test]
 debug = 0
 
-# wayfarer-parse's tests read the 40 MB stock-world export and compile its 6,400 game-text
-# patterns: run the decompressor and the regex compiler at full speed in test builds.
-[profile.dev.package.zlib-rs]
-opt-level = 3
-[profile.dev.package.regex-automata]
-opt-level = 3
-[profile.dev.package.regex-syntax]
-opt-level = 3
+# Dependencies the slow tests lean on run optimised in dev and test builds (CI budget).
+# wayfarer-parse reads the 40 MB stock-world export and compiles its 6,400 game-text patterns.
+# wayfarer-world's pack build parses, inflates, hashes and stores ~60 MB (5 s unoptimised, 2 s
+# like this); the crate itself is listed because the serde_json and rusqlite code it calls is
+# generic, so it is compiled there.
+[profile.dev.package]
+zlib-rs.opt-level = 3
+regex-automata.opt-level = 3
+regex-syntax.opt-level = 3
+wayfarer-world.opt-level = 2
+libsqlite3-sys.opt-level = 2
+miniz_oxide.opt-level = 2
+sha2.opt-level = 2

@@ -78,9 +78,19 @@ Arena spawns, walked to the Hallway first"). The UI shows it, and the logs keep 
 
 **Areas and loops.** The player picks the hunting area; the bot walks there and runs its
 loop. Loops come from three places: **MegaMud's community loop library** (195 loops from the
-MegaMud v2.0 path set, read with the room-id scheme in `kb/megamud-formats.md` and checked
-against the world data: 175 of 177 walked loops close), loops generated from the world data
-for areas the library lacks, and loops the player records or edits.
+MegaMud v2.0 path set, read with the room-id scheme in `kb/megamud-formats.md` and walked
+through the world pack's rooms: all 183 that walk to the end close), loops generated from the
+world data for areas the library lacks, and loops the player records or edits.
+
+**Trusting MegaMud's data** (John, 2026-10-17). The world pack's game data (rooms, exits,
+monsters, items, spells, shops) comes only from the real game records; MegaMud's own
+databases are never used. Its paths and waypoints are kept apart (`mm_*` tables) and checked
+against the real rooms, and two rules bound their use:
+
+- The bot runs a MegaMud loop only if its verification walk reached the end and closed in its
+  start room. Broken or unverified paths are never run (they stay in the pack, flagged).
+- "Where next?" ranks areas on the real monster data and measured results. A MegaMud loop is a
+  ready-made route through an area already chosen, never a reason to choose it.
 
 **Area recommendations** are a query, not a decision. "Where next?" ranks areas for this
 character from the world data (monster exp, HP and hits against the character's measured
