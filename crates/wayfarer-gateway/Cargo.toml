@@ -8,3 +8,17 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+directories = "6"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+toml = "1"
+tracing.workspace = true
+wayfarer-proto = { path = "../wayfarer-proto" }
+wayfarer-telnet = { path = "../wayfarer-telnet" }
+
+[dev-dependencies]
+fastrand = "2"
+tempfile = "3"
+tracing-subscriber.workspace = true

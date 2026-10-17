@@ -25,6 +25,7 @@ cargo run -p wayfarer -- --version
 | `crates/wayfarer-telnet` | Telnet negotiation, CP437, raw capture |
 | `crates/wayfarer-gateway` | Telnet sessions, output log, logon scripts, WebSocket fan-out |
 | `bin/wayfarer` | The `wayfarer` binary |
+| `examples/` | Example `wayfarer.toml` and `credentials.toml` (placeholders) |
 | `tests/fixtures/` | Test data copied from mmud-exploration, with provenance |
 | `docs/plan/` | The design and the task cards |
 

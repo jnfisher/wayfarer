@@ -6,4 +6,4 @@ import type { SessionState } from "./SessionState";
 /**
  * Gateway → client.
  */
-export type ToClient = { "type": "welcome", protocol: number, server_build: string, sessions: Array<SessionInfo>, } | { "type": "refused", reason: string, } | { "type": "session_list", sessions: Array<SessionInfo>, } | { "type": "session_state", session: string, state: SessionState, } | { "type": "output", session: string, seq: number, text: string, } | { "type": "history", session: string, from_seq: number, chunks: Array<Chunk>, } | { "type": "error", message: string, };
+export type ToClient = { "type": "welcome", protocol: number, server_build: string, sessions: Array<SessionInfo>, } | { "type": "refused", reason: string, } | { "type": "session_list", sessions: Array<SessionInfo>, } | { "type": "session_state", session: string, state: SessionState, } | { "type": "output", session: string, seq: number, text: string, } | { "type": "history", session: string, from_seq: number, chunks: Array<Chunk>, } | { "type": "lagged", session: string, missed: number, } | { "type": "error", message: string, };

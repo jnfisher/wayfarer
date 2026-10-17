@@ -29,6 +29,7 @@ latest output, 0 before any. `state` is one of:
 | State | Meaning |
 |---|---|
 | `connecting` | Opening the connection |
+| `connected` | Connected, with no logon script running (none configured, or it stopped and the player has the session) |
 | `logon` | Connected; the logon script is running |
 | `menu` | At the game's menus, outside the realm |
 | `realm` | In the realm |
@@ -80,6 +81,15 @@ if `chunks` is empty), so `from_seq` 1 means the start of the log.
 ```json
 {"type":"history_request","session":"kasimir","after_seq":42,"max_chunks":2000}
 {"type":"history","session":"kasimir","from_seq":41,"chunks":[{"seq":41,"text":"You notice nothing here.\r\n"},{"seq":42,"text":"[HP=30/30]: "}]}
+```
+
+A client that reads too slowly does not hold the session up: the gateway drops the live output
+it could not take and tells it with `lagged {session, missed}`, the number of chunks it did not
+send. Live output carries on after the gap; the client fetches the gap with `history_request`
+`after_seq` the last `seq` it saw, as after a reconnect.
+
+```json
+{"type":"lagged","session":"kasimir","missed":120}
 ```
 
 ## Input

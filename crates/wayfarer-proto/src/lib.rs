@@ -35,6 +35,9 @@ pub enum ClientKind {
 pub enum SessionState {
     /// Opening the connection to the game server.
     Connecting,
+    /// Connected, with no logon script running: none is configured, or it stopped and the
+    /// player has the session (character creation, say).
+    Connected,
     /// Connected; the logon script is running.
     Logon,
     /// At the game's menus, outside the realm.
@@ -102,6 +105,10 @@ pub enum ToClient {
         from_seq: u64,
         chunks: Vec<Chunk>,
     },
+    /// This connection fell behind and `missed` chunks of the session's live output were not
+    /// sent to it. Live output carries on after the gap; fetch the gap with a
+    /// `history_request` `after_seq` the last `seq` seen.
+    Lagged { session: SessionId, missed: u64 },
     /// Something the client sent could not be handled; the connection stays up.
     Error { message: String },
 }
@@ -172,6 +179,7 @@ impl ToClient {
         "session_state",
         "output",
         "history",
+        "lagged",
         "error",
     ];
 
@@ -184,6 +192,7 @@ impl ToClient {
             Self::SessionState { .. } => "session_state",
             Self::Output { .. } => "output",
             Self::History { .. } => "history",
+            Self::Lagged { .. } => "lagged",
             Self::Error { .. } => "error",
         }
     }

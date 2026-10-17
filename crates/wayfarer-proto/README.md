@@ -34,6 +34,7 @@ Gateway → client:
 {"type":"session_state","session":"kasimir","state":"lost"}
 {"type":"output","session":"kasimir","seq":43,"text":"\u001b[1;32mObvious exits: north, south\u001b[0m\r\n"}
 {"type":"history","session":"kasimir","from_seq":41,"chunks":[{"seq":41,"text":"You notice nothing here.\r\n"},{"seq":42,"text":"[HP=30/30]: "}]}
+{"type":"lagged","session":"kasimir","missed":120}
 {"type":"error","message":"unknown session \"nobody\""}
 ```
 

@@ -3,4 +3,4 @@
 /**
  * A session's connection state.
  */
-export type SessionState = "connecting" | "logon" | "menu" | "realm" | "lost" | "closed";
+export type SessionState = "connecting" | "connected" | "logon" | "menu" | "realm" | "lost" | "closed";
