@@ -1,6 +1,6 @@
 ---
 id: C-009
-title: scripts/live-check.sh: pinned silvermere, seeded, fixture snapshot, logon/log-off scenario
+title: scripts/live-check.sh: against the local silvermere, test-character pool, logon/log-off scenario
 tier: B
 size: S
 wave: 1
@@ -8,70 +8,73 @@ depends: [C-005, C-006]
 crate: scripts/, tests/live/
 touches:
   - scripts/live-check.sh
-  - tests/live/ (scenario runner and fixture definitions)
-  - tests/live/fixtures.toml (accounts and characters John approves)
+  - tests/live/ (scenario runner and the fixture definitions)
+  - tests/live/fixtures.toml (test characters John approves; no passwords)
+  - .gitignore (the local credentials file)
 ---
 
 ## Goal
 
-The test that needs a game server, run in an agent's own cloud container before it pushes,
-never in GitHub Actions: start a pinned silvermere with a fixed seed and a ready-made
-database of test characters, run `wayfarer gateway` against it, and check the M0 scenario
-(log on, reach the realm, type a command, log off cleanly) in a minute or two.
+The test that needs a game server, run by a card's own session on John's laptop before it
+pushes, never in GitHub Actions: connect `wayfarer gateway` to the silvermere that is already
+running locally, log a test character on, check the M0 scenario (reach the realm, type a
+command, log off cleanly), and print a summary for the PR, in a minute or two.
 
 ## Inputs
 
-- `docs/plan/07-development-and-testing.md` "Live tests in the agent's container" and
-  "Test layers".
-- `silvermere` CLI: `serve --seed N`, `import --from`, `account create` (password on stdin),
-  `backup` and `restore` (`silvermere/bin/silvermere/src/cli.rs`).
-- `mmud-exploration/dist/WCCMMUD_1.11p_DOS_MBBSEmu_v2.zip` (game files; available in the
-  session because mmud-exploration is attached).
-- `mmud-exploration/kb/connection.md` "Character creation" (editor cursor positions, name
-  rules) and the `creation-fsd` capture, for building fixture characters.
+- `docs/plan/07-development-and-testing.md` "The development machine" and "Live tests against
+  the local server": the server is long-lived, shared by every card, and never started,
+  stopped, rebuilt or reset by a card.
+- The gateway (C-004, C-005) and its WebSocket server (C-006).
+- `mmud-exploration/kb/connection.md` (on the laptop: `../mmud-exploration/kb/connection.md`):
+  the `NEW` account dialogue, character creation (race and class lists, the lawful question,
+  the full-screen editor's cursor positions and name rules), the disconnect punishment.
+- `tests/fixtures/captures/entry-new-account/` and `creation-fsd/`: the exact dialogues.
 
 ## Behaviour
 
-- `scripts/live-check.sh [--keep]`:
-  1. Get silvermere: download the pinned release binary into a cache directory (version in
-     `tests/live/silvermere.version`); if none is published, fail with a clear message
-     naming the prerequisite.
-  2. Fixture database: if the cache has a snapshot for this silvermere version and this
-     `fixtures.toml`, `silvermere restore` it; otherwise import the world, create the
-     accounts, create each character through the game's editor with the stats in
-     `fixtures.toml`, take a `silvermere backup` into the cache, and use it.
-  3. Start `silvermere serve --seed 1` on free ports; start `wayfarer gateway` with a config
-     for the fixture characters.
-  4. Run the scenario through the gateway's WebSocket: every character reaches `realm`; an
-     `input_line` of `st` produces the status screen; the gateway shuts down and every
-     character logs off cleanly (no "disconnected while playing" notice on the next logon,
-     checked by logging on once more).
-  5. Print a short summary (pass or fail per step, timings) to paste into the PR; stop
-     everything unless `--keep`.
-- Total time on a warm cache: under two minutes.
+- `scripts/live-check.sh` (optionally `--char NAME`):
+  1. Checks the server answers at `WAYFARER_LIVE_ADDR` (default `127.0.0.1:2323`). If not, it
+     stops with "start silvermere first" and the command from `docs/dev-rig.md`; it never
+     starts one itself.
+  2. **Test-character pool.** `tests/live/fixtures.toml` lists test characters: account
+     name, character name, race, class and stats (**John approves the values**; the card
+     proposes them in the PR). Passwords are not in the repository: the first time a
+     character is needed the script creates its account through the `NEW` dialogue with a
+     generated password, saved to the untracked `tests/live/.credentials.toml` (mode 0600,
+     git-ignored), then creates the character through the game's own editor with the fixture
+     stats. This is test setup John approved, not the bot spending CP.
+  3. **Claiming a character.** It tries the pool in order and uses the first one that logs
+     on; the server refuses a second logon to an account already in use, so concurrent cards
+     never share one.
+  4. Starts `wayfarer gateway` on a free local port with a config for that character, and
+     through its WebSocket checks: the session reaches `realm`; an `input_line` of `st`
+     produces the status screen; on shutdown the character logs off cleanly; a second logon
+     shows no "disconnected while playing" notice.
+  5. Prints a short summary (pass or fail per step, timings, which character) to paste into
+     the PR, and stops the gateway it started. The server keeps running.
+- Total time once the pool exists: under two minutes.
 
 ## Design notes
 
-- The scenario runner is a small Rust test binary under `tests/live/` (a separate cargo
-  package or an `#[ignore]`d integration test run by the script), so CI never runs it.
-- `fixtures.toml`: two characters to start (a Warrior and a Mage), race, class, stats and
-  names. **The stats are John's choice**; the card proposes values in the PR for him to
-  approve. Creating them is test setup, not the bot spending CP (`01-goals.md` "Rules").
+- The scenario runner is a small Rust test binary under `tests/live/` (a separate package or
+  an `#[ignore]`d integration test the script runs), so CI never runs it.
+- The world is shared and long-lived (other cards' characters, monsters killed, levels
+  gained): check behaviour, never exact numbers or room contents.
 
 ## Done when
 
-- The script passes twice in a row in a fresh cloud container, the second run from the
-  cached snapshot, and the PR shows both summaries and times.
-- Nothing in `.github/workflows/` runs it.
+- The script passes twice in a row on the laptop, the first run creating the pool and the
+  second reusing it; the PR shows both summaries and times.
+- With the server stopped, it fails fast with the "start silvermere first" message.
+- Nothing in `.github/workflows/` runs it, and no password is committed.
 
 ## Tests
 
-- The scenario itself; a unit test for the fixture-snapshot cache key.
+- The scenario itself; unit tests for the fixture parsing and the claiming order.
 
 ## Notes for the agent
 
-- **Prerequisite**: silvermere publishes a Linux x86-64 binary on a tagged release. If it
-  does not exist when this card starts, open an issue on `jnfisher/silvermere` describing the
-  need (one release workflow job, on tag only) and stop at a draft PR with the rest done;
-  building silvermere from source in every container is too slow to be the plan.
+- This card runs on John's laptop, where the server is. Don't touch
+  `~/repos/silvermere-wayfarer` or the server process.
 - Keep scenarios few in M0; later cards add theirs (walk, fight, rest, flee) here.

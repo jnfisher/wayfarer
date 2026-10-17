@@ -3,3 +3,6 @@ node_modules/
 /ui/dist/
 *.sqlite
 .DS_Store
+
+# Claude Code worktrees (desktop app and background sessions)
+/.claude/worktrees/
