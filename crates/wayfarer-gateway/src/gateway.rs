@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures_util::{FutureExt, Stream, StreamExt};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use wayfarer_proto::{Chunk, SessionInfo, SessionState};
 use wayfarer_telnet::Capture;
@@ -263,19 +264,25 @@ impl Gateway {
             .await;
     }
 
-    /// Wait for SIGINT (Ctrl-C) or SIGTERM, then [`Gateway::shutdown`]; a second signal while
-    /// that runs closes everything at once.
-    pub async fn shutdown_on_signal(&self) -> io::Result<()> {
-        let mut signals = Signals::new()?;
-        signals.next().await;
-        tracing::info!("logging every character off (a second signal closes at once)");
+    /// [`Gateway::shutdown`], unless `now` completes first: then close what is left at once
+    /// ([`Gateway::shutdown_now`]).
+    pub async fn shutdown_unless(&self, now: impl Future<Output = ()>) {
         tokio::select! {
             () = self.shutdown() => {}
-            () = signals.next() => {
-                tracing::warn!("second signal: closing at once");
+            () = now => {
+                tracing::warn!("closing every session at once");
                 self.shutdown_now().await;
             }
         }
+    }
+
+    /// Wait for SIGINT (Ctrl-C) or SIGTERM, then [`Gateway::shutdown`]; a second signal while
+    /// that runs closes everything at once.
+    pub async fn shutdown_on_signal(&self) -> io::Result<()> {
+        let mut signals = std::pin::pin!(stop_signals()?);
+        signals.next().await;
+        tracing::info!("logging every character off (a second signal closes at once)");
+        self.shutdown_unless(signals.next().map(drop)).await;
         Ok(())
     }
 
@@ -338,27 +345,22 @@ impl Gateway {
     }
 }
 
-/// SIGINT and, on Unix, SIGTERM.
-struct Signals {
+/// One item per SIGINT (Ctrl-C) or, on Unix, SIGTERM; it never ends. The first should start
+/// [`Gateway::shutdown`] and a second close at once: [`Gateway::shutdown_on_signal`] and the
+/// binary's [`crate::serve`] both take it that way.
+pub fn stop_signals() -> io::Result<impl Stream<Item = ()> + Send + 'static> {
     #[cfg(unix)]
-    term: tokio::signal::unix::Signal,
-}
-
-impl Signals {
-    fn new() -> io::Result<Self> {
-        Ok(Self {
-            #[cfg(unix)]
-            term: tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?,
-        })
-    }
-
-    async fn next(&mut self) {
+    let term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    #[cfg(not(unix))]
+    let term = ();
+    Ok(futures_util::stream::unfold(term, |mut term| async move {
         #[cfg(unix)]
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {}
-            _ = self.term.recv() => {}
+            _ = term.recv() => {}
         }
         #[cfg(not(unix))]
         let _ = tokio::signal::ctrl_c().await;
-    }
+        Some(((), term))
+    }))
 }

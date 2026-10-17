@@ -2,9 +2,8 @@
 
 The gateway's core (`docs/plan/02-architecture.md`, "The shape"): one telnet session per
 configured character, a sequence-numbered output log with history, fan-out to any number of
-subscribers, input to the game, logon scripts, reconnects and clean log-off. No network server
-yet (C-006 puts WebSocket in front of it). How to configure it:
-[`docs/gateway.md`](../../docs/gateway.md).
+subscribers, input to the game, logon scripts, reconnects and clean log-off, with a WebSocket
+server in front of it (below). How to configure it: [`docs/gateway.md`](../../docs/gateway.md).
 
 ```rust
 let gw = Gateway::start(&Paths::in_dir(data_dir), Options::default())?; // autostart sessions
@@ -21,8 +20,9 @@ gw.shutdown_on_signal().await?;                     // Ctrl-C/SIGTERM: everyone 
   its state and `last_seq`; `state_changes()` streams `StateChange`s. Dropping the last clone
   aborts every session at once, logged off or not (which the game punishes): `shutdown()`
   logs them all off in parallel, giving up after `Options::logoff_patience` (120 s);
-  `shutdown_now()` and `close_now(id)` disconnect at once. `shutdown_on_signal()` is what the
-  binary runs: the first SIGINT or SIGTERM shuts down cleanly, a second one at once.
+  `shutdown_now()` and `close_now(id)` disconnect at once; `shutdown_unless(now)` is `shutdown()`
+  until `now` completes. `shutdown_on_signal()` (for a program without the server) and `serve`
+  share `stop_signals()`: the first SIGINT or SIGTERM shuts down cleanly, a second one at once.
 - **A session** is one tokio task that owns the socket. Each socket read goes through
   `Telnet::receive`; negotiation replies are written back, and the decoded text becomes one
   `Chunk` with the next `seq`, written to disk, kept in memory and then published. Input is a
@@ -59,6 +59,44 @@ gw.shutdown_on_signal().await?;                     // Ctrl-C/SIGTERM: everyone 
   `credentials.toml` is reported by line number only, nothing traces input text, a script's
   `{password}` is recorded in `sent.bin` as `********`, and so is a typed line that is exactly
   the character's password (the game still gets the password).
+
+## The server
+
+`wayfarer gateway [--config PATH] [--bind ADDR] [--ui-dir DIR] [--new-token]` (and `wayfarer
+serve`, the same in M0) runs `Gateway::start` behind `serve()`. Default bind `127.0.0.1:7373`,
+default UI directory `./ui/dist`. No TLS: reach it over SSH or Tailscale.
+
+| Route | What |
+|---|---|
+| `GET /ws` | WebSocket speaking the `wayfarer-proto` messages as JSON text frames: `hello` → `welcome` (or `refused`, then the connection closes), then `output`, `session_state`, `history`, `lagged` and `error` going out and `input_line`, `input_keys`, `history_request` and `subscribe` coming in. A message that cannot be handled gets an `error` and the connection stays up. A connection receives every session until it sends `subscribe`. |
+| `GET /healthz` | `{"status":"ok","sessions":n}` |
+| `GET /`, other paths | The files in the UI directory. With no `index.html` there, a 503 page says the UI is not built; `/ws` still works. |
+
+```console
+$ curl -si localhost:7373/healthz
+HTTP/1.1 200 OK
+content-type: application/json
+content-length: 28
+
+{"sessions":1,"status":"ok"}
+$ curl -si localhost:7373/
+HTTP/1.1 503 Service Unavailable
+content-type: text/html; charset=utf-8
+content-length: 141
+
+<!doctype html><title>wayfarer</title><p>The web UI is not built: nothing in <code>./ui/dist</code>. The WebSocket at <code>/ws</code> works.
+```
+
+**Token.** On a loopback bind `hello.token` is not checked. On any other bind the gateway
+refuses to start until `wayfarer gateway --new-token` has written `gateway-token` (mode 0600,
+beside `wayfarer.toml`) and printed it once; every client must then send it, and a missing or
+wrong one gets `refused`. Running `--new-token` again replaces the token.
+
+**Stopping.** SIGINT or SIGTERM stops accepting, ends the WebSocket connections and logs every
+character off (`Gateway::shutdown`: in parallel, up to 120 s) before the process exits. A
+second signal during the log-off closes what is left at once (`shutdown_now`), which the game
+punishes. `serve` takes the stops as a stream (`stop_signals()` in the binary), so tests drive
+it with a channel.
 
 ## Files
 

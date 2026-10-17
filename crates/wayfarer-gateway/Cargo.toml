@@ -8,13 +8,17 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+axum = { version = "0.8.9", features = ["ws"] }
 directories = "6"
+futures-util = "0.3.34"
+getrandom = "0.4.3"
 regex = "1"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 toml = "1"
+tower-http = { version = "0.7.1", features = ["fs"] }
 tracing.workspace = true
 wayfarer-proto = { path = "../wayfarer-proto" }
 wayfarer-telnet = { path = "../wayfarer-telnet" }
@@ -23,4 +27,5 @@ wayfarer-telnet = { path = "../wayfarer-telnet" }
 fastrand = "2"
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
+tokio-tungstenite = "0.30.0"
 tracing-subscriber.workspace = true

@@ -11,7 +11,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::Instant;
 use wayfarer_gateway::{
-    Config, Connect, Credentials, Gateway, Options, SessionState, StateChange, Stream,
+    Config, Connect, Credentials, Gateway, Options, ServerOptions, SessionState, StateChange,
+    Stream, serve,
 };
 use wayfarer_telnet::cp437;
 
@@ -504,6 +505,37 @@ async fn shutdown_closes_what_is_left_after_its_patience() {
     closing.await.unwrap().unwrap();
     assert_eq!(started.elapsed(), Duration::ZERO);
     assert_eq!(rig.gw.state(ID).unwrap(), Closed);
+}
+
+/// What the binary does with SIGINT/SIGTERM: the first stop ends the server and starts the
+/// log-off, a second closes at once.
+#[tokio::test(start_paused = true)]
+async fn a_second_stop_closes_the_server_at_once() {
+    let mut rig = Rig::new();
+    rig.gw.open(ID).unwrap();
+    let mut game = rig.accept().await;
+    game.log_on().await;
+    rig.states_until(ID, Realm).await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let options = ServerOptions {
+        token: None,
+        ui_dir: rig.dir.path().join("no-ui-here"),
+    };
+    let (stop, stops) = mpsc::unbounded_channel();
+    let stops = futures_util::stream::unfold(stops, |mut stops| async move {
+        stops.recv().await.map(|()| ((), stops))
+    });
+    let server = tokio::spawn(serve(listener, rig.gw.clone(), options, stops));
+    stop.send(()).unwrap();
+    assert_eq!(game.line().await, "x");
+    // The character meditates; the player won't wait.
+    let started = Instant::now();
+    stop.send(()).unwrap();
+    game.closed().await;
+    server.await.unwrap().unwrap();
+    assert_eq!(started.elapsed(), Duration::ZERO);
+    assert_eq!(rig.gw.state(ID).unwrap(), Closed);
+    assert_eq!(rig.sent(ID), b"Aldric\r********\rM\rE\rx\r");
 }
 
 #[tokio::test(start_paused = true)]
