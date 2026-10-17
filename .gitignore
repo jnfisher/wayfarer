@@ -6,3 +6,6 @@ node_modules/
 
 # Claude Code worktrees (desktop app and background sessions)
 /.claude/worktrees/
+
+# The live check's generated test-account passwords (scripts/live-check.sh)
+/tests/live/.credentials.toml

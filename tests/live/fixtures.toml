@@ -1,0 +1,35 @@
+# The live check's test characters (scripts/live-check.sh, tests/live/README.md).
+#
+# The check uses the first one that logs on, in this order; a card running at the same time
+# gets the next. The values are John's to approve: they are spent once, when the check first
+# needs the character and creates it through the game's own editor (test setup, not the bot
+# spending CP). Passwords are not here: the check generates one per account and keeps it in
+# tests/live/.credentials.toml, which git ignores.
+#
+# - account: the BBS user id, letters only and at most 10 of them, because the editor offers
+#   it as the given name and the check accepts that.
+# - family: the family name, letters only, at most 18.
+# - race, class: as the game's lists name them.
+# - stats: the totals to set (Str Int Wil Agi Hea Cha). Humans start at 40 each with 100 CP;
+#   these spend all 100 (+20 Str and Hea at 30 CP each, +10 to the rest at 10 each).
+
+[[character]]
+account = "Waychecka"
+family = "Livecheck"
+race = "Human"
+class = "Warrior"
+stats = { strength = 60, intellect = 50, willpower = 50, agility = 50, health = 60, charm = 50 }
+
+[[character]]
+account = "Waycheckb"
+family = "Livecheck"
+race = "Human"
+class = "Warrior"
+stats = { strength = 60, intellect = 50, willpower = 50, agility = 50, health = 60, charm = 50 }
+
+[[character]]
+account = "Waycheckc"
+family = "Livecheck"
+race = "Human"
+class = "Warrior"
+stats = { strength = 60, intellect = 50, willpower = 50, agility = 50, health = 60, charm = 50 }
