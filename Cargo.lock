@@ -1691,6 +1691,7 @@ dependencies = [
  "fastrand",
  "futures-util",
  "getrandom 0.4.3",
+ "regex",
  "serde",
  "serde_json",
  "tempfile",

@@ -55,9 +55,10 @@ impl Rig {
             token: token.map(str::to_owned),
             ui_dir: dir.join("no-ui-here"),
         };
-        let server = tokio::spawn(serve(listener, gateway.clone(), options, async {
+        let stops = futures_util::stream::once(async {
             let _ = stopped.await;
-        }));
+        });
+        let server = tokio::spawn(serve(listener, gateway.clone(), options, stops));
         Self {
             addr,
             game,

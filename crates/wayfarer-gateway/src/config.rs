@@ -10,6 +10,8 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use crate::logon::{Script, ScriptSpec};
+
 /// Where the gateway's files are. Every path can be set on its own (tests, flags).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Paths {
@@ -64,15 +66,25 @@ pub struct Server {
     pub id: String,
     pub host: String,
     pub port: u16,
-    /// The logon script preset (card C-005), e.g. `"mbbsemu"`.
+    /// The logon script preset, `"mbbsemu"` or `"silvermere"` ([`crate::logon`]).
     #[serde(default)]
     pub preset: Option<String>,
+    /// The server's own logon script, or the parts of the preset it replaces
+    /// (`[server.logon]`).
+    #[serde(default)]
+    pub logon: Option<ScriptSpec>,
 }
 
 impl Server {
     /// `host:port`, as shown to UIs.
     pub fn address(&self) -> String {
         format!("{}:{}", self.host, self.port)
+    }
+
+    /// The logon script: the preset with the inline parts over it, `None` if neither is given.
+    pub fn script(&self) -> Result<Option<Script>, String> {
+        Script::build(self.preset.as_deref(), self.logon.as_ref())
+            .map_err(|e| format!("server {:?}: {e}", self.id))
     }
 }
 
@@ -131,6 +143,7 @@ impl Config {
             if s.port == 0 {
                 return Err(format!("server {:?} has port 0", s.id));
             }
+            s.script()?;
         }
         let mut characters = HashSet::new();
         for c in &self.characters {
@@ -320,6 +333,35 @@ mod tests {
         assert_eq!(config.servers[0].preset.as_deref(), Some("mbbsemu"));
         assert!(config.characters[0].autostart);
         assert!(!config.characters[1].autostart);
+        assert!(config.servers[0].script().unwrap().is_some());
+    }
+
+    #[test]
+    fn inline_logon_scripts() {
+        let config = Config::parse(
+            r#"
+            [[server]]
+            id = "odd"
+            host = "bbs.example.org"
+            port = 23
+
+            [server.logon]
+            realm = 're:\[HP=\d+\]:'
+
+            [[server.logon.step]]
+            expect = "Login:"
+            send = "{user}"
+
+            [[server.logon.step]]
+            expect = "re:[Pp]assword:"
+            send = "{password}"
+            timeout = 10
+            "#,
+        )
+        .unwrap();
+        let script = config.servers[0].script().unwrap().unwrap();
+        assert_eq!(script.steps.len(), 2);
+        assert!(script.logoff.is_empty());
     }
 
     #[test]
@@ -342,6 +384,11 @@ mod tests {
                 "port 0",
             ),
             (format!("{server}colour = \"red\"\n"), "unknown field"),
+            (format!("{server}preset = \"nope\"\n"), "no logon preset"),
+            (
+                format!("{server}[server.logon]\nrealm = \"re:(\"\n"),
+                "server \"s\"",
+            ),
         ];
         for (text, want) in cases {
             let err = Config::parse(&text).unwrap_err();

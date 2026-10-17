@@ -13,4 +13,4 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 wayfarer-gateway = { path = "../../crates/wayfarer-gateway" }
-wayfarer-world ={ path = "../../crates/wayfarer-world" }
+wayfarer-world = { path = "../../crates/wayfarer-world" }
