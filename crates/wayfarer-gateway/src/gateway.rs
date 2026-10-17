@@ -185,7 +185,11 @@ impl Gateway {
             }
         }
         // Not connected (or the connection dropped meanwhile): closing still says "on purpose".
-        slot.set_state(SessionState::Closed);
+        // Unless someone opened it again meanwhile.
+        let running = slot.running();
+        if !running.as_ref().is_some_and(Running::is_live) {
+            slot.set_state(SessionState::Closed);
+        }
         Ok(())
     }
 

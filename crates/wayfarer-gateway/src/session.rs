@@ -123,8 +123,9 @@ impl Slot {
 /// (`closed`).
 pub(crate) async fn run(slot: Arc<Slot>, mut commands: mpsc::Receiver<Command>, capture: Capture) {
     let end = connected(&slot, &mut commands, capture).await;
-    // Mark the queue closed before the state changes, so whoever sees the final state can
-    // open the session again.
+    // Under the lock `open` takes, so a reopen can't slip in between and have its
+    // `connecting` overwritten; once the lock is released the session can be opened again.
+    let _running = slot.running();
     commands.close();
     match end {
         End::Lost(why) => {
