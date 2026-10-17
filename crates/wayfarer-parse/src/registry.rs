@@ -95,9 +95,6 @@ impl Pattern {
     }
 }
 
-/// The role, category and priority of each kind of generated text (`Registry.load_world`).
-const MONSTER: &str = "movement";
-
 /// `template_regex`: a game text to a Python regex source. `%s` becomes a lazy group, `%d` a
 /// number, `%%` a percent sign; groups are named after the role's arguments (`s<N>`/`n<N>`
 /// otherwise) and a repeated name becomes a non-capturing group; the first letter matches either
@@ -263,7 +260,6 @@ struct Builder {
 }
 
 impl Builder {
-    #[allow(clippy::too_many_arguments)]
     fn add_text(
         &mut self,
         text: &str,
@@ -354,9 +350,9 @@ impl Registry {
             for m in &w.monsters {
                 monster_names.insert(m.name.to_lowercase());
                 if let Some(a) = msg(m.arrive_msg) {
-                    b.add_text(&a[0], "monster_arrives", MONSTER, 55, m.arrive_msg, None);
-                    b.add_text(&a[1], "monster_leaves", MONSTER, 55, m.arrive_msg, None);
-                    b.add_text(&a[2], "monster_follows", MONSTER, 55, m.arrive_msg, None);
+                    b.add_text(&a[0], "monster_arrives", "movement", 55, m.arrive_msg, None);
+                    b.add_text(&a[1], "monster_leaves", "movement", 55, m.arrive_msg, None);
+                    b.add_text(&a[2], "monster_follows", "movement", 55, m.arrive_msg, None);
                 }
                 if let Some(d) = msg(m.death_msg) {
                     b.add_text(

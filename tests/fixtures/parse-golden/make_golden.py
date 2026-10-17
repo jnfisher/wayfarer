@@ -3,7 +3,9 @@
 
 Run once, by hand, in a checkout of jnfisher/mmud-exploration (never in CI):
 
-    python3 -I make_golden.py <mmud-exploration>/test/play <wayfarer>/tests/fixtures
+    PYTHONHASHSEED=0 python3 -I make_golden.py <mmud-exploration>/test/play <wayfarer>/tests/fixtures
+
+(The seed fixes how `Registry.match_line` orders ties between keys; see PROVENANCE.md.)
 
 It imports `patterns.py` from the first directory and reads only wayfarer's own fixture copies
 from the second (world export, captures, transcripts), so both sides see the same input. The

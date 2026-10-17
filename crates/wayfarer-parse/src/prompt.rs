@@ -371,7 +371,6 @@ mod tests {
             ])
         );
         let (got, _) = peel_one(&p, "[HP=40/KAI=2]:{Energy=900 dbg x}:").unwrap();
-        assert_eq!(got.clone(), got);
         assert!(
             matches!(got, Peeled::Prompt(ref d) if d["energy"] == Value::Int(900) && d["dbg"] == "dbg x".into())
         );
