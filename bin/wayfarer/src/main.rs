@@ -1,9 +1,13 @@
 //! The `wayfarer` binary: one entry point for the gateway, the brain and the tools.
 
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
+use wayfarer_gateway::{
+    Gateway, Options, Paths, ServerOptions, bind, create_token, serve, token_for_bind,
+};
 
 #[derive(Parser)]
 #[command(
@@ -16,12 +20,29 @@ struct Cli {
     command: Command,
 }
 
+#[derive(Args)]
+struct GatewayArgs {
+    /// The config file (`wayfarer.toml`); credentials, logs and the token go beside it.
+    /// Default: the user's wayfarer data directory.
+    #[arg(long)]
+    config: Option<PathBuf>,
+    /// Where to listen. Anything but a loopback address needs a token (`--new-token`).
+    #[arg(long, default_value = "127.0.0.1:7373")]
+    bind: SocketAddr,
+    /// The built web UI.
+    #[arg(long, default_value = "./ui/dist")]
+    ui_dir: PathBuf,
+    /// Make a new token in `gateway-token`, print it once and exit.
+    #[arg(long)]
+    new_token: bool,
+}
+
 #[derive(Subcommand)]
 enum Command {
-    /// Run the gateway: telnet sessions, logs and the WebSocket server (card C-006).
-    Gateway,
-    /// Run everything in one process: the gateway now, the brain from M1 (card C-006).
-    Serve,
+    /// Run the gateway: telnet sessions, logs and the WebSocket server.
+    Gateway(GatewayArgs),
+    /// Run everything in one process: the gateway now, the brain from M1.
+    Serve(GatewayArgs),
     /// Build a world pack (SQLite) from the stock-world export, optionally with MegaMud's path set.
     ImportWorld {
         /// The export directory: one `<TABLE>.jsonl.gz` per table and `MANIFEST.json`.
@@ -39,9 +60,9 @@ enum Command {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let name = match cli.command {
-        Command::Gateway => "gateway",
-        Command::Serve => "serve",
+    let (name, args) = match cli.command {
+        Command::Gateway(args) => ("gateway", args),
+        Command::Serve(args) => ("serve", args),
         Command::ImportWorld {
             export,
             megamud,
@@ -60,6 +81,63 @@ fn main() -> ExitCode {
             };
         }
     };
-    eprintln!("wayfarer {name}: not yet (see docs/plan/tasks/)");
-    ExitCode::from(2)
+    match run_gateway(args) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("wayfarer {name}: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run_gateway(args: GatewayArgs) -> Result<(), Box<dyn std::error::Error>> {
+    let paths = match args.config {
+        Some(config) => Paths::for_config(config),
+        None => Paths::in_dir(
+            Paths::default_data_dir().ok_or("no data directory on this platform: use --config")?,
+        ),
+    };
+    let token_file = paths.credentials.with_file_name("gateway-token");
+    if args.new_token {
+        println!("{}", create_token(&token_file)?);
+        eprintln!("token written to {}", token_file.display());
+        return Ok(());
+    }
+    let token = token_for_bind(args.bind, &token_file)?;
+
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(async {
+            tracing_subscriber::fmt()
+                .with_env_filter(
+                    tracing_subscriber::EnvFilter::try_from_default_env()
+                        .unwrap_or_else(|_| "info".into()),
+                )
+                .init();
+            let gateway = Gateway::start(&paths, Options::default())?;
+            let listener = bind(args.bind).await?;
+            tracing::info!("listening on {}", listener.local_addr()?);
+            let options = ServerOptions {
+                token,
+                ui_dir: args.ui_dir,
+            };
+            serve(listener, gateway, options, stop_signal()).await?;
+            Ok(())
+        })
+}
+
+/// Completes on SIGINT or SIGTERM.
+async fn stop_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        let mut term = signal(SignalKind::terminate()).expect("install the SIGTERM handler");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = term.recv() => {}
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = tokio::signal::ctrl_c().await;
 }

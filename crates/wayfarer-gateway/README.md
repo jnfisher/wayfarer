@@ -2,8 +2,8 @@
 
 The gateway's core (`docs/plan/02-architecture.md`, "The shape"): one telnet session per
 configured character, a sequence-numbered output log with history, fan-out to any number of
-subscribers, and input to the game. No network server yet (C-006 puts WebSocket in front of
-it) and no logon scripts (C-005). How to configure it: [`docs/gateway.md`](../../docs/gateway.md).
+subscribers, and input to the game, with a WebSocket server in front of it (below). No logon
+scripts yet (C-005). How to configure it: [`docs/gateway.md`](../../docs/gateway.md).
 
 ```rust
 let gw = Gateway::start(&Paths::in_dir(data_dir), Options::default())?; // autostart sessions
@@ -40,6 +40,41 @@ gw.close("kasimir").await?;                         // closed
   `credentials.toml` is reported by line number only, nothing traces input text, and a line
   that is exactly the character's password is recorded in `sent.bin` as `********` (the game
   still gets the password).
+
+## The server
+
+`wayfarer gateway [--config PATH] [--bind ADDR] [--ui-dir DIR] [--new-token]` (and `wayfarer
+serve`, the same in M0) runs `Gateway::start` behind `serve()`. Default bind `127.0.0.1:7373`,
+default UI directory `./ui/dist`. No TLS: reach it over SSH or Tailscale.
+
+| Route | What |
+|---|---|
+| `GET /ws` | WebSocket speaking the `wayfarer-proto` messages as JSON text frames: `hello` → `welcome` (or `refused`, then the connection closes), then `output`, `session_state`, `history`, `lagged` and `error` going out and `input_line`, `input_keys`, `history_request` and `subscribe` coming in. A message that cannot be handled gets an `error` and the connection stays up. A connection receives every session until it sends `subscribe`. |
+| `GET /healthz` | `{"status":"ok","sessions":n}` |
+| `GET /`, other paths | The files in the UI directory. With no `index.html` there, a 503 page says the UI is not built; `/ws` still works. |
+
+```console
+$ curl -si localhost:7373/healthz
+HTTP/1.1 200 OK
+content-type: application/json
+content-length: 28
+
+{"sessions":1,"status":"ok"}
+$ curl -si localhost:7373/
+HTTP/1.1 503 Service Unavailable
+content-type: text/html; charset=utf-8
+content-length: 141
+
+<!doctype html><title>wayfarer</title><p>The web UI is not built: nothing in <code>./ui/dist</code>. The WebSocket at <code>/ws</code> works.
+```
+
+**Token.** On a loopback bind `hello.token` is not checked. On any other bind the gateway
+refuses to start until `wayfarer gateway --new-token` has written `gateway-token` (mode 0600,
+beside `wayfarer.toml`) and printed it once; every client must then send it, and a missing or
+wrong one gets `refused`. Running `--new-token` again replaces the token.
+
+**Stopping.** SIGINT or SIGTERM stops accepting, ends the WebSocket connections and calls
+`Gateway::shutdown` (a clean log-off once C-005 lands) before the process exits.
 
 ## Files
 
