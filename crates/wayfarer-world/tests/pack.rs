@@ -1,5 +1,6 @@
-//! Build the pack from the fixtures and check it against MANIFEST.json, the export and the KB's
-//! MegaMud numbers (`kb/megamud-formats.md`).
+//! Build the pack from the fixtures and check it against MANIFEST.json and the export. MegaMud's
+//! path set is not in this repository (John, 2026-10-17); `megamud_paths_verify` checks it
+//! against a copy outside the repository and only runs when asked.
 
 use std::path::{Path, PathBuf};
 
@@ -18,12 +19,7 @@ fn repo(rel: &str) -> PathBuf {
 fn pack_from_fixtures() {
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("world.sqlite");
-    let report = build(
-        &repo("tests/fixtures/world"),
-        Some(&repo("assets/megamud")),
-        &out,
-    )
-    .unwrap();
+    let report = build(&repo("tests/fixtures/world"), None, &out).unwrap();
 
     // Row counts equal MANIFEST.json for every content table.
     let want = [
@@ -53,20 +49,7 @@ fn pack_from_fixtures() {
             .any(|(t, n)| t == "WCCACMSR" && *n == 795)
     );
 
-    // MegaMud results within a hair of the KB's.
-    let m = report.megamud.as_ref().unwrap();
-    assert_eq!(m.waypoints, 783);
-    assert!(m.waypoints_resolved >= 720, "{m:?}");
-    assert_eq!(m.paths, 1_957);
-    assert_eq!(m.loops, 195);
-    assert!(
-        m.steps_exact * 100 >= m.steps_title_matched() * 99,
-        "exact {} of {}",
-        m.steps_exact,
-        m.steps_title_matched()
-    );
-    assert!(m.steps_title_matched() >= 43_000, "{m:?}");
-    assert!(m.loops_closed >= 170, "{m:?}");
+    assert!(report.megamud.is_none());
 
     let pack = WorldPack::open(&out).unwrap();
     assert_eq!(pack.meta("schema_version").unwrap().as_deref(), Some("1"));
@@ -144,6 +127,61 @@ fn pack_from_fixtures() {
     assert!(pack.text_block(-5).unwrap().is_none());
     assert!(pack.message(1).unwrap().is_some());
 
+    // No MegaMud data was given, so its tables are empty.
+    assert!(pack.waypoints().unwrap().is_empty());
+    assert!(pack.loops().unwrap().is_empty());
+    assert!(pack.paths().unwrap().is_empty());
+}
+
+#[test]
+fn opening_something_else_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("empty.sqlite");
+    // An empty file is a valid, empty SQLite database: no pack_meta.
+    std::fs::write(&path, b"").unwrap();
+    assert!(WorldPack::open(&path).is_err());
+    assert!(WorldPack::open(&dir.path().join("missing.sqlite")).is_err());
+}
+
+#[test]
+fn building_from_a_missing_export_fails_and_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("world.sqlite");
+    assert!(build(&dir.path().join("nope"), None, &out).is_err());
+    assert!(!out.exists());
+}
+
+/// MegaMud's path set, checked against the real rooms. The data lives outside this repository
+/// (`jnfisher/mmud-exploration`, `reference/megamud/`); point `WAYFARER_MEGAMUD` at that
+/// directory or the zip and run `cargo nextest run -p wayfarer-world --run-ignored only`.
+// Slow (builds the whole pack and walks 1,957 paths); never run in CI.
+#[test]
+#[ignore = "needs WAYFARER_MEGAMUD: MegaMud's path set is kept outside this repository"]
+fn megamud_paths_verify() {
+    let megamud = PathBuf::from(
+        std::env::var_os("WAYFARER_MEGAMUD")
+            .expect("set WAYFARER_MEGAMUD to mmud-exploration's reference/megamud directory"),
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("world.sqlite");
+    let report = build(&repo("tests/fixtures/world"), Some(&megamud), &out).unwrap();
+
+    // MegaMud results within a hair of the KB's (`kb/megamud-formats.md`).
+    let m = report.megamud.as_ref().unwrap();
+    assert_eq!(m.waypoints, 783);
+    assert!(m.waypoints_resolved >= 720, "{m:?}");
+    assert_eq!(m.paths, 1_957);
+    assert_eq!(m.loops, 195);
+    assert!(
+        m.steps_exact * 100 >= m.steps_title_matched() * 99,
+        "exact {} of {}",
+        m.steps_exact,
+        m.steps_title_matched()
+    );
+    assert!(m.steps_title_matched() >= 43_000, "{m:?}");
+    assert!(m.loops_closed >= 170, "{m:?}");
+
+    let pack = WorldPack::open(&out).unwrap();
     // Waypoints and loops with their verification.
     let wps = pack.waypoints().unwrap();
     assert_eq!(wps.len(), 783);
@@ -164,22 +202,4 @@ fn pack_from_fixtures() {
     assert_eq!(steps.len(), 40);
     assert_eq!(steps[0].walk, Some(((1, 1224), "exact".to_string())));
     assert_eq!(pack.paths().unwrap().len(), 1_957);
-}
-
-#[test]
-fn opening_something_else_fails() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("empty.sqlite");
-    // An empty file is a valid, empty SQLite database: no pack_meta.
-    std::fs::write(&path, b"").unwrap();
-    assert!(WorldPack::open(&path).is_err());
-    assert!(WorldPack::open(&dir.path().join("missing.sqlite")).is_err());
-}
-
-#[test]
-fn building_from_a_missing_export_fails_and_writes_nothing() {
-    let dir = tempfile::tempdir().unwrap();
-    let out = dir.path().join("world.sqlite");
-    assert!(build(&dir.path().join("nope"), None, &out).is_err());
-    assert!(!out.exists());
 }

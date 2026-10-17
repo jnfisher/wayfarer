@@ -71,7 +71,8 @@ Windows, macOS) costs nothing and has no minute limit; that was silvermere's wal
 larger runners would be billed, and we don't use them. What this means for the work:
 
 - Everything in the repository is visible to anyone: code, the plan, and the fixtures copied
-  in (captures, transcripts, the stock-world export, the MegaMud path set). Nothing personal
+  in (captures, transcripts, the stock-world export). MegaMud's data stays in
+  `mmud-exploration` (John, 2026-10-17). Nothing personal
   goes in: no real hostnames, account names or passwords; `examples/` uses placeholders.
 - CI needs no secrets, so pull requests from forks run safely as they are.
 - `mmud-exploration` and `silvermere` stay as they are; wayfarer never needs them at build or

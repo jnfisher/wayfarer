@@ -1,8 +1,10 @@
 # wayfarer-world
 
 The **world pack**: one SQLite file with the stock world (rooms and exits, monsters, items,
-shops, spells, classes, races, messages, text blocks, actions) plus MegaMud's waypoints and
-path library, each path checked against the rooms (`docs/plan/02-architecture.md` "World data").
+shops, spells, classes, races, messages, text blocks, actions), optionally with MegaMud's
+waypoints and path library, each path checked against the rooms (`docs/plan/02-architecture.md`
+"World data"). MegaMud's data is not part of this repository: it comes from a player's own
+MegaMud copy, or from `jnfisher/mmud-exploration`'s `reference/megamud/` when developing.
 Every later part of the bot reads it. No routing or position tracking yet (M2).
 
 ## Building a pack: `wayfarer import-world`
@@ -13,15 +15,17 @@ wayfarer import-world --export DIR [--megamud ZIP|DIR] --out PACK.sqlite
 
 - `--export`: the stock-world export, one `<TABLE>.jsonl.gz` per table and `MANIFEST.json`
   (`tests/fixtures/world/`). Each file's SHA-256 must match the manifest.
-- `--megamud`: MegaMud's zip, or a directory holding exactly one zip; default `assets/megamud`.
-  `Default/Rooms.md` and `Default/*.mp` are read straight from the zip.
+- `--megamud` (optional): MegaMud's zip, or a directory holding exactly one zip.
+  `Default/Rooms.md` and `Default/*.mp` are read straight from the zip. Without it the MegaMud
+  tables are empty.
 - `--out`: the pack. It is written to `PACK.sqlite.partial` and renamed at the end, so a failed
   build leaves no pack. Re-running gives a byte-identical file.
 
 Real output (release build, about 1.5 s; a debug build about 2 s):
 
 ```
-$ wayfarer import-world --export tests/fixtures/world --out world.sqlite
+$ wayfarer import-world --export tests/fixtures/world \
+    --megamud ../mmud-exploration/reference/megamud --out world.sqlite
 tables (rows, MANIFEST.json rows):
   rooms       26720   26720  WCCMP001
   items        1950    1950  WCCITEMS
@@ -44,6 +48,10 @@ megamud (MegaMUD_v2.0_Alpha_-_With_Paths.zip):
   distinct rooms visited 14969
 wrote world.sqlite
 ```
+
+The MegaMud check runs as an ignored test, outside CI:
+`WAYFARER_MEGAMUD=../mmud-exploration/reference/megamud cargo nextest run -p wayfarer-world
+--run-ignored only`.
 
 The pack is about 80 MB, most of it the export's records kept as JSON. It is built, never
 committed (`*.sqlite` is ignored).

@@ -7,7 +7,7 @@ the bot engine comes before party play. Each milestone ends with something to lo
 |---|---|---|
 | **M0** | Gateway and a live terminal | Open a browser, see each character's session in its own tile, type into it, scroll back. Characters stay logged on across UI reloads |
 | **M1** | Parser, events and status | Tiles show live HP, mana, exp and room in their headers; a dev panel shows the event stream and unclassified lines. The brain can restart without logging anyone off |
-| **M2** | World and navigation | A map panel with the position belief; click a room and the character walks there, confirming each step. The MegaMud loop library imported and checked against the world data |
+| **M2** | World and navigation | A map panel with the position belief; click a room and the character walks there, confirming each step. Loops generated from the world data; a player's own MegaMud loops imported and checked against it |
 | **M3** | Solo bot | A character runs the area John picks: walk there, loop, fight, rest, flee, with narration on its card. Start/stop and pause per character, typing beside the bot. Replay mode plays back any recorded session. Measured against `progress.py` |
 | **M4** | Settings and upkeep | The essentials page and the full settings, generated from the declarations, with class presets; one click from a card into that character's settings. Attack spells, heals; training, banking, selling and light as switches. "Where next?" recommendations |
 | **M5** | Many solo characters | Up to six characters, each running its own solo bot: tile, focus and cards views, the command bar with prefixes, pause all, the merged log, notifications. Soak-tested with several solo bots at once (shared areas, competing for spawns) before any party work |
