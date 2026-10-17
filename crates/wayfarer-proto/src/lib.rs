@@ -150,7 +150,7 @@ pub enum ToGateway {
 /// and carries on.
 #[derive(Debug, thiserror::Error)]
 pub enum DecodeError {
-    #[error("not a JSON object: {0}")]
+    #[error("not a JSON message: {0}")]
     NotJson(serde_json::Error),
     #[error("message has no \"type\" field")]
     MissingType,
@@ -253,8 +253,8 @@ fn decode<T: DeserializeOwned>(text: &str, types: &[&str]) -> Result<T, DecodeEr
     serde_json::from_value(value).map_err(|source| DecodeError::Invalid { kind, source })
 }
 
-/// Write the TypeScript for every wire type into `dir`: one file per type, plus `index.ts`
-/// with [`PROTOCOL`] and re-exports. Existing files of the same names are overwritten.
+/// Write the TypeScript for every wire type into `dir`, which should be empty: one file per
+/// type, plus `index.ts` with [`PROTOCOL`] and a re-export of every other `.ts` file there.
 pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     // Sequence numbers stay far below 2^53, so plain JSON numbers are safe in JavaScript.
     let cfg = ts_rs::Config::new()
