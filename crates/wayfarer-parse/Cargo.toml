@@ -1,0 +1,15 @@
+[package]
+name = "wayfarer-parse"
+description = "Game text to events: the pattern table, generated game-text patterns and the incremental parser (docs/plan/03-engine.md section 1)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+regex = "1"
+serde.workspace = true
+serde_json.workspace = true
+

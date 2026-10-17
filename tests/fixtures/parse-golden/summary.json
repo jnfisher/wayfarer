@@ -1,0 +1,121 @@
+{
+ "fixtures": {
+  "capture-creation-fsd": {
+   "events": 133,
+   "lines": 160,
+   "unknown": 24,
+   "us_per_line": 34.12
+  },
+  "capture-creation-line-mode": {
+   "events": 147,
+   "lines": 179,
+   "unknown": 44,
+   "us_per_line": 29.41
+  },
+  "capture-death-rebirth": {
+   "events": 570,
+   "lines": 837,
+   "unknown": 20,
+   "us_per_line": 18.86
+  },
+  "capture-disconnect-punish": {
+   "events": 112,
+   "lines": 155,
+   "unknown": 14,
+   "us_per_line": 27.71
+  },
+  "capture-entry-existing": {
+   "events": 62,
+   "lines": 88,
+   "unknown": 10,
+   "us_per_line": 26.92
+  },
+  "capture-entry-new-account": {
+   "events": 65,
+   "lines": 89,
+   "unknown": 12,
+   "us_per_line": 26.0
+  },
+  "capture-fight-arena": {
+   "events": 160,
+   "lines": 209,
+   "unknown": 23,
+   "us_per_line": 29.65
+  },
+  "capture-flood-and-refusals": {
+   "events": 168,
+   "lines": 215,
+   "unknown": 31,
+   "us_per_line": 25.58
+  },
+  "capture-logoff-in-realm": {
+   "events": 58,
+   "lines": 82,
+   "unknown": 10,
+   "us_per_line": 26.96
+  },
+  "capture-room-walk": {
+   "events": 504,
+   "lines": 625,
+   "unknown": 82,
+   "us_per_line": 32.11
+  },
+  "capture-shop": {
+   "events": 264,
+   "lines": 331,
+   "unknown": 46,
+   "us_per_line": 29.01
+  },
+  "capture-status-screens": {
+   "events": 108,
+   "lines": 145,
+   "unknown": 25,
+   "us_per_line": 25.66
+  },
+  "transcript-kasimir-early": {
+   "events": 3371,
+   "lines": 3919,
+   "unknown": 0,
+   "us_per_line": 16.52
+  },
+  "transcript-kasimir-level-exit": {
+   "events": 8,
+   "lines": 12,
+   "unknown": 1,
+   "us_per_line": 77.87
+  },
+  "transcript-kasimir-monk-death": {
+   "events": 66,
+   "lines": 63,
+   "unknown": 0,
+   "us_per_line": 27.21
+  },
+  "transcript-thornwyn-death": {
+   "events": 163,
+   "lines": 155,
+   "unknown": 0,
+   "us_per_line": 28.68
+  },
+  "transcript-thornwyn-early": {
+   "events": 1377,
+   "lines": 1459,
+   "unknown": 15,
+   "us_per_line": 24.17
+  }
+ },
+ "registry": {
+  "always": 107,
+  "build_seconds": 2.315,
+  "generated": 6443,
+  "keys": 3862,
+  "patterns": 6886,
+  "room_titles": 1754
+ },
+ "total": {
+  "events": 7336,
+  "lines": 8723,
+  "unknown": 357,
+  "unknown_rate": 0.04866,
+  "us_per_line": 21.77
+ }
+}
