@@ -1,0 +1,10 @@
+[package]
+name = "wayfarer-telnet"
+description = "Telnet option negotiation, CP437 and raw capture (docs/plan/02-architecture.md)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]

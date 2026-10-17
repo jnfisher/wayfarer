@@ -1,0 +1,4000 @@
+╔══════════════════════════════════════════════════════════╗
+║█████████████████▄███████▄███████▄████████████████████████║
+║██████████████▀▀██████▀▀██████▀▀▀▀███▀▀▀▀█████████████████║
+║██████████████████▀███████▀███████████████████████████████║
+║███▀███▀██████▀▀██████▀▀███▀▀▀▀██████▀▀▀████▀███▀█████████║
+║████▀▀▀███████████▀███████▀██████████████████▀▀▀████▀████▀║
+║▀▀▀█████▀▀▀▀▀▀▀▀▀▀█▀▀▀▀▀▀▀█▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀█████▀▀▀█▀▀▀▀▀║
+║██████████████╘═╡ The MajorBBS Emulator ╞═╛███████████████║
+║████████████████│ By: MBBSEmu Community │█████████████████║
+║                │https://www.mbbsemu.com│                 ║
+╚══════════════════════════════════════════════════════════╝
+ 
+Enter Username or enter "NEW" to create a new Account
+Username: 
+>>> 'Kasimir'
+Kasimir
+Password: 
+>>> 'kangtest1'
+*********
+
+Fantasy awaits you in MajorMUD v1.11p-WG!
+
+Please select one of the following:
+
+   M ... MajorMUD
+
+Main Menu
+Make your selection (X to exit): 
+>>> 'M'
+M
+
+ M A J O R  M U D v1.11p-WG (Dec 30 2005 14:20:05)
+{Realm Of Legends}
+*ANSI RECOMMENDED*
+
+[E] . Enter the Realm
+[H] . Help
+[A] . About the Game
+[C] . Game Counts
+[T] . Topten Adventurers
+[G] . Topten Gangs
+[W] . Who's in the Realm
+[R] . Release Notes
+[I] . Information
+[X] . Exit Game
+
+[MAJORMUD]: 
+>>> 'E'
+E
+
+Last time you were on, you disconnected while playing.
+The gods have punished you appropriately.
+
+MajorMUD - ROL
+
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+Newhaven, Arena
+Obvious exits: closed door north, up
+[HP=48]:
+>>> 'exp'
+exp
+Exp: 346 Level: 1 Exp needed for next level: 1304 (1650) [21%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 18 silver nobles, 43 copper farthings, padded vest (Torso),
+padded pants (Legs), padded helm (Head), padded gloves (Hands), padded boots
+(Feet), quarterstaff (Two handed)
+You have no keys.
+Wealth: 223 copper farthings
+Encumbrance: 520/3792 - None [13%]
+[HP=48]:
+### Grind loop: attack, loot coins, rest below 50% HP, flee u below 30%. Target 1650 exp.
+
+>>> ''
+
+Newhaven, Arena
+Also here: fierce acid slime.
+Obvious exits: closed door north, up
+[HP=48]:
+>>> 'a slime'
+a slime
+*Combat Engaged*
+[HP=48]:You beat fierce acid slime for 9 damage!
+[HP=48]:The fierce acid slime flails at you!
+[HP=48]:You whap fierce acid slime for 11 damage!
+[HP=48]:You smack fierce acid slime for 8 damage!
+[HP=48]:The acid slime dissolves into a puddle of bluish goo.
+[HP=48]:You gain 16 experience.
+[HP=48]:*Combat Off*
+[HP=48]:A filthbug scuttles into the room from nowhere.
+[HP=48]:
+>>> ''
+
+Newhaven, Arena
+Also here: filthbug.
+Obvious exits: closed door north, up
+[HP=48]:
+>>> 'a filthbug'
+a filthbug
+*Combat Engaged*
+[HP=48]:The filthbug swipes at you with its claws!
+[HP=48]:You smack filthbug for 11 damage!
+[HP=48]:The filthbug swipes at you with its claws!
+[HP=48]:Your swipe at filthbug hits, but glances off its armour.
+[HP=48]:You smack filthbug for 5 damage!
+[HP=48]:The filthbug collapses, its legs curling tightly around it.
+[HP=48]:You gain 12 experience.
+[HP=48]:*Combat Off*
+[HP=48]:A nasty giant rat creeps into the room from nowhere.
+[HP=48]:
+>>> ''
+
+Newhaven, Arena
+Also here: nasty giant rat.
+Obvious exits: closed door north, up
+[HP=48]:
+>>> 'a rat'
+a rat
+*Combat Engaged*
+[HP=48]:You beat nasty giant rat for 4 damage!
+[HP=48]:The nasty giant rat lunges at you!
+[HP=48]:You smack nasty giant rat for 3 damage!
+[HP=48]:You smack nasty giant rat for 7 damage!
+[HP=48]:The giant rat falls to the ground with a tortured squeak.
+[HP=48]:You gain 9 experience.
+[HP=48]:*Combat Off*
+[HP=48]:A filthbug scuttles into the room from nowhere.
+[HP=48]:
+>>> ''
+
+Newhaven, Arena
+Also here: filthbug.
+Obvious exits: closed door north, up
+[HP=48]:
+>>> 'a filthbug'
+a filthbug
+*Combat Engaged*
+[HP=48]:You beat filthbug for 12 damage!
+[HP=48]:The filthbug swipes at you with its claws!
+[HP=48]:The filthbug swipes at you with its claws!
+[HP=48]:You beat filthbug for 3 damage!
+[HP=48]:You beat filthbug for 3 damage!
+[HP=48]:The filthbug collapses, its legs curling tightly around it.
+[HP=48]:You gain 12 experience.
+[HP=48]:*Combat Off*
+[HP=48]:A giant rat creeps into the room from nowhere.
+[HP=48]:
+>>> ''
+
+Newhaven, Arena
+Also here: giant rat.
+Obvious exits: closed door north, up
+[HP=48]:
+>>> 'a rat'
+a rat
+*Combat Engaged*
+[HP=48]:You whap giant rat for 3 damage!
+[HP=48]:The giant rat bites you for 8 damage!
+[HP=40]:The giant rat lunges at you!
+[HP=40]:You whap giant rat for 5 damage!
+[HP=40]:You beat giant rat for 12 damage!
+[HP=40]:The giant rat falls to the ground with a tortured squeak.
+[HP=40]:You gain 9 experience.
+[HP=40]:*Combat Off*
+[HP=40]:A kobold thief sneaks into the room from nowhere.
+[HP=40]:
+>>> ''
+
+Newhaven, Arena
+Also here: kobold thief.
+Obvious exits: closed door north, up
+[HP=40]:
+>>> 'a thief'
+a thief
+*Combat Engaged*
+[HP=40]:The kobold thief lunges at you with their shortsword!
+[HP=40]:You beat kobold thief for 5 damage!
+[HP=40]:You smack kobold thief for 7 damage!
+[HP=40]:You swipe at kobold thief!
+[HP=40]:The kobold thief lunges at you with their shortsword!
+[HP=40]:The kobold thief lunges at you with their shortsword!
+[HP=40]:You beat kobold thief for 13 damage!
+[HP=40]:2 silver drop to the ground.
+17 copper drop to the ground.
+The kobold thief falls to the ground with a shrill cry.
+[HP=40]:You gain 13 experience.
+[HP=40]:*Combat Off*
+[HP=40]:[HP=42]:
+>>> 'get silver'
+get silver
+You picked up 2 silver nobles
+[HP=42]:
+>>> 'get copper'
+get copper
+You picked up 17 copper farthings
+[HP=42]:
+>>> ''
+
+Newhaven, Arena
+Obvious exits: closed door north, up
+[HP=42]:A large kobold thief sneaks into the room from nowhere.
+[HP=42]:
+>>> ''
+
+Newhaven, Arena
+Also here: large kobold thief.
+Obvious exits: closed door north, up
+[HP=42]:
+>>> 'a thief'
+a thief
+*Combat Engaged*
+[HP=42]:You beat large kobold thief for 4 damage!
+[HP=42]:The large kobold thief lunges at you with their shortsword, but you dodge!
+[HP=42]:The large kobold thief lunges at you with their shortsword!
+[HP=42]:The large kobold thief lunges at you with their shortsword!
+[HP=42]:You smack large kobold thief for 12 damage!
+[HP=42]:You whap large kobold thief for 7 damage!
+[HP=42]:3 silver drop to the ground.
+10 copper drop to the ground.
+The kobold thief falls to the ground with a shrill cry.
+[HP=42]:You gain 13 experience.
+[HP=42]:*Combat Off*
+[HP=42]:
+>>> 'get silver'
+get silver
+You picked up 3 silver nobles
+[HP=42]:
+>>> 'get copper'
+get copper
+You picked up 10 copper farthings
+[HP=42]:
+>>> ''
+
+Newhaven, Arena
+Obvious exits: closed door north, up
+[HP=42]:A kobold thief sneaks into the room from nowhere.
+[HP=42]:
+>>> ''
+The kobold thief lunges at you with their shortsword!
+[HP=42]:
+Newhaven, Arena
+Also here: kobold thief.
+Obvious exits: closed door north, up
+[HP=42]:
+>>> 'a thief'
+a thief
+*Combat Engaged*
+[HP=42]:You whap kobold thief for 7 damage!
+[HP=42]:The kobold thief lunges at you with their shortsword!
+[HP=42]:The kobold thief lunges at you with their shortsword!
+[HP=42]:You smack kobold thief for 11 damage!
+[HP=42]:You beat kobold thief for 6 damage!
+[HP=42]:3 silver drop to the ground.
+12 copper drop to the ground.
+The kobold thief falls to the ground with a shrill cry.
+[HP=42]:You gain 13 experience.
+[HP=42]:*Combat Off*
+[HP=42]:[HP=44]:
+>>> 'get silver'
+get silver
+You picked up 3 silver nobles
+[HP=44]:
+>>> 'get copper'
+get copper
+You picked up 12 copper farthings
+[HP=44]:
+>>> ''
+
+Newhaven, Arena
+Obvious exits: closed door north, up
+[HP=44]:A filthbug scuttles into the room from nowhere.
+[HP=44]:
+>>> ''
+
+Newhaven, Arena
+Also here: filthbug.
+Obvious exits: closed door north, up
+[HP=44]:
+>>> 'a filthbug'
+a filthbug
+*Combat Engaged*
+[HP=44]:You critically beat filthbug for 34 damage!
+[HP=44]:The filthbug collapses, its legs curling tightly around it.
+[HP=44]:You gain 12 experience.
+[HP=44]:*Combat Off*
+[HP=44]:
+>>> ''
+
+Newhaven, Arena
+Obvious exits: closed door north, up
+[HP=44]:A giant rat creeps into the room from nowhere.
+[HP=44]:
+>>> ''
+
+Newhaven, Arena
+Also here: giant rat.
+Obvious exits: closed door north, up
+[HP=44]:
+>>> 'a rat'
+a rat
+*Combat Engaged*
+[HP=44]:The giant rat lunges at you!
+[HP=44]:You smack giant rat for 3 damage!
+[HP=44]:You beat giant rat for 1 damage!
+[HP=44]:You smack giant rat for 4 damage!
+[HP=44]:The giant rat lunges at you!
+[HP=44]:You beat giant rat for 3 damage!
+[HP=44]:You smack giant rat for 3 damage!
+[HP=44]:The giant rat falls to the ground with a tortured squeak.
+[HP=44]:You gain 9 experience.
+[HP=44]:*Combat Off*
+[HP=44]:[HP=46]:
+>>> 'exp'
+exp
+Exp: 464 Level: 1 Exp needed for next level: 1186 (1650) [29%]
+[HP=46]:
+### 10 kills, exp 464/1650, coins {'runic': 0, 'platinum': 0, 'gold': 0, 'silver': 8, 'copper': 39}
+
+>>> ''
+
+Newhaven, Arena
+Obvious exits: closed door north, up
+[HP=46]:A acid slime oozes into the room from nowhere.
+[HP=46]:
+>>> ''
+
+Newhaven, Arena
+Also here: acid slime.
+Obvious exits: closed door north, up
+[HP=46]:
+>>> 'a slime'
+a slime
+*Combat Engaged*
+[HP=46]:You whap acid slime for 9 damage!
+[HP=46]:The acid slime flails at you!
+[HP=46]:You smack acid slime for 11 damage!
+[HP=46]:You critically smack acid slime for 34 damage!
+[HP=46]:The acid slime dissolves into a puddle of bluish goo.
+[HP=46]:You gain 16 experience.
+[HP=46]:*Combat Off*
+[HP=46]:A large filthbug scuttles into the room from nowhere.
+[HP=46]:
+>>> ''
+
+Newhaven, Arena
+Also here: large filthbug.
+Obvious exits: closed door north, up
+[HP=46]:
+>>> 'a filthbug'
+a filthbug
+*Combat Engaged*
+[HP=46]:The large filthbug swipes at you with its claws!
+[HP=46]:You beat large filthbug for 5 damage!
+[HP=46]:The large filthbug swipes at you with its claws!
+[HP=46]:You whap large filthbug for 3 damage!
+[HP=46]:You beat large filthbug for 3 damage!
+[HP=46]:You smack large filthbug for 6 damage!
+[HP=46]:The filthbug collapses, its legs curling tightly around it.
+[HP=46]:You gain 12 experience.
+[HP=46]:*Combat Off*
+[HP=46]:[HP=48]:
+>>> ''
+
+Newhaven, Arena
+Obvious exits: closed door north, up
+[HP=48]:A acid slime oozes into the room from nowhere.
+[HP=48]:
+>>> ''
+
+Newhaven, Arena
+Also here: acid slime.
+Obvious exits: closed door north, up
+[HP=48]:
+>>> 'a slime'
+a slime
+*Combat Engaged*
+[HP=48]:You smack acid slime for 6 damage!
+[HP=48]:The acid slime flails at you!
+[HP=48]:You smack acid slime for 5 damage!
+[HP=48]:You smack acid slime for 12 damage!
+[HP=48]:The acid slime flails at you!
+[HP=48]:The acid slime flails at you!
+[HP=48]:You whap acid slime for 3 damage!
+[HP=48]:The acid slime dissolves into a puddle of bluish goo.
+[HP=48]:You gain 16 experience.
+[HP=48]:*Combat Off*
+[HP=48]:
+>>> ''
+
+Newhaven, Arena
+Obvious exits: closed door north, up
+[HP=48]:A nasty carrion beast creeps in the room from nowhere.
+[HP=48]:
+>>> ''
+
+Newhaven, Arena
+Also here: nasty carrion beast.
+Obvious exits: closed door north, up
+[HP=48]:
+>>> 'a beast'
+a beast
+*Combat Engaged*
+[HP=48]:The nasty carrion beast snaps at you with its teeth!
+[HP=48]:You beat nasty carrion beast for 13 damage!
+[HP=48]:The nasty carrion beast snaps at you with its teeth!
+[HP=48]:You smack nasty carrion beast for 12 damage!
+[HP=48]:The carrion beast falls to the ground with a yelp, and is still.
+[HP=48]:You gain 17 experience.
+[HP=48]:*Combat Off*
+[HP=48]:A large giant rat creeps into the room from nowhere.
+[HP=48]:
+>>> ''
+
+Newhaven, Arena
+Also here: large giant rat.
+Obvious exits: closed door north, up
+[HP=48]:
+>>> 'a rat'
+a rat
+*Combat Engaged*
+[HP=48]:You beat large giant rat for 9 damage!
+[HP=48]:The large giant rat lunges at you!
+[HP=48]:You whap large giant rat for 7 damage!
+[HP=48]:The giant rat falls to the ground with a tortured squeak.
+[HP=48]:You gain 9 experience.
+[HP=48]:*Combat Off*
+[HP=48]:A acid slime oozes into the room from nowhere.
+[HP=48]:
+>>> ''
+
+Newhaven, Arena
+Also here: acid slime.
+Obvious exits: closed door north, up
+[HP=48]:
+>>> 'a slime'
+a slime
+*Combat Engaged*
+[HP=48]:You smack acid slime for 11 damage!
+[HP=48]:The acid slime flails at you!
+[HP=48]:You whap acid slime for 9 damage!
+[HP=48]:You whap acid slime for 12 damage!
+[HP=48]:The acid slime dissolves into a puddle of bluish goo.
+[HP=48]:You gain 16 experience.
+[HP=48]:*Combat Off*
+[HP=48]:A giant rat creeps into the room from nowhere.
+[HP=48]:
+>>> ''
+
+Newhaven, Arena
+Also here: giant rat.
+Obvious exits: closed door north, up
+[HP=48]:
+>>> 'a rat'
+a rat
+*Combat Engaged*
+[HP=48]:The giant rat lunges at you!
+[HP=48]:You beat giant rat for 3 damage!
+[HP=48]:You beat giant rat for 9 damage!
+[HP=48]:You smack giant rat for 2 damage!
+[HP=48]:The giant rat falls to the ground with a tortured squeak.
+[HP=48]:You gain 9 experience.
+[HP=48]:*Combat Off*
+[HP=48]:A kobold thief sneaks into the room from nowhere.
+[HP=48]:
+>>> ''
+
+Newhaven, Arena
+Also here: kobold thief.
+Obvious exits: closed door north, up
+[HP=48]:
+>>> 'a thief'
+a thief
+*Combat Engaged*
+[HP=48]:You beat kobold thief for 9 damage!
+[HP=48]:The kobold thief lunges at you with their shortsword!
+[HP=48]:You smack kobold thief for 9 damage!
+[HP=48]:You smack kobold thief for 12 damage!
+[HP=48]:6 silver drop to the ground.
+14 copper drop to the ground.
+The kobold thief falls to the ground with a shrill cry.
+[HP=48]:You gain 13 experience.
+[HP=48]:*Combat Off*
+[HP=48]:A kobold thief sneaks into the room from nowhere.
+[HP=48]:
+>>> 'get silver'
+get silver
+You picked up 6 silver nobles
+[HP=48]:
+>>> 'get copper'
+get copper
+You picked up 14 copper farthings
+[HP=48]:
+>>> ''
+
+Newhaven, Arena
+Also here: kobold thief.
+Obvious exits: closed door north, up
+[HP=48]:
+>>> 'a thief'
+a thief
+*Combat Engaged*
+[HP=48]:You swipe at kobold thief!
+[HP=48]:The kobold thief lunges at you with their shortsword!
+[HP=48]:You smack kobold thief for 2 damage!
+[HP=48]:You smack kobold thief for 4 damage!
+[HP=48]:The kobold thief lunges at you with their shortsword!
+[HP=48]:The kobold thief lunges at you with their shortsword!
+[HP=48]:You beat kobold thief for 8 damage!
+[HP=48]:You whap kobold thief for 10 damage!
+[HP=48]:7 silver drop to the ground.
+The kobold thief falls to the ground with a shrill cry.
+[HP=48]:You gain 13 experience.
+[HP=48]:*Combat Off*
+[HP=48]:
+>>> 'get silver'
+get silver
+You picked up 7 silver nobles
+[HP=48]:
+>>> ''
+
+Newhaven, Arena
+Obvious exits: closed door north, up
+[HP=48]:A carrion beast creeps in the room from nowhere.
+[HP=48]:
+>>> ''
+
+Newhaven, Arena
+Also here: carrion beast.
+Obvious exits: closed door north, up
+[HP=48]:The carrion beast snaps at you with its teeth!
+[HP=48]:
+>>> 'a beast'
+a beast
+*Combat Engaged*
+[HP=48]:The carrion beast snaps at you with its teeth!
+[HP=48]:You beat carrion beast for 10 damage!
+[HP=48]:You beat carrion beast for 2 damage!
+[HP=48]:You smack carrion beast for 7 damage!
+[HP=48]:The carrion beast falls to the ground with a yelp, and is still.
+[HP=48]:You gain 17 experience.
+[HP=48]:*Combat Off*
+[HP=48]:
+>>> 'exp'
+exp
+Exp: 602 Level: 1 Exp needed for next level: 1048 (1650) [37%]
+[HP=48]:
+### 20 kills, exp 602/1650, coins {'runic': 0, 'platinum': 0, 'gold': 0, 'silver': 21, 'copper': 53}
+
+>>> ''
+
+Newhaven, Arena
+Obvious exits: closed door north, up
+[HP=48]:A giant rat creeps into the room from nowhere.
+[HP=48]:
+>>> ''
+
+Newhaven, Arena
+Also here: giant rat.
+Obvious exits: closed door north, up
+[HP=48]:
+>>> 'a rat'
+a rat
+*Combat Engaged*
+[HP=48]:The giant rat bites you for 5 damage!
+[HP=43]:You beat giant rat for 3 damage!
+[HP=43]:[HP=45]:The giant rat lunges at you!
+[HP=45]:You smack giant rat for 12 damage!
+[HP=45]:The giant rat falls to the ground with a tortured squeak.
+[HP=45]:You gain 9 experience.
+[HP=45]:*Combat Off*
+[HP=45]:A angry kobold thief sneaks into the room from nowhere.
+[HP=45]:
+>>> ''
+
+Newhaven, Arena
+Also here: angry kobold thief.
+Obvious exits: closed door north, up
+[HP=45]:
+>>> 'st'
+st
+Name: Kasimir Drakemoor                Lives/CP:      9/2    
+Race: Kang        Exp: 611             Perception:     33
+Class: Witchunter Level: 1             Stealth:         0
+Hits:    45/48    Armour Class:  16/1  Thievery:        0
+                                       Traps:           0
+                                       Picklocks:       0
+Strength:  79     Agility: 42          Tracking:        0
+Intellect: 30     Health:  74          Martial Arts:   12
+Willpower: 45     Charm:   30          MagicRes:       41
+[HP=45]:
+>>> 'exp'
+exp
+Exp: 611 Level: 1 Exp needed for next level: 1039 (1650) [38%]
+[HP=45]:
+### Progress bot: level 1, exp 611/1650, HP 48, at Newhaven, Arena
+
+### Hunting ground: Slum Street (1:1083), 46 rooms
+
+### Walking 47 steps to Slum Street to hunt
+
+>>> 'u'
+u
+Newhaven, Narrow Road
+Obvious exits: north, east, west, down
+[HP=45]:
+>>> 'e'
+e
+Newhaven, Narrow Path
+Obvious exits: north, south, east, west
+[HP=45]:
+>>> 'e'
+e
+Newhaven, Village Entrance
+You notice large sign, newbie manual here.
+Obvious exits: north, south, west, southeast
+[HP=45]:
+>>> 'se'
+se
+Newhaven, Forest Path
+Obvious exits: south, northwest
+[HP=45]:
+>>> 's'
+s
+Newhaven, Docks
+Also here: ferryman.
+Obvious exits: north
+[HP=45]:
+>>> 'a ferryman'
+a ferryman
+Your weapon has no effect against this monster!
+[HP=45]:[HP=47]:[HP=48]:
+>>> ''
+
+Newhaven, Docks
+Also here: ferryman.
+Obvious exits: north
+[HP=48]:
+>>> 'st'
+st
+Name: Kasimir Drakemoor                Lives/CP:      9/2    
+Race: Kang        Exp: 611             Perception:     33
+Class: Witchunter Level: 1             Stealth:         0
+Hits:    48/48    Armour Class:  16/1  Thievery:        0
+                                       Traps:           0
+                                       Picklocks:       0
+Strength:  79     Agility: 42          Tracking:        0
+Intellect: 30     Health:  74          Martial Arts:   12
+Willpower: 45     Charm:   30          MagicRes:       41
+[HP=48]:
+>>> 'exp'
+exp
+Exp: 611 Level: 1 Exp needed for next level: 1039 (1650) [38%]
+[HP=48]:
+### Progress bot: level 1, exp 611/1650, HP 48, at Newhaven, Docks
+
+### Hunting ground: Slum Street (1:1083), 46 rooms
+
+### Walking 42 steps to Slum Street to hunt
+
+>>> 'borrow skiff'
+borrow skiff
+You climb into one of the skiffs, and row to Silvermere.
+Small Pier
+Obvious exits: north, south
+[HP=48]:[HP=48]:
+>>> 's'
+s
+Docks
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Docks
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 's'
+s
+River Street
+Obvious exits: north, east, west
+[HP=48]:
+>>> 'w'
+w
+River Street
+Obvious exits: north, east, west
+[HP=48]:
+>>> 'w'
+w
+River Street
+Also here: thin guardsman.
+Obvious exits: north, east, west
+[HP=48]:
+>>> 'a guardsman'
+a guardsman
+To do this action, you must turn off your evil warnings.
+[HP=48]:
+>>> ''
+
+River Street
+Also here: thin guardsman.
+Obvious exits: north, east, west
+[HP=48]:
+>>> ''
+
+River Street
+Also here: thin guardsman.
+Obvious exits: north, east, west
+[HP=48]:
+>>> 'st'
+st
+Name: Kasimir Drakemoor                Lives/CP:      9/2    
+Race: Kang        Exp: 611             Perception:     33
+Class: Witchunter Level: 1             Stealth:         0
+Hits:    48/48    Armour Class:  16/1  Thievery:        0
+                                       Traps:           0
+                                       Picklocks:       0
+Strength:  79     Agility: 42          Tracking:        0
+Intellect: 30     Health:  74          Martial Arts:   12
+Willpower: 45     Charm:   30          MagicRes:       41
+[HP=48]:
+>>> 'exp'
+exp
+Exp: 611 Level: 1 Exp needed for next level: 1039 (1650) [38%]
+[HP=48]:
+### Progress bot: level 1, exp 611/1650, HP 48, at River Street
+
+>>> 'i'
+i
+You are carrying 39 silver nobles, 96 copper farthings, padded vest (Torso),
+padded pants (Legs), padded helm (Head), padded gloves (Hands), padded boots
+(Feet), quarterstaff (Two handed)
+You have no keys.
+Wealth: 486 copper farthings
+Encumbrance: 545/3792 - None [14%]
+[HP=48]:
+### Gear: crimson scale gauntlets for 100 copper (replaces padded gloves), shop Skali's Fine Armour, Front Room
+
+### Walking 14 steps to Skali's Fine Armour, Front Room to shop
+
+>>> 'e'
+e
+River Street
+Obvious exits: north, east, west
+[HP=48]:
+>>> 'e'
+e
+River Street
+Obvious exits: north, east, west
+[HP=48]:
+>>> ''
+
+River Street
+Obvious exits: north, east, west
+[HP=48]:
+### Walking 13 steps to Skali's Fine Armour, Front Room to shop
+
+>>> 'e'
+e
+River Street
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> ''
+
+River Street
+Obvious exits: north, south, east, west
+[HP=48]:
+### Walking 13 steps to Skali's Fine Armour, Front Room to shop
+
+>>> 'e'
+e
+River Street
+Obvious exits: east, west
+[HP=48]:
+>>> ''
+
+River Street
+Obvious exits: east, west
+[HP=48]:
+### Walking 13 steps to Skali's Fine Armour, Front Room to shop
+
+>>> 'e'
+e
+River Street
+Obvious exits: east, west
+[HP=48]:
+>>> ''
+
+River Street
+Obvious exits: east, west
+[HP=48]:
+### Walking 13 steps to Skali's Fine Armour, Front Room to shop
+
+>>> 'e'
+e
+Intersection of River St. & Mystic Alley
+Obvious exits: south, east, west
+[HP=48]:
+>>> 'e'
+e
+River Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Intersection of Guild St. & River St.
+Also here: guardsman.
+Obvious exits: south, east, west
+[HP=48]:
+>>> 's'
+s
+Guild Street, Northern End
+Also here: drunken brawler.
+Obvious exits: north, south, east
+[HP=48]:
+>>> 's'
+s
+Guild Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Guild Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Intersection of Guild St. & Crown St.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 's'
+s
+Guild Street
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 's'
+s
+Guild Street
+Obvious exits: north, south, west
+[HP=48]:
+>>> 's'
+s
+Guild Street
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 's'
+s
+Guild Street
+Also here: mangy dog, mangy dog.
+Obvious exits: north, south, west
+[HP=48]:
+>>> 's'
+s
+Guild Street, Southern End
+Also here: nasty townswoman, angry townswoman.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'w'
+w
+Skali's Fine Armour, Front Room
+Also here: Gurbultis.
+Obvious exits: south, east, west
+[HP=48]:
+>>> 'buy crimson scale gauntlets'
+buy crimson scale gauntlets
+You cannot buy crimson scale gauntlets here!
+[HP=48]:
+### Purchase failed: buy crimson scale gauntlets You cannot buy crimson scale gauntlets here! [HP=48]:
+
+>>> 'i'
+i
+You are carrying 39 silver nobles, 96 copper farthings, padded vest (Torso),
+padded pants (Legs), padded helm (Head), padded gloves (Hands), padded boots
+(Feet), quarterstaff (Two handed)
+You have no keys.
+Wealth: 486 copper farthings
+Encumbrance: 545/3792 - None [14%]
+[HP=48]:
+>>> ''
+
+Skali's Fine Armour, Front Room
+Also here: Gurbultis.
+Obvious exits: south, east, west
+[HP=48]:
+>>> 'st'
+st
+Name: Kasimir Drakemoor                Lives/CP:      9/2    
+Race: Kang        Exp: 611             Perception:     33
+Class: Witchunter Level: 1             Stealth:         0
+Hits:    48/48    Armour Class:  16/1  Thievery:        0
+                                       Traps:           0
+                                       Picklocks:       0
+Strength:  79     Agility: 42          Tracking:        0
+Intellect: 30     Health:  74          Martial Arts:   12
+Willpower: 45     Charm:   30          MagicRes:       41
+[HP=48]:
+>>> 'exp'
+exp
+Exp: 611 Level: 1 Exp needed for next level: 1039 (1650) [38%]
+[HP=48]:
+### Progress bot: level 1, exp 611/1650, HP 48, at Skali's Fine Armour, Front Room
+
+>>> 'i'
+i
+You are carrying 39 silver nobles, 96 copper farthings, padded vest (Torso),
+padded pants (Legs), padded helm (Head), padded gloves (Hands), padded boots
+(Feet), quarterstaff (Two handed)
+You have no keys.
+Wealth: 486 copper farthings
+Encumbrance: 545/3792 - None [14%]
+[HP=48]:
+### Gear: crimson scale gauntlets for 100 copper (replaces padded gloves), shop Skali's Fine Armour, Front Room
+
+>>> 'buy crimson scale gauntlets'
+buy crimson scale gauntlets
+You cannot buy crimson scale gauntlets here!
+[HP=48]:
+### Purchase failed: buy crimson scale gauntlets You cannot buy crimson scale gauntlets here! [HP=48]:
+
+>>> 'i'
+i
+You are carrying 39 silver nobles, 96 copper farthings, padded vest (Torso),
+padded pants (Legs), padded helm (Head), padded gloves (Hands), padded boots
+(Feet), quarterstaff (Two handed)
+You have no keys.
+Wealth: 486 copper farthings
+Encumbrance: 545/3792 - None [14%]
+[HP=48]:
+### Hunting ground: Slum Street (1:1083), 46 rooms
+
+### Walking 28 steps to Slum Street to hunt
+
+>>> 's'
+s
+Temple Street, Eastern End
+Also here: tall Templar, big elite guardsman, happy guardsman.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'w'
+w
+Temple Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Temple Street
+Obvious exits: south, east, west
+[HP=48]:
+>>> 's'
+s
+Lucky Strike Casino
+You notice gambling sign here.
+Also here: big drunken gambler.
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Lucky Strike Casino
+You notice gambling sign here.
+Also here: fierce drunken gambler, tall drunken gambler.
+Obvious exits: north, west
+[HP=48]:
+>>> 'w'
+w
+Lucky Strike Casino
+You notice gambling sign here.
+Also here: young gypsy girl, thin drunken gambler.
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Stone Street
+Obvious exits: north, south, east
+[HP=48]:
+>>> 's'
+s
+Stone Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Stone Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Intersection of Stone St. & Oak St.
+Also here: happy guardsman, small guardsman.
+Obvious exits: north, south, east, west
+[HP=48]:A cheer of many voices can be heard in the distance.
+happy guardsman just left to the east.
+[HP=48]:small guardsman just left to the west.
+[HP=48]:
+>>> 's'
+s
+Stone Street
+Obvious exits: north, south, east
+[HP=48]:
+>>> 's'
+s
+Stone Street
+Obvious exits: north, south
+[HP=48]:
+>>> ''
+
+Stone Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'st'
+st
+Name: Kasimir Drakemoor                Lives/CP:      9/2    
+Race: Kang        Exp: 611             Perception:     33
+Class: Witchunter Level: 1             Stealth:         0
+Hits:    48/48    Armour Class:  16/1  Thievery:        0
+                                       Traps:           0
+                                       Picklocks:       0
+Strength:  79     Agility: 42          Tracking:        0
+Intellect: 30     Health:  74          Martial Arts:   12
+Willpower: 45     Charm:   30          MagicRes:       41
+[HP=48]:
+>>> 'exp'
+exp
+Exp: 611 Level: 1 Exp needed for next level: 1039 (1650) [38%]
+[HP=48]:
+### Progress bot: level 1, exp 611/1650, HP 48, at Stone Street
+
+>>> 'i'
+i
+You are carrying 39 silver nobles, 96 copper farthings, padded vest (Torso),
+padded pants (Legs), padded helm (Head), padded gloves (Hands), padded boots
+(Feet), quarterstaff (Two handed)
+You have no keys.
+Wealth: 486 copper farthings
+Encumbrance: 545/3792 - None [14%]
+[HP=48]:
+### Gear: hard leather gauntlets for 200 copper (replaces padded gloves), shop Sentara's Clothing, Back Room
+
+### Walking 11 steps to Sentara's Clothing, Back Room to shop
+
+>>> 'n'
+n
+Stone Street
+Obvious exits: north, south, east
+[HP=48]:small guardsman moves into the room from the north.
+[HP=48]:
+>>> 'n'
+n
+Intersection of Stone St. & Oak St.
+Obvious exits: north, south, east, west
+[HP=48]:happy guardsman moves into the room from the east.
+[HP=48]:small guardsman moves into the room from the south.
+[HP=48]:
+>>> ''
+
+Intersection of Stone St. & Oak St.
+Also here: happy guardsman, small guardsman.
+Obvious exits: north, south, east, west
+[HP=48]:
+### Walking 13 steps to Sentara's Clothing, Back Room to shop
+
+>>> 'n'
+n
+Stone Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+Stone Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+Stone Street
+Obvious exits: north, south, east
+[HP=48]:
+>>> 'n'
+n
+Stone Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+You hear movement to the north.
+[HP=48]:Intersection of Temple St. & Stone St.
+Also here: large guardsman.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'e'
+e
+Temple Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Temple Street
+Also here: tall Templar.
+Obvious exits: south, east, west
+[HP=48]:
+>>> 'e'
+e
+Temple Street
+Obvious exits: east, west
+[HP=48]:tall Templar moves into the room from the west.
+[HP=48]:
+>>> 'e'
+e
+Temple Street, Eastern End
+Also here: big elite guardsman, happy guardsman.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'n'
+n
+Skali's Fine Armour, Front Room
+Also here: Gurbultis.
+Obvious exits: south, east, west
+[HP=48]:
+>>> 'e'
+e
+Guild Street, Southern End
+Also here: nasty townswoman, angry townswoman.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'e'
+e
+Sentara's Clothing, Front Room
+Also here: Lady Sentara.
+Obvious exits: south, east, west
+[HP=48]:
+>>> 'e'
+e
+Sentara's Clothing, Back Room
+Obvious exits: west, down
+[HP=48]:
+>>> 'buy hard leather gauntlets'
+buy hard leather gauntlets
+You just bought hard leather gauntlets for 20 silver nobles, 8 copper farthings.
+[HP=48]:
+>>> 'remove padded gloves'
+remove padded gloves
+You have removed padded gloves.
+[HP=48]:
+>>> 'wear hard leather gauntlets'
+wear hard leather gauntlets
+You are now wearing hard leather gauntlets.
+[HP=48]:
+>>> 'sell padded gloves'
+sell padded gloves
+You cannot sell padded gloves here.
+[HP=48]:
+>>> 'i'
+i
+You are carrying 19 silver nobles, 88 copper farthings, padded vest (Torso),
+padded pants (Legs), padded helm (Head), hard leather gauntlets (Hands), padded
+boots (Feet), quarterstaff (Two handed), padded gloves
+You have no keys.
+Wealth: 278 copper farthings
+Encumbrance: 625/3792 - None [16%]
+[HP=48]:
+### Gear: leather skirt for 200 copper (replaces padded pants), shop Sentara's Clothing, Back Room
+
+>>> 'buy leather skirt'
+buy leather skirt
+You just bought leather skirt for 19 silver nobles, 18 copper farthings.
+[HP=48]:
+>>> 'remove padded pants'
+remove padded pants
+You have removed padded pants.
+[HP=48]:
+>>> 'wear leather skirt'
+wear leather skirt
+You are now wearing leather skirt.
+[HP=48]:
+>>> 'sell padded pants'
+sell padded pants
+You cannot sell padded pants here.
+[HP=48]:
+>>> 'i'
+i
+You are carrying 70 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet),
+quarterstaff (Two handed), padded pants, padded gloves
+You have no keys.
+Wealth: 70 copper farthings
+Encumbrance: 663/3792 - Light [17%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 70 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet),
+quarterstaff (Two handed), padded pants, padded gloves
+You have no keys.
+Wealth: 70 copper farthings
+Encumbrance: 663/3792 - Light [17%]
+[HP=48]:
+### Hunting ground: Slum Street (1:1083), 46 rooms
+
+### Walking 31 steps to Slum Street to hunt
+
+>>> 'w'
+w
+Sentara's Clothing, Front Room
+Also here: Lady Sentara.
+Obvious exits: south, east, west
+[HP=48]:
+>>> 's'
+s
+Children rush past you hopping around in youthful glee.
+Silver Street, Western End
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 's'
+s
+The Homely Hearth, Common Room
+You notice wooden chair here.
+Also here: barmaid, big drunken brawler, short drunken brawler.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'w'
+w
+Sovereign Street, Northern End
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 's'
+s
+Sovereign Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Sovereign Street
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 's'
+s
+Sovereign Street
+Also here: angry mangy dog, townsman.
+Obvious exits: north, south, east
+[HP=48]:
+>>> 's'
+s
+The awful sound of a drunken chorus echoes through the streets.
+Intersection of Sovereign St. & Oak St.
+Also here: fat guardsman, guardsman.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 's'
+s
+Sovereign Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Sovereign Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Sovereign Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Corner of Sovereign St. & Noble St.
+Obvious exits: north, west
+[HP=48]:
+>>> 'w'
+w
+Noble Street
+Also here: fierce guardsman.
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Noble Street
+Obvious exits: north, east, west
+[HP=48]:
+>>> 'w'
+w
+Noble Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Noble Street
+Obvious exits: north, east, west
+[HP=48]:
+>>> 'w'
+w
+Intersection of Stone St. & Noble St.
+Obvious exits: north, east, west
+[HP=48]:
+>>> 'w'
+w
+Noble Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Noble Street, Slum Gates
+Also here: townsman, small townsman.
+Obvious exits: south, east, west
+[HP=48]:
+>>> 's'
+s
+Slum Entrance
+Also here: fat guardsman, thin guardsman.
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Slum Street
+Obvious exits: north, south, west
+[HP=48]:
+>>> 's'
+s
+Slum Street, Crossroads
+Also here: angry orc rogue.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'a rogue'
+a rogue
+*Combat Engaged*
+[HP=48]:You whap angry orc rogue for 6 damage!
+[HP=48]:The angry orc rogue lunges at you with their shortsword!
+[HP=48]:The angry orc rogue lunges at you with their shortsword!
+[HP=48]:You beat angry orc rogue for 2 damage!
+[HP=48]:You smack angry orc rogue for 3 damage!
+[HP=48]:You swipe at angry orc rogue!
+[HP=48]:You whap angry orc rogue for 13 damage!
+[HP=48]:The angry orc rogue impales you for 4 damage!
+[HP=44]:[HP=46]:You whap angry orc rogue for 12 damage!
+[HP=46]:11 copper drop to the ground.
+The orc rogue collapses with a grunt.
+[HP=46]:You gain 22 experience.
+[HP=46]:*Combat Off*
+[HP=46]:
+>>> 'get copper'
+get copper
+You picked up 11 copper farthings
+[HP=46]:
+>>> ''
+
+Slum Street, Crossroads
+Obvious exits: north, south, east, west
+[HP=46]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=46]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=46]:
+>>> 'w'
+w
+Slum Street, Bend
+Obvious exits: south, east
+[HP=46]:
+>>> 's'
+s
+Slum Street, Bend
+Obvious exits: north, west
+[HP=46]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=46]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=46]:
+>>> 'w'
+w
+Slum Street
+Also here: angry orc rogue, tall orc rogue.
+Obvious exits: east, west
+[HP=46]:
+>>> ''
+
+Slum Street
+Also here: angry orc rogue, tall orc rogue.
+Obvious exits: east, west
+[HP=46]:
+>>> 'st'
+st
+Name: Kasimir Drakemoor                Lives/CP:      9/2    
+Race: Kang        Exp: 633             Perception:     33
+Class: Witchunter Level: 1             Stealth:         0
+Hits:    46/48    Armour Class:  19/1  Thievery:        0
+                                       Traps:           0
+                                       Picklocks:       0
+Strength:  79     Agility: 42          Tracking:        0
+Intellect: 30     Health:  74          Martial Arts:   12
+Willpower: 45     Charm:   30          MagicRes:       41
+[HP=46]:
+>>> 'exp'
+exp
+Exp: 633 Level: 1 Exp needed for next level: 1017 (1650) [39%]
+[HP=46]:The angry orc rogue lunges at you with their shortsword!
+[HP=46]:The tall orc rogue lunges at you with their shortsword!
+[HP=46]:
+### Progress bot: level 1, exp 633/1650, HP 48, at Slum Street
+
+>>> 'i'
+i
+You are carrying 81 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet),
+quarterstaff (Two handed), padded pants, padded gloves
+You have no keys.
+Wealth: 81 copper farthings
+Encumbrance: 667/3792 - Light [17%]
+[HP=46]:
+>>> 'i'
+i
+You are carrying 81 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet),
+quarterstaff (Two handed), padded pants, padded gloves
+You have no keys.
+Wealth: 81 copper farthings
+Encumbrance: 667/3792 - Light [17%]
+[HP=46]:
+### Buying a light: torch for 0 copper at General Store
+
+### Walking 26 steps to General Store for a light
+
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=46]:[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+### Walking 26 steps to General Store for a light
+
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+### Walking 30 steps to General Store for a light
+
+>>> 'e'
+e
+Slum Street, Bend
+Obvious exits: north, west
+[HP=48]:
+>>> 'n'
+n
+Slum Street, Bend
+Obvious exits: south, east
+[HP=48]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Slum Street, Crossroads
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'n'
+n
+Slum Street
+Obvious exits: north, south, west
+[HP=48]:
+>>> 'n'
+n
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+Slum Entrance
+Also here: fat guardsman, thin guardsman.
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+Noble Street, Slum Gates
+Also here: townsman, small townsman.
+Obvious exits: south, east, west
+[HP=48]:
+>>> 'e'
+e
+Noble Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Intersection of Stone St. & Noble St.
+Obvious exits: north, east, west
+[HP=48]:
+>>> 'n'
+n
+Stone Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+Stone Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+Stone Street
+Obvious exits: north, south, east
+[HP=48]:
+>>> 'n'
+n
+Intersection of Stone St. & Oak St.
+Also here: happy guardsman.
+Obvious exits: north, south, east, west
+[HP=48]:happy guardsman just left to the south.
+[HP=48]:small guardsman moves into the room from the west.
+[HP=48]:
+>>> 'n'
+n
+Stone Street
+Obvious exits: north, south
+[HP=48]:You hear movement to the south.
+[HP=48]:
+>>> 'n'
+n
+Stone Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+Stone Street
+Obvious exits: north, south, east
+[HP=48]:
+>>> 'n'
+n
+Stone Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+Intersection of Temple St. & Stone St.
+Also here: large guardsman.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'e'
+e
+Temple Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Temple Street
+Obvious exits: south, east, west
+[HP=48]:
+>>> 'e'
+e
+Temple Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Temple Street, Eastern End
+Also here: tall Templar, big elite guardsman, happy guardsman.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'e'
+e
+You hear movement to the east.
+[HP=48]:Town Square
+You notice small sign, large sign here.
+Also here: big Templar, elite guardsman.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> ''
+
+Town Square
+You notice small sign, large sign here.
+Also here: big Templar, elite guardsman.
+Obvious exits: north, south, east, west
+[HP=48]:
+### No walking route from (17, 2269) to (1, 334)
+
+>>> 'buy torch'
+buy torch
+You cannot BUY if you are not in a shop!
+[HP=48]:A thin Templar strides in from the the west.
+[HP=48]:
+>>> 'i'
+i
+You are carrying 81 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet),
+quarterstaff (Two handed), padded pants, padded gloves
+You have no keys.
+Wealth: 81 copper farthings
+Encumbrance: 667/3792 - Light [17%]
+[HP=48]:
+### Gear: wooden stake for 20 copper (replaces nothing), shop Lud's Smithy
+
+### Walking 8 steps to Lud's Smithy to shop
+
+>>> 'w'
+w
+A guardsman shouts out the time of day.
+Temple Street, Eastern End
+Also here: tall Templar, big elite guardsman, happy guardsman.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> ''
+
+Temple Street, Eastern End
+Also here: tall Templar, big elite guardsman, happy guardsman.
+Obvious exits: north, south, east, west
+[HP=48]:
+### No walking route from (1, 301) to (17, 2438)
+
+>>> 'buy wooden stake'
+buy wooden stake
+You cannot BUY if you are not in a shop!
+[HP=48]:
+### Purchase failed: buy wooden stake You cannot BUY if you are not in a shop! [HP=48]:
+
+>>> 'i'
+i
+You are carrying 81 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet),
+quarterstaff (Two handed), padded pants, padded gloves
+You have no keys.
+Wealth: 81 copper farthings
+Encumbrance: 667/3792 - Light [17%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 81 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet),
+quarterstaff (Two handed), padded pants, padded gloves
+You have no keys.
+Wealth: 81 copper farthings
+Encumbrance: 667/3792 - Light [17%]
+[HP=48]:
+### Hunting ground: Slum Street (1:1083), 46 rooms
+
+### Walking 27 steps to Slum Street to hunt
+
+>>> 'w'
+w
+Temple Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Temple Street
+Obvious exits: south, east, west
+[HP=48]:
+>>> 's'
+s
+Lucky Strike Casino
+You notice gambling sign here.
+Also here: big drunken gambler.
+Obvious exits: north, south
+[HP=48]:
+>>> ''
+
+Lucky Strike Casino
+You notice gambling sign here.
+Also here: big drunken gambler.
+Obvious exits: north, south
+[HP=48]:
+>>> ''
+
+Lucky Strike Casino
+You notice gambling sign here.
+Also here: big drunken gambler.
+Obvious exits: north, south
+[HP=48]:
+>>> 'st'
+st
+Name: Kasimir Drakemoor                Lives/CP:      9/2    
+Race: Kang        Exp: 633             Perception:     33
+Class: Witchunter Level: 1             Stealth:         0
+Hits:    48/48    Armour Class:  19/1  Thievery:        0
+                                       Traps:           0
+                                       Picklocks:       0
+Strength:  79     Agility: 42          Tracking:        0
+Intellect: 30     Health:  74          Martial Arts:   12
+Willpower: 45     Charm:   30          MagicRes:       41
+[HP=48]:
+>>> 'exp'
+exp
+Exp: 633 Level: 1 Exp needed for next level: 1017 (1650) [39%]
+[HP=48]:
+### Progress bot: level 1, exp 633/1650, HP 48, at Lucky Strike Casino
+
+>>> 'i'
+i
+You are carrying 81 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet),
+quarterstaff (Two handed), padded pants, padded gloves
+You have no keys.
+Wealth: 81 copper farthings
+Encumbrance: 667/3792 - Light [17%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 81 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet),
+quarterstaff (Two handed), padded pants, padded gloves
+You have no keys.
+Wealth: 81 copper farthings
+Encumbrance: 667/3792 - Light [17%]
+[HP=48]:
+### Buying a light: torch for 0 copper at General Store
+
+### Walking 8 steps to General Store for a light
+
+>>> 'n'
+n
+Temple Street
+Obvious exits: south, east, west
+[HP=48]:
+>>> 'e'
+e
+Temple Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Temple Street, Eastern End
+Also here: tall Templar, big elite guardsman, happy guardsman.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'e'
+e
+Town Square
+You notice small sign, large sign here.
+Also here: big Templar, elite guardsman, thin Templar.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'e'
+e
+Silver Street, Western End
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'e'
+e
+Silver Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Silver Street
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 's'
+s
+General Store
+Also here: Giovanni.
+Obvious exits: north, east
+[HP=48]:
+>>> 'buy torch'
+buy torch
+You just bought torch for nothing.
+[HP=48]:
+>>> 'i'
+i
+You are carrying 81 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet),
+quarterstaff (Two handed), padded pants, padded gloves, torch
+You have no keys.
+Wealth: 81 copper farthings
+Encumbrance: 707/3792 - Light [18%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 81 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet),
+quarterstaff (Two handed), padded pants, padded gloves, torch
+You have no keys.
+Wealth: 81 copper farthings
+Encumbrance: 707/3792 - Light [18%]
+[HP=48]:
+### Hunting ground: Slum Street (1:1083), 46 rooms
+
+### Walking 32 steps to Slum Street to hunt
+
+>>> 'n'
+n
+Silver Street
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'w'
+w
+Silver Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Silver Street, Western End
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 's'
+s
+The Homely Hearth, Common Room
+You notice wooden chair here.
+Also here: barmaid, big drunken brawler, short drunken brawler.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'w'
+w
+Sovereign Street, Northern End
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 's'
+s
+Sovereign Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Sovereign Street
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 's'
+s
+Sovereign Street
+Also here: angry mangy dog, townsman.
+Obvious exits: north, south, east
+[HP=48]:
+>>> 's'
+s
+Intersection of Sovereign St. & Oak St.
+Also here: fat guardsman, guardsman.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 's'
+s
+Sovereign Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Sovereign Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Sovereign Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Corner of Sovereign St. & Noble St.
+Obvious exits: north, west
+[HP=48]:
+>>> 'w'
+w
+Noble Street
+Also here: fierce guardsman.
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Noble Street
+Obvious exits: north, east, west
+[HP=48]:
+>>> 'w'
+w
+Noble Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Noble Street
+Obvious exits: north, east, west
+[HP=48]:
+>>> 'w'
+w
+Intersection of Stone St. & Noble St.
+Obvious exits: north, east, west
+[HP=48]:
+>>> 'w'
+w
+Noble Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Noble Street, Slum Gates
+Also here: townsman, small townsman.
+Obvious exits: south, east, west
+[HP=48]:
+>>> ''
+
+Noble Street, Slum Gates
+Also here: townsman, small townsman.
+Obvious exits: south, east, west
+[HP=48]:
+>>> ''
+
+Noble Street, Slum Gates
+Also here: townsman, small townsman.
+Obvious exits: south, east, west
+[HP=48]:
+>>> 'st'
+st
+Name: Kasimir Drakemoor                Lives/CP:      9/2    
+Race: Kang        Exp: 633             Perception:     33
+Class: Witchunter Level: 1             Stealth:         0
+Hits:    48/48    Armour Class:  19/1  Thievery:        0
+                                       Traps:           0
+                                       Picklocks:       0
+Strength:  79     Agility: 42          Tracking:        0
+Intellect: 30     Health:  74          Martial Arts:   12
+Willpower: 45     Charm:   30          MagicRes:       41
+[HP=48]:
+>>> 'exp'
+exp
+Exp: 633 Level: 1 Exp needed for next level: 1017 (1650) [39%]
+[HP=48]:
+### Progress bot: level 1, exp 633/1650, HP 48, at Noble Street, Slum Gates
+
+>>> 'i'
+i
+You are carrying 81 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet),
+quarterstaff (Two handed), padded pants, padded gloves, torch
+You have no keys.
+Wealth: 81 copper farthings
+Encumbrance: 707/3792 - Light [18%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 81 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet),
+quarterstaff (Two handed), padded pants, padded gloves, torch
+You have no keys.
+Wealth: 81 copper farthings
+Encumbrance: 707/3792 - Light [18%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 81 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet),
+quarterstaff (Two handed), padded pants, padded gloves, torch
+You have no keys.
+Wealth: 81 copper farthings
+Encumbrance: 707/3792 - Light [18%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 81 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet),
+quarterstaff (Two handed), padded pants, padded gloves, torch
+You have no keys.
+Wealth: 81 copper farthings
+Encumbrance: 707/3792 - Light [18%]
+[HP=48]:
+### Hunting ground: Slum Street (1:1081), 39 rooms
+
+### Walking 10 steps to Slum Street to hunt
+
+>>> 's'
+s
+Slum Entrance
+Also here: fat guardsman, thin guardsman.
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Slum Street
+Obvious exits: north, south, west
+[HP=48]:
+>>> 's'
+s
+Slum Street, Crossroads
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street, Bend
+Obvious exits: south, east
+[HP=48]:
+>>> 's'
+s
+Slum Street, Bend
+Obvious exits: north, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Slum Street, Bend
+Obvious exits: north, west
+[HP=48]:
+>>> ''
+
+Slum Street, Bend
+Obvious exits: north, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+You hear movement to the west.
+[HP=48]:Slum Street
+Also here: orc rogue.
+Obvious exits: east, west
+[HP=48]:
+>>> 'a rogue'
+a rogue
+*Combat Engaged*
+[HP=48]:You whap orc rogue for 9 damage!
+[HP=48]:The orc rogue lunges at you with their shortsword!
+[HP=48]:You whap orc rogue for 7 damage!
+[HP=48]:You smack orc rogue for 10 damage!
+[HP=48]:The orc rogue lunges at you with their shortsword!
+[HP=48]:You beat orc rogue for 8 damage!
+[HP=48]:10 silver drop to the ground.
+The orc rogue collapses with a grunt.
+[HP=48]:You gain 22 experience.
+[HP=48]:*Combat Off*
+[HP=48]:
+>>> 'get silver'
+get silver
+You picked up 10 silver nobles
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street
+Also here: angry orc rogue, tall orc rogue.
+Obvious exits: east, west
+[HP=48]:The angry orc rogue lunges at you with their shortsword!
+[HP=48]:The tall orc rogue lunges at you with their shortsword!
+[HP=48]:
+>>> 'a rogue'
+a rogue
+*Combat Engaged*
+[HP=48]:You whap angry orc rogue for 8 damage!
+[HP=48]:The angry orc rogue lunges at you with their shortsword!
+[HP=48]:The tall orc rogue lunges at you with their shortsword!
+[HP=48]:You beat angry orc rogue for 11 damage!
+[HP=48]:You swipe at angry orc rogue!
+[HP=48]:The angry orc rogue lunges at you with their shortsword!
+[HP=48]:The tall orc rogue lunges at you with their shortsword!
+[HP=48]:You smack angry orc rogue for 6 damage!
+[HP=48]:The angry orc rogue lunges at you with their shortsword!
+[HP=48]:The tall orc rogue lunges at you with their shortsword!
+[HP=48]:You smack angry orc rogue for 6 damage!
+[HP=48]:5 silver drop to the ground.
+6 copper drop to the ground.
+The orc rogue collapses with a grunt.
+[HP=48]:You gain 22 experience.
+[HP=48]:*Combat Off*
+[HP=48]:The tall orc rogue lunges at you with their shortsword!
+[HP=48]:
+>>> 'get silver'
+get silver
+You picked up 5 silver nobles
+[HP=48]:
+>>> 'get copper'
+get copper
+You picked up 6 copper farthings
+[HP=48]:
+>>> ''
+
+Slum Street
+Also here: tall orc rogue.
+Obvious exits: east, west
+[HP=48]:
+>>> 'a rogue'
+a rogue
+*Combat Engaged*
+[HP=48]:You smack tall orc rogue for 6 damage!
+[HP=48]:The tall orc rogue lunges at you with their shortsword!
+[HP=48]:You smack tall orc rogue for 1 damage!
+[HP=48]:You beat tall orc rogue for 13 damage!
+[HP=48]:The tall orc rogue lunges at you with their shortsword!
+[HP=48]:You beat tall orc rogue for 5 damage!
+[HP=48]:The tall orc rogue lunges at you with their shortsword!
+[HP=48]:The tall orc rogue lunges at you with their shortsword!
+[HP=48]:You smack tall orc rogue for 10 damage!
+[HP=48]:11 copper drop to the ground.
+The orc rogue collapses with a grunt.
+[HP=48]:You gain 22 experience.
+[HP=48]:*Combat Off*
+[HP=48]:
+>>> 'get copper'
+get copper
+You picked up 11 copper farthings
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street, Bend
+Obvious exits: south, east
+[HP=48]:
+>>> ''
+
+Slum Street, Bend
+Obvious exits: south, east
+[HP=48]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street, Bend
+Obvious exits: south, east
+[HP=48]:
+>>> ''
+
+Slum Street, Bend
+Obvious exits: south, east
+[HP=48]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Slum Street, Bend
+Obvious exits: north, west
+[HP=48]:
+>>> ''
+
+Slum Street, Bend
+Obvious exits: north, west
+[HP=48]:
+>>> 'n'
+n
+Slum Street, Bend
+Obvious exits: south, east
+[HP=48]:
+>>> ''
+
+Slum Street, Bend
+Obvious exits: south, east
+[HP=48]:
+>>> 's'
+s
+An orc rogue walks into the room from the south.
+[HP=48]:The orc rogue lunges at you with their shortsword!
+[HP=48]:Slum Street, Bend
+Obvious exits: north, west
+[HP=48]:
+>>> ''
+
+Slum Street, Bend
+Obvious exits: north, west
+[HP=48]:
+>>> ''
+
+Slum Street, Bend
+Obvious exits: north, west
+[HP=48]:
+>>> ''
+
+Slum Street, Bend
+Obvious exits: north, west
+[HP=48]:
+>>> 'st'
+st
+Name: Kasimir Drakemoor                Lives/CP:      9/2    
+Race: Kang        Exp: 699             Perception:     33
+Class: Witchunter Level: 1             Stealth:         0
+Hits:    48/48    Armour Class:  19/1  Thievery:        0
+                                       Traps:           0
+                                       Picklocks:       0
+Strength:  79     Agility: 42          Tracking:        0
+Intellect: 30     Health:  74          Martial Arts:   12
+Willpower: 45     Charm:   30          MagicRes:       41
+[HP=48]:
+>>> 'exp'
+exp
+Exp: 699 Level: 1 Exp needed for next level: 951 (1650) [43%]
+[HP=48]:
+### Progress bot: level 1, exp 699/1650, HP 48, at Slum Street, Bend
+
+>>> 'i'
+i
+You are carrying 15 silver nobles, 98 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), quarterstaff (Two handed), padded pants, padded gloves,
+torch
+You have no keys.
+Wealth: 248 copper farthings
+Encumbrance: 717/3792 - Light [18%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 15 silver nobles, 98 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), quarterstaff (Two handed), padded pants, padded gloves,
+torch
+You have no keys.
+Wealth: 248 copper farthings
+Encumbrance: 717/3792 - Light [18%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 15 silver nobles, 98 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), quarterstaff (Two handed), padded pants, padded gloves,
+torch
+You have no keys.
+Wealth: 248 copper farthings
+Encumbrance: 717/3792 - Light [18%]
+[HP=48]:
+### Gear: buckler shield for 200 copper (replaces nothing), shop Skali's Fine Armour, Back Room
+
+### Walking 27 steps to Skali's Fine Armour, Back Room to shop
+
+>>> 'n'
+n
+Slum Street, Bend
+Also here: orc rogue.
+Obvious exits: south, east
+[HP=48]:
+>>> 'a rogue'
+a rogue
+*Combat Engaged*
+[HP=48]:You whap orc rogue for 8 damage!
+[HP=48]:The orc rogue lunges at you with their shortsword!
+[HP=48]:You whap orc rogue for 10 damage!
+[HP=48]:You beat orc rogue for 3 damage!
+[HP=48]:The orc rogue lunges at you with their shortsword!
+[HP=48]:The orc rogue lunges at you with their shortsword!
+[HP=48]:You whap orc rogue for 12 damage!
+[HP=48]:8 silver drop to the ground.
+2 copper drop to the ground.
+The orc rogue collapses with a grunt.
+[HP=48]:You gain 22 experience.
+[HP=48]:*Combat Off*
+[HP=48]:
+>>> ''
+
+Slum Street, Bend
+You notice 8 silver nobles, 2 copper farthings here.
+Obvious exits: south, east
+[HP=48]:
+>>> ''
+
+Slum Street, Bend
+You notice 8 silver nobles, 2 copper farthings here.
+Obvious exits: south, east
+[HP=48]:
+>>> 'st'
+st
+Name: Kasimir Drakemoor                Lives/CP:      9/2    
+Race: Kang        Exp: 721             Perception:     33
+Class: Witchunter Level: 1             Stealth:         0
+Hits:    48/48    Armour Class:  19/1  Thievery:        0
+                                       Traps:           0
+                                       Picklocks:       0
+Strength:  79     Agility: 42          Tracking:        0
+Intellect: 30     Health:  74          Martial Arts:   12
+Willpower: 45     Charm:   30          MagicRes:       41
+[HP=48]:
+>>> 'exp'
+exp
+Exp: 721 Level: 1 Exp needed for next level: 929 (1650) [45%]
+[HP=48]:
+### Progress bot: level 1, exp 721/1650, HP 48, at Slum Street, Bend
+
+>>> 'i'
+i
+You are carrying 15 silver nobles, 98 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), quarterstaff (Two handed), padded pants, padded gloves,
+torch
+You have no keys.
+Wealth: 248 copper farthings
+Encumbrance: 717/3792 - Light [18%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 15 silver nobles, 98 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), quarterstaff (Two handed), padded pants, padded gloves,
+torch
+You have no keys.
+Wealth: 248 copper farthings
+Encumbrance: 717/3792 - Light [18%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 15 silver nobles, 98 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), quarterstaff (Two handed), padded pants, padded gloves,
+torch
+You have no keys.
+Wealth: 248 copper farthings
+Encumbrance: 717/3792 - Light [18%]
+[HP=48]:
+### Gear: copper ring for 200 copper (replaces nothing), shop Sarkhee's Jewellery
+
+### Walking 22 steps to Sarkhee's Jewellery to shop
+
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Slum Street, Crossroads
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'n'
+n
+Slum Street
+Obvious exits: north, south, west
+[HP=48]:
+>>> 'n'
+n
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+Slum Entrance
+Also here: fat guardsman, thin guardsman.
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+Noble Street, Slum Gates
+Also here: townsman, small townsman.
+Obvious exits: south, east, west
+[HP=48]:
+>>> 'e'
+e
+Noble Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Intersection of Stone St. & Noble St.
+Obvious exits: north, east, west
+[HP=48]:
+>>> 'n'
+n
+Stone Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+Stone Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+Stone Street
+Obvious exits: north, south, east
+[HP=48]:You hear movement to the north.
+[HP=48]:
+>>> 'n'
+n
+Intersection of Stone St. & Oak St.
+Also here: happy guardsman.
+Obvious exits: north, south, east, west
+[HP=48]:A dog barks off in the distance.
+happy guardsman just left to the south.
+[HP=48]:small guardsman moves into the room from the north.
+[HP=48]:
+>>> 'e'
+e
+Oak Street
+Obvious exits: east, west
+[HP=48]:You hear movement to the west.
+[HP=48]:
+>>> 'e'
+e
+Oak Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Oak Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Oak Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Intersection of Sovereign St. & Oak St.
+Also here: fat guardsman, guardsman.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'n'
+n
+Sovereign Street
+Also here: angry mangy dog, townsman.
+Obvious exits: north, south, east
+[HP=48]:
+>>> 'n'
+n
+Sovereign Street
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'w'
+w
+Sarkhee's Jewellery
+Also here: Sarkhee.
+Obvious exits: east
+[HP=48]:
+>>> 'buy copper ring'
+buy copper ring
+You just bought copper ring for 15 silver nobles, 58 copper farthings.
+[HP=48]:
+>>> 'wear copper ring'
+wear copper ring
+You are now wearing copper ring.
+[HP=48]:
+>>> 'i'
+i
+You are carrying 40 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet), copper
+ring (Finger), quarterstaff (Two handed), padded pants, padded gloves, torch
+You have no keys.
+Wealth: 40 copper farthings
+Encumbrance: 694/3792 - Light [18%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 40 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet), copper
+ring (Finger), quarterstaff (Two handed), padded pants, padded gloves, torch
+You have no keys.
+Wealth: 40 copper farthings
+Encumbrance: 694/3792 - Light [18%]
+[HP=48]:
+>>> 'drop padded pants'
+drop padded pants
+You dropped padded pants.
+[HP=48]:
+### Dropped unused padded pants (worth 0 copper)
+
+>>> 'drop padded gloves'
+drop padded gloves
+You dropped padded gloves.
+[HP=48]:
+### Dropped unused padded gloves (worth 0 copper)
+
+>>> 'i'
+i
+You are carrying 40 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet), copper
+ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 40 copper farthings
+Encumbrance: 614/3792 - None [16%]
+[HP=48]:
+### Hunting ground: Slum Street (1:1083), 46 rooms
+
+### Walking 26 steps to Slum Street to hunt
+
+>>> 'e'
+e
+Sovereign Street
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 's'
+s
+Sovereign Street
+Also here: angry mangy dog, townsman.
+Obvious exits: north, south, east
+[HP=48]:
+>>> 's'
+s
+Intersection of Sovereign St. & Oak St.
+Also here: fat guardsman, guardsman.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 's'
+s
+Sovereign Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Sovereign Street
+Obvious exits: north, south
+[HP=48]:
+>>> ''
+
+Sovereign Street
+Obvious exits: north, south
+[HP=48]:
+>>> ''
+
+Sovereign Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'st'
+st
+Name: Kasimir Drakemoor                Lives/CP:      9/2    
+Race: Kang        Exp: 721             Perception:     33
+Class: Witchunter Level: 1             Stealth:         0
+Hits:    48/48    Armour Class:  19/1  Thievery:        0
+                                       Traps:           0
+                                       Picklocks:       0
+Strength:  79     Agility: 42          Tracking:        0
+Intellect: 30     Health:  74          Martial Arts:   12
+Willpower: 45     Charm:   30          MagicRes:       41
+[HP=48]:
+>>> 'exp'
+exp
+Exp: 721 Level: 1 Exp needed for next level: 929 (1650) [45%]
+[HP=48]:
+### Progress bot: level 1, exp 721/1650, HP 48, at Sovereign Street
+
+>>> 'i'
+i
+You are carrying 40 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet), copper
+ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 40 copper farthings
+Encumbrance: 614/3792 - None [16%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 40 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet), copper
+ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 40 copper farthings
+Encumbrance: 614/3792 - None [16%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 40 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet), copper
+ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 40 copper farthings
+Encumbrance: 614/3792 - None [16%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 40 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet), copper
+ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 40 copper farthings
+Encumbrance: 614/3792 - None [16%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 40 copper farthings, padded vest (Torso), leather skirt (Legs),
+padded helm (Head), hard leather gauntlets (Hands), padded boots (Feet), copper
+ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 40 copper farthings
+Encumbrance: 614/3792 - None [16%]
+[HP=48]:
+### Hunting ground: Slum Street (1:1081), 39 rooms
+
+### Walking 18 steps to Slum Street to hunt
+
+>>> 's'
+s
+Sovereign Street
+Obvious exits: north, south
+[HP=48]:
+>>> ''
+
+Sovereign Street
+Obvious exits: north, south
+[HP=48]:
+### Walking 18 steps to Slum Street to hunt
+
+>>> 's'
+s
+Corner of Sovereign St. & Noble St.
+Obvious exits: north, west
+[HP=48]:
+>>> 'w'
+w
+Noble Street
+Also here: fierce guardsman.
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Noble Street
+Obvious exits: north, east, west
+[HP=48]:
+>>> 'w'
+w
+Noble Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Noble Street
+Obvious exits: north, east, west
+[HP=48]:
+>>> 'w'
+w
+Intersection of Stone St. & Noble St.
+Obvious exits: north, east, west
+[HP=48]:
+>>> 'w'
+w
+Noble Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Noble Street, Slum Gates
+Also here: townsman, small townsman.
+Obvious exits: south, east, west
+[HP=48]:
+>>> 's'
+s
+Slum Entrance
+Also here: fat guardsman, thin guardsman.
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Slum Street
+Obvious exits: north, south, west
+[HP=48]:
+>>> 's'
+s
+You hear movement to the north.
+[HP=48]:You hear movement to the south.
+[HP=48]:Slum Street, Crossroads
+Also here: fierce orc rogue.
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'a rogue'
+a rogue
+*Combat Engaged*
+[HP=48]:You smack fierce orc rogue for 11 damage!
+[HP=48]:The fierce orc rogue slashes you for 5 damage!
+[HP=43]:You beat fierce orc rogue for 9 damage!
+[HP=43]:You beat fierce orc rogue for 4 damage!
+[HP=43]:The fierce orc rogue lunges at you with their shortsword!
+[HP=43]:You beat fierce orc rogue for 1 damage!
+[HP=43]:You smack fierce orc rogue for 2 damage!
+[HP=43]:The fierce orc rogue lunges at you with their shortsword!
+[HP=43]:[HP=45]:The fierce orc rogue lunges at you with their shortsword!
+[HP=45]:You beat fierce orc rogue for 8 damage!
+[HP=45]:8 silver drop to the ground.
+8 copper drop to the ground.
+The orc rogue collapses with a grunt.
+[HP=45]:You gain 22 experience.
+[HP=45]:*Combat Off*
+[HP=45]:
+>>> 'get silver'
+get silver
+You picked up 8 silver nobles
+[HP=45]:
+>>> 'get copper'
+get copper
+You picked up 8 copper farthings
+[HP=45]:
+>>> ''
+
+Slum Street, Crossroads
+Obvious exits: north, south, east, west
+[HP=45]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=45]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=45]:
+>>> 'w'
+w
+Slum Street, Bend
+You notice 8 silver nobles, 2 copper farthings here.
+Obvious exits: south, east
+[HP=45]:
+>>> 's'
+s
+Slum Street, Bend
+Obvious exits: north, west
+[HP=45]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=45]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=45]:
+>>> 'e'
+e
+Slum Street, Bend
+Obvious exits: north, west
+[HP=45]:
+>>> ''
+
+Slum Street, Bend
+Obvious exits: north, west
+[HP=45]:
+>>> 'n'
+n
+Slum Street, Bend
+You notice 8 silver nobles, 2 copper farthings here.
+Obvious exits: south, east
+[HP=45]:
+>>> ''
+
+Slum Street, Bend
+You notice 8 silver nobles, 2 copper farthings here.
+Obvious exits: south, east
+[HP=45]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=45]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=45]:
+>>> 'e'
+e
+You hear movement to the east.
+[HP=45]:Slum Street
+Also here: fat orc rogue.
+Obvious exits: east, west
+[HP=45]:
+>>> 'a rogue'
+a rogue
+*Combat Engaged*
+[HP=45]:You beat fat orc rogue for 5 damage!
+[HP=45]:The fat orc rogue lunges at you with their shortsword!
+[HP=45]:[HP=47]:You whap fat orc rogue for 9 damage!
+[HP=47]:You whap fat orc rogue for 1 damage!
+[HP=47]:The fat orc rogue lunges at you with their shortsword!
+[HP=47]:The fat orc rogue lunges at you with their shortsword!
+[HP=47]:You swipe at fat orc rogue!
+[HP=47]:You smack fat orc rogue for 4 damage!
+[HP=47]:You smack fat orc rogue for 13 damage!
+[HP=47]:5 silver drop to the ground.
+1 copper drop to the ground.
+The orc rogue collapses with a grunt.
+[HP=47]:You gain 22 experience.
+[HP=47]:*Combat Off*
+[HP=47]:
+>>> ''
+
+Slum Street
+You notice 5 silver nobles, 1 copper farthing here.
+Obvious exits: east, west
+[HP=47]:
+>>> ''
+
+Slum Street
+You notice 5 silver nobles, 1 copper farthing here.
+Obvious exits: east, west
+[HP=47]:
+>>> 'st'
+st
+Name: Kasimir Drakemoor                Lives/CP:      9/2    
+Race: Kang        Exp: 765             Perception:     33
+Class: Witchunter Level: 1             Stealth:         0
+Hits:    47/48    Armour Class:  19/1  Thievery:        0
+                                       Traps:           0
+                                       Picklocks:       0
+Strength:  79     Agility: 42          Tracking:        0
+Intellect: 30     Health:  74          Martial Arts:   12
+Willpower: 45     Charm:   30          MagicRes:       41
+[HP=47]:
+>>> 'exp'
+exp
+Exp: 765 Level: 1 Exp needed for next level: 885 (1650) [47%]
+[HP=47]:
+### Progress bot: level 1, exp 765/1650, HP 48, at Slum Street
+
+>>> 'i'
+i
+You are carrying 8 silver nobles, 48 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 128 copper farthings
+Encumbrance: 619/3792 - None [16%]
+[HP=47]:
+>>> 'i'
+i
+You are carrying 8 silver nobles, 48 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 128 copper farthings
+Encumbrance: 619/3792 - None [16%]
+[HP=47]:
+>>> ''
+
+Slum Street
+You notice 5 silver nobles, 1 copper farthing here.
+Obvious exits: east, west
+[HP=47]:
+>>> ''
+
+Slum Street
+You notice 5 silver nobles, 1 copper farthing here.
+Obvious exits: east, west
+[HP=47]:
+>>> 'st'
+st
+Name: Kasimir Drakemoor                Lives/CP:      9/2    
+Race: Kang        Exp: 765             Perception:     33
+Class: Witchunter Level: 1             Stealth:         0
+Hits:    47/48    Armour Class:  19/1  Thievery:        0
+                                       Traps:           0
+                                       Picklocks:       0
+Strength:  79     Agility: 42          Tracking:        0
+Intellect: 30     Health:  74          Martial Arts:   12
+Willpower: 45     Charm:   30          MagicRes:       41
+[HP=47]:
+>>> 'exp'
+exp
+Exp: 765 Level: 1 Exp needed for next level: 885 (1650) [47%]
+[HP=47]:
+### Progress bot: level 1, exp 765/1650, HP 48, at Slum Street
+
+>>> 'i'
+i
+You are carrying 8 silver nobles, 48 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 128 copper farthings
+Encumbrance: 619/3792 - None [16%]
+[HP=47]:
+>>> 'i'
+i
+You are carrying 8 silver nobles, 48 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 128 copper farthings
+Encumbrance: 619/3792 - None [16%]
+[HP=47]:[HP=48]:
+>>> 'i'
+i
+You are carrying 8 silver nobles, 48 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 128 copper farthings
+Encumbrance: 619/3792 - None [16%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 8 silver nobles, 48 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 128 copper farthings
+Encumbrance: 619/3792 - None [16%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 8 silver nobles, 48 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 128 copper farthings
+Encumbrance: 619/3792 - None [16%]
+[HP=48]:
+### Hunting ground: Slum Street (1:1081), 39 rooms
+
+### Walking 4 steps to Slum Street to hunt
+
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street, Bend
+You notice 8 silver nobles, 2 copper farthings here.
+Obvious exits: south, east
+[HP=48]:
+>>> 's'
+s
+Slum Street, Bend
+Obvious exits: north, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+### Patrol: 38 spawn rooms, 74-step loop
+
+>>> 'e'
+e
+Slum Street, Bend
+Obvious exits: north, west
+[HP=48]:
+>>> 'n'
+n
+Slum Street, Bend
+You notice 8 silver nobles, 2 copper farthings here.
+Obvious exits: south, east
+[HP=48]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Slum Street
+You notice 5 silver nobles, 1 copper farthing here.
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Slum Street, Crossroads
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street, Crossroads
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 's'
+s
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Slum Street, Intersection
+Obvious exits: north, south, east
+[HP=48]:
+>>> 's'
+s
+An orc rogue walks into the room from the north.
+[HP=48]:The orc rogue impales you for 1 damage!
+[HP=47]:Slum Street
+Obvious exits: north, south
+[HP=47]:
+>>> 'n'
+n
+Slum Street, Intersection
+Also here: orc rogue.
+Obvious exits: north, south, east
+[HP=47]:
+>>> 'a rogue'
+a rogue
+*Combat Engaged*
+[HP=47]:The orc rogue lunges at you with their shortsword!
+[HP=47]:You whap orc rogue for 5 damage!
+[HP=47]:You smack orc rogue for 13 damage!
+[HP=47]:You smack orc rogue for 9 damage!
+[HP=47]:The orc rogue lunges at you with their shortsword!
+[HP=47]:You smack orc rogue for 3 damage!
+[HP=47]:2 silver drop to the ground.
+2 copper drop to the ground.
+The orc rogue collapses with a grunt.
+[HP=47]:You gain 22 experience.
+[HP=47]:*Combat Off*
+[HP=47]:
+>>> 'get silver'
+get silver
+You picked up 2 silver nobles
+[HP=47]:
+>>> 'get copper'
+get copper
+You picked up 2 copper farthings
+[HP=47]:
+>>> ''
+
+Slum Street, Intersection
+Obvious exits: north, south, east
+[HP=47]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=47]:[HP=48]:
+>>> 'w'
+w
+Slum Street, Intersection
+Obvious exits: north, south, east
+[HP=48]:
+>>> 'n'
+n
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+Slum Street, Crossroads
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'n'
+n
+Slum Street
+Obvious exits: north, south, west
+[HP=48]:
+>>> 'n'
+n
+Slum Street
+Also here: nasty orc rogue.
+Obvious exits: north, south
+[HP=48]:
+>>> 'a rogue'
+a rogue
+*Combat Engaged*
+[HP=48]:You whap nasty orc rogue for 5 damage!
+[HP=48]:The nasty orc rogue lunges at you with their shortsword!
+[HP=48]:The nasty orc rogue lunges at you with their shortsword!
+[HP=48]:You smack nasty orc rogue for 1 damage!
+[HP=48]:You smack nasty orc rogue for 7 damage!
+[HP=48]:You beat nasty orc rogue for 9 damage!
+[HP=48]:You whap nasty orc rogue for 10 damage!
+[HP=48]:3 silver drop to the ground.
+19 copper drop to the ground.
+The orc rogue collapses with a grunt.
+[HP=48]:You gain 22 experience.
+[HP=48]:*Combat Off*
+[HP=48]:You hear movement to the north.
+[HP=48]:
+>>> 'get silver'
+get silver
+You picked up 3 silver nobles
+[HP=48]:
+>>> 'get copper'
+get copper
+You picked up 19 copper farthings
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+Slum Street
+Also here: orc rogue.
+Obvious exits: north, south
+[HP=48]:The orc rogue lunges at you with their shortsword!
+[HP=48]:
+>>> 'a rogue'
+a rogue
+*Combat Engaged*
+[HP=48]:You whap orc rogue for 5 damage!
+[HP=48]:The orc rogue lunges at you with their shortsword!
+[HP=48]:You smack orc rogue for 2 damage!
+[HP=48]:You beat orc rogue for 9 damage!
+[HP=48]:The orc rogue lunges at you with their shortsword!
+[HP=48]:The orc rogue lunges at you with their shortsword!
+[HP=48]:You smack orc rogue for 8 damage!
+[HP=48]:You beat orc rogue for 6 damage!
+[HP=48]:7 silver drop to the ground.
+12 copper drop to the ground.
+The orc rogue collapses with a grunt.
+[HP=48]:You gain 22 experience.
+[HP=48]:*Combat Off*
+[HP=48]:
+>>> ''
+
+Slum Street
+You notice 7 silver nobles, 12 copper farthings here.
+Obvious exits: north, south
+[HP=48]:
+>>> ''
+
+Slum Street
+You notice 7 silver nobles, 12 copper farthings here.
+Obvious exits: north, south
+[HP=48]:
+>>> 'st'
+st
+Name: Kasimir Drakemoor                Lives/CP:      9/2    
+Race: Kang        Exp: 831             Perception:     33
+Class: Witchunter Level: 1             Stealth:         0
+Hits:    48/48    Armour Class:  19/1  Thievery:        0
+                                       Traps:           0
+                                       Picklocks:       0
+Strength:  79     Agility: 42          Tracking:        0
+Intellect: 30     Health:  74          Martial Arts:   12
+Willpower: 45     Charm:   30          MagicRes:       41
+[HP=48]:
+>>> 'exp'
+exp
+Exp: 831 Level: 1 Exp needed for next level: 819 (1650) [51%]
+[HP=48]:
+### Progress bot: level 1, exp 831/1650, HP 48, at Slum Street
+
+>>> 'i'
+i
+You are carrying 13 silver nobles, 69 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 199 copper farthings
+Encumbrance: 628/3792 - None [16%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 13 silver nobles, 69 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 199 copper farthings
+Encumbrance: 628/3792 - None [16%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 13 silver nobles, 69 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 199 copper farthings
+Encumbrance: 628/3792 - None [16%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 13 silver nobles, 69 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 199 copper farthings
+Encumbrance: 628/3792 - None [16%]
+[HP=48]:
+>>> 'i'
+i
+You are carrying 13 silver nobles, 69 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 199 copper farthings
+Encumbrance: 628/3792 - None [16%]
+[HP=48]:
+### Hunting ground: Slum Street (1:1081), 39 rooms
+
+### Walking 8 steps to Slum Street to hunt
+
+>>> 's'
+s
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Slum Street
+Obvious exits: north, south, west
+[HP=48]:
+>>> 's'
+s
+Slum Street, Crossroads
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street
+You notice 5 silver nobles, 1 copper farthing here.
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street, Bend
+You notice 8 silver nobles, 2 copper farthings here.
+Obvious exits: south, east
+[HP=48]:
+>>> 's'
+s
+Slum Street, Bend
+Obvious exits: north, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+### Patrol: 38 spawn rooms; visiting whichever has respawned, nearest first
+You hear movement to the west.
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Slum Street, Bend
+Obvious exits: north, west
+[HP=48]:
+>>> ''
+
+Slum Street, Bend
+Obvious exits: north, west
+[HP=48]:
+>>> 'n'
+n
+Slum Street, Bend
+You notice 8 silver nobles, 2 copper farthings here.
+Obvious exits: south, east
+[HP=48]:
+>>> ''
+
+Slum Street, Bend
+You notice 8 silver nobles, 2 copper farthings here.
+Obvious exits: south, east
+[HP=48]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Slum Street
+You notice 5 silver nobles, 1 copper farthing here.
+Obvious exits: east, west
+[HP=48]:
+>>> ''
+
+Slum Street
+You notice 5 silver nobles, 1 copper farthing here.
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Slum Street, Crossroads
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> ''
+
+Slum Street, Crossroads
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street, Crossroads
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 's'
+s
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Slum Street, Intersection
+Obvious exits: north, south, east
+[HP=48]:
+>>> ''
+
+Slum Street, Intersection
+Obvious exits: north, south, east
+[HP=48]:
+>>> 's'
+s
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+Slum Street, Intersection
+Obvious exits: north, south, east
+[HP=48]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street, Intersection
+Obvious exits: north, south, east
+[HP=48]:
+>>> 'n'
+n
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+Slum Street, Crossroads
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'n'
+n
+Slum Street
+Obvious exits: north, south, west
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: north, south, west
+[HP=48]:
+>>> 'n'
+n
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> ''
+
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> 'n'
+n
+Slum Street
+You notice 7 silver nobles, 12 copper farthings here.
+Obvious exits: north, south
+[HP=48]:
+>>> ''
+
+Slum Street
+You notice 7 silver nobles, 12 copper farthings here.
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Slum Street
+Obvious exits: north, south
+[HP=48]:
+>>> 's'
+s
+Slum Street
+Obvious exits: north, south, west
+[HP=48]:
+>>> 's'
+s
+Slum Street, Crossroads
+Obvious exits: north, south, east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street
+You notice 5 silver nobles, 1 copper farthing here.
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street, Bend
+You notice 8 silver nobles, 2 copper farthings here.
+Obvious exits: south, east
+[HP=48]:
+>>> 's'
+s
+You hear movement to the east.
+[HP=48]:Slum Street, Bend
+Obvious exits: north, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street
+Obvious exits: east, west
+[HP=48]:
+>>> 'w'
+w
+Slum Street
+Also here: thug.
+Obvious exits: east, west
+[HP=48]:The thug smashes you for 4 damage!
+[HP=44]:
+>>> 'a thug'
+a thug
+*Combat Engaged*
+[HP=44]:The thug smashes you for 9 damage!
+[HP=35]:You smack thug for 9 damage!
+[HP=35]:[HP=37]:You smack thug for 11 damage!
+[HP=37]:You whap thug for 12 damage!
+[HP=37]:1 silver drop to the ground.
+4 copper drop to the ground.
+The thug collapses with a groan.
+[HP=37]:You gain 20 experience.
+[HP=37]:*Combat Off*
+[HP=37]:
+>>> 'get silver'
+get silver
+You picked up 1 silver noble
+[HP=37]:
+>>> 'get copper'
+get copper
+You picked up 4 copper farthings
+[HP=37]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=37]:
+### HP 37/48: resting
+
+>>> 'rest'
+rest
+You are now resting.
+[HP=37 (Resting) ]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=37 (Resting) ]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=37 (Resting) ]:
+>>> 'st'
+st
+Name: Kasimir Drakemoor                Lives/CP:      9/2    
+Race: Kang        Exp: 851             Perception:     33
+Class: Witchunter Level: 1             Stealth:         0
+Hits:    37/48    Armour Class:  19/1  Thievery:        0
+                                       Traps:           0
+                                       Picklocks:       0
+Strength:  79     Agility: 42          Tracking:        0
+Intellect: 30     Health:  74          Martial Arts:   12
+Willpower: 45     Charm:   30          MagicRes:       41
+[HP=37 (Resting) ]:
+>>> 'exp'
+exp
+Exp: 851 Level: 1 Exp needed for next level: 799 (1650) [53%]
+[HP=37 (Resting) ]:
+### Progress bot: level 1, exp 851/1650, HP 48, at Slum Street
+
+>>> 'i'
+i
+You are carrying 14 silver nobles, 73 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 213 copper farthings
+Encumbrance: 629/3792 - None [16%]
+[HP=37 (Resting) ]:
+>>> 'i'
+i
+You are carrying 14 silver nobles, 73 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 213 copper farthings
+Encumbrance: 629/3792 - None [16%]
+[HP=37 (Resting) ]:
+>>> 'i'
+i
+You are carrying 14 silver nobles, 73 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 213 copper farthings
+Encumbrance: 629/3792 - None [16%]
+[HP=37 (Resting) ]:
+>>> 'i'
+i
+You are carrying 14 silver nobles, 73 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 213 copper farthings
+Encumbrance: 629/3792 - None [16%]
+[HP=37 (Resting) ]:
+>>> 'i'
+i
+You are carrying 14 silver nobles, 73 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 213 copper farthings
+Encumbrance: 629/3792 - None [16%]
+[HP=37 (Resting) ]:
+### Hunting ground: Slum Street (1:1081), 39 rooms
+
+### Walking 4 steps to Slum Street to hunt
+
+>>> 'w'
+w
+You hear movement to the west.
+[HP=37]:You hear movement to the west.
+[HP=37]:Slum Street
+Also here: orc rogue, thin thug.
+Obvious exits: east, west
+[HP=37]:The orc rogue lunges at you with their shortsword!
+[HP=37]:The thin thug swipes at you with their spiked club, but you dodge!
+[HP=37]:[HP=39]:
+>>> 'bash rogue'
+bash rogue
+*Combat Engaged*
+[HP=39]:You whap orc rogue for 12 damage!
+[HP=39]:The orc rogue lunges at you with their shortsword!
+[HP=39]:The thin thug smashes you for 5 damage!
+[HP=34]:The orc rogue lunges at you with their shortsword!
+[HP=34]:The thin thug swipes at you with their spiked club, but you dodge!
+[HP=34]:You beat orc rogue for 42 damage!
+[HP=34]:1 silver drop to the ground.
+3 copper drop to the ground.
+The orc rogue collapses with a grunt.
+[HP=34]:You gain 22 experience.
+[HP=34]:*Combat Off*
+[HP=34]:
+>>> 'get silver'
+get silver
+You picked up 1 silver noble
+[HP=34]:
+>>> 'get copper'
+get copper
+You picked up 3 copper farthings
+[HP=34]:
+>>> ''
+
+Slum Street
+Also here: thin thug.
+Obvious exits: east, west
+[HP=34]:
+>>> 'bash thug'
+bash thug
+*Combat Engaged*
+[HP=34]:You smack thin thug for 9 damage!
+[HP=34]:The thin thug smashes you for 3 damage!
+[HP=31]:The thin thug smashes you for 5 damage!
+[HP=26]:You smack thin thug for 15 damage!
+[HP=26]:The thin thug smashes you for 10 damage!
+[HP=16]:You smack thin thug for 27 damage!
+[HP=16]:4 silver drop to the ground.
+10 copper drop to the ground.
+The thug collapses with a groan.
+[HP=16]:You gain 20 experience.
+[HP=16]:*Combat Off*
+[HP=16]:
+>>> 'get silver'
+get silver
+You picked up 4 silver nobles
+[HP=16]:
+>>> 'get copper'
+get copper
+You picked up 10 copper farthings
+[HP=16]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=16]:
+### HP 16/48: resting
+
+>>> 'rest'
+rest
+You are now resting.
+[HP=16 (Resting) ]:[HP=18 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=18 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=18 (Resting) ]:[HP=20 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=20 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=20 (Resting) ]:[HP=22 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=22 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=22 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=22 (Resting) ]:[HP=24 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=24 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=24 (Resting) ]:[HP=26 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=26 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=26 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=26 (Resting) ]:[HP=28 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=28 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=28 (Resting) ]:[HP=30 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=30 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=30 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=30 (Resting) ]:[HP=32 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=32 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=32 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=32 (Resting) ]:[HP=34 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=34 (Resting) ]:
+>>> 'rest'
+rest
+You are now resting.
+[HP=34 (Resting) ]:[HP=36 (Resting) ]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=36 (Resting) ]:
+>>> ''
+
+Slum Street
+Obvious exits: east, west
+[HP=36 (Resting) ]:
+>>> 'st'
+st
+Name: Kasimir Drakemoor                Lives/CP:      9/2    
+Race: Kang        Exp: 893             Perception:     33
+Class: Witchunter Level: 1             Stealth:         0
+Hits:    36/48    Armour Class:  19/1  Thievery:        0
+                                       Traps:           0
+                                       Picklocks:       0
+Strength:  79     Agility: 42          Tracking:        0
+Intellect: 30     Health:  74          Martial Arts:   12
+Willpower: 45     Charm:   30          MagicRes:       41
+[HP=36 (Resting) ]:[HP=42 (Resting) ]:
+>>> 'exp'
+exp
+Exp: 893 Level: 1 Exp needed for next level: 757 (1650) [55%]
+[HP=42 (Resting) ]:
+### Progress bot: level 1, exp 893/1650, HP 48, at Slum Street
+
+>>> 'i'
+i
+You are carrying 19 silver nobles, 86 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 276 copper farthings
+Encumbrance: 635/3792 - None [16%]
+[HP=42 (Resting) ]:
+>>> 'i'
+i
+You are carrying 19 silver nobles, 86 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 276 copper farthings
+Encumbrance: 635/3792 - None [16%]
+[HP=42 (Resting) ]:
+>>> 'i'
+i
+You are carrying 19 silver nobles, 86 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 276 copper farthings
+Encumbrance: 635/3792 - None [16%]
+[HP=42 (Resting) ]:
+>>> 'i'
+i
+You are carrying 19 silver nobles, 86 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 276 copper farthings
+Encumbrance: 635/3792 - None [16%]
+[HP=42 (Resting) ]:
+>>> 'i'
+i
+You are carrying 19 silver nobles, 86 copper farthings, padded vest (Torso),
+leather skirt (Legs), padded helm (Head), hard leather gauntlets (Hands),
+padded boots (Feet), copper ring (Finger), quarterstaff (Two handed), torch
+You have no keys.
+Wealth: 276 copper farthings
+Encumbrance: 635/3792 - None [16%]
+[HP=42 (Resting) ]:
+### Hunting ground: Slum Street (1:1081), 39 rooms
+
+### Walking 4 steps to Slum Street to hunt
+
+>>> 'w'
+w
+Slum Street, Bend
+Obvious exits: south, east
+[HP=42]:
+>>> ''
+
+Slum Street, Bend
+Obvious exits: south, east
+[HP=42]:
+### Walking 2 steps to Slum Street to hunt
+
+>>> 's'
+s
+Slum Street
+Obvious exits: north, south
+[HP=42]:
+>>> ''
+
+Slum Street
+Obvious exits: north, south
+[HP=42]:
+### Walking 11 steps to Slum Street to hunt
+
+>>> 'n'
+n
+Slum Street, Bend
+Obvious exits: south, east
+[HP=42]:[HP=44]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=44]:
+>>> 'e'
+e
+Slum Street
+Obvious exits: east, west
+[HP=44]:
+>>> ''
