@@ -49,7 +49,7 @@ at the state, act, report in a few lines, and pick the next wake-up. GitHub and
       branch and exactly what to fix ("push to the same branch; do not merge"). At most one
       per card at a time.
 4. **Report** in a few lines: merged, started, waiting on John. Nothing when nothing changed.
-5. **Next wake-up**: about 15 minutes while sessions or CI are running; about 45 when
+5. **Next wake-up**: about 5 minutes while sessions or CI are running; about 45 when
    everything waits on John.
 
 ## End of a wave
