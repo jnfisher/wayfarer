@@ -1,0 +1,11 @@
+w
+Docks
+Obvious exits: north, south, east, west
+[HP=85]:
+>>> 'n'
+n
+You have progressed too far to go through this exit!
+[HP=85]:
+>>> ''
+
+Docks

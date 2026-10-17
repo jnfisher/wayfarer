@@ -1,0 +1,10 @@
+[package]
+name = "wayfarer-proto"
+description = "Wire messages between the gateway, the brain and the UIs (docs/plan/02-architecture.md). No I/O."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
