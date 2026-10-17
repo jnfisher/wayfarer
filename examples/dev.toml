@@ -1,0 +1,21 @@
+# dev.toml: the gateway config for the development laptop (docs/dev-rig.md).
+# scripts/dev/gateway.sh copies this to wayfarer.toml in your data directory the first time, if
+# there is none there; edit that copy, not this one. Account names and passwords go in
+# credentials.toml beside it, never here.
+
+[[server]]
+id = "local"
+host = "127.0.0.1"          # the local silvermere (telnet_bind in its silvermere.toml)
+port = 2323
+preset = "silvermere"
+
+[[character]]
+id = "tester1"              # placeholder: use one of your own test characters
+name = "Tester One"
+server = "local"
+autostart = true
+
+[[character]]
+id = "tester2"
+name = "Tester Two"
+server = "local"
