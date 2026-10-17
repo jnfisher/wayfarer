@@ -4,6 +4,7 @@ members = [
     "crates/wayfarer-proto",
     "crates/wayfarer-telnet",
     "crates/wayfarer-gateway",
+    "crates/wayfarer-parse",
     "bin/wayfarer",
 ]
 
@@ -30,3 +31,12 @@ debug = 0
 
 [profile.test]
 debug = 0
+
+# wayfarer-parse's tests read the 40 MB stock-world export and compile its 6,400 game-text
+# patterns: run the decompressor and the regex compiler at full speed in test builds.
+[profile.dev.package.zlib-rs]
+opt-level = 3
+[profile.dev.package.regex-automata]
+opt-level = 3
+[profile.dev.package.regex-syntax]
+opt-level = 3
