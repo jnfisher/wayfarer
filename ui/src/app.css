@@ -1,0 +1,47 @@
+/* The IBM VGA 8x16 font from the Ultimate Oldschool PC Font Pack by VileR (int10h.org),
+   CC BY-SA 4.0: public/fonts/LICENSE.TXT. */
+@font-face {
+  font-family: "Px437 IBM VGA 8x16";
+  src: url("/fonts/Web437_IBM_VGA_8x16.woff") format("woff");
+  font-display: block;
+}
+
+:root {
+  /* The 16 DOS colours at their VGA values. */
+  --vga-black: #000000;
+  --vga-blue: #0000aa;
+  --vga-green: #00aa00;
+  --vga-cyan: #00aaaa;
+  --vga-red: #aa0000;
+  --vga-magenta: #aa00aa;
+  --vga-brown: #aa5500;
+  --vga-lightgray: #aaaaaa;
+  --vga-darkgray: #555555;
+  --vga-lightblue: #5555ff;
+  --vga-lightgreen: #55ff55;
+  --vga-lightcyan: #55ffff;
+  --vga-lightred: #ff5555;
+  --vga-lightmagenta: #ff55ff;
+  --vga-yellow: #ffff55;
+  --vga-white: #ffffff;
+
+  /* The chrome around the game panes. */
+  --bg: var(--vga-black);
+  --page: #0a0a0a;
+  --frame: var(--vga-darkgray);
+  --frame-focus: var(--vga-lightcyan);
+  --dim: var(--vga-darkgray);
+
+  color-scheme: dark;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--page);
+  color: var(--vga-lightgray);
+  font-family: "Px437 IBM VGA 8x16", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 16px;
+}
