@@ -9,6 +9,8 @@ back what it returns.
   other `DO` with `WONT`; `WILL` is accepted silently; `DONT`/`WONT` get nothing; the same
   answer is never sent twice in a row.
 - `Telnet::encode_line(&str)`: CP437 (unmappable characters become `?`) plus a single CR.
-- `Telnet::encode_keys(&str)`: CP437, sent as given. Both double any 255 byte.
+- `Telnet::encode_keys(&str)`: CP437, sent as given. `Telnet::encode_bytes(&[u8])`: bytes
+  already in the game's encoding (the wire's `input_keys`), sent as given. All three double any
+  255 byte.
 - `Capture`: appends every received byte (before stripping) and every sent byte to two files,
   flushed per write.

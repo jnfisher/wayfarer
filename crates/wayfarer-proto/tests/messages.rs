@@ -71,6 +71,13 @@ fn to_client() -> Vec<(ToClient, &'static str)> {
             r#"{"type":"history","session":"kasimir","from_seq":41,"chunks":[{"seq":41,"text":"You notice nothing here.\r\n"},{"seq":42,"text":"[HP=30/30]: "}]}"#,
         ),
         (
+            ToClient::Lagged {
+                session: "kasimir".into(),
+                missed: 120,
+            },
+            r#"{"type":"lagged","session":"kasimir","missed":120}"#,
+        ),
+        (
             ToClient::Error {
                 message: "unknown session \"nobody\"".into(),
             },

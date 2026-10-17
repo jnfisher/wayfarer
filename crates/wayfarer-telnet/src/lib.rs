@@ -146,6 +146,16 @@ impl Telnet {
         }
         out
     }
+
+    /// Raw bytes as given (already the game's encoding: the wire's `input_keys`), with any 255
+    /// doubled.
+    pub fn encode_bytes(&self, bytes: &[u8]) -> Vec<u8> {
+        let mut out = Vec::with_capacity(bytes.len());
+        for &b in bytes {
+            push_escaped(&mut out, b);
+        }
+        out
+    }
 }
 
 fn push_escaped(out: &mut Vec<u8>, b: u8) {
@@ -253,6 +263,7 @@ mod tests {
         assert_eq!(t.encode_keys("n\u{1b}"), [b'n', 0x1b]);
         assert_eq!(t.encode_keys("\u{a0}"), [IAC, IAC]);
         assert_eq!(t.encode_line("\u{a0}"), [IAC, IAC, b'\r']);
+        assert_eq!(t.encode_bytes(&[b'n', 13, IAC, 0]), [b'n', 13, IAC, IAC, 0]);
     }
 
     #[test]
