@@ -1707,6 +1707,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "wayfarer-live"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "getrandom 0.4.3",
+ "regex",
+ "serde",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite 0.30.0",
+ "toml",
+ "wayfarer-proto",
+]
+
+[[package]]
 name = "wayfarer-parse"
 version = "0.1.0"
 dependencies = [

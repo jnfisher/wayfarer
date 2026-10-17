@@ -7,6 +7,7 @@ members = [
     "crates/wayfarer-parse",
     "crates/wayfarer-world",
     "bin/wayfarer",
+    "tests/live",
 ]
 
 [workspace.package]
