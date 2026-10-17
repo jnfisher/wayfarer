@@ -67,7 +67,7 @@ before the page opened, and a connection that survives page reloads and gateway 
   reconnect requesting `after_seq`, no duplicate chunks; and the tile layout function.
 - **A screenshot in the PR**: the agent runs the gateway against a fake server (or a local
   silvermere if C-009's binary is available), opens the page with Playwright (Chromium is
-  preinstalled in cloud sessions; not in CI), and attaches screenshots of one tile and of
+  installed once with `npx playwright install chromium`; not in CI), and attaches screenshots of one tile and of
   four tiles, showing the VGA font and colours.
 
 ## Tests

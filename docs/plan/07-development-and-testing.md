@@ -17,14 +17,20 @@ few seconds later the character in the browser carries on with the new code. The
 shows the brain's build (git commit, built-at, restarted-at), so it is always clear which code
 is playing.
 
-## John's development rig
+## The development machine: John's MacBook (John, 2026-10-17)
 
-- **silvermere** from a pinned image or build, persistent database, its own characters. A
-  second server, MBBSEmu with the original module, stays available as the reference.
-- **The gateway** as a long-lived service (tmux or a user systemd unit) holding the
-  characters' sessions.
-- **The brain** under a file watcher (`cargo watch` or the repo's own script).
-- **The browser** on the gateway's web port, reached through an SSH tunnel or Tailscale.
+Agents, the game server and the UI all run on John's laptop; GitHub runs CI. The laptop stays
+open during development; when it sleeps, everything pauses and carries on when it wakes.
+
+- **silvermere**, built from the silvermere checkout (`~/repos/silvermere`) and run from its own
+  directory, `~/repos/silvermere-wayfarer` (its `silvermere.toml` and `./data` database), with
+  telnet on `127.0.0.1:2323`, started in a terminal tab (`silvermere serve`; Ctrl-C saves
+  everyone and stops it). It is long-lived: rebuilt and restarted only when John upgrades it,
+  never by a card. Keeping it outside the checkout means `git pull` or a rebuild never touches
+  its world or characters.
+- **The gateway** in another terminal tab, holding the characters' sessions.
+- **The brain** under a file watcher (`cargo watch` or the repo's own script), from M1.
+- **The browser** on `http://localhost:7373`.
 - A **dev panel** in the UI: the live event stream, the executor's actions with their
   confirmations and timeouts, unclassified lines, the position belief.
 
@@ -32,21 +38,22 @@ is playing.
 
 | Work | Runs on | Not on |
 |---|---|---|
-| Building the client (agent sessions) | Claude Code cloud sessions | John's rig |
-| Fast checks on every PR | GitHub-hosted runners (one job, below) | A self-hosted runner on John's rig |
-| Live tests against a game server | The agent's own cloud container, before it pushes | GitHub Actions |
-| Watching and playing | John's rig, when John wants to | — |
-| Soak (hours of play) | By hand, when wanted: John's rig or a cloud session | A schedule |
+| Building the client (agent sessions) | Local Claude Code sessions on the laptop, one per card in its own git worktree (`tasks/README.md`) | Cloud sessions: they can't reach the local server |
+| Fast checks on every PR | GitHub-hosted runners (one job, below) | Self-hosted runners |
+| Live tests against a game server | The card's own session, against the local silvermere, before it pushes | GitHub Actions |
+| Watching and playing | The laptop, in a browser | — |
+| Soak (hours of play) | By hand, when wanted, on the laptop | A schedule |
 
-silvermere's CI grew to eight workflows on a self-hosted runner on John's rig (Postgres
-services, Docker builds, nightly and weekly differential runs), and its agents ran from that
-rig too. The client starts the other way: nothing of the client's runs on John's rig unless
-he starts it.
+Why the laptop: Claude Code cloud sessions reach the internet only through an HTTPS proxy, so
+they cannot open a telnet connection to any game server, and the proxy does not support
+WebSocket bridges either. A server on the laptop is just `127.0.0.1:2323` to a local session.
+silvermere's CI grew to eight workflows on a self-hosted runner; wayfarer keeps CI on
+GitHub's hosted runners and everything else on the laptop.
 
 ## CI: one fast job
 
 **Budget: under 3 minutes on a warm cache, under 8 cold.** If a check can't fit, it moves
-out of CI (to the agent's container, below), and less testing is an acceptable price.
+out of CI (to the live check on the laptop, below), and less testing is an acceptable price.
 
 - **One workflow, one job**, on `ubuntu-latest` (GitHub-hosted): `cargo fmt --check`,
   `cargo clippy -D warnings`, `cargo nextest run`. A second small workflow runs the web UI's
@@ -78,17 +85,21 @@ larger runners would be billed, and we don't use them. What this means for the w
 - `mmud-exploration` and `silvermere` stay as they are; wayfarer never needs them at build or
   test time (fixtures are copied in with provenance).
 
-## Live tests in the agent's container
+## Live tests against the local server
 
-Tests that need a game server run where the agent already is, not in Actions:
-`scripts/live-check.sh` downloads a pinned silvermere Linux binary (a silvermere release, see
-below), starts it on a free port with a fixed seed (`serve --seed N`), creates the accounts
-and characters it needs, and runs a short set of scenarios: log on, walk a route, fight, rest,
-flee, train, log off. A card that changes the engine runs it before pushing and pastes the
-summary into the PR. It should take a minute or two.
+Tests that need a game server run in the card's own session on the laptop, never in Actions:
+`scripts/live-check.sh` connects to the silvermere that is **already running** at
+`WAYFARER_LIVE_ADDR` (default `127.0.0.1:2323`). It never starts, stops, rebuilds or resets the
+server. It logs on with test characters from a pool created once on that server (race, class
+and stats from a fixture file John approves), and runs a short set of scenarios: log on, walk
+a route, fight, rest, flee, train, log off. A card that changes the engine runs it before
+pushing and pastes the summary into the PR. It should take a minute or two.
 
-Prerequisite: silvermere publishes a Linux binary on a tagged release, so containers download
-it instead of building the server (a small silvermere card).
+- **Shared, long-lived world.** Several cards may run at once against the same server, and the
+  world changes over time (monsters killed, characters levelling). Scenarios check behaviour,
+  not exact outcomes; the exact, seeded replays are recorded sessions in CI.
+- **Characters don't collide.** The server refuses a second logon to the same account, so a
+  session takes the first character in the pool that logs on.
 
 Recorded sessions from these runs can be played back in the UI's replay mode, so John can
 watch what an agent's bot did without running anything himself.
@@ -100,7 +111,7 @@ watch what an agent's bot did without running anything himself.
 | 1. Policies | Pure functions: flee check, target choice, rest and heal decisions, routing, setting layers | CI |
 | 2. Parser | Golden tests over a small set of captured sessions (transcripts and raw captures); the pattern table checked against the message catalogue | CI |
 | 3. Replay | A recorded session fed through the brain with its recorded clock; the decisions must match | CI (a few short recordings) |
-| 4. Live scenarios | Against a local silvermere, seeded | The agent's container, before pushing |
+| 4. Live scenarios | Against the local, long-lived silvermere | The card's session on the laptop, before pushing |
 | 5. Soak | Hours of play: exp/hr, deaths, flees, relocations, unclassified-line rate, compared with `progress.py`'s measured numbers | By hand, occasionally |
 | 6. Simulator | The engine against a model world to tune policies offline | Later, if wanted |
 
