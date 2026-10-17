@@ -39,6 +39,11 @@ fn config_text(port: u16, autostart: bool) -> String {
 }
 
 fn gateway(logs: &Path, port: u16, options: Options) -> Gateway {
+    // These tests are about one connection; reconnecting is tests/logon.rs's.
+    let options = Options {
+        reconnect: false,
+        ..options
+    };
     let config = Config::parse(&config_text(port, false)).unwrap();
     Gateway::new(&config, &Credentials::default(), logs, options).unwrap()
 }

@@ -6,7 +6,7 @@ use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
 use wayfarer_gateway::{
-    Gateway, Options, Paths, ServerOptions, bind, create_token, serve, token_for_bind,
+    Gateway, Options, Paths, ServerOptions, bind, create_token, serve, stop_signals, token_for_bind,
 };
 
 #[derive(Parser)]
@@ -122,22 +122,7 @@ fn run_gateway(args: GatewayArgs) -> Result<(), Box<dyn std::error::Error>> {
                 token,
                 ui_dir: args.ui_dir,
             };
-            serve(listener, gateway, options, stop_signal()).await?;
+            serve(listener, gateway, options, stop_signals()?).await?;
             Ok(())
         })
-}
-
-/// Completes on SIGINT or SIGTERM.
-async fn stop_signal() {
-    #[cfg(unix)]
-    {
-        use tokio::signal::unix::{SignalKind, signal};
-        let mut term = signal(SignalKind::terminate()).expect("install the SIGTERM handler");
-        tokio::select! {
-            _ = tokio::signal::ctrl_c() => {}
-            _ = term.recv() => {}
-        }
-    }
-    #[cfg(not(unix))]
-    let _ = tokio::signal::ctrl_c().await;
 }

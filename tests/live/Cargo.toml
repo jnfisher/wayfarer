@@ -1,0 +1,22 @@
+[package]
+name = "wayfarer-live"
+description = "The live check: the M0 scenario against a running game server (scripts/live-check.sh). Never run in CI."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+futures-util = "0.3.34"
+getrandom = "0.4.3"
+regex = "1"
+serde.workspace = true
+tokio.workspace = true
+tokio-tungstenite = "0.30.0"
+toml = "1"
+wayfarer-proto = { path = "../../crates/wayfarer-proto" }
+
+[dev-dependencies]
+tempfile = "3"

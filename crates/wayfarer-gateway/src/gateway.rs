@@ -1,17 +1,20 @@
-//! The [`Gateway`] handle: the sessions named in the config, and everything a server (C-006),
-//! the logon scripts (C-005) and later the brain do with them.
+//! The [`Gateway`] handle: the sessions named in the config, and everything a server (C-006)
+//! and later the brain do with them.
 
+use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
+use futures_util::{FutureExt, Stream, StreamExt};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use wayfarer_proto::{Chunk, SessionInfo, SessionState};
 use wayfarer_telnet::Capture;
 
 use crate::config::{Config, ConfigError, Credentials, Paths};
 use crate::log::{History, HistoryQuery, OutputLog};
-use crate::session::{self, Command, Running, Slot, SlotParts, StateChange};
+use crate::session::{self, Command, Connect, Running, Slot, SlotParts, StateChange, Tcp};
 
 /// Tunables; the defaults suit a real gateway, tests shrink them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,6 +25,10 @@ pub struct Options {
     pub subscriber_capacity: usize,
     /// The socket read size, so the largest chunk.
     pub read_buffer: usize,
+    /// Reconnect a lost session with backoff (5 s, 10 s, 30 s, then every 60 s).
+    pub reconnect: bool,
+    /// How long [`Gateway::shutdown`] waits for the log-offs before it closes what is left.
+    pub logoff_patience: Duration,
 }
 
 impl Default for Options {
@@ -30,6 +37,8 @@ impl Default for Options {
             memory_bytes: 4 << 20,
             subscriber_capacity: 1024,
             read_buffer: 4096,
+            reconnect: true,
+            logoff_patience: Duration::from_secs(120),
         }
     }
 }
@@ -42,13 +51,15 @@ pub enum GatewayError {
     NotConnected(String),
     #[error(transparent)]
     Config(#[from] ConfigError),
+    #[error("{0}")]
+    Script(String),
     #[error("{path}: {source}")]
     Io { path: PathBuf, source: io::Error },
 }
 
 /// The gateway: one session per configured character. Cheap to clone; every clone is the same
-/// gateway. Dropping the last clone stops every session at once (no log-off: call
-/// [`Gateway::shutdown`] first for that).
+/// gateway. Dropping the last clone stops every session at once (no log-off, which the game
+/// punishes: call [`Gateway::shutdown`] first).
 ///
 /// Must be created and used inside a tokio runtime.
 #[derive(Clone)]
@@ -61,6 +72,7 @@ struct Inner {
     slots: Vec<Arc<Slot>>,
     states: broadcast::Sender<StateChange>,
     logs: PathBuf,
+    logoff_patience: Duration,
 }
 
 impl Drop for Inner {
@@ -94,12 +106,24 @@ impl Gateway {
         logs: &Path,
         options: Options,
     ) -> Result<Self, GatewayError> {
+        Self::with_connector(config, credentials, logs, options, Arc::new(Tcp))
+    }
+
+    /// [`Gateway::new`], reaching the servers through `connector` (tests: an in-memory pipe).
+    pub fn with_connector(
+        config: &Config,
+        credentials: &Credentials,
+        logs: &Path,
+        options: Options,
+        connector: Arc<dyn Connect>,
+    ) -> Result<Self, GatewayError> {
         let states = broadcast::channel(256).0;
         let mut slots = Vec::with_capacity(config.characters.len());
         for c in &config.characters {
             let server = config
                 .server(&c.server)
                 .expect("Config::parse checks every character's server");
+            let script = server.script().map_err(GatewayError::Script)?.map(Arc::new);
             let dir = logs.join(&c.id);
             let log =
                 OutputLog::open(&dir, options.memory_bytes).map_err(|source| GatewayError::Io {
@@ -112,8 +136,11 @@ impl Gateway {
                 host: server.host.clone(),
                 port: server.port,
                 log,
-                password: credentials.get(&c.id).map(|l| l.password.clone()),
+                login: credentials.get(&c.id).cloned(),
+                script,
                 read_buffer: options.read_buffer,
+                reconnect: options.reconnect,
+                connector: Arc::clone(&connector),
                 subscriber_capacity: options.subscriber_capacity,
                 states: states.clone(),
             })));
@@ -123,6 +150,7 @@ impl Gateway {
                 slots,
                 states,
                 logs: logs.to_path_buf(),
+                logoff_patience: options.logoff_patience,
             }),
         })
     }
@@ -145,14 +173,22 @@ impl Gateway {
         Ok(self.slot(id)?.state())
     }
 
+    /// Why a session is `closed` or `lost`, when there is more to say (`"bad credentials"`,
+    /// `"logon step timed out"`). Cleared by [`Gateway::open`].
+    pub fn reason(&self, id: &str) -> Result<Option<String>, GatewayError> {
+        Ok(self.slot(id)?.reason())
+    }
+
     /// Every state change of every session, from now on. A listener that lags has missed
     /// changes and should re-read [`Gateway::sessions`].
     pub fn state_changes(&self) -> broadcast::Receiver<StateChange> {
         self.inner.states.subscribe()
     }
 
-    /// Connect a session (state `connecting`, then `connected`, `lost` if the
-    /// connection fails or drops). Does nothing if it is already connecting or connected.
+    /// Connect a session: `connecting`, then `logon` while its logon script runs, `menu` and
+    /// `realm` as the text shows them (`connected` if it has no script, or no credentials). A
+    /// connection that fails or drops is `lost` and reconnected with backoff. Does nothing if
+    /// the session is already open (reconnecting included).
     pub fn open(&self, id: &str) -> Result<(), GatewayError> {
         let slot = self.slot(id)?;
         let mut running = slot.running();
@@ -163,15 +199,31 @@ impl Gateway {
         let capture = Capture::create(dir.join("raw.bin"), dir.join("sent.bin"))
             .map_err(|source| GatewayError::Io { path: dir, source })?;
         let (commands, rx) = mpsc::channel(64);
+        slot.set_reason(None);
         slot.set_state(SessionState::Connecting);
         let task = tokio::spawn(session::run(Arc::clone(slot), rx, capture));
         *running = Some(Running { commands, task });
         Ok(())
     }
 
-    /// Disconnect a session on purpose (state `closed`) and wait until it is. C-005 makes this
-    /// a clean log-off first.
+    /// Log a session off cleanly and disconnect it (state `closed`), and wait until it is. From
+    /// the realm the script's log-off steps run (`x`, `X`, `X`, `Y` on MBBSEmu, which can take
+    /// a minute and a half), from a menu the remaining ones; anywhere else it just disconnects.
+    /// Never reconnected.
     pub async fn close(&self, id: &str) -> Result<(), GatewayError> {
+        self.close_with(id, Command::Close).await
+    }
+
+    /// Disconnect a session at once, logged off or not (state `closed`).
+    pub async fn close_now(&self, id: &str) -> Result<(), GatewayError> {
+        self.close_with(id, Command::Hangup).await
+    }
+
+    async fn close_with(
+        &self,
+        id: &str,
+        command: fn(oneshot::Sender<()>) -> Command,
+    ) -> Result<(), GatewayError> {
         let slot = self.slot(id)?;
         let commands = slot
             .running()
@@ -180,7 +232,7 @@ impl Gateway {
             .map(|r| r.commands.clone());
         if let Some(commands) = commands {
             let (ack, done) = oneshot::channel();
-            if commands.send(Command::Close(ack)).await.is_ok() {
+            if commands.send(command(ack)).await.is_ok() {
                 let _ = done.await;
             }
         }
@@ -193,14 +245,58 @@ impl Gateway {
         Ok(())
     }
 
-    /// Close every session, all at once, and wait for them.
+    /// Log every session off, all at once, and wait for them; after
+    /// [`Options::logoff_patience`] (120 s) close what is left at once.
     pub async fn shutdown(&self) {
-        let mut closing = tokio::task::JoinSet::new();
-        for slot in &self.inner.slots {
-            let (gateway, id) = (self.clone(), slot.id.clone());
-            closing.spawn(async move { gateway.close(&id).await });
+        let all = self.each(|gateway, id| async move { gateway.close(&id).await });
+        if tokio::time::timeout(self.inner.logoff_patience, all)
+            .await
+            .is_err()
+        {
+            tracing::warn!("log-off is taking too long; closing what is left");
+            self.shutdown_now().await;
         }
-        while closing.join_next().await.is_some() {}
+    }
+
+    /// Close every session at once, logged off or not.
+    pub async fn shutdown_now(&self) {
+        self.each(|gateway, id| async move { gateway.close_now(&id).await })
+            .await;
+    }
+
+    /// [`Gateway::shutdown`], unless `now` completes first: then close what is left at once
+    /// ([`Gateway::shutdown_now`]).
+    pub async fn shutdown_unless(&self, now: impl Future<Output = ()>) {
+        tokio::select! {
+            () = self.shutdown() => {}
+            () = now => {
+                tracing::warn!("closing every session at once");
+                self.shutdown_now().await;
+            }
+        }
+    }
+
+    /// Wait for SIGINT (Ctrl-C) or SIGTERM, then [`Gateway::shutdown`]; a second signal while
+    /// that runs closes everything at once.
+    pub async fn shutdown_on_signal(&self) -> io::Result<()> {
+        let mut signals = std::pin::pin!(stop_signals()?);
+        signals.next().await;
+        tracing::info!("logging every character off (a second signal closes at once)");
+        self.shutdown_unless(signals.next().map(drop)).await;
+        Ok(())
+    }
+
+    /// Run `f` for every session, all at once, and wait for them.
+    async fn each<F, Fut>(&self, f: F)
+    where
+        F: Fn(Gateway, String) -> Fut,
+        Fut: Future<Output = Result<(), GatewayError>> + Send + 'static,
+    {
+        let mut running = tokio::task::JoinSet::new();
+        for slot in &self.inner.slots {
+            running.spawn(f(self.clone(), slot.id.clone()));
+        }
+        while running.join_next().await.is_some() {}
     }
 
     /// Live output of a session from now on, whether or not it is connected. A receiver that
@@ -241,9 +337,30 @@ impl Gateway {
             .filter(|r| r.is_live())
             .map(|r| r.commands.clone())
             .ok_or_else(not_connected)?;
-        if slot.state() == SessionState::Connecting {
+        // Open, but between connections.
+        if matches!(slot.state(), SessionState::Connecting | SessionState::Lost) {
             return Err(not_connected());
         }
         commands.send(command).await.map_err(|_| not_connected())
     }
+}
+
+/// One item per SIGINT (Ctrl-C) or, on Unix, SIGTERM; it never ends. The first should start
+/// [`Gateway::shutdown`] and a second close at once: [`Gateway::shutdown_on_signal`] and the
+/// binary's [`crate::serve`] both take it that way.
+pub fn stop_signals() -> io::Result<impl Stream<Item = ()> + Send + 'static> {
+    #[cfg(unix)]
+    let term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    #[cfg(not(unix))]
+    let term = ();
+    Ok(futures_util::stream::unfold(term, |mut term| async move {
+        #[cfg(unix)]
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = term.recv() => {}
+        }
+        #[cfg(not(unix))]
+        let _ = tokio::signal::ctrl_c().await;
+        Some(((), term))
+    }))
 }

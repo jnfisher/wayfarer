@@ -4,6 +4,7 @@
 //! No TLS: remote access goes through SSH or Tailscale. On a loopback bind the handshake's
 //! token is not checked; on any other bind the gateway will not start without one.
 
+use std::future::IntoFuture;
 use std::io;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -16,7 +17,7 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{SinkExt, Stream, StreamExt};
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc, watch};
 use tokio::task::JoinHandle;
@@ -114,15 +115,18 @@ pub async fn bind(addr: SocketAddr) -> Result<TcpListener, ServerError> {
         })
 }
 
-/// Serve on `listener` until `shutdown` completes, then stop accepting, end the WebSocket
-/// connections and log every session off ([`Gateway::shutdown`]).
+/// Serve on `listener` until the first item of `stops`, then stop accepting, end the WebSocket
+/// connections and log every session off ([`Gateway::shutdown`]); a second item closes what is
+/// left at once ([`Gateway::shutdown_now`]). The binary passes [`crate::stop_signals`].
 pub async fn serve(
     listener: TcpListener,
     gateway: Gateway,
     options: ServerOptions,
-    shutdown: impl Future<Output = ()> + Send + 'static,
+    stops: impl Stream<Item = ()> + Send,
 ) -> Result<(), ServerError> {
+    let mut stops = std::pin::pin!(stops);
     let (stop, stopping) = watch::channel(false);
+    let mut stopped = stop.subscribe();
     let state = AppState {
         gateway: gateway.clone(),
         token: options.token.map(Arc::from),
@@ -135,13 +139,21 @@ pub async fn serve(
         .route("/healthz", get(healthz))
         .fallback_service(ui)
         .with_state(state);
-    let result = axum::serve(listener, app)
+    let server = axum::serve(listener, app)
         .with_graceful_shutdown(async move {
-            shutdown.await;
-            let _ = stop.send(true);
+            let _ = stopped.wait_for(|stopped| *stopped).await;
         })
-        .await;
-    gateway.shutdown().await;
+        .into_future();
+    let mut server = std::pin::pin!(server);
+    let result = tokio::select! {
+        result = &mut server => result,
+        () = next_or_never(&mut stops) => {
+            tracing::info!("stopping: logging every character off (stop again to close at once)");
+            let _ = stop.send(true);
+            server.await
+        }
+    };
+    gateway.shutdown_unless(next_or_never(&mut stops)).await;
     result.map_err(|source| ServerError::Io {
         path: PathBuf::from("<server>"),
         source,
@@ -173,6 +185,13 @@ async fn ui_missing(State(state): State<AppState>) -> Response {
 
 async fn upgrade(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
     ws.on_upgrade(move |socket| Connection::run(socket, state))
+}
+
+/// The next item of `stops`; never, once it has ended.
+async fn next_or_never(stops: &mut (impl Stream<Item = ()> + Unpin)) {
+    if stops.next().await.is_none() {
+        std::future::pending::<()>().await;
+    }
 }
 
 /// Same length and content, without stopping at the first difference.

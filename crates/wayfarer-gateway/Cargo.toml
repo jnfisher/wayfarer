@@ -12,6 +12,7 @@ axum = { version = "0.8.9", features = ["ws"] }
 directories = "6"
 futures-util = "0.3.34"
 getrandom = "0.4.3"
+regex = "1"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -25,5 +26,6 @@ wayfarer-telnet = { path = "../wayfarer-telnet" }
 [dev-dependencies]
 fastrand = "2"
 tempfile = "3"
+tokio = { workspace = true, features = ["test-util"] }
 tokio-tungstenite = "0.30.0"
 tracing-subscriber.workspace = true
