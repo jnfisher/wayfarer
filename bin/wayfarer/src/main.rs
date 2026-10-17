@@ -22,14 +22,15 @@ enum Command {
     Gateway,
     /// Run everything in one process: the gateway now, the brain from M1 (card C-006).
     Serve,
-    /// Build a world pack (SQLite) from the stock-world export and MegaMud's path set.
+    /// Build a world pack (SQLite) from the stock-world export, optionally with MegaMud's path set.
     ImportWorld {
         /// The export directory: one `<TABLE>.jsonl.gz` per table and `MANIFEST.json`.
         #[arg(long)]
         export: PathBuf,
-        /// MegaMud's zip, or the directory holding it.
-        #[arg(long, default_value = "assets/megamud")]
-        megamud: PathBuf,
+        /// MegaMud's zip, or the directory holding it (not shipped with wayfarer: a player's own
+        /// MegaMud copy, or mmud-exploration's `reference/megamud/` when developing).
+        #[arg(long)]
+        megamud: Option<PathBuf>,
         /// The pack to write (replaced if it exists).
         #[arg(long)]
         out: PathBuf,
@@ -46,7 +47,7 @@ fn main() -> ExitCode {
             megamud,
             out,
         } => {
-            return match wayfarer_world::build(&export, Some(&megamud), &out) {
+            return match wayfarer_world::build(&export, megamud.as_deref(), &out) {
                 Ok(report) => {
                     print!("{report}");
                     println!("wrote {}", out.display());

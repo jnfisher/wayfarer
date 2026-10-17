@@ -88,7 +88,7 @@ spells, classes, races, messages and the text patterns that go with them.
 | Stock 1.11p "Realm of Legends" pack, shipped with the installer | The default. Most servers run the stock world |
 | Built from a server's `.DAT` files (`wayfarer import-world <dir>`) | A sysop or a player with the files of a customised world |
 | Learned overlay | Rooms, exits and texts seen in play that the pack lacks, kept per server and merged over the pack |
-| MegaMud's path set (`kb/megamud-formats.md`) | The community loop library (195 loops) and waypoints (783 named rooms with shop, bank, trainer and boss flags), verified against the pack at build time and shipped with it |
+| MegaMud's path set (`kb/megamud-formats.md`) | Optional: imported from the player's own MegaMud copy (`wayfarer import-world --megamud`), never shipped or kept in this repository (John, 2026-10-17); for development, `jnfisher/mmud-exploration` `reference/megamud/`. Gives the community loop library and waypoints, each checked against the pack's rooms |
 
 The stock pack is built at release time by a tool that reads the game files (the work in
 `test/play/mmud_data.py`, and silvermere's stock-world export, T-006, as the reference for

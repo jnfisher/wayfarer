@@ -77,10 +77,11 @@ Each mode emits **narration**: one line saying what it is doing and why ("Restin
 Arena spawns, walked to the Hallway first"). The UI shows it, and the logs keep it.
 
 **Areas and loops.** The player picks the hunting area; the bot walks there and runs its
-loop. Loops come from three places: **MegaMud's community loop library** (195 loops from the
-MegaMud v2.0 path set, read with the room-id scheme in `kb/megamud-formats.md` and walked
-through the world pack's rooms: all 183 that walk to the end close), loops generated from the
-world data for areas the library lacks, and loops the player records or edits.
+loop. Loops come from three places: loops generated from the world data, loops the player
+records or edits, and, when the player imports their own MegaMud copy, **MegaMud's community
+loop library** (195 loops in the v2.0 path set, read with the room-id scheme in
+`kb/megamud-formats.md` and walked through the world pack's rooms: all 183 that walk to the
+end close). MegaMud's data is never shipped with wayfarer or kept in its repository.
 
 **Trusting MegaMud's data** (John, 2026-10-17). The world pack's game data (rooms, exits,
 monsters, items, spells, shops) comes only from the real game records; MegaMud's own
