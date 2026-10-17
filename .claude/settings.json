@@ -48,12 +48,19 @@
       "Bash(wc:*)",
       "Bash(grep:*)",
       "Bash(rg:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr comment:*)",
+      "Bash(claude --bg:*)",
+      "Bash(claude agents:*)",
+      "Bash(claude logs:*)"
     ],
     "deny": [
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
-      "Bash(git push origin main:*)",
+      "Bash(git push origin main:*)"
+    ],
+    "ask": [
       "Bash(gh pr merge:*)"
     ]
   }
