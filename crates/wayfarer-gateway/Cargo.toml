@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 directories = "6"
+regex = "1"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -21,4 +22,5 @@ wayfarer-telnet = { path = "../wayfarer-telnet" }
 [dev-dependencies]
 fastrand = "2"
 tempfile = "3"
+tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber.workspace = true

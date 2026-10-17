@@ -1,0 +1,57 @@
+# Logon script for silvermere (silvermere-auth's login dialogue and the engine's BBS menu shim,
+# which copy MBBSEmu's prompts). The format is mbbsemu.toml's.
+
+realm = 're:\[HP=-?\d+[^\]\n]*\]:'
+realm_timeout = 30
+
+[[step]]
+expect = "Username:"
+send = "{user}"
+
+[[step]]
+expect = "Password:"
+send = "{password}"
+
+# The BBS menu shim can be switched off (`compat.bbs_menu`); the MajorMUD menu comes next then.
+[[step]]
+expect = "Make your selection"
+send = "M"
+optional = true
+
+[[step]]
+expect = "[MAJORMUD]:"
+send = "E"
+
+# silvermere closes the connection after the third failure.
+[[failure]]
+expect = "Invalid Credentials"
+reason = "bad credentials"
+retry = false
+
+[[failure]]
+expect = "Too many failed logins"
+reason = "account locked"
+retry = false
+
+# Checked after the password; silvermere closes the connection.
+[[failure]]
+expect = "is already logged on"
+reason = "already logged in"
+retry = true
+
+[[logoff]]
+send = "x"
+timeout = 90 # the character meditates silently before it leaves
+
+[[logoff]]
+at = "[MAJORMUD]:"
+send = "X"
+
+[[logoff]]
+at = "Make your selection"
+send = "X"
+
+[[logoff]]
+at = "Are you sure"
+send = "Y"
+timeout = 10

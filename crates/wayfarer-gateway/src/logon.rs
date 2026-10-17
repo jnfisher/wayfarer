@@ -1,0 +1,818 @@
+//! Logon scripts: the `prompt → reply` steps that take a character from connect to the realm
+//! prompt, the log-off steps that take it out again, and following the text to know where a
+//! session is (logon, menu, realm).
+//!
+//! Everything here is a plain state machine fed with decoded text; the session task feeds it
+//! and acts on what it decides. Matching works on a rolling window of recent text with ANSI
+//! escapes removed, consumed up to the end of each match.
+//!
+//! The presets (`presets/*.toml`, compiled in) say what the format is; a server picks one with
+//! `preset` and may replace any part of it with its own `[server.logon]` table.
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use regex::Regex;
+use serde::Deserialize;
+
+/// The presets compiled into the binary, by name.
+pub const PRESETS: [(&str, &str); 2] = [
+    ("mbbsemu", include_str!("presets/mbbsemu.toml")),
+    ("silvermere", include_str!("presets/silvermere.toml")),
+];
+
+/// A step's timeout when the script does not give one.
+const STEP_TIMEOUT: Duration = Duration::from_secs(30);
+/// A log-off step's timeout when the script does not give one.
+const LOGOFF_TIMEOUT: Duration = Duration::from_secs(20);
+/// How much recent text a window keeps; prompts are short, the text before them can be long.
+const WINDOW_BYTES: usize = 16 << 10;
+
+/// A logon script as written in TOML: a preset file, or a server's `[server.logon]` table. Every
+/// field is optional so a server can replace parts of a preset; [`Script::build`] checks the
+/// result is whole.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScriptSpec {
+    /// The realm prompt: the script has succeeded.
+    pub realm: Option<String>,
+    /// Seconds to wait for the realm prompt after the last step.
+    pub realm_timeout: Option<u64>,
+    #[serde(rename = "step")]
+    pub steps: Option<Vec<StepSpec>>,
+    #[serde(rename = "failure")]
+    pub failures: Option<Vec<FailureSpec>>,
+    pub logoff: Option<Vec<LogoffSpec>>,
+}
+
+/// `[[step]]`: when `expect` shows, send `send`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StepSpec {
+    pub expect: String,
+    pub send: String,
+    /// The step may not come; a later step's prompt passes it by.
+    #[serde(default)]
+    pub optional: bool,
+    /// Seconds to wait for `expect`.
+    pub timeout: Option<u64>,
+}
+
+/// `[[failure]]`: text that means the logon has failed.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FailureSpec {
+    pub expect: String,
+    /// Shown as the session's reason.
+    pub reason: String,
+    /// Reconnect with backoff (otherwise the session closes).
+    #[serde(default)]
+    pub retry: bool,
+}
+
+/// `[[logoff]]`: at `at` (the realm for the first step), send `send`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LogoffSpec {
+    pub at: Option<String>,
+    pub send: String,
+    /// Seconds to wait for the next step's `at` (or, after the last, for the server to close).
+    pub timeout: Option<u64>,
+}
+
+impl ScriptSpec {
+    fn parse(text: &str) -> Result<Self, String> {
+        toml::from_str(text).map_err(|e| e.to_string())
+    }
+
+    /// `self`, with every part `over` gives replaced by it.
+    fn overlay(mut self, over: &Self) -> Self {
+        let over = over.clone();
+        self.realm = over.realm.or(self.realm);
+        self.realm_timeout = over.realm_timeout.or(self.realm_timeout);
+        self.steps = over.steps.or(self.steps);
+        self.failures = over.failures.or(self.failures);
+        self.logoff = over.logoff.or(self.logoff);
+        self
+    }
+}
+
+/// What a step's `expect` (or a log-off step's `at`) matches: a substring, or a regex written
+/// `re:<regex>`.
+#[derive(Debug, Clone)]
+pub enum Pattern {
+    Text(String),
+    Regex(Regex),
+}
+
+impl Pattern {
+    pub fn parse(s: &str) -> Result<Self, String> {
+        match s.strip_prefix("re:") {
+            Some(re) => Regex::new(re)
+                .map(Self::Regex)
+                .map_err(|e| format!("{s:?}: {e}")),
+            None if s.is_empty() => Err("an empty pattern matches everything".to_owned()),
+            None => Ok(Self::Text(s.to_owned())),
+        }
+    }
+
+    /// Where the first match in `hay` ends.
+    pub fn first_end(&self, hay: &str) -> Option<usize> {
+        match self {
+            Self::Text(t) => hay.find(t.as_str()).map(|i| i + t.len()),
+            Self::Regex(r) => r.find(hay).map(|m| m.end()),
+        }
+    }
+
+    /// Where the last match in `hay` ends.
+    pub fn last_end(&self, hay: &str) -> Option<usize> {
+        match self {
+            Self::Text(t) => hay.rfind(t.as_str()).map(|i| i + t.len()),
+            Self::Regex(r) => r.find_iter(hay).last().map(|m| m.end()),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Step {
+    pub expect: Pattern,
+    pub send: String,
+    pub optional: bool,
+    pub timeout: Duration,
+}
+
+#[derive(Debug, Clone)]
+pub struct Failure {
+    pub expect: Pattern,
+    pub reason: String,
+    pub retry: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct LogoffStep {
+    /// `None` for the first step: the realm.
+    pub at: Option<Pattern>,
+    pub send: String,
+    pub timeout: Duration,
+}
+
+/// A checked logon script.
+#[derive(Debug, Clone)]
+pub struct Script {
+    pub steps: Vec<Step>,
+    pub realm: Pattern,
+    pub realm_timeout: Duration,
+    pub failures: Vec<Failure>,
+    pub logoff: Vec<LogoffStep>,
+}
+
+impl Script {
+    /// A preset by name, unchanged.
+    pub fn preset(name: &str) -> Result<Self, String> {
+        Self::build(Some(name), None).map(|s| s.expect("a preset gives a script"))
+    }
+
+    /// The script for a server: its `preset` with its inline `logon` table over it. `None` when
+    /// it gives neither (the player logs on by hand).
+    pub fn build(
+        preset: Option<&str>,
+        inline: Option<&ScriptSpec>,
+    ) -> Result<Option<Self>, String> {
+        let base = match preset {
+            Some(name) => {
+                let (_, text) = PRESETS.iter().find(|(n, _)| *n == name).ok_or_else(|| {
+                    let names: Vec<_> = PRESETS.iter().map(|(n, _)| *n).collect();
+                    format!("no logon preset {name:?} (there are {})", names.join(", "))
+                })?;
+                ScriptSpec::parse(text).map_err(|e| format!("preset {name}: {e}"))?
+            }
+            None if inline.is_none() => return Ok(None),
+            None => ScriptSpec::default(),
+        };
+        let spec = match inline {
+            Some(inline) => base.overlay(inline),
+            None => base,
+        };
+        Self::from_spec(&spec).map(Some)
+    }
+
+    fn from_spec(spec: &ScriptSpec) -> Result<Self, String> {
+        let secs = |s: Option<u64>, default| s.map_or(default, Duration::from_secs);
+        let realm = Pattern::parse(
+            spec.realm
+                .as_deref()
+                .ok_or("the logon script has no realm")?,
+        )?;
+        let steps = spec
+            .steps
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .ok_or("the logon script has no steps")?
+            .iter()
+            .map(|s| {
+                Ok(Step {
+                    expect: Pattern::parse(&s.expect)?,
+                    send: s.send.clone(),
+                    optional: s.optional,
+                    timeout: secs(s.timeout, STEP_TIMEOUT),
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        let failures = spec
+            .failures
+            .iter()
+            .flatten()
+            .map(|f| {
+                Ok(Failure {
+                    expect: Pattern::parse(&f.expect)?,
+                    reason: f.reason.clone(),
+                    retry: f.retry,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        let logoff = spec
+            .logoff
+            .iter()
+            .flatten()
+            .enumerate()
+            .map(|(i, l)| {
+                let at = match (i, &l.at) {
+                    (0, None) => None,
+                    (0, Some(_)) => {
+                        return Err("the first log-off step is at the realm: no `at`".to_owned());
+                    }
+                    (_, None) => return Err(format!("log-off step {} has no `at`", i + 1)),
+                    (_, Some(at)) => Some(Pattern::parse(at)?),
+                };
+                Ok(LogoffStep {
+                    at,
+                    send: l.send.clone(),
+                    timeout: secs(l.timeout, LOGOFF_TIMEOUT),
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        Ok(Self {
+            steps,
+            realm,
+            realm_timeout: secs(spec.realm_timeout, STEP_TIMEOUT),
+            failures,
+            logoff,
+        })
+    }
+}
+
+/// Recent text with ANSI escapes removed, kept to [`WINDOW_BYTES`]. An escape split across two
+/// feeds is still removed.
+#[derive(Debug, Default)]
+struct Window {
+    text: String,
+    escape: Escape,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum Escape {
+    #[default]
+    None,
+    /// After ESC.
+    Esc,
+    /// In `ESC [ ...` until its final byte.
+    Csi,
+}
+
+impl Window {
+    fn push(&mut self, text: &str) {
+        for c in text.chars() {
+            self.escape = match (self.escape, c) {
+                (Escape::None, '\x1b') => Escape::Esc,
+                (Escape::None, c) => {
+                    self.text.push(c);
+                    Escape::None
+                }
+                (Escape::Esc, '[') => Escape::Csi,
+                // A two-character escape (`ESC 7`, `ESC c`): both go.
+                (Escape::Esc, _) => Escape::None,
+                (Escape::Csi, '\x40'..='\x7e') => Escape::None,
+                (Escape::Csi, _) => Escape::Csi,
+            };
+        }
+        if self.text.len() > WINDOW_BYTES {
+            let mut cut = self.text.len() - WINDOW_BYTES;
+            while !self.text.is_char_boundary(cut) {
+                cut += 1;
+            }
+            self.text.drain(..cut);
+        }
+    }
+
+    /// Forget everything up to `end`.
+    fn consume(&mut self, end: usize) {
+        self.text.drain(..end);
+    }
+}
+
+/// What the logon runner wants done.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Action {
+    /// Send a line: `text` to the game, `shown` (the password masked) to `sent.bin`.
+    Send { text: String, shown: String },
+    /// The realm prompt: logged on.
+    Realm,
+    /// The logon failed.
+    Failed { reason: String, retry: bool },
+}
+
+/// Runs a script's logon steps over the text of one connection.
+#[derive(Debug)]
+pub struct Runner {
+    script: Arc<Script>,
+    user: String,
+    password: String,
+    /// The first step not yet sent.
+    next: usize,
+    window: Window,
+    finished: bool,
+}
+
+impl Runner {
+    pub fn new(script: Arc<Script>, user: &str, password: &str) -> Self {
+        Self {
+            script,
+            user: user.to_owned(),
+            password: password.to_owned(),
+            next: 0,
+            window: Window::default(),
+            finished: false,
+        }
+    }
+
+    /// Feed decoded text; returns what to do, in order. Nothing more once it has reported
+    /// [`Action::Realm`] or [`Action::Failed`].
+    pub fn feed(&mut self, text: &str) -> Vec<Action> {
+        let mut actions = Vec::new();
+        if self.finished {
+            return actions;
+        }
+        self.window.push(text);
+        loop {
+            let hay = self.window.text.as_str();
+            if let Some(f) = self
+                .script
+                .failures
+                .iter()
+                .find(|f| f.expect.first_end(hay).is_some())
+            {
+                self.finished = true;
+                actions.push(Action::Failed {
+                    reason: f.reason.clone(),
+                    retry: f.retry,
+                });
+                return actions;
+            }
+            if self.script.realm.first_end(hay).is_some() {
+                self.finished = true;
+                actions.push(Action::Realm);
+                return actions;
+            }
+            // The next step, or a later one past optional steps: whichever prompt came first.
+            let mut best: Option<(usize, usize)> = None;
+            for (i, step) in self.script.steps.iter().enumerate().skip(self.next) {
+                if let Some(end) = step.expect.first_end(hay)
+                    && best.is_none_or(|(_, e)| end < e)
+                {
+                    best = Some((i, end));
+                }
+                if !step.optional {
+                    break;
+                }
+            }
+            let Some((i, end)) = best else {
+                return actions;
+            };
+            self.window.consume(end);
+            self.next = i + 1;
+            let send = &self.script.steps[i].send;
+            actions.push(Action::Send {
+                text: self.fill(send, &self.password),
+                shown: self.fill(send, crate::session::MASK),
+            });
+        }
+    }
+
+    fn fill(&self, send: &str, password: &str) -> String {
+        send.replace("{user}", &self.user)
+            .replace("{password}", password)
+    }
+
+    /// Every step that must come has been sent; only the realm prompt is awaited.
+    pub fn waiting_for_realm(&self) -> bool {
+        self.script.steps[self.next..].iter().all(|s| s.optional)
+    }
+
+    /// How long to wait for what comes next, from the last step sent (or the connect).
+    pub fn timeout(&self) -> Duration {
+        match self.script.steps.get(self.next) {
+            Some(step) if !self.waiting_for_realm() => step.timeout,
+            _ => self.script.realm_timeout,
+        }
+    }
+}
+
+/// Where a session is, from the text: at the realm prompt, or at log-off step `n`'s place (a
+/// menu).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Place {
+    Realm,
+    Menu(usize),
+}
+
+/// Follows the text of a connection to know the latest [`Place`] it showed.
+#[derive(Debug)]
+pub struct Tracker {
+    script: Arc<Script>,
+    window: Window,
+    place: Option<Place>,
+}
+
+impl Tracker {
+    pub fn new(script: Arc<Script>) -> Self {
+        Self {
+            script,
+            window: Window::default(),
+            place: None,
+        }
+    }
+
+    pub fn place(&self) -> Option<Place> {
+        self.place
+    }
+
+    /// Feed decoded text; returns the place when the text showed one (the latest, if several).
+    pub fn feed(&mut self, text: &str) -> Option<Place> {
+        self.window.push(text);
+        let hay = self.window.text.as_str();
+        let realm = self
+            .script
+            .realm
+            .last_end(hay)
+            .map(|end| (end, Place::Realm));
+        let menus = self
+            .script
+            .logoff
+            .iter()
+            .enumerate()
+            .filter_map(|(i, step)| {
+                let end = step.at.as_ref()?.last_end(hay)?;
+                Some((end, Place::Menu(i)))
+            });
+        let (end, place) = realm.into_iter().chain(menus).max_by_key(|(end, _)| *end)?;
+        self.window.consume(end);
+        self.place = Some(place);
+        Some(place)
+    }
+}
+
+/// Runs a script's log-off steps from where the session is.
+#[derive(Debug)]
+pub struct Logoff {
+    script: Arc<Script>,
+    /// The step sent last.
+    sent: usize,
+    window: Window,
+}
+
+impl Logoff {
+    /// Start at `place`: returns the runner and the first line to send, or `None` if the
+    /// script has no log-off steps from there.
+    pub fn start(script: Arc<Script>, place: Place) -> Option<(Self, String)> {
+        let first = match place {
+            Place::Realm => 0,
+            Place::Menu(i) => i,
+        };
+        let send = script.logoff.get(first)?.send.clone();
+        let logoff = Self {
+            script,
+            sent: first,
+            window: Window::default(),
+        };
+        Some((logoff, send))
+    }
+
+    /// Feed decoded text; returns the lines to send, in order.
+    pub fn feed(&mut self, text: &str) -> Vec<String> {
+        self.window.push(text);
+        let mut sends = Vec::new();
+        while let Some(next) = self.script.logoff.get(self.sent + 1) {
+            let at = next
+                .at
+                .as_ref()
+                .expect("Script checks every later step has `at`");
+            let Some(end) = at.first_end(&self.window.text) else {
+                break;
+            };
+            self.window.consume(end);
+            self.sent += 1;
+            sends.push(next.send.clone());
+        }
+        sends
+    }
+
+    /// How long to wait, from the last line sent, for the next step's place (or the close).
+    pub fn timeout(&self) -> Duration {
+        self.script.logoff[self.sent].timeout
+    }
+}
+
+/// The wait before reconnect attempt `attempt` (0 first): 5 s, 10 s, 30 s, then every 60 s.
+pub fn backoff(attempt: u32) -> Duration {
+    const SCHEDULE: [u64; 3] = [5, 10, 30];
+    Duration::from_secs(SCHEDULE.get(attempt as usize).copied().unwrap_or(60))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn preset(name: &str) -> Arc<Script> {
+        Arc::new(Script::preset(name).unwrap())
+    }
+
+    fn sends(actions: &[Action]) -> Vec<&str> {
+        actions
+            .iter()
+            .filter_map(|a| match a {
+                Action::Send { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The MBBSEmu dialogue, as `entry-existing` shows it (ANSI as the server colours it).
+    const MBBSEMU: [&str; 5] = [
+        "\x1b[?7h banner \r\nEnter Username or enter \"NEW\" to create a new Account\r\nUsername: ",
+        "Aldric\r\nPassword: ",
+        "*******\r\n\r\nFantasy awaits you\r\n   M ... MajorMUD\r\n\r\nMain Menu\r\n\x1b[1;37mMake your selection (X to exit): ",
+        "M\r\n\r\n[E] . Enter the Realm\r\n[X] . Exit Game\r\n\r\n[MAJORMUD]: ",
+        "E\r\n\r\nNewhaven, Village Entrance\r\nObvious exits: nJ\x08orth\r\n\x1b[0;37m[HP=35]:",
+    ];
+
+    #[test]
+    fn presets_parse() {
+        for (name, _) in PRESETS {
+            let s = Script::preset(name).unwrap();
+            assert_eq!(s.steps.len(), 4, "{name}");
+            assert_eq!(s.logoff.len(), 4, "{name}");
+            assert_eq!(s.logoff[0].timeout, Duration::from_secs(90));
+        }
+        assert!(
+            Script::preset("nope")
+                .unwrap_err()
+                .contains("mbbsemu, silvermere")
+        );
+    }
+
+    #[test]
+    fn mbbsemu_logs_on() {
+        let mut r = Runner::new(preset("mbbsemu"), "Aldric", "aldric1");
+        let mut got = Vec::new();
+        for (i, text) in MBBSEMU.iter().enumerate() {
+            assert!(!r.waiting_for_realm() || i == 4);
+            got.extend(r.feed(text));
+        }
+        assert_eq!(sends(&got), ["Aldric", "aldric1", "M", "E"]);
+        assert_eq!(got.last(), Some(&Action::Realm));
+        assert!(r.feed("[HP=35]:").is_empty(), "finished");
+        // The password is masked in what is shown.
+        assert_eq!(
+            got[1],
+            Action::Send {
+                text: "aldric1".into(),
+                shown: "********".into()
+            }
+        );
+    }
+
+    #[test]
+    fn prompts_split_anywhere_still_match() {
+        let all: String = MBBSEMU.concat();
+        // The server waits for each reply, so feed one prompt's text at a time, split at every
+        // character.
+        for split in 1..40 {
+            let mut r = Runner::new(preset("mbbsemu"), "u", "p");
+            let mut got = Vec::new();
+            for text in MBBSEMU {
+                let chars: Vec<char> = text.chars().collect();
+                for piece in chars.chunks(split) {
+                    got.extend(r.feed(&piece.iter().collect::<String>()));
+                }
+            }
+            assert_eq!(sends(&got), ["u", "p", "M", "E"], "split {split}");
+            assert_eq!(got.last(), Some(&Action::Realm));
+        }
+        assert!(all.contains("[HP=35]"));
+    }
+
+    #[test]
+    fn silvermere_without_the_bbs_menu() {
+        let mut r = Runner::new(preset("silvermere"), "u", "p");
+        let mut got = r.feed("\x1b[1m\x1b[37mUsername:\x1b[0m ");
+        got.extend(r.feed("\x1b[1m\x1b[37mPassword:\x1b[0m "));
+        assert!(!r.waiting_for_realm());
+        got.extend(r.feed("menu\r\n[MAJORMUD]: "));
+        assert!(r.waiting_for_realm());
+        got.extend(r.feed("[HP=12/MA=4]:"));
+        assert_eq!(sends(&got), ["u", "p", "E"]);
+        assert_eq!(got.last(), Some(&Action::Realm));
+
+        // With it: `M` as on MBBSEmu.
+        let mut r = Runner::new(preset("silvermere"), "u", "p");
+        let got: Vec<_> = MBBSEMU.iter().flat_map(|t| r.feed(t)).collect();
+        assert_eq!(sends(&got), ["u", "p", "M", "E"]);
+    }
+
+    #[test]
+    fn failures() {
+        let cases = [
+            (
+                "mbbsemu",
+                "\r\nInvalid Credentials\r\n",
+                "bad credentials",
+                false,
+            ),
+            (
+                "mbbsemu",
+                "\r\nAldric is already logged in -- only 1 connection allowed per user.\r\n",
+                "already logged in",
+                true,
+            ),
+            (
+                "silvermere",
+                "\r\n\x1b[1m\x1b[31mInvalid Credentials\x1b[0m\r\n",
+                "bad credentials",
+                false,
+            ),
+            (
+                "silvermere",
+                "\r\nThis account is already logged on.\r\n",
+                "already logged in",
+                true,
+            ),
+            (
+                "silvermere",
+                "Too many failed logins: this account is locked",
+                "account locked",
+                false,
+            ),
+        ];
+        for (name, text, reason, retry) in cases {
+            let mut r = Runner::new(preset(name), "u", "p");
+            assert_eq!(sends(&r.feed("Username: ")), ["u"]);
+            assert_eq!(sends(&r.feed("Password: ")), ["p"]);
+            let got = r.feed(text);
+            assert_eq!(
+                got,
+                [Action::Failed {
+                    reason: reason.into(),
+                    retry
+                }],
+                "{name}: {text:?}"
+            );
+            // MBBSEmu asks again; the script does not answer.
+            assert!(r.feed("Username: ").is_empty());
+        }
+    }
+
+    #[test]
+    fn timeouts() {
+        let s = Script::build(
+            None,
+            Some(&ScriptSpec::parse(
+                "realm = 'R>'\nrealm_timeout = 7\n[[step]]\nexpect = 'a'\nsend = '1'\ntimeout = 3\n\
+                 [[step]]\nexpect = 'b'\nsend = '2'\noptional = true\n",
+            )
+            .unwrap()),
+        )
+        .unwrap()
+        .unwrap();
+        let mut r = Runner::new(Arc::new(s), "u", "p");
+        assert_eq!(r.timeout(), Duration::from_secs(3));
+        assert!(!r.waiting_for_realm());
+        r.feed("a");
+        // Only an optional step is left.
+        assert!(r.waiting_for_realm());
+        assert_eq!(r.timeout(), Duration::from_secs(7));
+        assert_eq!(r.feed("R>"), [Action::Realm]);
+    }
+
+    #[test]
+    fn inline_scripts_replace_parts_of_a_preset() {
+        let inline = ScriptSpec::parse(
+            "[[step]]\nexpect = 're:Login\\s*:'\nsend = '{user}'\n\
+             [[step]]\nexpect = 'Pass:'\nsend = 'pw {password}'\ntimeout = 5\n",
+        )
+        .unwrap();
+        let s = Script::build(Some("mbbsemu"), Some(&inline))
+            .unwrap()
+            .unwrap();
+        assert_eq!(s.steps.len(), 2);
+        assert_eq!(s.logoff.len(), 4, "kept from the preset");
+        let mut r = Runner::new(Arc::new(s), "me", "secret");
+        let got: Vec<_> = ["Login :", "Pass:", "[HP=1]:"]
+            .iter()
+            .flat_map(|t| r.feed(t))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                Action::Send {
+                    text: "me".into(),
+                    shown: "me".into()
+                },
+                Action::Send {
+                    text: "pw secret".into(),
+                    shown: "pw ********".into()
+                },
+                Action::Realm,
+            ]
+        );
+        assert!(Script::build(None, None).unwrap().is_none());
+    }
+
+    #[test]
+    fn bad_scripts_are_refused() {
+        let cases = [
+            ("[[step]]\nexpect = 'a'\nsend = 'b'\n", "no realm"),
+            ("realm = 'x'\n", "no steps"),
+            (
+                "realm = 're:('\n[[step]]\nexpect = 'a'\nsend = 'b'\n",
+                "re:(",
+            ),
+            ("realm = ''\n[[step]]\nexpect = 'a'\nsend = 'b'\n", "empty"),
+            (
+                "realm = 'x'\n[[step]]\nexpect = 'a'\nsend = 'b'\n[[logoff]]\nat = 'm'\nsend = 'x'\n",
+                "no `at`",
+            ),
+            (
+                "realm = 'x'\n[[step]]\nexpect = 'a'\nsend = 'b'\n[[logoff]]\nsend = 'x'\n[[logoff]]\nsend = 'y'\n",
+                "step 2 has no `at`",
+            ),
+        ];
+        for (text, want) in cases {
+            let spec = ScriptSpec::parse(text).unwrap();
+            let err = Script::build(None, Some(&spec)).unwrap_err();
+            assert!(err.contains(want), "{text}\n=> {err}");
+        }
+        assert!(ScriptSpec::parse("colour = 'red'\n").is_err());
+    }
+
+    #[test]
+    fn the_tracker_follows_the_text() {
+        let mut t = Tracker::new(preset("mbbsemu"));
+        assert_eq!(t.feed(MBBSEMU[0]), None);
+        assert_eq!(t.feed(MBBSEMU[2]), Some(Place::Menu(2)));
+        assert_eq!(t.feed(MBBSEMU[3]), Some(Place::Menu(1)));
+        assert_eq!(t.feed(MBBSEMU[4]), Some(Place::Realm));
+        assert_eq!(t.feed("You say \"hi\"\r\n"), None);
+        assert_eq!(t.place(), Some(Place::Realm));
+        // Several in one feed: the latest wins; split across feeds still counts.
+        assert_eq!(t.feed("[HP=3]:x\r\n.....\r\n[MAJ"), Some(Place::Realm));
+        assert_eq!(t.feed("ORMUD]: "), Some(Place::Menu(1)));
+        assert_eq!(t.feed("\r\n[HP=3]: [MAJORMUD]: "), Some(Place::Menu(1)));
+        assert_eq!(t.feed("[HP=3]:"), Some(Place::Realm));
+    }
+
+    #[test]
+    fn logoff_from_the_realm_and_from_the_menus() {
+        let s = preset("mbbsemu");
+        let (mut l, first) = Logoff::start(Arc::clone(&s), Place::Realm).unwrap();
+        assert_eq!(first, "x");
+        assert_eq!(l.timeout(), Duration::from_secs(90));
+        assert!(
+            l.feed("You will exit after a period of silent meditation.\r\n....")
+                .is_empty()
+        );
+        assert_eq!(l.feed("\r\n[MAJORMUD]: "), ["X"]);
+        assert_eq!(l.timeout(), Duration::from_secs(20));
+        assert_eq!(
+            l.feed("Main Menu\r\nMake your selection (X to exit): "),
+            ["X"]
+        );
+        assert_eq!(l.feed("Are you sure (Y/N, or R to re-logon)? "), ["Y"]);
+        assert_eq!(l.timeout(), Duration::from_secs(10));
+        assert!(l.feed("Ok, thanks for calling!").is_empty());
+
+        let (mut l, first) = Logoff::start(Arc::clone(&s), Place::Menu(1)).unwrap();
+        assert_eq!(first, "X");
+        assert_eq!(
+            l.feed("Make your selection (X to exit): Are you sure"),
+            ["X", "Y"]
+        );
+        let (_, first) = Logoff::start(Arc::clone(&s), Place::Menu(3)).unwrap();
+        assert_eq!(first, "Y");
+    }
+
+    #[test]
+    fn the_backoff_schedule() {
+        let secs: Vec<u64> = (0..6).map(|a| backoff(a).as_secs()).collect();
+        assert_eq!(secs, [5, 10, 30, 60, 60, 60]);
+    }
+}

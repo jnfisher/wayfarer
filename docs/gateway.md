@@ -41,6 +41,65 @@ Linux and macOS), and it warns at start-up if the file's permissions let anyone 
 The gateway never writes a password itself: not in its tracing output, and in `sent.bin` a
 password sent to the game is recorded as `********`.
 
+## Logon scripts
+
+Each character logs itself on: when its session connects, the gateway answers the server's
+prompts from its logon script, from `Username:` to the realm prompt `[HP=..]:`. A server picks
+a script with `preset`:
+
+| Preset | For |
+|---|---|
+| `mbbsemu` | MajorMUD under MBBSEmu: `Username:`, `Password:`, `M` at the BBS menu, `E` at `[MAJORMUD]:` |
+| `silvermere` | silvermere: the same prompts; the BBS menu may be switched off |
+
+The presets are in [`crates/wayfarer-gateway/src/presets/`](../crates/wayfarer-gateway/src/presets/),
+which also explains the format. A server whose prompts differ gives its own steps, or any part
+of a preset to replace, in a `[server.logon]` table:
+
+```toml
+[[server]]
+id = "odd"
+host = "bbs.example.org"
+port = 23
+preset = "mbbsemu"          # keeps the preset's realm prompt, failures and log-off
+
+[[server.logon.step]]
+expect = "Login:"           # a substring, or a regex written 're:...'
+send = "{user}"
+
+[[server.logon.step]]
+expect = "re:[Pp]assword:"
+send = "{password}"
+timeout = 10                # seconds (30 if not given)
+```
+
+A session's state shows where it is: `connecting`, `logon` while the script runs, `menu` at
+the BBS or MajorMUD menu, `realm` at the realm prompt. After that the gateway follows the text,
+so a player who leaves the realm by hand is shown at the `menu`. You can type into the session
+while the script runs. A session with no script, or no credentials, is `connected` and you log
+on by hand (the gateway still follows the text once you do). If the script has sent everything
+but the realm prompt never comes (a new account goes to character creation, say), it stops and
+the session is `connected`: carry on in the tile.
+
+When a logon fails:
+
+- **Wrong password** (`Invalid Credentials`): the session is `closed` with the reason "bad
+  credentials" and not retried; fix `credentials.toml` and open it again.
+- **Already logged in**: the old connection may still be closing, so the gateway retries.
+- **A prompt doesn't come** within its step's timeout: it disconnects and retries.
+
+## Reconnecting and logging off
+
+A session whose connection drops (or whose logon is retried) is `lost`, and the gateway
+reconnects after 5 s, then 10 s, 30 s, and every 60 s after that, until a logon succeeds; each
+attempt is a line in the gateway's log. A session you close is never reconnected.
+
+Dropping a character in the realm is punished the next time it enters, so closing a session
+logs it off first: from the realm `x` (the character meditates, which can take a while), `X` at
+the MajorMUD menu, `X` at the BBS menu and `Y` to confirm; from a menu, only the steps that are
+left. Stopping the gateway (Ctrl-C or SIGTERM) logs every character off at once, waits up to
+two minutes for them, then disconnects whatever is left. A second Ctrl-C disconnects at once.
+
 ## Logs
 
 `logs/<character id>/` holds, append-only and kept across restarts:

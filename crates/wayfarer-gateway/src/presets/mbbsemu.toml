@@ -1,0 +1,59 @@
+# Logon script for MajorMUD under MBBSEmu (the dialogue in tests/fixtures/captures/
+# entry-existing and logoff-in-realm, and kb/connection.md "Login flow (MBBSEmu)").
+#
+# `expect` and `at` are a substring, or a regex after `re:`, matched against the text since the
+# last step with ANSI escapes removed. `send` may use {user} and {password}. Timeouts are in
+# seconds.
+
+# The realm prompt, `[HP=35]:` or `[HP=35/MA=12]:`: the script has succeeded.
+realm = 're:\[HP=-?\d+[^\]\n]*\]:'
+realm_timeout = 30
+
+[[step]]
+expect = "Username:"
+send = "{user}"
+
+[[step]]
+expect = "Password:"
+send = "{password}"
+
+[[step]]
+expect = "Make your selection"
+send = "M"
+
+[[step]]
+expect = "[MAJORMUD]:"
+send = "E"
+
+# MBBSEmu goes back to `Username:` after a wrong password and lets a client retry forever.
+[[failure]]
+expect = "Invalid Credentials"
+reason = "bad credentials"
+retry = false
+
+# `<user> is already logged in -- only 1 connection allowed per user.`: the old connection may
+# still be closing.
+[[failure]]
+expect = "is already logged in"
+reason = "already logged in"
+retry = true
+
+# Log-off. Each step is a place the session can be (`at`; the first step's place is the realm)
+# and what it sends there; then the next step's `at` is waited for, up to `timeout` (20 s if
+# not given). After the last step the server closes the connection.
+[[logoff]]
+send = "x"
+timeout = 90 # the character meditates silently before it leaves
+
+[[logoff]]
+at = "[MAJORMUD]:"
+send = "X"
+
+[[logoff]]
+at = "Make your selection"
+send = "X"
+
+[[logoff]]
+at = "Are you sure"
+send = "Y"
+timeout = 10
