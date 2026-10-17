@@ -24,10 +24,11 @@ when the wave before them is running (see "Waves" below).
 
   or a desktop-app session (Cmd+N) with the worktree option. It ends by opening a pull request
   and never merges.
-- **Dispatching.** John, or one local planning session he asks, starts the cards whose
-  dependencies are merged (one `claude --bg` each), reads the PRs, and merges. No orchestrator
-  routine and no scheduled wake-ups. Two or three cards at a time suits a laptop (each is a
-  full Rust build).
+- **Dispatching.** John, or a conductor session he starts in `~/repos/wayfarer` with
+  `/loop /conduct` (`.claude/skills/conduct/SKILL.md`), starts the cards whose dependencies
+  are merged (one `claude --bg` each), reads the PRs, and merges; each merge asks John. The
+  conductor stops at the end of a wave. Two or three cards at a time suits a laptop (each is
+  a full Rust build).
 - **Permissions.** The repository's `.claude/settings.json` pre-approves the routine commands
   (cargo, git, npm, gh, the live check) so background sessions don't stall on prompts.
 - Review: the session re-reads its own diff against "Done when" before opening the PR. A
