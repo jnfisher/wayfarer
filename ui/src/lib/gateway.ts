@@ -1,0 +1,365 @@
+// The protocol client: connect, hello, dispatch, reconnect and history (docs/protocol.md).
+// Plain TypeScript with no Svelte in it, so the tests can drive it with a fake socket.
+//
+// Per session it keeps the `seq` of the last chunk it handed on, and writes every chunk once,
+// in order: live output that arrives while history is being fetched waits in a buffer, a gap
+// in the live stream (or a `lagged`) fetches the missing chunks, and after a reconnect it asks
+// for everything after the last `seq`.
+
+import { PROTOCOL } from "../proto";
+import type { Chunk, SessionInfo, SessionState, ToClient, ToGateway } from "../proto";
+
+/** The part of the browser's `WebSocket` the client uses. */
+export interface SocketLike {
+  readonly readyState: number;
+  onopen: ((ev: unknown) => void) | null;
+  onmessage: ((ev: { data: unknown }) => void) | null;
+  onclose: ((ev: unknown) => void) | null;
+  onerror: ((ev: unknown) => void) | null;
+  send(data: string): void;
+  close(): void;
+}
+
+export type SocketFactory = (url: string) => SocketLike;
+
+/** Where the token is kept between page loads (`localStorage` in the browser). */
+export interface TokenStore {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+export type ConnectionStatus =
+  /** Opening the socket or waiting for `welcome`. */
+  | "connecting"
+  /** Welcomed: output is flowing. */
+  | "open"
+  /** The socket dropped; a retry is scheduled (`retryInMs`). */
+  | "down"
+  /** The gateway refused the handshake (`detail` says why); no retry. */
+  | "refused";
+
+export interface GatewayEvents {
+  /** The whole session list: on `welcome` and on `session_list`. */
+  sessions?(sessions: SessionInfo[]): void;
+  /** One session's state changed. */
+  state?(session: string, state: SessionState): void;
+  /** Terminal text for a session, each `seq` exactly once and in ascending order. */
+  write?(session: string, text: string, seq: number): void;
+  /** The gateway's log for a session restarted below what was shown: clear the terminal. */
+  reset?(session: string): void;
+  connection?(status: ConnectionStatus, detail?: { reason?: string; retryInMs?: number }): void;
+  /** An `error` message from the gateway; the connection stays up. */
+  error?(message: string): void;
+}
+
+export interface GatewayOptions {
+  /** The WebSocket URL, e.g. `ws://127.0.0.1:7373/ws`. */
+  url: string;
+  events: GatewayEvents;
+  socket?: SocketFactory;
+  tokens?: TokenStore;
+  /** Asked when the gateway refuses for the token. Return the token, or null to give up. */
+  askToken?(reason: string): string | null;
+  /** How many chunks to backfill a new tile with, and the page size for catching up. */
+  historyChunks?: number;
+  /** Reconnect backoff: the first delay, doubling up to `maxRetryMs`. */
+  minRetryMs?: number;
+  maxRetryMs?: number;
+}
+
+export const TOKEN_KEY = "wayfarer.token";
+export const HISTORY_CHUNKS = 2000;
+
+const OPEN = 1;
+
+/** One session's place in its output stream. */
+interface Sync {
+  /** The last `seq` written; null until the backfill has answered. */
+  lastSeq: number | null;
+  /** The history request in flight, if any. */
+  pending: null | { kind: "backfill"; through: number } | { kind: "after" };
+  /** Live chunks held back while `pending`. */
+  buffer: Chunk[];
+}
+
+export class GatewayClient {
+  private readonly opts: Required<Omit<GatewayOptions, "askToken" | "tokens">> &
+    Pick<GatewayOptions, "askToken" | "tokens">;
+  private socket: SocketLike | null = null;
+  private welcomed = false;
+  private stopped = false;
+  private refused = false;
+  private retries = 0;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly syncs = new Map<string, Sync>();
+
+  constructor(options: GatewayOptions) {
+    this.opts = {
+      socket: (url) => new WebSocket(url) as unknown as SocketLike,
+      historyChunks: HISTORY_CHUNKS,
+      minRetryMs: 500,
+      maxRetryMs: 10_000,
+      ...options,
+    };
+  }
+
+  /** Open the connection (and keep reopening it until `close`). */
+  connect(): void {
+    this.stopped = false;
+    this.refused = false;
+    this.clearRetry();
+    this.open();
+  }
+
+  /** Close for good: no more retries. */
+  close(): void {
+    this.stopped = true;
+    this.clearRetry();
+    const socket = this.socket;
+    this.socket = null;
+    socket?.close();
+  }
+
+  get connected(): boolean {
+    return this.welcomed;
+  }
+
+  /** Send a line of input; false when not connected. */
+  sendLine(session: string, text: string): boolean {
+    return this.send({ type: "input_line", session, text });
+  }
+
+  /** Send raw key bytes; false when not connected. */
+  sendKeys(session: string, bytes: number[]): boolean {
+    return bytes.length > 0 && this.send({ type: "input_keys", session, bytes });
+  }
+
+  private send(message: ToGateway): boolean {
+    if (!this.welcomed || !this.socket || this.socket.readyState !== OPEN) return false;
+    this.socket.send(JSON.stringify(message));
+    return true;
+  }
+
+  private open(): void {
+    this.welcomed = false;
+    this.opts.events.connection?.("connecting");
+    const socket = this.opts.socket(this.opts.url);
+    this.socket = socket;
+    socket.onopen = () => {
+      if (this.socket !== socket) return;
+      const token = this.opts.tokens?.getItem(TOKEN_KEY) ?? undefined;
+      const hello: ToGateway = { type: "hello", protocol: PROTOCOL, client: "ui" };
+      if (token) hello.token = token;
+      socket.send(JSON.stringify(hello));
+    };
+    socket.onmessage = (ev) => {
+      if (this.socket !== socket || typeof ev.data !== "string") return;
+      let message: ToClient;
+      try {
+        message = JSON.parse(ev.data) as ToClient;
+      } catch {
+        return;
+      }
+      this.dispatch(message);
+    };
+    socket.onclose = () => {
+      if (this.socket !== socket) return;
+      this.dropped();
+    };
+    socket.onerror = () => {
+      // A close event always follows.
+    };
+  }
+
+  private dropped(): void {
+    this.socket = null;
+    this.welcomed = false;
+    for (const sync of this.syncs.values()) {
+      sync.pending = null;
+      sync.buffer = [];
+    }
+    if (this.stopped || this.refused) return;
+    const delay = Math.min(this.opts.minRetryMs * 2 ** this.retries, this.opts.maxRetryMs);
+    this.retries += 1;
+    this.opts.events.connection?.("down", { retryInMs: delay });
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      this.open();
+    }, delay);
+  }
+
+  private clearRetry(): void {
+    if (this.retryTimer !== null) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+  }
+
+  private dispatch(message: ToClient): void {
+    switch (message.type) {
+      case "welcome":
+        this.welcomed = true;
+        this.retries = 0;
+        this.opts.events.connection?.("open");
+        this.sessionList(message.sessions);
+        break;
+      case "refused":
+        this.refusedFor(message.reason);
+        break;
+      case "session_list":
+        this.sessionList(message.sessions);
+        break;
+      case "session_state":
+        this.opts.events.state?.(message.session, message.state);
+        break;
+      case "output":
+        this.output(message.session, { seq: message.seq, text: message.text });
+        break;
+      case "history":
+        this.history(message.session, message.chunks);
+        break;
+      case "lagged": {
+        const sync = this.syncs.get(message.session);
+        if (sync && !sync.pending && sync.lastSeq !== null) this.catchUp(message.session, sync);
+        break;
+      }
+      case "error":
+        this.opts.events.error?.(message.message);
+        break;
+    }
+  }
+
+  private refusedFor(reason: string): void {
+    this.refused = true;
+    const socket = this.socket;
+    this.socket = null;
+    socket?.close();
+    if (/token/i.test(reason) && this.opts.askToken) {
+      this.opts.tokens?.removeItem(TOKEN_KEY);
+      const token = this.opts.askToken(reason)?.trim();
+      if (token) {
+        this.opts.tokens?.setItem(TOKEN_KEY, token);
+        this.refused = false;
+        this.open();
+        return;
+      }
+    }
+    this.opts.events.connection?.("refused", { reason });
+  }
+
+  private sessionList(sessions: SessionInfo[]): void {
+    const ids = new Set(sessions.map((s) => s.id));
+    for (const id of this.syncs.keys()) if (!ids.has(id)) this.syncs.delete(id);
+    this.opts.events.sessions?.(sessions);
+    for (const info of sessions) {
+      let sync = this.syncs.get(info.id);
+      if (!sync) {
+        sync = { lastSeq: null, pending: null, buffer: [] };
+        this.syncs.set(info.id, sync);
+      }
+      if (sync.pending) continue;
+      if (sync.lastSeq === null) {
+        this.backfill(info.id, sync, info.last_seq);
+      } else if (info.last_seq < sync.lastSeq) {
+        // The log was replaced (a fresh data directory): start the tile over.
+        this.opts.events.reset?.(info.id);
+        this.backfill(info.id, sync, info.last_seq);
+      } else if (info.last_seq > sync.lastSeq) {
+        this.catchUp(info.id, sync);
+      }
+    }
+  }
+
+  /** Fetch the latest chunks up to and including `through` (the session's `last_seq`). */
+  private backfill(session: string, sync: Sync, through: number): void {
+    sync.lastSeq = null;
+    if (through === 0) {
+      sync.lastSeq = 0;
+      return;
+    }
+    sync.pending = { kind: "backfill", through };
+    this.send({
+      type: "history_request",
+      session,
+      before_seq: through + 1,
+      max_chunks: this.opts.historyChunks,
+    });
+  }
+
+  /** Fetch the chunks after the last one written. */
+  private catchUp(session: string, sync: Sync): void {
+    sync.pending = { kind: "after" };
+    this.send({
+      type: "history_request",
+      session,
+      after_seq: sync.lastSeq ?? 0,
+      max_chunks: this.opts.historyChunks,
+    });
+  }
+
+  private output(session: string, chunk: Chunk): void {
+    const sync = this.syncs.get(session);
+    if (!sync) return;
+    if (sync.pending) {
+      sync.buffer.push(chunk);
+    } else {
+      this.apply(session, sync, chunk);
+    }
+  }
+
+  /** Write a chunk if it is the next one; drop one already written; fetch a gap. */
+  private apply(session: string, sync: Sync, chunk: Chunk): void {
+    const last = sync.lastSeq ?? 0;
+    if (chunk.seq <= last) return;
+    if (chunk.seq === last + 1) {
+      sync.lastSeq = chunk.seq;
+      this.opts.events.write?.(session, chunk.text, chunk.seq);
+      return;
+    }
+    sync.buffer.push(chunk);
+    this.catchUp(session, sync);
+  }
+
+  private history(session: string, chunks: Chunk[]): void {
+    const sync = this.syncs.get(session);
+    if (!sync?.pending) return;
+    const request = sync.pending;
+    sync.pending = null;
+    if (request.kind === "backfill") {
+      sync.lastSeq = chunks.length > 0 ? chunks[0].seq - 1 : request.through;
+    }
+    this.feed(session, sync, chunks);
+    if (sync.pending) return;
+    if (request.kind === "after" && chunks.length >= this.opts.historyChunks) {
+      // A full page: there may be more.
+      this.catchUp(session, sync);
+      return;
+    }
+    const held = sync.buffer.sort((a, b) => a.seq - b.seq);
+    sync.buffer = [];
+    this.feed(session, sync, held);
+  }
+
+  /** Apply chunks in order until one opens a gap; hold the rest for when it is filled. */
+  private feed(session: string, sync: Sync, chunks: Chunk[]): void {
+    for (const chunk of chunks) {
+      if (sync.pending) sync.buffer.push(chunk);
+      else this.apply(session, sync, chunk);
+    }
+  }
+}
+
+/** The gateway's WebSocket URL for a page served by it (or by Vite, which proxies `/ws`). */
+export function gatewayUrl(location: { protocol: string; host: string }): string {
+  const scheme = location.protocol === "https:" ? "wss:" : "ws:";
+  return `${scheme}//${location.host}/ws`;
+}
+
+/** Key strings from the terminal as bytes for `input_keys`: ASCII only (the game is CP437). */
+export function keyBytes(data: string): number[] {
+  const bytes: number[] = [];
+  for (const ch of data) {
+    const code = ch.codePointAt(0)!;
+    if (code < 0x80) bytes.push(code);
+  }
+  return bytes;
+}
