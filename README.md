@@ -27,3 +27,7 @@ cargo run -p wayfarer -- --version
 | `bin/wayfarer` | The `wayfarer` binary |
 | `tests/fixtures/` | Test data copied from mmud-exploration, with provenance |
 | `docs/plan/` | The design and the task cards |
+
+## Licence
+
+MIT; see [LICENSE](LICENSE).

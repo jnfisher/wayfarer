@@ -4,6 +4,7 @@ description = "Wire messages between the gateway, the brain and the UIs (docs/pl
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 repository.workspace = true
 
 [dependencies]
