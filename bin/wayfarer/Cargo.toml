@@ -9,3 +9,4 @@ repository.workspace = true
 
 [dependencies]
 clap.workspace = true
+wayfarer-world = { path = "../../crates/wayfarer-world" }
