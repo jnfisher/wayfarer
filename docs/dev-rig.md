@@ -66,7 +66,12 @@ SIGTERM) logs every character off cleanly before the process exits.
 
 With the gateway running, the built UI is at `http://localhost:7373` (the gateway serves
 `ui/dist`; build it with `npm run build` in `ui/`). For hot reload, run `npm run dev` in `ui/`
-and open the address Vite prints; it talks to the gateway on 7373. The UI arrives with C-007.
+and open the address Vite prints; it talks to the gateway on 7373.
+
+A tile with a test character in the realm, from `scripts/dev/gateway.sh` against the local
+silvermere:
+
+![A tile showing Waychecka in Newhaven, at the realm prompt](images/dev-rig-realm.png)
 
 ## Cards
 
@@ -77,7 +82,7 @@ scripts/dev/card.sh C-005
 starts the card as a background Claude Code session (`claude --bg`) with the standard brief
 from [plan/tasks/README.md](plan/tasks/README.md). The session makes its own git worktree under
 `.claude/worktrees/`, works on `card/C-005-<slug>` and ends with a pull request against `main`;
-it never merges. Run the script from the main checkout. Running it again for a card that
+it never merges. The session is named after the card (`C-005` in `claude agents`). Run the script from the main checkout. Running it again for a card that
 already has a session does nothing.
 
 | To | Command |
@@ -96,8 +101,9 @@ Two or three cards at a time: each is a full Rust build. The conductor session
 stall on a prompt nobody is there to answer: `cargo` build, test, fmt and clippy; read-only
 `git` plus add, commit, push and worktree handling; `npm` scripts; `gh pr` create, view,
 checks and comment; `scripts/live-check.sh`; and `claude --bg`, `agents` and `logs`. It
-denies force-pushes and pushes to `main`, and **asks** before `gh pr merge`, so merging stays
-John's decision.
+denies force-pushes and pushes to `main`, and **asks** before `gh pr merge`. The conductor
+now merges on its own once CI is green and its review passes, and still waits for John on
+anything marked "Needs John".
 
 ## Sleep
 

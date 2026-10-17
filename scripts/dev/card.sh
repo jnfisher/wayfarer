@@ -15,9 +15,11 @@ files=("docs/plan/tasks/$id"-*.md)
 file=${files[0]}
 slug=$(basename "$file" .md)
 
-if claude agents --json 2>/dev/null | grep -q "$slug"; then
+# A session counts as the card's if it is named after the card (--name below, like the
+# conductor's) or works in the card's worktree.
+if claude agents --json 2>/dev/null | grep -Eq "\"name\": \"$id\"|$slug"; then
   echo "card.sh: $id already has a session (claude agents)" >&2
   exit 0
 fi
 
-claude --bg "Run task card $id for wayfarer: read CLAUDE.md, docs/plan/tasks/README.md and $file, work on branch card/$slug, and finish with a pull request against main with green CI (wait for it with gh pr checks --watch). Do not merge."
+claude --bg --name "$id" "Run task card $id for wayfarer: read CLAUDE.md, docs/plan/tasks/README.md and $file, work on branch card/$slug, and finish with a pull request against main with green CI (wait for it with gh pr checks --watch). Do not merge."
