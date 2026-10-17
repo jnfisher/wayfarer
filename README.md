@@ -1,6 +1,6 @@
 # wayfarer
 
-A MajorMUD playing client and bot, the successor to MegaMud: one program runs a party of up
+A MajorMUD playing client and bot: one program runs a party of up
 to six characters, shows them in a browser, desktop app or terminal with an old-school ANSI
 look, and can play each of them. It speaks plain telnet, so it works with
 [silvermere](https://github.com/jnfisher/silvermere), MBBSEmu running the original module,
