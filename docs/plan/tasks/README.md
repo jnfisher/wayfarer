@@ -26,7 +26,9 @@ when the wave before them is running (see "Waves" below).
   and never merges.
 - **Dispatching.** John, or a conductor session he starts in `~/repos/wayfarer` with
   `/loop /conduct` (`.claude/skills/conduct/SKILL.md`), starts the cards whose dependencies
-  are merged (one `claude --bg` each), reads the PRs, and merges; each merge asks John. The
+  are merged (one `claude --bg` each), reads the PRs, and merges
+  the ones whose CI is green and whose review passes; anything marked "Needs John" waits
+  for him. The
   conductor stops at the end of a wave. Two or three cards at a time suits a laptop (each is
   a full Rust build).
 - **Permissions.** The repository's `.claude/settings.json` pre-approves the routine commands
