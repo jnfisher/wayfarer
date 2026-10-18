@@ -37,7 +37,9 @@ at the state, act, report in a few lines, and pick the next wake-up. GitHub and
       - **Needs John** (C-009's test-character stats; any "Needs John" or "Decided by John"
         section; a change to `docs/plan/01-goals.md` "Rules"): don't merge; tell John what
         to look at.
-      - Otherwise `gh pr merge <n> --squash --delete-branch`. This asks John each time.
+      - Otherwise merge it yourself, without asking John: `gh pr merge <n> --squash
+        --delete-branch` (John, 2026-10-17). Only with green CI, no conflict and your review
+        passed.
    3. **Start ready cards**: every card in `depends` merged, no PR, no live session. At most
       **three** card sessions working at once. From this directory:
 
