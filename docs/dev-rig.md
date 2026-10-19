@@ -119,14 +119,25 @@ from the scrollback. A card session carries on where it stopped; a CI wait simpl
 |---|---|
 | silvermere | Never for client work; on purpose, to upgrade |
 | Gateway | Only when its own code changes: Ctrl-C, run `scripts/dev/gateway.sh` again. Characters log off cleanly and back on |
-| Brain | On every engine change, by a watcher (from M1); characters stay logged in |
+| Brain | On every engine change, by `scripts/dev/brain.sh`; characters stay logged in |
 | Web UI | On every UI change, by Vite's hot reload |
 
 ## Brain (from M1)
 
-`wayfarer brain` ([brain.md](brain.md)) runs in a third terminal tab against the gateway; it
-needs the world pack built once into the data directory (`wayfarer import-world --export
-tests/fixtures/world --out "$WAYFARER_DATA_DIR/world.sqlite"`). Stop and start it at will: the
-gateway keeps the characters logged in, and the brain re-syncs them when it attaches. A script
-that runs it under a file watcher, restarting on every engine change, joins `scripts/dev/`
-with C-019.
+`scripts/dev/brain.sh` in a third terminal tab runs `wayfarer brain` ([brain.md](brain.md))
+under `cargo watch`, restarting it whenever a file under `crates/` or `bin/` changes. The
+gateway keeps the characters logged in meanwhile; the UIs see `brain_state false`, then `true`,
+and the brain re-syncs each character when it attaches. Install the watcher once with `cargo
+install cargo-watch` or `brew install cargo-watch` (a developer tool, not part of the build).
+
+The brain needs the world pack in the data directory. Both `scripts/dev/gateway.sh` and
+`scripts/dev/brain.sh` build it from `tests/fixtures/world` if it is missing, so either may go
+first. To rebuild it by hand: `wayfarer import-world --export tests/fixtures/world --out
+"$WAYFARER_DATA_DIR/world.sqlite"`.
+
+Without the watcher, `wayfarer brain` by hand does the same once. A release runs both in one
+process instead, `wayfarer serve` ([brain.md](brain.md#running-it)); the dev rig keeps them
+apart so that the brain restarts alone.
+
+After the laptop sleeps, the brain reattaches by itself (it retries with the web UI's
+backoff, half a second doubling to ten) and catches up from the gateway's history.

@@ -17,4 +17,9 @@ fi
 
 cd "$root"
 cargo build --release -p wayfarer
+# The world pack is the brain's (and `wayfarer serve`'s); build it here too so either script may go first.
+if [ ! -f "$data/world.sqlite" ]; then
+  echo "gateway.sh: building the world pack into $data/world.sqlite" >&2
+  ./target/release/wayfarer import-world --export tests/fixtures/world --out "$data/world.sqlite"
+fi
 exec ./target/release/wayfarer gateway --config "$data/wayfarer.toml" --ui-dir "$root/ui/dist" "$@"

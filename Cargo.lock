@@ -1676,11 +1676,14 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "futures-util",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
  "wayfarer-brain",
  "wayfarer-gateway",
+ "wayfarer-parse",
+ "wayfarer-proto",
  "wayfarer-world",
 ]
 
