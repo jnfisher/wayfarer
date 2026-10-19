@@ -390,11 +390,17 @@ async fn walks_a_route_confirming_each_step() {
     let (seen, played) = g.close(run).await;
     assert_eq!(played, ["w", "w", "d"]);
 
-    // The walk showed on the character, and is gone at the end.
+    // The walk showed on the character with the commands still to type, and is gone at the end.
     assert!(seen.iter().any(|m| matches!(
         m,
         ToGateway::CharacterPatch { patch, .. }
             if patch["walking"]["to"] == serde_json::json!({"map": 1, "room": 2150})
+                && patch["walking"]["commands"] == serde_json::json!(["w", "w", "d"])
+    )));
+    assert!(seen.iter().any(|m| matches!(
+        m,
+        ToGateway::CharacterPatch { patch, .. }
+            if patch["walking"]["commands"] == serde_json::json!(["d"])
     )));
     let ui = as_ui_sees(&seen);
     assert_eq!(ui.walking, None);

@@ -16,4 +16,9 @@ steps_left: number,
 /**
  * The step in progress, from 1, counted over the whole walk (replans included).
  */
-step: number, };
+step: number, 
+/**
+ * What the walker will type for each step left, the one in progress first: `n`, or a
+ * text exit's phrase (`borrow skiff`). A closed door adds an `open` it does not list.
+ */
+commands: Array<string>, };

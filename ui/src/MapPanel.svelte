@@ -6,7 +6,7 @@
     describeRoom,
     drawMap,
     roomAt,
-    routeText,
+    walkText,
     zoomAt,
     ZOOMS,
     type MapView,
@@ -161,7 +161,7 @@
     moved = level !== view?.level || panX !== 0 || panY !== 0;
   }
 
-  const route = $derived(routeText(view));
+  const route = $derived(walkText(walking));
 </script>
 
 <div class="map">

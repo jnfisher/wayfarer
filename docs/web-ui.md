@@ -136,9 +136,9 @@ and works nothing out itself.
 - **Walking**: click a room and the character walks there, confirming each step
   ([brain.md](brain.md), "Walking"). The route shows on the map as a green path with each
   room's step number, and in the bar under the map: the destination, the step in progress and
-  the steps left, and the commands still to type (`n, n, open e, e`). A door shows as `open`
-  and then the move, though the walker opens it only if it is closed; a text exit shows as
-  `text` and its direction, as the view does not carry the phrase. **stop** stops the walk
+  the steps left, and the commands the walker will still type (`n, n, e, borrow skiff`), from
+  the brain. A door shows on the map; the walker types `open` only when it finds the door
+  closed, so that is not listed ahead. **stop** stops the walk
   after the move in flight. Clicking another room while walking replaces the walk. Two
   characters can walk at once; the panel shows the focused one.
 - **Without a brain** the panel says so and draws nothing; with a brain but no known position

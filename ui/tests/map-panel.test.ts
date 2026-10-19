@@ -48,7 +48,7 @@ describe("the map panel", () => {
     const { onstop } = mount({
       character: {
         position: { map: 1, room: 10, candidates: 1 },
-        walking: { to: { map: 1, room: 11 }, name: "Road", steps_left: 1, step: 1 },
+        walking: { to: { map: 1, room: 11 }, name: "Road", steps_left: 1, step: 1, commands: ["n"] },
       },
     });
     expect(screen.getByText("→ Road")).toBeTruthy();

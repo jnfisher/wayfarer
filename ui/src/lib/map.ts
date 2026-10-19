@@ -4,7 +4,7 @@
 //
 // The brain lays the rooms out and plans the routes; this file only draws what it was sent.
 
-import type { MapExit, MapRoom, RoomKey, RoomKind, ToClient } from "../proto";
+import type { MapExit, MapRoom, RoomKey, RoomKind, ToClient, Walking } from "../proto";
 
 export type MapView = Extract<ToClient, { type: "map_view" }>;
 
@@ -189,34 +189,9 @@ export function describeRoom(view: MapView, room: MapRoom): string[] {
   return lines;
 }
 
-/**
- * The commands of the route still to walk, from the exits between its rooms: `n`, `open e`
- * then `e` for a door, `text e` for a text exit (the view has no phrase), `?` for a step the
- * view has no exit for.
- */
-export function routeCommands(view: MapView): string[] {
-  const route = view.route ?? [];
-  const out: string[] = [];
-  for (let i = 0; i + 1 < route.length; i++) {
-    const [a, b] = [route[i], route[i + 1]];
-    const fwd = view.exits.find((e) => same(e.from, a) && same(e.to, b));
-    const back = fwd ? undefined : view.exits.find((e) => same(e.from, b) && same(e.to, a) && !e.one_way);
-    const e = fwd ?? back;
-    if (!e) {
-      out.push("?");
-      continue;
-    }
-    const dir = fwd ? e.dir : (OPPOSITE[e.dir] ?? e.dir);
-    if (e.kind === "door") out.push(`open ${dir}`, dir);
-    else if (e.kind === "text") out.push(`text ${dir}`);
-    else out.push(dir);
-  }
-  return out;
-}
-
-/** The route bar's line: `n, n, open e, e`. */
-export function routeText(view: MapView | undefined): string {
-  return view ? routeCommands(view).join(", ") : "";
+/** The route bar's line: the walker's commands still to type, `n, n, e, borrow skiff`. */
+export function walkText(walking: Walking | undefined): string {
+  return walking?.commands?.join(", ") ?? "";
 }
 
 /** One zoom step at the point (px, py), keeping what is under it in place. */

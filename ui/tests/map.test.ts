@@ -11,8 +11,7 @@ import {
   roomAt,
   roomBox,
   roomCentre,
-  routeCommands,
-  routeText,
+  walkText,
   zoomAt,
   ZOOMS,
   type Ctx,
@@ -263,20 +262,11 @@ describe("hover and zoom", () => {
 });
 
 describe("the route bar", () => {
-  it("lists the commands, a door opened first, a reversed pair the other way", () => {
-    expect(routeCommands({ ...VIEW, route: [k(10), k(11), k(12), k(15)] })).toEqual(["e", "open e", "e", "s"]);
-    expect(routeText({ ...VIEW, route: [k(12), k(11), k(10), k(13)] })).toBe("open w, w, w, n");
-  });
-
-  it("marks text exits and steps the view has no exit for", () => {
-    const view: MapView = {
-      ...VIEW,
-      exits: [...VIEW.exits, { from: k(13), to: k(12), dir: "se", kind: "text", one_way: true }],
-    };
-    expect(routeCommands({ ...view, route: [k(13), k(12), k(14)] })).toEqual(["text se", "?"]);
-    // A one-way exit can't be walked backwards.
-    expect(routeCommands({ ...view, route: [k(15), k(12)] })).toEqual(["?"]);
-    expect(routeText(undefined)).toBe("");
-    expect(routeText(VIEW)).toBe("");
+  it("lists the walker's commands still to type", () => {
+    const walking = { to: k(15), name: "Small Pier", steps_left: 3, step: 2, commands: ["n", "e", "borrow skiff"] };
+    expect(walkText(walking)).toBe("n, e, borrow skiff");
+    expect(walkText(undefined)).toBe("");
+    // From a brain that did not send them.
+    expect(walkText({ ...walking, commands: undefined } as never)).toBe("");
   });
 });
