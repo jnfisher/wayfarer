@@ -2,8 +2,14 @@
 //! path set is not in this repository (John, 2026-10-17); `megamud_paths_verify` checks it
 //! against a copy outside the repository and only runs when asked.
 
-use std::path::{Path, PathBuf};
+#[path = "../../wayfarer-parse/tests/common/mod.rs"]
+mod parse_common;
 
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Instant;
+
+use wayfarer_parse::{GameTexts, Registry};
 use wayfarer_world::{WorldPack, build};
 
 fn repo(rel: &str) -> PathBuf {
@@ -12,9 +18,10 @@ fn repo(rel: &str) -> PathBuf {
         .join(rel)
 }
 
-// Slow (2-4 s, nearly all of this crate's test time): it builds the whole pack, 26,720 rooms and
-// 1,957 paths walked. Everything that needs a built pack is checked here so it is built once
-// (nextest runs each test in its own process).
+// Slow (3-5 s, nearly all of this crate's test time): it builds the whole pack, 26,720 rooms and
+// 1,957 paths walked, then the parser's registry from it and the golden fixtures on that. Everything
+// that needs a built pack is checked here so it is built once (nextest runs each test in its own
+// process).
 #[test]
 fn pack_from_fixtures() {
     let dir = tempfile::tempdir().unwrap();
@@ -131,6 +138,34 @@ fn pack_from_fixtures() {
     assert!(pack.waypoints().unwrap().is_empty());
     assert!(pack.loops().unwrap().is_empty());
     assert!(pack.paths().unwrap().is_empty());
+    game_texts_equal_the_export(&pack);
+}
+
+/// The parser's game texts from the pack are the export's, record for record, so the registry
+/// has the same patterns in the same order; the golden fixtures pass on it.
+fn game_texts_equal_the_export(pack: &WorldPack) {
+    let t = Instant::now();
+    let from_pack = pack.game_texts().unwrap();
+    eprintln!("WorldPack::game_texts: {:?}", t.elapsed());
+    let from_export = GameTexts::from_export(repo("tests/fixtures/world")).unwrap();
+    assert_eq!(from_pack.messages.len(), 3_867);
+    assert_eq!(from_pack.monsters.len(), 1_101);
+    assert_eq!(from_pack.room_names.len(), 26_720);
+    assert!(from_pack == from_export, "pack and export texts differ");
+
+    let (a, b) = (Registry::new(&from_pack), Registry::new(&from_export));
+    let key = |r: &Registry| -> Vec<(String, String)> {
+        r.patterns()
+            .iter()
+            .map(|p| (p.name.clone(), p.source.clone()))
+            .collect()
+    };
+    assert!(a.patterns().len() > 6_000);
+    assert_eq!(a.patterns().len(), b.patterns().len());
+    assert!(key(&a) == key(&b), "pack and export registries differ");
+    assert_eq!(a.room_name_count(), b.room_name_count());
+
+    parse_common::golden_parity(&Arc::new(a));
 }
 
 #[test]

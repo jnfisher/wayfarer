@@ -3,6 +3,8 @@
 use std::path::Path;
 
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Row, params};
+use serde_json::Value;
+use wayfarer_parse::{GameTexts, ItemTexts, Message, MonsterAttack, MonsterTexts};
 
 use crate::Error;
 use crate::schema::SCHEMA_VERSION;
@@ -207,6 +209,26 @@ fn path_row(r: &Row) -> rusqlite::Result<MmPath> {
             broke_reason: r.get("broke_reason")?,
         },
     })
+}
+
+/// A field of a `raw` record.
+fn raw_field<'a>(v: &'a Value, table: &str, field: &str) -> Result<&'a Value, Error> {
+    v.get(field)
+        .ok_or_else(|| Error::Format(format!("{table}: raw record without {field:?}")))
+}
+
+fn raw_i32(v: &Value, table: &str, field: &str) -> Result<i32, Error> {
+    raw_field(v, table, field)?
+        .as_i64()
+        .and_then(|n| i32::try_from(n).ok())
+        .ok_or_else(|| Error::Format(format!("{table}: {field:?} is not a 32-bit integer")))
+}
+
+fn raw_ints(v: &Value, table: &str, field: &str) -> Result<Vec<i64>, Error> {
+    raw_field(v, table, field)?
+        .as_array()
+        .and_then(|a| a.iter().map(Value::as_i64).collect())
+        .ok_or_else(|| Error::Format(format!("{table}: {field:?} is not an integer list")))
 }
 
 impl WorldPack {
@@ -421,6 +443,90 @@ impl WorldPack {
             out.push_str(text);
         }
         Ok(Some(out))
+    }
+
+    /// The game texts the parser's generated patterns are built from (`wayfarer_parse::
+    /// GameTexts`), equal to `GameTexts::from_export` on the export the pack was built from.
+    /// Each table is read in the export's record order (`_id`, in `raw`): the order decides
+    /// between equally good patterns, and a table keyed by `number` is stored in number order.
+    pub fn game_texts(&self) -> Result<GameTexts, Error> {
+        let mut st = self.conn.prepare(
+            "SELECT number, msg1, msg2, msg3 FROM messages ORDER BY json_extract(raw, '$._id')",
+        )?;
+        let messages: Vec<Message> = st
+            .query_map([], |r| {
+                Ok(Message {
+                    number: r.get(0)?,
+                    texts: [r.get(1)?, r.get(2)?, r.get(3)?],
+                })
+            })?
+            .collect::<Result<_, _>>()?;
+
+        let raws = |table: &str| -> Result<Vec<Value>, Error> {
+            let mut st = self.conn.prepare(&format!("SELECT raw FROM {table}"))?;
+            let mut rows = st
+                .query_map([], |r| r.get::<_, String>(0))?
+                .map(|raw| {
+                    let v: Value = serde_json::from_str(&raw?)
+                        .map_err(|e| Error::Format(format!("{table}: raw is not JSON: {e}")))?;
+                    let id = raw_field(&v, table, "_id")?.as_i64().unwrap_or(i64::MAX);
+                    Ok((id, v))
+                })
+                .collect::<Result<Vec<_>, Error>>()?;
+            rows.sort_by_key(|(id, _)| *id);
+            Ok(rows.into_iter().map(|(_, v)| v).collect())
+        };
+
+        let monsters = raws("monsters")?
+            .iter()
+            .map(|m| {
+                let t = "monsters";
+                let (kinds, hit, def, miss) = (
+                    raw_ints(m, t, "atktypes")?,
+                    raw_ints(m, t, "hitmsgs")?,
+                    raw_ints(m, t, "defmsgs")?,
+                    raw_ints(m, t, "missmsgs")?,
+                );
+                let at = |v: &[i64], i: usize| v.get(i).map_or(0, |&n| n as i32);
+                Ok(MonsterTexts {
+                    name: raw_field(m, t, "name")?
+                        .as_str()
+                        .ok_or_else(|| Error::Format(format!("{t}: \"name\" is not a string")))?
+                        .to_owned(),
+                    arrive_msg: raw_i32(m, t, "arrivemsg")?,
+                    death_msg: raw_i32(m, t, "deathmsg")?,
+                    attacks: (0..kinds.len())
+                        .map(|i| MonsterAttack {
+                            kind: kinds[i] as u8,
+                            hit_msg: at(&hit, i),
+                            defend_msg: at(&def, i),
+                            miss_msg: at(&miss, i),
+                        })
+                        .collect(),
+                })
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+        let items = raws("items")?
+            .iter()
+            .map(|i| {
+                Ok(ItemTexts {
+                    hit_msg: raw_i32(i, "items", "hitmsg")?,
+                    miss_msg: raw_i32(i, "items", "missmsg")?,
+                    destroy_msg: raw_i32(i, "items", "destroymsg")?,
+                })
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+        let spell_msgs = raws("spells")?
+            .iter()
+            .map(|s| raw_i32(s, "spells", "msgnum"))
+            .collect::<Result<Vec<_>, Error>>()?;
+        // rooms keeps its rowid, the insertion (file) order
+        let mut st = self.conn.prepare("SELECT name FROM rooms ORDER BY rowid")?;
+        let room_names: Vec<String> = st.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?;
+
+        Ok(GameTexts::from_records(
+            messages, monsters, items, spell_msgs, room_names,
+        ))
     }
 
     /// MegaMud's named waypoints (`Rooms.md`), in file order.

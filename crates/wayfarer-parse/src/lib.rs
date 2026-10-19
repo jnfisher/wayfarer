@@ -4,6 +4,7 @@
 //! pattern table, patterns generated from the game's own message records (WCCMSG), the prompt
 //! in its statline forms, wrapped displays joined, and tables. Text is fed incrementally; a
 //! line is classified when it is complete and the prompt when a chunk ends with it.
+//! [`typed::GameEvent`] reads the events the character model needs as typed values.
 //!
 //! ```no_run
 //! use std::sync::Arc;
@@ -25,6 +26,7 @@ mod pyre;
 mod registry;
 mod table;
 mod text;
+pub mod typed;
 
 pub use event::{Event, Fields, Value};
 pub use game_texts::{GameTexts, ItemTexts, Message, MonsterAttack, MonsterTexts};

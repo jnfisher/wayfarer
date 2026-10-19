@@ -1,9 +1,11 @@
-//! Split feeding: each capture fed in random chunk sizes gives the events it gives fed whole.
+//! Split feeding: each capture fed in random chunk sizes gives the events, and the typed events,
+//! it gives fed whole.
 
 mod common;
 
 use common::Input;
 use regex::Regex;
+use wayfarer_parse::typed::GameEvent;
 use wayfarer_parse::{Event, Parser};
 
 /// A small xorshift generator: deterministic, no dependency.
@@ -33,6 +35,19 @@ fn key(evs: &[Event]) -> Vec<(String, String, String, String, u64)> {
         .collect()
 }
 
+/// The typed events, without the chunk number of the events they keep.
+fn typed(evs: &[Event]) -> Vec<GameEvent> {
+    evs.iter()
+        .map(|e| match GameEvent::from_event(e) {
+            GameEvent::Other(mut e) => {
+                e.seq = 0;
+                GameEvent::Other(e)
+            }
+            t => t,
+        })
+        .collect()
+}
+
 #[test]
 fn random_chunks_give_the_same_events() {
     let reg = common::registry();
@@ -54,8 +69,9 @@ fn random_chunks_give_the_same_events() {
             let mut p = Parser::new(reg.clone());
             let mut evs = p.feed(&text);
             evs.extend(p.finish());
-            key(&evs)
+            (key(&evs), typed(&evs))
         };
+        let (whole, whole_typed) = whole;
         let forbidden: Vec<(usize, usize)> = tail
             .captures_iter(&text)
             .map(|c| (c.get(0).unwrap().start() + 2, c.get(1).unwrap().end() - 1))
@@ -76,6 +92,10 @@ fn random_chunks_give_the_same_events() {
                 at = end;
             }
             evs.extend(p.finish());
+            assert!(
+                typed(&evs) == whole_typed,
+                "{name} in chunks of 1..={max}: typed events differ"
+            );
             let got = key(&evs);
             if let Some(i) = (0..got.len().max(whole.len())).find(|&i| got.get(i) != whole.get(i)) {
                 let lo = i.saturating_sub(2);
