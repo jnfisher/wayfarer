@@ -55,6 +55,29 @@ It claims and logs on a character as above, then, with that gateway running:
 
 The brains' logs are `NN-brain/brain.log`, `brain-2.log` and `brain-3.log`.
 
+## Scenario "walk" (M2)
+
+```sh
+scripts/live-check.sh --scenario walk
+```
+
+It claims and logs on a character, then:
+
+1. **The world pack** and **a brain**, as in "brain"; it waits for the re-sync, whose `look`
+   places the character (the snapshot's `position`).
+2. **A walk there**: `walk_to` the Newhaven Narrow Road (1/2146; the Weapons Shop, 1/2141, if
+   the character is already there). It passes when the brain narrates "Arrived:", the
+   snapshot's room title is that room's, the position is that room, and a `map_view` was
+   centred on it. A warning from the brain fails it. The road is two or three steps from where
+   characters start, through rooms nothing spawns in. No door: the only one near Newhaven is
+   the Arena's into the Dungeon (`docs/kb/pitfalls.md` 36), and the Arena's monsters would
+   start a fight, which stops a walk; the in-process tests (`crates/wayfarer-brain/tests/walk.rs`)
+   cover doors.
+3. **A walk back** to the room it started in, checked the same way.
+4. **Stopping the brain**, then the gateway logs off as in M0.
+
+The brain's log is `NN-walk/brain.log`.
+
 ## The test-character pool
 
 `fixtures.toml` lists the characters: account, family name, race, class and the stat totals

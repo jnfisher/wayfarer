@@ -2,9 +2,10 @@
 
 The brain is the part of wayfarer that understands the game. It attaches to a running gateway
 as its one brain client, parses every session's output, keeps a model of each character and
-sends the UIs events and snapshots of it. In M1 it plays nothing: the only lines it sends to
-the game are the four of a re-sync. It can be stopped and started at any time; the gateway
-keeps the characters logged in meanwhile.
+sends the UIs events and snapshots of it. With a world pack it also knows where each character
+is, serves the map panel, and walks a character to a room when a UI asks ("Walking", below).
+Otherwise it plays nothing: the lines it sends to the game are a re-sync's and a walk's. It
+can be stopped and started at any time; the gateway keeps the characters logged in meanwhile.
 
 ## Running it
 
@@ -87,6 +88,55 @@ They are the "talk and look" kind of command (`docs/plan/03-engine.md` section 6
   one cut short by leaving the realm starts again from `st`.
 - **Done**: a whole `character` with `synced_at`, and a `notice` "re-synced".
 
+## Position and the map
+
+With a world pack the brain keeps, per character, a **position belief**: the rooms the
+character may be in (`kb/navigation.md` "Position tracking"). Every room the game shows narrows
+it (the title, when it was not lost behind a prompt, and the `Obvious exits`); every move that
+goes to the game, the brain's or one the player typed (a direction, or the phrase of a text
+exit such as `borrow skiff`), carries it through the exit first. So the map follows a character
+played by hand as well as one the brain walks. The snapshot's `position` is the believed room
+(the lowest key when several fit), how many fit, and the last title seen.
+
+The map panel gets a `map_view`: the rooms within 15 steps (or what `map_request` asked for)
+laid out on a grid with the believed room at (0, 0), each with its name, whether it spawns
+monsters, its kind (shop, trainer, bank, arena, lair; from the room data and MegaMud's
+waypoints), whether the character has certainly been there and whether it is a candidate; the
+exits between them; and the walk's route. One goes out when the believed room changes, when a
+route starts, changes or ends, and on `map_request` (`docs/protocol.md`).
+
+## Walking
+
+`walk_to {session, map, room}` from a UI walks the character there; it replaces a walk in
+progress (after the move in flight).
+
+- **The route**: the cheapest from the believed room for the character's level, class and race
+  (as the model knows them), avoiding rooms that spawn monsters where a way round is a few
+  steps longer, and the exits the game refused this session. Narrated: "Walking to Newhaven,
+  Arena: 3 steps" (", one door" when there are doors). No route, or an unknown position: a
+  warning, and nothing is sent.
+- **One step at a time**: each move goes at a prompt, in the realm, and only once the room the
+  last one led to has been seen and is the one the route expected. One line is in flight at a
+  time: a re-sync waits for the walk's action and the walk for a re-sync command. A room that is
+  not the one expected replans from the belief once; a second time stops the walk.
+- **Doors**: `The door is Closed!` (shut) sends `open <dir>`, then the move again. `The door is
+  closed!` (locked), or `The door is locked.` after `open`, sends `bash <dir>`, at most three
+  times; then the exit is marked refused and the route planned again.
+- **Refusals** (level, alignment, class or race, not permitted, a spell or item needed, a toll
+  not covered, a timed exit): the exit is marked refused for the session and the route planned
+  again, at most five times a walk.
+- **"There is no exit in that direction!"** means the belief is wrong (`kb/pitfalls.md` 34):
+  the brain sends `look`, relocates from the room shown, and plans again. A second one in the
+  same walk stops it.
+- **Stops**: `walk_stop`, `*Combat Engaged*`, a line the player typed, or no answer to a move
+  within 5 s stop the walk after the move in flight (the walker never fights); leaving the realm
+  or the brain re-attaching stop it at once. Narrated: "Stopped walking: combat started".
+- **Arrival**: "Arrived: Newhaven, Arena"; `walking` leaves the snapshot.
+
+**The guards** live in the executor every action goes through, so nothing the bot ever does can
+break them: no attack command (`a`, `bash rat`, `bs`, ...) while combat is engaged, and never
+`train stats` (`docs/plan/01-goals.md` "Rules"). Nothing sends either yet.
+
 ## Stopping, restarting, the gateway going away
 
 - **Ctrl-C or SIGTERM** closes the WebSocket and exits. Nothing is sent to the game; the
@@ -111,5 +161,6 @@ hold.
 
 ## Not yet
 
-No bot, no modes, no executor; no input arbitration (every client's input still goes straight
-to the game, `docs/protocol.md`); no position belief from the world pack (M2).
+No bot and no modes beyond walking; no input arbitration (every client's input still goes
+straight to the game, `docs/protocol.md`; a typed line stops a walk); moves are not pipelined
+along a known route (one in flight); the refused exits are forgotten when the brain restarts.

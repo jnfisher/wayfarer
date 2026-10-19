@@ -6,7 +6,8 @@
 //! reaches the realm, that `st` shows the status screen, that stopping the gateway logs it off
 //! cleanly, and that the next logon carries no punishment notice. Then it prints a summary for
 //! the pull request. `--scenario brain` (M1) instead attaches `wayfarer brain` to that gateway
-//! and checks its snapshot, its re-sync and that stopping it logs nobody off.
+//! and checks its snapshot, its re-sync and that stopping it logs nobody off. `--scenario
+//! walk` (M2) has that brain walk the character to a room a few steps away and back.
 
 mod brain;
 mod claim;
@@ -50,12 +51,14 @@ enum Scenario {
     /// M1: the brain attaches, fills the snapshot, re-syncs, and stops with the character
     /// still in the realm.
     Brain,
+    /// M2: the brain walks the character to a room and back, confirming each step.
+    Walk,
 }
 
 fn usage() -> ! {
     eprintln!(
         "usage: wayfarer-live --wayfarer BIN --out DIR [--addr HOST:PORT] [--pool FILE] \
-         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain]\n(run it through \
+         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk]\n(run it through \
          scripts/live-check.sh)"
     );
     std::process::exit(2);
@@ -86,6 +89,7 @@ fn args() -> Args {
                 a.scenario = match value().as_str() {
                     "m0" => Scenario::M0,
                     "brain" => Scenario::Brain,
+                    "walk" => Scenario::Walk,
                     _ => usage(),
                 }
             }
@@ -462,6 +466,15 @@ async fn run(ctx: &mut Ctx, pool: &Pool) -> Result<String, String> {
         stop(ctx, "stop the gateway: log off", gw).await;
         return Err(who);
     }
+    if ctx.args.scenario == Scenario::Walk {
+        let walked = walk_scenario(ctx, &mut gw).await;
+        let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
+        return if walked && logged_off {
+            Ok(who)
+        } else {
+            Err(who)
+        };
+    }
     if ctx.args.scenario == Scenario::Brain {
         let attached = brain_scenario(ctx, &mut gw).await;
         let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
@@ -642,6 +655,142 @@ async fn brain_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
     };
     ctx.record("a restarted brain re-syncs", started, &restarted);
     true
+}
+
+/// The room the walk scenario walks to: the Newhaven Narrow Road (1/2146), two or three steps
+/// from where characters start, by rooms nothing spawns in. Not through a door: the only door
+/// near Newhaven is the Arena's into the Dungeon (`kb/pitfalls.md` 36), and the Arena's
+/// monsters would start a fight, which stops a walk. The in-process tests cover doors.
+const WALK_TO: (i64, i64) = (1, 2146);
+/// Where it walks instead when the character is already there: the Weapons Shop.
+const WALK_TO_ELSE: (i64, i64) = (1, 2141);
+/// How long one walk may take.
+const WALK_TIMEOUT: Duration = Duration::from_secs(90);
+
+/// The believed room in the character snapshot, and its title.
+fn believed(c: &serde_json::Value) -> Option<((i64, i64), String)> {
+    let p = c.get("position")?;
+    let key = (p.get("map")?.as_i64()?, p.get("room")?.as_i64()?);
+    Some((key, p.get("title")?.as_str()?.to_owned()))
+}
+
+/// `walk_to` `to`, and wait for "Arrived: ..." with the room title to match.
+async fn walk(gw: &mut Gateway, to: (i64, i64)) -> Result<String, String> {
+    let (notices, warnings) = (gw.notices.len(), gw.warnings.len());
+    gw.walk_to(to.0, to.1).await?;
+    let said = gw
+        .wait_for(WALK_TIMEOUT, "\"Arrived: ...\"", |g| {
+            if let Some(w) = g.warnings[warnings..].first() {
+                return Some(Err(w.clone()));
+            }
+            let new = &g.notices[notices..];
+            new.iter()
+                .find_map(|n| n.strip_prefix("Arrived: "))
+                .map(|name| Ok((name.to_owned(), new.join("; "))))
+        })
+        .await??;
+    let (name, narration) = said;
+    // The snapshot's patch and the map view follow the notice.
+    let checked = gw
+        .wait_for(Duration::from_secs(5), "the room title and position", |g| {
+            let title = g.character.get("room_title").and_then(|t| t.as_str());
+            let at = believed(&g.character).map(|(k, _)| k);
+            (title == Some(name.as_str()) && at == Some(to) && g.map_centers.contains(&to))
+                .then_some(())
+        })
+        .await;
+    checked.map_err(|e| {
+        format!(
+            "arrived at {name:?}, but: room title {:?}, position {:?}, map views {:?}: {e}",
+            gw.character.get("room_title"),
+            believed(&gw.character),
+            gw.map_centers
+        )
+    })?;
+    Ok(narration)
+}
+
+/// The walk scenario, with the gateway in the realm: a brain, a walk there and back, the
+/// brain stopped. Whether it got as far as stopping the brain.
+async fn walk_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
+    let dir = run_dir(&ctx.args.out, &mut ctx.runs, "walk");
+    let started = Instant::now();
+    let world = brain::world_pack(&ctx.args.wayfarer, &dir).await;
+    ctx.record(
+        "build the world pack",
+        started,
+        &world
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .map_err(Clone::clone),
+    );
+    let Ok(world) = world else { return false };
+
+    // 1. The brain attaches and re-syncs: the `look` places the character.
+    let started = Instant::now();
+    let wayfarer = ctx.args.wayfarer.clone();
+    let running = match brain::Brain::start(&wayfarer, &dir, "brain", &gw.addr, &world).await {
+        Ok(b) => b,
+        Err(e) => {
+            ctx.record("the brain attaches and re-syncs", started, &Err(e));
+            return false;
+        }
+    };
+    let placed = gw
+        .wait_for(Duration::from_secs(40), "a re-sync and a position", |g| {
+            if !g.notices.iter().any(|n| n == "re-synced") {
+                return None;
+            }
+            let p = &g.character["position"];
+            believed(&g.character).map(|(k, title)| {
+                (
+                    k,
+                    format!("{title} ({}/{}, {} candidates)", k.0, k.1, p["candidates"]),
+                )
+            })
+        })
+        .await;
+    ctx.record(
+        "the brain attaches and re-syncs",
+        started,
+        &placed
+            .as_ref()
+            .map(|(_, s)| s.clone())
+            .map_err(Clone::clone),
+    );
+    let mut ok = false;
+    if let Ok((start, _)) = placed {
+        // 2. There, confirming each room; 3. and back.
+        let there = if start == WALK_TO {
+            WALK_TO_ELSE
+        } else {
+            WALK_TO
+        };
+        let started = Instant::now();
+        let out = walk(gw, there).await;
+        ctx.record(&format!("walk to {}/{}", there.0, there.1), started, &out);
+        if out.is_ok() {
+            let started = Instant::now();
+            let back = walk(gw, start).await;
+            ctx.record(
+                &format!("walk back to {}/{}", start.0, start.1),
+                started,
+                &back,
+            );
+            ok = back.is_ok();
+        }
+    }
+
+    // 4. Stop the brain; the character stays in the realm.
+    let started = Instant::now();
+    let stopped = running.stop().await.and_then(|(status, _)| {
+        status
+            .success()
+            .then(|| format!("exited with {status}"))
+            .ok_or_else(|| format!("exited with {status}"))
+    });
+    ctx.record("stop the brain", started, &stopped);
+    ok && stopped.is_ok()
 }
 
 /// Whether something answers at `addr` within a few seconds.
