@@ -5,8 +5,10 @@
 //! time), starts `wayfarer gateway` for it, and through the gateway's WebSocket checks that it
 //! reaches the realm, that `st` shows the status screen, that stopping the gateway logs it off
 //! cleanly, and that the next logon carries no punishment notice. Then it prints a summary for
-//! the pull request.
+//! the pull request. `--scenario brain` (M1) instead attaches `wayfarer brain` to that gateway
+//! and checks its snapshot, its re-sync and that stopping it logs nobody off.
 
+mod brain;
 mod claim;
 mod fixtures;
 mod gateway;
@@ -38,12 +40,23 @@ struct Args {
     wayfarer: PathBuf,
     out: PathBuf,
     only: Option<String>,
+    scenario: Scenario,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Scenario {
+    /// M0: log on, a command, a clean log-off, not punished.
+    M0,
+    /// M1: the brain attaches, fills the snapshot, re-syncs, and stops with the character
+    /// still in the realm.
+    Brain,
 }
 
 fn usage() -> ! {
     eprintln!(
         "usage: wayfarer-live --wayfarer BIN --out DIR [--addr HOST:PORT] [--pool FILE] \
-         [--credentials FILE] [--char ACCOUNT]\n(run it through scripts/live-check.sh)"
+         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain]\n(run it through \
+         scripts/live-check.sh)"
     );
     std::process::exit(2);
 }
@@ -57,6 +70,7 @@ fn args() -> Args {
         wayfarer: PathBuf::new(),
         out: PathBuf::new(),
         only: None,
+        scenario: Scenario::M0,
     };
     let mut it = std::env::args().skip(1);
     while let Some(flag) = it.next() {
@@ -68,6 +82,13 @@ fn args() -> Args {
             "--wayfarer" => a.wayfarer = value().into(),
             "--out" => a.out = value().into(),
             "--char" => a.only = Some(value()),
+            "--scenario" => {
+                a.scenario = match value().as_str() {
+                    "m0" => Scenario::M0,
+                    "brain" => Scenario::Brain,
+                    _ => usage(),
+                }
+            }
             _ => usage(),
         }
     }
@@ -441,6 +462,15 @@ async fn run(ctx: &mut Ctx, pool: &Pool) -> Result<String, String> {
         stop(ctx, "stop the gateway: log off", gw).await;
         return Err(who);
     }
+    if ctx.args.scenario == Scenario::Brain {
+        let attached = brain_scenario(ctx, &mut gw).await;
+        let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
+        return if attached && logged_off {
+            Ok(who)
+        } else {
+            Err(who)
+        };
+    }
 
     // 2. A command.
     let started = Instant::now();
@@ -474,6 +504,144 @@ async fn run(ctx: &mut Ctx, pool: &Pool) -> Result<String, String> {
     ctx.record("log on again: not punished", started, &again);
     stop(ctx, "stop the gateway: log off", gw).await;
     Ok(who)
+}
+
+/// The brain scenario, with the gateway in the realm; whether it got as far as stopping the
+/// brain.
+async fn brain_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
+    let dir = run_dir(&ctx.args.out, &mut ctx.runs, "brain");
+    let started = Instant::now();
+    let world = brain::world_pack(&ctx.args.wayfarer, &dir).await;
+    ctx.record(
+        "build the world pack",
+        started,
+        &world
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .map_err(Clone::clone),
+    );
+    let Ok(world) = world else { return false };
+
+    // 1. It attaches.
+    let started = Instant::now();
+    let wayfarer = ctx.args.wayfarer.clone();
+    let running = match brain::Brain::start(&wayfarer, &dir, "brain", &gw.addr, &world).await {
+        Ok(b) => b,
+        Err(e) => {
+            ctx.record("the brain attaches", started, &Err(e));
+            return false;
+        }
+    };
+    let attached = gw
+        .wait_for(Duration::from_secs(20), "brain_state true", |g| {
+            (g.brain_attached == Some(true)).then(|| "brain_state true".to_owned())
+        })
+        .await;
+    ctx.record("the brain attaches", started, &attached);
+    if attached.is_err() {
+        return false;
+    }
+
+    // 2. Its snapshot's HP is the prompt's.
+    let started = Instant::now();
+    let hp = gw
+        .wait_for(
+            Duration::from_secs(10),
+            "a snapshot with the prompt's HP",
+            |g| {
+                let hp = g.character.get("hp")?.as_i64()?;
+                (Some(hp) == brain::last_prompt_hp(&g.transcript()))
+                    .then(|| format!("hp {hp}, as the last prompt"))
+            },
+        )
+        .await;
+    ctx.record("the snapshot's hp is the prompt's", started, &hp);
+
+    // 3. It re-syncs (`st`, `exp`, `i`, `look` at an idle prompt).
+    let started = Instant::now();
+    let synced = gw
+        .wait_for(Duration::from_secs(30), "the notice \"re-synced\"", |g| {
+            g.notices.iter().any(|n| n == "re-synced").then(|| {
+                let c = &g.character;
+                let s = |k: &str| c.get(k).map(|v| v.to_string()).unwrap_or("?".into());
+                format!(
+                    "level {}, exp {}, room {}, synced_at {}",
+                    s("level"),
+                    s("exp"),
+                    s("room_title"),
+                    s("synced_at")
+                )
+            })
+        })
+        .await;
+    ctx.record("the brain re-syncs", started, &synced);
+
+    // 4. A second brain is refused.
+    let started = Instant::now();
+    let second = match brain::Brain::start(&wayfarer, &dir, "brain-2", &gw.addr, &world).await {
+        Ok(b) => b.exited().await,
+        Err(e) => Err(e),
+    }
+    .and_then(|(status, log)| {
+        if status.success() {
+            Err(format!("exited with {status}"))
+        } else if !log.contains("a brain is already attached") {
+            Err(format!(
+                "exited with {status} but not for the reason expected:\n{log}"
+            ))
+        } else {
+            Ok(format!("{status}: a brain is already attached"))
+        }
+    });
+    ctx.record("a second brain is refused", started, &second);
+
+    // 5. Stopping it leaves the character in the realm.
+    let started = Instant::now();
+    let stopped = running.stop().await.and_then(|(status, _)| {
+        status
+            .success()
+            .then(|| format!("exited with {status}"))
+            .ok_or_else(|| format!("exited with {status}"))
+    });
+    ctx.record("stop the brain", started, &stopped);
+    let started = Instant::now();
+    let detached = gw
+        .wait_for(Duration::from_secs(10), "brain_state false", |g| {
+            (g.brain_attached == Some(false)).then_some(())
+        })
+        .await
+        .and_then(|()| {
+            (gw.state == SessionState::Realm)
+                .then(|| "brain_state false; the session is still in the realm".to_owned())
+                .ok_or_else(|| format!("the session is {:?}", gw.state))
+        });
+    ctx.record("the character stays in the realm", started, &detached);
+    let started = Instant::now();
+    let status = status_screen(gw).await;
+    ctx.record("`st` shows the status screen", started, &status);
+
+    // 6. Started again, it attaches and re-syncs again.
+    let started = Instant::now();
+    let restarted = match brain::Brain::start(&wayfarer, &dir, "brain-3", &gw.addr, &world).await {
+        Ok(b) => {
+            let synced = gw
+                .wait_for(Duration::from_secs(30), "a second \"re-synced\"", |g| {
+                    (g.brain_attached == Some(true)
+                        && g.notices.iter().filter(|n| *n == "re-synced").count() == 2)
+                        .then(|| "brain_state true, re-synced".to_owned())
+                })
+                .await;
+            let stopped = b.stop().await;
+            synced.and_then(|s| match stopped {
+                Ok((status, _)) if status.success() => Ok(s),
+                Ok((status, _)) => Err(format!("stopping it: exited with {status}")),
+                Err(e) => Err(format!("stopping it: {e}")),
+            })
+        }
+        Err(e) => Err(e),
+    };
+    ctx.record("a restarted brain re-syncs", started, &restarted);
+    true
 }
 
 /// Whether something answers at `addr` within a few seconds.

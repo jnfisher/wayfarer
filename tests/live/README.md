@@ -31,6 +31,30 @@ If nothing answers at the address it stops at once with the command that starts 
 The world is shared and long-lived, so it checks behaviour, never numbers or room contents.
 Later cards add their scenarios (walk, fight, rest, flee) here.
 
+## Scenario "brain" (M1)
+
+```sh
+scripts/live-check.sh --scenario brain
+```
+
+It claims and logs on a character as above, then, with that gateway running:
+
+1. **The world pack**: `wayfarer import-world` from `tests/fixtures/world` into the run's
+   directory.
+2. **The brain attaches**: `wayfarer brain` against the gateway; the UI connection sees
+   `brain_state true`.
+3. **The snapshot**: within 10 s the `character` (with its patches) has the HP of the last
+   prompt on the screen.
+4. **The re-sync**: the brain sends `st`, `exp`, `i` and `look` at an idle prompt and the UI
+   gets the notice "re-synced".
+5. **A second brain** exits non-zero: `a brain is already attached`.
+6. **Stopping the brain** (SIGTERM) exits cleanly; the UI sees `brain_state false` and the
+   session is still in the realm; `st` over the gateway shows the status screen.
+7. **A restarted brain** attaches and re-syncs again.
+8. **Log off**: the gateway stops as in M0.
+
+The brains' logs are `NN-brain/brain.log`, `brain-2.log` and `brain-3.log`.
+
 ## The test-character pool
 
 `fixtures.toml` lists the characters: account, family name, race, class and the stat totals

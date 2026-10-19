@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# The live check: the M0 scenario against the game server already running on this machine
-# (tests/live/README.md). Run it before pushing a change to the gateway; paste the summary
-# into the pull request. Never run in CI. It never starts, stops or resets the server.
+# The live check: the M0 scenario (or `--scenario brain`, M1) against the game server already
+# running on this machine (tests/live/README.md). Run it before pushing a change to the
+# gateway or the brain; paste the summary into the pull request. Never run in CI. It never starts, stops or resets the server.
 #
-#   scripts/live-check.sh [--char ACCOUNT]
+#   scripts/live-check.sh [--char ACCOUNT] [--scenario m0|brain]
 #
 # WAYFARER_LIVE_ADDR: the server (default 127.0.0.1:2323).
 # WAYFARER_LIVE_CREDENTIALS: the test accounts' passwords (default: the main checkout's

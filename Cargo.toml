@@ -6,6 +6,7 @@ members = [
     "crates/wayfarer-gateway",
     "crates/wayfarer-parse",
     "crates/wayfarer-world",
+    "crates/wayfarer-brain",
     "bin/wayfarer",
     "tests/live",
 ]

@@ -124,6 +124,9 @@ from the scrollback. A card session carries on where it stopped; a CI wait simpl
 
 ## Brain (from M1)
 
-Not built yet. From M1 the brain runs under a file watcher in a third terminal tab, restarting
-on every engine change while the gateway keeps the characters logged in. A script for it
-joins `scripts/dev/` then.
+`wayfarer brain` ([brain.md](brain.md)) runs in a third terminal tab against the gateway; it
+needs the world pack built once into the data directory (`wayfarer import-world --export
+tests/fixtures/world --out "$WAYFARER_DATA_DIR/world.sqlite"`). Stop and start it at will: the
+gateway keeps the characters logged in, and the brain re-syncs them when it attaches. A script
+that runs it under a file watcher, restarting on every engine change, joins `scripts/dev/`
+with C-019.
