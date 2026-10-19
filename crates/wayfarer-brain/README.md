@@ -3,8 +3,8 @@
 The brain (`docs/brain.md`): attaches to the gateway as its brain client, parses every
 session's output, keeps a character model per session, sends the UIs events and snapshots,
 re-syncs a character (`st`, `exp`, `i`, `look`) at an idle prompt, and with a world pack keeps
-each character's position, serves the map panel (`map_view`) and walks a character to a room
-(`walk_to`). Depends on
+each character's position, serves the map panel (`map_view`), walks a character to a room
+(`walk_to`) and plays it where it stands (`bot_control`: "fight here"). Depends on
 `wayfarer-proto`, `wayfarer-parse` and `wayfarer-world`, not on the gateway.
 
 ```rust
@@ -25,19 +25,31 @@ brain.run(&mut link).await?;                             // Ok when the gateway 
 - **The re-sync** (`session.rs`): `Off`, `Want {next, idle}`, `Waiting {step, deadline}`.
 - **`executor`**: an `Action` is a command, the events that confirm it (`Expect`) and a
   timeout; one in flight per session, sent at a prompt in the realm; outcomes confirmed,
-  refused or timed out. The hard guards (`guard`): no attack while in combat, never `train
-  stats`. The re-sync and the executor never have a line in flight at once.
+  refused or timed out. The hard guards (`guard`): no attack unless known to be out of combat,
+  never `train stats`. The re-sync and the executor never have a line in flight at once; the
+  session knows whose action is in flight (the walker's or the bot's) and hands it the outcome.
 - **`position.rs`**: the `Belief` fed by every room seen and every move sent, the `Traveller`
   with the exits refused this session, the rooms visited, and the `map_view`.
 - **`walker.rs`**: the route and the per-step policy (doors, refusals, relocation, stops).
-- **`Atlas`** (`brain.rs`): the `RoomGraph`, room kinds and class and race numbers, loaded once
+- **The bot** (`modes.rs`): running, paused or stopped, `Presence` (who is in the room), and the
+  mode stack, each mode `wants`, `step`, `on_event` and `outcome`: `recover.rs`, `fight.rs`,
+  then Idle. A step asks for an action (through the executor) or a walk (through the walker),
+  and narrates. **`policy`**: the constants (rest below 80%, until 95%, stop below 30%, a quiet
+  room within 5 steps, 12 s of quiet ends a fight) and pure functions over them and the pack
+  (`target`, `hostile`, `spawns_here`, `rest_at`, `hp_percent`).
+- **`Atlas`** (`brain.rs`): the `RoomGraph`, room kinds, class and race numbers and the
+  `Monsters`, loaded once
   per brain and shared by its sessions; `World` keeps the `WorldPack` open beside it.
 - `BUILD`: the version and commit (`build.rs`), for `brain_info`.
 
 Tests: `cargo nextest run -p wayfarer-brain`. `tests/brain.rs` runs the brain against a fake
 gateway: the fixtures replayed as live output (the snapshot, the patches, the events), history
 catch-up, the re-sync's timing on a paused clock, reattach, restart and refusal.
-`tests/walk.rs` walks against a fake game (rooms from the `room-walk` capture and the pack built
-from `tests/fixtures/world`): confirmed steps, doors, bashing, refusals, "no exit", the stops,
-the map view. The live scenarios: `scripts/live-check.sh --scenario brain` and `--scenario
-walk`.
+`tests/walk.rs` walks against a fake game (`tests/game/mod.rs`: rooms from the `room-walk`
+capture and the pack built from `tests/fixtures/world`): confirmed steps, doors, bashing,
+refusals, "no exit", the stops, the map view. `tests/fight.rs` starts the bot in the Arena
+against the same fake game (texts from the `fight-arena` capture): one attack per target,
+nothing while engaged, the look after a kill, an arrival, resting in a quiet room and walking
+back, the stop below 30%, pause, take-over and resume, determinism, and the policies on the
+pack. The live scenarios: `scripts/live-check.sh --scenario brain`, `--scenario walk` and
+`--scenario fight`.

@@ -369,6 +369,73 @@ fn combat_and_rest() {
 }
 
 #[test]
+fn who_is_here_and_who_attacks() {
+    let f = "capture-death-rebirth";
+    assert_eq!(
+        first(f, "room_also_here", "fat"),
+        GameEvent::AlsoHere {
+            players: vec![],
+            monsters: vec!["fat giant rat".into()]
+        }
+    );
+    assert_eq!(
+        example("room_also_here"),
+        GameEvent::AlsoHere {
+            players: vec!["Thornwyn".into()],
+            monsters: vec!["giant rat".into()]
+        }
+    );
+    // The monster's own arrival text, and the generic one.
+    assert_eq!(
+        first(f, "monster_arrives", "thin"),
+        GameEvent::MonsterArrives {
+            name: "thin giant rat".into()
+        }
+    );
+    assert_eq!(
+        example("monster_arrives_generic"),
+        GameEvent::MonsterArrives {
+            name: "goblin".into()
+        }
+    );
+    assert_eq!(
+        line("The thin giant rat just left downwards."),
+        [GameEvent::MonsterLeaves {
+            name: "thin giant rat".into()
+        }]
+    );
+    // `The fat giant rat lunges at you!`: a miss, without the article.
+    assert_eq!(
+        first(f, "mon_miss_you", "fat"),
+        GameEvent::AttackedBy {
+            name: "fat giant rat".into()
+        }
+    );
+    assert_eq!(
+        example("mon_hits_you_generic"),
+        GameEvent::AttackedBy { name: "orc".into() }
+    );
+    assert_eq!(
+        example("attacks_you"),
+        GameEvent::AttackedBy { name: "Bob".into() }
+    );
+    assert_eq!(
+        example("target_missing"),
+        GameEvent::YouDoNotSee {
+            target: "rat".into()
+        }
+    );
+    assert_eq!(
+        line("You don't see your target here!"),
+        [GameEvent::YouDoNotSee {
+            target: String::new()
+        }]
+    );
+    assert_eq!(example("no_effect_weapon"), GameEvent::NoEffect);
+    assert_eq!(example("rest_sick"), GameEvent::TooSick);
+}
+
+#[test]
 fn death_and_conditions() {
     let f = "capture-death-rebirth";
     assert_eq!(

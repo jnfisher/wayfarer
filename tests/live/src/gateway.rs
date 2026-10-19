@@ -163,6 +163,15 @@ impl Gateway {
         .await
     }
 
+    /// `bot_control` for the session.
+    pub async fn bot(&mut self, action: wayfarer_proto::BotAction) -> Result<(), String> {
+        self.send(ToGateway::BotControl {
+            session: SESSION.into(),
+            action,
+        })
+        .await
+    }
+
     async fn send(&mut self, msg: ToGateway) -> Result<(), String> {
         self.ws
             .send(Message::text(msg.to_json()))

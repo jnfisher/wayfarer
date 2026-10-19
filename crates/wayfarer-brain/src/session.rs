@@ -1,6 +1,6 @@
 //! One session as the brain follows it: its parser, its character, the catch-up on its output,
-//! the re-sync, and with a world pack its position, the executor and the walker. The re-sync
-//! and the walker's actions are all it sends to the game.
+//! the re-sync, and with a world pack its position, the executor, the walker and the bot. The
+//! re-sync's commands and the walker's and the bot's actions are all it sends to the game.
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -9,12 +9,16 @@ use std::time::Duration;
 use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
 use wayfarer_parse::{Event, Parser, Registry};
-use wayfarer_proto::{CharacterState, Chunk, SessionId, SessionInfo, SessionState, ToGateway};
+use wayfarer_proto::{
+    BotAction, CharacterState, Chunk, SessionId, SessionInfo, SessionState, ToGateway,
+};
 use wayfarer_world::Key;
 
 use crate::brain::Atlas;
 use crate::character::{Character, merge_patch};
 use crate::executor::Executor;
+use crate::modes::{Bot, Do, Presence, View};
+use crate::policy::{COMBAT_QUIET, hp_percent};
 use crate::position::Position;
 use crate::walker::{Next, Say, Walker};
 
@@ -54,6 +58,13 @@ pub(crate) enum Resync {
         answered: bool,
         typed: bool,
     },
+}
+
+/// Whose action is in the executor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Owner {
+    Walker,
+    Bot,
 }
 
 /// What a re-sync step did, for the brain to report.
@@ -141,7 +152,31 @@ pub(crate) struct Session {
     map_center: Option<Key>,
     /// The route changed since the last `map_view`.
     map_dirty: bool,
+    /// Whose action the executor holds.
+    owner: Option<Owner>,
+    bot: Bot,
+    /// Who is in the room, for the bot.
+    presence: Presence,
+    /// The walk in progress is the bot's.
+    bot_walk: bool,
+    /// When the character's own auto-combat last showed (`*Combat Engaged*`, its blows), or
+    /// the brain attached: for how long it has been quiet, since auto-combat can end without a
+    /// word (`kb/pitfalls.md` 42).
+    last_combat: Instant,
 }
+
+/// The events of the character's own auto-combat: its engaging and its blows, hits, misses,
+/// glances and dodged swings. A monster's blows are not among them: a monster attacks a
+/// character that is not fighting back (`kb/combat.md`, "engage at once").
+const OWN_COMBAT: [&str; 7] = [
+    "combat_engaged",
+    "you_hit",
+    "you_miss",
+    "you_glance",
+    "you_dodged",
+    "pvp_dodges",
+    "smashed_it",
+];
 
 impl Session {
     /// A session the brain has just learned of: its history up to now is fed silently.
@@ -159,6 +194,11 @@ impl Session {
             map_radius: MAP_RADIUS,
             map_center: None,
             map_dirty: false,
+            owner: None,
+            bot: Bot::default(),
+            presence: Presence::default(),
+            bot_walk: false,
+            last_combat: now,
             id: info.id.clone(),
             state: info.state,
             parser: Parser::new(registry.clone()),
@@ -185,8 +225,9 @@ impl Session {
         self.own.clear();
         self.last_sent = now;
         self.buffer.clear();
+        self.last_combat = now;
         // An answer to the action in flight may have gone by unseen.
-        self.executor.cancel();
+        self.cancel(out);
         let next = self.walker.abandon("the brain re-attached");
         self.apply(next, out);
         if info.last_seq < self.fed {
@@ -226,7 +267,12 @@ impl Session {
         if state != SessionState::Realm {
             self.synced = false;
             // Nothing in flight will be answered now.
-            self.executor.cancel();
+            self.cancel(out);
+            let says = self.bot.stop("the session left the realm", true);
+            if !says.is_empty() {
+                self.say(says, out);
+                self.publish_patch(out);
+            }
             if self.walker.walking() {
                 let next = self.walker.abandon("the session left the realm");
                 self.apply(next, out);
@@ -347,6 +393,14 @@ impl Session {
             }
             self.executor.event(&typed);
             combat |= typed == GameEvent::CombatEngaged;
+            if OWN_COMBAT.contains(&ev.name.as_str()) {
+                self.last_combat = now;
+            }
+            if let Some(atlas) = &self.atlas {
+                self.presence.event(atlas, &typed);
+                let says = self.bot.event(&typed, now);
+                self.say(says, out);
+            }
             if !silent {
                 out.push(event_message(&self.id, ev));
             }
@@ -363,6 +417,7 @@ impl Session {
         if combat && self.walker.walking() {
             self.stop_walk("combat started", out);
         }
+        self.bot_held(out);
         self.drive(now, out);
         self.flush_views(out);
         if let Resync::Waiting {
@@ -407,7 +462,43 @@ impl Session {
         if self.walker.walking() {
             // The player comes first (docs/plan/02-architecture.md "Input arbitration").
             self.stop_walk("you typed a line", out);
-            self.flush_views(out);
+        }
+        self.take_over(out);
+        self.flush_views(out);
+    }
+
+    /// The player acted (a typed line, a walk): a running bot pauses after the action in
+    /// flight.
+    fn take_over(&mut self, out: &mut Vec<ToGateway>) {
+        if !self.bot.running() {
+            return;
+        }
+        let name = self.character.state().name.as_deref().unwrap_or(&self.id);
+        let first = name.split_whitespace().next().unwrap_or(name).to_owned();
+        out.push(ToGateway::Notice {
+            session: Some(self.id.clone()),
+            text: format!("You took over {first}"),
+        });
+        let says = self
+            .bot
+            .pause("you took over", self.executor.in_flight().is_some());
+        self.say(says, out);
+        self.bot_held(out);
+    }
+
+    /// The bot is pausing, paused or stopped: its walk stops after the move in flight, and an
+    /// action of its that has not gone yet is dropped.
+    fn bot_held(&mut self, out: &mut Vec<ToGateway>) {
+        if self.bot.active() {
+            return;
+        }
+        if self.bot_walk {
+            self.stop_walk("the bot is not running", out);
+        }
+        if self.owner == Some(Owner::Bot) && self.executor.in_flight().is_none() {
+            self.executor.cancel();
+            self.owner = None;
+            self.bot.forget();
         }
     }
 
@@ -436,9 +527,11 @@ impl Session {
             out.push(self.warning("walk_to: the character is not in the realm"));
             return;
         }
-        // An action queued but not sent yet is the old walk's: drop it.
+        self.take_over(out);
+        self.bot_walk = false;
+        // An action queued but not sent yet is the old walk's (or the bot's): drop it.
         if self.executor.in_flight().is_none() {
-            self.executor.cancel();
+            self.cancel(out);
         }
         self.position.refresh(&atlas, &self.character.snapshot());
         let busy = self.executor.in_flight().is_some();
@@ -456,12 +549,148 @@ impl Session {
 
     /// Stop walking after the action in flight; at once if none has gone.
     fn stop_walk(&mut self, why: &str, out: &mut Vec<ToGateway>) {
-        if self.executor.in_flight().is_none() {
+        if self.executor.in_flight().is_none() && self.owner == Some(Owner::Walker) {
             self.executor.cancel();
+            self.owner = None;
         }
         let busy = self.executor.in_flight().is_some();
         let next = self.walker.stop(why, busy);
         self.apply(next, out);
+    }
+
+    /// `bot_control`.
+    pub fn bot_control(&mut self, action: BotAction, now: Instant, out: &mut Vec<ToGateway>) {
+        let Some(atlas) = self.atlas.clone() else {
+            out.push(self.warning("bot: the brain has no world pack"));
+            return;
+        };
+        let says = match action {
+            BotAction::Start => {
+                if self.state != SessionState::Realm {
+                    out.push(self.warning("bot: the character is not in the realm"));
+                    return;
+                }
+                if self.bot.running() {
+                    return;
+                }
+                let home = self.position.best();
+                let name = home
+                    .and_then(|k| atlas.graph.room(k))
+                    .map_or_else(|| "an unknown room".to_owned(), |r| r.name.clone());
+                // Re-sync first: the HP maximum, the combat state, who is here.
+                self.request_resync();
+                self.bot.start(home, &name)
+            }
+            BotAction::Stop => self.bot.stop("asked to stop", false),
+            BotAction::Pause => {
+                let busy = self.executor.in_flight().is_some();
+                self.bot.pause("asked to pause", busy)
+            }
+            BotAction::Resume => {
+                let says = self.bot.resume();
+                if !says.is_empty() {
+                    self.request_resync();
+                }
+                says
+            }
+        };
+        self.say(says, out);
+        self.bot_held(out);
+        self.drive(now, out);
+        self.flush_views(out);
+    }
+
+    /// Forget the action in flight (it will not be answered): its owner learns nothing more.
+    fn cancel(&mut self, out: &mut Vec<ToGateway>) {
+        self.executor.cancel();
+        if self.owner.take() == Some(Owner::Bot) {
+            self.bot.forget();
+            let says = self.bot.settle();
+            self.say(says, out);
+        }
+    }
+
+    /// The bot's narration and warnings, as notices and warnings for the UIs.
+    fn say(&self, says: Vec<Say>, out: &mut Vec<ToGateway>) {
+        for say in says {
+            let session = Some(self.id.clone());
+            tracing::info!(session = %self.id, "{say:?}");
+            out.push(match say {
+                Say::Notice(text) => ToGateway::Notice { session, text },
+                Say::Warning(text) => ToGateway::Warning { session, text },
+            });
+        }
+    }
+
+    /// Whether the character is in combat: out of it once the game says so, while resting, or
+    /// once it has been quiet for [`COMBAT_QUIET`]; engaged when the game says so; unknown
+    /// before either (which the executor's guard takes as engaged).
+    fn combat(&self, now: Instant) -> Option<bool> {
+        let c = self.character.state();
+        if c.in_combat == Some(false)
+            || c.resting == Some(true)
+            || now >= self.last_combat + COMBAT_QUIET
+        {
+            return Some(false);
+        }
+        c.in_combat
+    }
+
+    /// The bot decides, if it is running and the game is at a prompt with nothing in flight.
+    fn bot_tick(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
+        if !self.bot.running()
+            || self.state != SessionState::Realm
+            || !self.live()
+            || !self.at_prompt
+            || self.executor.busy()
+            || self.walker.walking()
+            || self.resync != Resync::Off
+        {
+            return;
+        }
+        let Some(atlas) = self.atlas.clone() else {
+            return;
+        };
+        self.position.refresh(&atlas, &self.character.snapshot());
+        let in_combat = self.combat(now);
+        let c = self.character.state();
+        let view = View {
+            atlas: &atlas,
+            now,
+            hp: hp_percent(c.hp, c.hp_max),
+            engaged: in_combat != Some(false),
+            resting: c.resting == Some(true),
+            poisoned: c
+                .statuses
+                .as_ref()
+                .is_some_and(|s| s.iter().any(|s| s == "poisoned")),
+            room: self.position.best(),
+            certain: self.position.belief.certain(),
+            traveller: &self.position.traveller,
+            presence: &self.presence,
+        };
+        let (act, says) = self.bot.tick(&view);
+        self.say(says, out);
+        match act {
+            Some(Do::Send(action)) => match self.executor.submit(action, in_combat) {
+                Ok(()) => self.owner = Some(Owner::Bot),
+                Err(guard) => {
+                    out.push(self.warning(&format!("refused: {}", guard.describe())));
+                    self.bot.forget();
+                    let says = self.bot.stop(guard.describe(), true);
+                    self.say(says, out);
+                }
+            },
+            Some(Do::Walk(to)) => {
+                let next = self.walker.start(&mut self.position, &atlas, to, false);
+                self.bot_walk = self.walker.walking();
+                if !self.bot_walk {
+                    self.bot.forget();
+                }
+                self.apply(next, out);
+            }
+            None => {}
+        }
     }
 
     /// `map_request`.
@@ -487,21 +716,17 @@ impl Session {
 
     /// Do what the walker asked: narrate, and submit its next action.
     fn apply(&mut self, next: Next, out: &mut Vec<ToGateway>) {
-        for say in next.says {
-            let session = Some(self.id.clone());
-            tracing::info!(session = %self.id, "{say:?}");
-            out.push(match say {
-                Say::Notice(text) => ToGateway::Notice { session, text },
-                Say::Warning(text) => ToGateway::Warning { session, text },
-            });
-        }
+        self.say(next.says, out);
         self.map_dirty |= next.route_changed;
         if let Some(action) = next.action {
-            let in_combat = self.character.snapshot().in_combat == Some(true);
-            if let Err(guard) = self.executor.submit(action, in_combat) {
-                out.push(self.warning(&format!("refused: {}", guard.describe())));
-                let next = self.walker.abandon(guard.describe());
-                self.apply(next, out);
+            let in_combat = self.combat(Instant::now());
+            match self.executor.submit(action, in_combat) {
+                Ok(()) => self.owner = Some(Owner::Walker),
+                Err(guard) => {
+                    out.push(self.warning(&format!("refused: {}", guard.describe())));
+                    let next = self.walker.abandon(guard.describe());
+                    self.apply(next, out);
+                }
             }
         }
     }
@@ -513,12 +738,28 @@ impl Session {
             && let Some(atlas) = self.atlas.clone()
         {
             tracing::debug!(session = %self.id, cmd = %action.command, ?outcome, "action done");
-            self.position.refresh(&atlas, &self.character.snapshot());
-            let next = self
-                .walker
-                .outcome(&mut self.position, &atlas, &action, outcome);
-            self.apply(next, out);
+            match self.owner.take() {
+                Some(Owner::Bot) => {
+                    let says = self.bot.outcome(&action, outcome);
+                    self.say(says, out);
+                }
+                _ => {
+                    self.position.refresh(&atlas, &self.character.snapshot());
+                    let next = self
+                        .walker
+                        .outcome(&mut self.position, &atlas, &action, outcome);
+                    self.apply(next, out);
+                    // A pause asked for while the walker's action was in flight.
+                    let says = self.bot.settle();
+                    self.say(says, out);
+                }
+            }
         }
+        if self.bot_walk && !self.walker.walking() {
+            self.bot_walk = false;
+            self.bot.forget();
+        }
+        self.bot_tick(now, out);
         if self.state == SessionState::Realm
             && self.live()
             && self.at_prompt
@@ -536,6 +777,9 @@ impl Session {
             s.position = Some(self.position.snapshot());
         }
         s.walking = self.walker.snapshot();
+        if self.atlas.is_some() {
+            s.bot = Some(self.bot.snapshot());
+        }
         s
     }
 
@@ -607,7 +851,18 @@ impl Session {
             Resync::Waiting { deadline, .. } => Some(deadline),
             _ => None,
         };
-        resync.into_iter().chain(self.executor.deadline()).min()
+        // The bot decides again when the game has been quiet long enough for a fight to have
+        // lapsed, or when a wait of Recover's ends.
+        let now = Instant::now();
+        let bot = [Some(self.last_combat + COMBAT_QUIET), self.bot.wake()]
+            .into_iter()
+            .flatten()
+            .filter(|&t| t > now && self.bot.running() && !self.executor.busy());
+        resync
+            .into_iter()
+            .chain(self.executor.deadline())
+            .chain(bot)
+            .min()
     }
 
     /// Move the executor and the re-sync on: an action whose time ran out, the next re-sync
@@ -642,6 +897,8 @@ impl Session {
                 self.synced = true;
                 // Every answer has come, so every `sent` before it has: nothing is pending.
                 self.own.clear();
+                // The bot waits for the re-sync: it decides now.
+                self.drive(now, out);
                 Progress::Done
             }
             Resync::Want { next, idle }

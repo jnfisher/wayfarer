@@ -2,9 +2,10 @@
 //! examples in the README and `docs/protocol.md`.
 
 use wayfarer_proto::{
-    CharacterState, Chunk, ClientKind, CoinCount, Coins, DecodeError, Encumbrance, ExitKind,
-    Family, MapExit, MapRoom, PROTOCOL, ParseCounts, Position, RoomKey, RoomKind, SessionInfo,
-    SessionState, Stats, ToClient, ToGateway, Walking, WorldPackInfo, protocol_mismatch,
+    Bot, BotAction, BotMode, BotState, CharacterState, Chunk, ClientKind, CoinCount, Coins,
+    DecodeError, Encumbrance, ExitKind, Family, MapExit, MapRoom, PROTOCOL, ParseCounts, Position,
+    RoomKey, RoomKind, SessionInfo, SessionState, Stats, ToClient, ToGateway, Walking,
+    WorldPackInfo, protocol_mismatch,
 };
 
 fn kasimir(state: SessionState, last_seq: u64) -> SessionInfo {
@@ -87,10 +88,16 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                         step: 1,
                         commands: vec!["w".into(), "w".into(), "d".into()],
                     }),
+                    bot: Some(Bot {
+                        state: BotState::Running,
+                        mode: BotMode::Fight,
+                        narration: "Fight: large giant rat".into(),
+                        reason: None,
+                    }),
                     ..CharacterState::default()
                 }),
             },
-            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]}}}"#,
+            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]},"bot":{"state":"running","mode":"fight","narration":"Fight: large giant rat"}}}"#,
         ),
         (
             ToGateway::CharacterPatch {
@@ -209,6 +216,13 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
                 radius: Some(15),
             },
             r#"{"type":"map_request","session":"kasimir","radius":15}"#,
+        ),
+        (
+            ToGateway::BotControl {
+                session: "kasimir".into(),
+                action: BotAction::Start,
+            },
+            r#"{"type":"bot_control","session":"kasimir","action":"start"}"#,
         ),
     ]
 }
@@ -527,7 +541,8 @@ fn families_say_who_may_send_what() {
     for (msg, _) in to_gateway() {
         let family = msg.family();
         let want = match msg.type_name() {
-            "resync" | "state_request" | "walk_to" | "walk_stop" | "map_request" => Family::Control,
+            "resync" | "state_request" | "walk_to" | "walk_stop" | "map_request"
+            | "bot_control" => Family::Control,
             "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
             | "map_view" => Family::Brain,
             _ => Family::Gateway,

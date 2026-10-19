@@ -50,6 +50,31 @@ font is sized so the 80 columns fill the tile ("fit to tile"), and the terminal 
 rows as fit below that. It keeps 10,000 lines of scrollback (mouse wheel), and when the page
 opens it already shows the last 2,000 pieces of output from the gateway's log.
 
+## The bot
+
+With a brain that has a world pack, every tile's header carries that character's bot
+controls, just left of the server:
+
+```
+╔═ 1 Waydeva  L1 Warrior ═ HP ██████░░░░ 22/35 ═ 1,230 (45%) ═ Newhaven, Arena ═ [║][■] ═ 127.0.0.1:2323 ═ realm ═╗
+ Fight: large giant rat
+```
+
+| State | Buttons | Line under the header |
+|---|---|---|
+| Stopped (every character to begin with) | `[►]` start | none |
+| Running | `[║]` pause, `[■]` stop | the narration, light cyan: "Fight: large giant rat", "Recover: resting to 95% in Newhaven, Narrow Road", "Waiting here" |
+| Paused | `[►]` resume, `[■]` stop | yellow: "Paused: you took over" |
+
+**Start** plays the character where it stands: it fights what comes, keeps auto-combat on,
+rests when HP is low (in the nearest quiet room if this one spawns, then walks back), and stops
+itself below 30% HP with a warning, since fleeing is not built yet ([brain.md](brain.md) "Fight
+here"). **Any line you type** in the tile pauses it, after the command in flight ("You took
+over Waydeva" in the dev panel); so does clicking a room on the map. `F9` or `[►]` resumes: the
+brain re-syncs first. `F10` starts or stops the focused character's bot. Hovering the line
+shows why the bot stopped or paused. The glyphs are the VGA font's own: code page 437 has `►`
+and `■` but no pause sign, so pause is `[║]`.
+
 ## Keys
 
 | Key | Does |
@@ -68,6 +93,8 @@ opens it already shows the last 2,000 pieces of output from the gateway's log.
 | `Alt+M`, or the `map` button | Open the drawer on the map of the focused character's surroundings, or close it (on a Mac, `Option`) |
 | Click a room on the map | Walk the character there; `stop` under the map ends the walk |
 | Mouse wheel, drag on the map | Zoom (three sizes), pan; `centre` goes back to the character |
+| `F10`, or `[►]` and `[■]` in the tile's header | Start the focused character's bot where it stands (fight what comes, rest when low), or stop it |
+| `F9`, or `[║]` and `[►]` in the tile's header | Pause or resume the focused character's bot; a line you type pauses it too |
 | `Alt+D`, or the `dev` button | Open the drawer on the dev panel: the focused character's events, unclassified lines and the brain; or close it (on a Mac, `Option`) |
 
 The `?` overlay shows these keys, what the state badges mean and where the data files live. It

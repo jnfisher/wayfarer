@@ -1,0 +1,164 @@
+//! Recover (docs/brain.md "Fight here"): rest when HP is low, out of a room that spawns
+//! monsters if a quiet one is near (`kb/pitfalls.md` 20, 24), until HP is back; then walk back
+//! to where the bot was started. A monster that attacks wakes it: Fight has the character until
+//! that fight is over, then Recover carries on.
+
+use tokio::time::Instant;
+use wayfarer_parse::typed::{GameEvent, Rest};
+use wayfarer_world::Key;
+
+use crate::executor::{Action, Expect, Outcome};
+use crate::modes::{Mode, Step, View};
+use crate::policy::{REST_BELOW, REST_TRIES, REST_UNTIL, REST_WAIT, RestAt, rest_at};
+
+/// Walks to a quiet room, and walks back, tried before giving up on each (a fight can stop a
+/// walk on the way).
+const WALKS: u32 = 2;
+
+#[derive(Debug, Default)]
+pub(crate) struct Recover {
+    /// Where the bot was started: Fight happens there.
+    home: Option<Key>,
+    /// Took control, and has not finished: rested to [`REST_UNTIL`] and back home.
+    active: bool,
+    walks_out: u32,
+    walks_back: u32,
+    /// `rest` sent since the last `(Resting)` prompt.
+    rests: u32,
+    /// Don't send `rest` before this (too sick, or it would not take).
+    wait_until: Option<Instant>,
+}
+
+impl Recover {
+    pub fn new(home: Option<Key>) -> Recover {
+        Recover {
+            home,
+            ..Recover::default()
+        }
+    }
+
+    fn away(&self, v: &View) -> bool {
+        self.home.is_some() && v.room != self.home
+    }
+
+    fn low(v: &View) -> bool {
+        v.hp.is_some_and(|hp| hp < REST_BELOW) || v.poisoned
+    }
+
+    fn rested(v: &View) -> bool {
+        !v.hp.is_some_and(|hp| hp < REST_UNTIL) && !v.poisoned
+    }
+
+    fn done(&mut self) {
+        let home = self.home;
+        *self = Recover::new(home);
+    }
+}
+
+impl Mode for Recover {
+    fn wants(&self, v: &View) -> Option<String> {
+        // A fight comes first: Fight takes the character while engaged or attacked.
+        if v.engaged || !v.presence.attackers.is_empty() {
+            return None;
+        }
+        if Self::low(v) {
+            return Some(match v.hp {
+                Some(hp) if hp < REST_BELOW => format!("HP {hp}%"),
+                _ => "poisoned".to_owned(),
+            });
+        }
+        if self.active && (!Self::rested(v) || (self.away(v) && self.walks_back < WALKS)) {
+            return Some("not finished".to_owned());
+        }
+        None
+    }
+
+    fn step(&mut self, v: &View) -> Step {
+        if self.walks_back > 0 && !Self::rested(v) {
+            // Low again after giving up the walk home: a new rest, from here.
+            self.done();
+        }
+        self.active = true;
+        let here = v.room_name(v.room);
+        if Self::rested(v) {
+            if self.away(v) && self.walks_back < WALKS {
+                self.walks_back += 1;
+                let home = self.home.expect("away from home");
+                return Step::walk(
+                    home,
+                    format!(
+                        "Recover: rested; walking back to {}",
+                        v.room_name(Some(home))
+                    ),
+                );
+            }
+            self.done();
+            return Step::wait(format!("Recover: rested in {here}"));
+        }
+        if v.resting {
+            self.rests = 0;
+            return Step::wait(format!("Recover: resting to {REST_UNTIL}% in {here}"));
+        }
+        if self.walks_out < WALKS {
+            match rest_at(v.atlas, v.room, v.certain, v.traveller) {
+                RestAt::Walk(quiet) => {
+                    self.walks_out += 1;
+                    return Step::walk(
+                        quiet,
+                        format!(
+                            "Recover: walking to {} to rest ({here} spawns)",
+                            v.room_name(Some(quiet))
+                        ),
+                    );
+                }
+                RestAt::HereAnyway => {
+                    // Asked once: a later step rests here without asking again.
+                    self.walks_out = WALKS;
+                }
+                RestAt::Here => {}
+            }
+        }
+        if self.wait_until.is_some_and(|t| v.now < t) {
+            return Step::wait(format!("Recover: can't rest in {here}; waiting"));
+        }
+        if self.rests >= REST_TRIES {
+            self.rests = 0;
+            self.wait_until = Some(v.now + REST_WAIT);
+            return Step::wait(format!("Recover: can't rest in {here}; waiting"));
+        }
+        self.rests += 1;
+        Step::send(
+            Action::new("rest", Expect::Prompt),
+            format!("Recover: resting to {REST_UNTIL}% in {here}"),
+        )
+    }
+
+    fn on_event(&mut self, ev: &GameEvent, now: Instant) {
+        match ev {
+            GameEvent::TooSick => {
+                self.rests = 0;
+                self.wait_until = Some(now + REST_WAIT);
+            }
+            GameEvent::Prompt {
+                resting: Some(Rest::Resting | Rest::Meditating),
+                ..
+            }
+            | GameEvent::Resting { .. } => self.rests = 0,
+            _ => {}
+        }
+    }
+
+    fn outcome(&mut self, _action: &Action, _outcome: Outcome) {}
+}
+
+impl Recover {
+    /// Still recovering (it has not finished since it took control).
+    pub fn busy(&self) -> bool {
+        self.active
+    }
+
+    /// When a wait ends, for the clock to wake the bot.
+    pub fn wake(&self) -> Option<Instant> {
+        self.wait_until
+    }
+}

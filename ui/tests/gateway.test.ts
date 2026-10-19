@@ -170,6 +170,15 @@ describe("handshake", () => {
     ]);
   });
 
+  it("sends bot_control", () => {
+    const r = rig();
+    r.last().open();
+    expect(r.client.botControl("kasimir", "start")).toBe(false);
+    r.last().receive(welcome(session("kasimir", 0)));
+    expect(r.client.botControl("kasimir", "pause")).toBe(true);
+    expect(r.last().sent.at(-1)).toEqual({ type: "bot_control", session: "kasimir", action: "pause" });
+  });
+
   it("asks for the token when refused for it, keeps it and tries again", () => {
     const tokens = new MemoryStore();
     const askToken = vi.fn(() => " SECRET ");
