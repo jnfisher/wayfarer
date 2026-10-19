@@ -58,7 +58,7 @@ at the state, act, report in a few lines, and pick the next wake-up. GitHub and
 
 When every card in the wave is merged, stop the loop and tell John, with the milestone's
 "done" check from the index. The next wave's cards are written only after John has tried it
-and says go; then write them on a branch, open a PR, and run them once it is merged.
+and says go; then write them on a branch, open a PR, merge it yourself, and run them.
 
 ## KB notes
 
@@ -71,7 +71,10 @@ wave, with a PR for John.
 ## Never
 
 - Start, stop, rebuild or reset the local silvermere server.
-- Write code or push to `main`; your own changes go through a pull request.
+- Push to `main`. Your own changes (cards, docs, the KB, this skill) go through a pull
+  request that you merge yourself once CI is green (John, 2026-10-19: no review needed from
+  him for the conductor's own PRs). Changes to `docs/plan/01-goals.md` "Rules" still wait
+  for John.
 - Merge with red or pending CI, a merge conflict, or something waiting on John.
 - Train stats or spend CP for any character. The player does that; C-009's test characters
   get only the stats John approved in its PR.
