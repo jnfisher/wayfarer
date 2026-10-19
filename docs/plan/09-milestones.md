@@ -32,5 +32,7 @@ the live check. The index there has the dependencies, tiers and what "M0 done" m
 
 Written early, running beside wave 1: C-010 (the parser, with golden parity against
 `patterns.py`) and C-011 (the world pack, with MegaMud waypoints and verified loops). Written
-once M0 is live: the brain process with attach, persisted state and re-sync; the character
-model and typed events; the status header and the dev panel.
+on 2026-10-19, once M0 was live (`tasks/README.md`): the protocol's brain families (C-014),
+typed events (C-015), the brain process with attach and re-sync (C-016; nothing to persist
+yet), the status header (C-017), the dev panel (C-018), `serve` and the watcher (C-019), and
+two things John asked for after M0: a help overlay (C-012) and resizable tiles (C-013).
