@@ -7,7 +7,7 @@ mod common;
 use std::sync::{Arc, OnceLock};
 
 use wayfarer_parse::helpers::{Carried, Exit};
-use wayfarer_parse::typed::{GameEvent, ManaKind, PromptForm, Rest};
+use wayfarer_parse::typed::{GameEvent, ManaKind, PromptForm, Refusal, Rest};
 use wayfarer_parse::{Event, Parser, PromptMode, PromptParser, Registry};
 
 fn reg() -> &'static Arc<Registry> {
@@ -265,6 +265,78 @@ fn room() {
         first("capture-room-walk", "room_dark", "very dark"),
         GameEvent::RoomDark
     );
+}
+
+#[test]
+fn moves_and_doors() {
+    let f = "capture-flood-and-refusals";
+    assert_eq!(
+        first(f, "no_exit", ""),
+        GameEvent::MoveRefused {
+            reason: Refusal::NoExit
+        }
+    );
+    // The stock state: locked.
+    assert_eq!(
+        first("capture-room-walk", "door_closed", ""),
+        GameEvent::DoorClosed { locked: true }
+    );
+    assert_eq!(
+        first("capture-room-walk", "door_locked", ""),
+        GameEvent::OpenRefused
+    );
+    assert_eq!(
+        line("The door is Closed!"),
+        [GameEvent::DoorClosed { locked: false }]
+    );
+    assert_eq!(
+        line("The gate is closed!"),
+        [GameEvent::DoorClosed { locked: true }]
+    );
+    assert_eq!(line("The door is now open."), [GameEvent::DoorOpened]);
+    assert_eq!(line("The gate is already open."), [GameEvent::DoorOpened]);
+    assert_eq!(
+        line("You bashed the door open."),
+        [GameEvent::BashResult { ok: true }]
+    );
+    assert_eq!(
+        line("Your attempts to bash through fail!"),
+        [GameEvent::BashResult { ok: false }]
+    );
+    for (text, reason) in [
+        (
+            "You have progressed too far to go through this exit!",
+            Refusal::LevelHigh,
+        ),
+        (
+            "You have not progressed far enough to go through this exit!",
+            Refusal::LevelLow,
+        ),
+        ("You are not permitted in that room!", Refusal::NotPermitted),
+        ("You may not go through this exit!", Refusal::Forbidden),
+        (
+            "You are too evil to go through this exit!",
+            Refusal::Alignment,
+        ),
+        (
+            "You need to cast a spell to go that way!",
+            Refusal::NeedSpell,
+        ),
+        (
+            "You do not have the appropriate item to go that direction!",
+            Refusal::NeedItem,
+        ),
+        (
+            "You do not have enough to cover the toll of 5 gold crowns.",
+            Refusal::TollShort,
+        ),
+        (
+            "You may not pass through that exit at this point in time.",
+            Refusal::Timed,
+        ),
+    ] {
+        assert_eq!(line(text), [GameEvent::MoveRefused { reason }], "{text}");
+    }
 }
 
 #[test]

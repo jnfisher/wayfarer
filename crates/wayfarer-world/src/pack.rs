@@ -458,6 +458,33 @@ impl WorldPack {
         Ok(Some(shop))
     }
 
+    /// Every shop's type, by number (`kb/economy.md`: 7 bank, 8 training, ...).
+    pub fn shop_types(&self) -> Result<Vec<(i64, i64)>, Error> {
+        let mut st = self
+            .conn
+            .prepare_cached("SELECT number, type FROM shops ORDER BY number")?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Every class, (number, name), by number.
+    pub fn classes(&self) -> Result<Vec<(i64, String)>, Error> {
+        self.names("classes")
+    }
+
+    /// Every race, (number, name), by number.
+    pub fn races(&self) -> Result<Vec<(i64, String)>, Error> {
+        self.names("races")
+    }
+
+    fn names(&self, table: &str) -> Result<Vec<(i64, String)>, Error> {
+        let mut st = self
+            .conn
+            .prepare_cached(&format!("SELECT number, name FROM {table} ORDER BY number"))?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
     /// A message (WCCMSG): its three texts.
     pub fn message(&self, number: i64) -> Result<Option<[String; 3]>, Error> {
         Ok(self

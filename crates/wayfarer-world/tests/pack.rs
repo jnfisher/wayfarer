@@ -60,6 +60,13 @@ fn pack_from_fixtures() {
 
     let pack = WorldPack::open(&out).unwrap();
     assert_eq!(pack.meta("schema_version").unwrap().as_deref(), Some("1"));
+    let classes = pack.classes().unwrap();
+    assert_eq!(classes.len(), 15);
+    assert!(classes.iter().any(|(_, n)| n == "Warrior"));
+    assert!(pack.races().unwrap().iter().any(|(_, n)| n == "Human"));
+    let shops = pack.shop_types().unwrap();
+    assert_eq!(shops.len(), 178);
+    assert!(shops.iter().any(|&(_, t)| t == 7), "a bank");
     assert!(
         pack.meta("source.WCCMP001.file_sha256")
             .unwrap()
