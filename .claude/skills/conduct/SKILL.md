@@ -62,9 +62,11 @@ and says go; then write them on a branch, open a PR, and run them once it is mer
 
 ## KB notes
 
-Collect the "KB notes" of PRs you merge. At the end of the wave, add them to
-`../mmud-exploration/kb/` (right file, provenance, a line in `kb/changelog.md`) on a branch
-there and open a PR for John.
+The KB is `docs/kb/` in this repository (since 2026-10-19). When reviewing a card PR with
+"KB notes", check that the facts are in `docs/kb/` with provenance and a `changelog.md` line
+in that PR; if not, that is a fix. Notes about silvermere's own behaviour are collected and
+added to `../mmud-exploration/kb/server-behaviours.md` on a branch there at the end of the
+wave, with a PR for John.
 
 ## Never
 

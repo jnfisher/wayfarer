@@ -55,8 +55,11 @@ Cards don't repeat these:
   other repositories freely while working; never clone them in CI.
 - **Rules**: only those in `docs/plan/01-goals.md` "Rules". Nothing from the prototype
   (`test/play/`) or `mmud-exploration/CLAUDE.md` applies unless that section lists it.
-- **Knowledge**: a confirmed fact about the game or MegaMud that the KB lacks goes in the PR
-  description under "KB notes"; the planning session writes it to `mmud-exploration/kb/`.
+- **Knowledge**: the KB is `docs/kb/` (since 2026-10-19). A confirmed fact about the game or
+  MegaMud that it lacks is written there by the card itself, in the same PR: the right file,
+  the provenance tag, a line in `docs/kb/changelog.md`, and a summary under "KB notes" in
+  the PR description. silvermere's own behaviours go to mmud-exploration's
+  `kb/server-behaviours.md` as a note for John.
 - **Docs**: each crate has a short `README.md`; behaviour visible to a user goes in `docs/`.
 - **Commits and PRs**: no model names; the attribution lines the session is given.
 
