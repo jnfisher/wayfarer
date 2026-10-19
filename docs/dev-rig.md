@@ -69,10 +69,10 @@ With the gateway running, the built UI is at `http://localhost:7373` (the gatewa
 `ui/dist`; build it with `npm run build` in `ui/`). For hot reload, run `npm run dev` in `ui/`
 and open the address Vite prints; it talks to the gateway on 7373.
 
-A tile with a test character in the realm, from `scripts/dev/gateway.sh` against the local
-silvermere:
+Two test characters in the realm, from `scripts/dev/gateway.sh` and `scripts/dev/brain.sh`
+against the local silvermere, with the dev panel open (M1, 2026-10-19):
 
-![A tile showing Waychecka in Newhaven, at the realm prompt](images/dev-rig-realm.png)
+![Two tiles with filled status headers, and the dev panel beside them](images/dev-rig-realm.png)
 
 ## Cards
 
