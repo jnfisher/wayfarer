@@ -39,7 +39,7 @@ export const BADGE_MEANINGS: Record<SessionState, string> = {
 };
 
 export const FILES_HELP = [
-  "wayfarer.toml and credentials.toml: the data directory (on Linux ~/.local/share/wayfarer/), or the directory of the file given to `wayfarer gateway --config`",
+  "wayfarer.toml and credentials.toml: the data directory (on macOS ~/Library/Application Support/wayfarer/, on Linux ~/.local/share/wayfarer/), or the directory of the file given to `wayfarer gateway --config`",
   "logs: logs/<character id>/ in the same directory (output.log, raw.bin, sent.bin)",
 ];
 

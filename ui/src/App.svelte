@@ -19,9 +19,11 @@
     type Weights,
   } from "./lib/layout";
   import { TerminalSinks } from "./lib/sinks";
+  import { applyBrainState, applyCharacter, applyCharacterPatch, emptyBrainView } from "./lib/state";
   import type { SessionInfo } from "./proto";
 
   let sessions = $state<SessionInfo[]>([]);
+  const brain = $state(emptyBrainView());
   let status = $state<ConnectionStatus>("connecting");
   let reason = $state("");
   let retryInMs = $state(0);
@@ -48,8 +50,8 @@
   // Column and row weights per grid shape, kept in the browser until settings exist (C-013).
   const GAP = 6;
   const PAD = 2;
-  /** 80 columns at the smallest font (6 px, 3 px cells) plus the tile's 4 px double frame. */
-  const MIN_TILE_WIDTH = TERM_COLS * 6 * CELL_ASPECT + 8;
+  /** 80 columns at the smallest font (6 px, 3 px cells) plus the tile's 8 px side frames. */
+  const MIN_TILE_WIDTH = TERM_COLS * 6 * CELL_ASPECT + 16;
   const MIN_TILE_HEIGHT = 120;
   let layout = $state(loadLayout(browserStorage()));
   let dragging = $state(false);
@@ -147,6 +149,9 @@
         retryInMs = detail?.retryInMs ?? 0;
       },
       error: (message) => console.warn("gateway:", message),
+      character: (id, state) => applyCharacter(brain, id, state),
+      characterPatch: (id, patch) => applyCharacterPatch(brain, id, patch),
+      brainState: (attached) => applyBrainState(brain, attached),
     },
   });
 
@@ -221,6 +226,7 @@
         {sinks}
         onfocus={() => (focused = i)}
         onhelp={toggleHelp}
+        character={brain.attached ? (brain.characters[info.id] ?? {}) : null}
       />
     {:else}
       <p class="empty">
