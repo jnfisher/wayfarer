@@ -66,7 +66,8 @@ Cards don't repeat these:
 |---|---|---|
 | 1 | M0: gateway and a live terminal | Now (this index) |
 | 2 | M1: parser, events, status; brain process | C-010 and C-011 early (they needed nothing from M0); C-012 to C-019 on 2026-10-19, after John tried M0 and said go |
-| 3+ | M2 onward | When the wave before is merged and John has played with it |
+| 3 | M2: world and navigation, plus "fight here" pulled forward from M3 and the server-run page | 2026-10-19, after John tried M1 and said go |
+| 4+ | M3 onward | When the wave before is merged and John has played with it |
 
 ## Index (wave 1, M0)
 
@@ -97,12 +98,26 @@ Cards don't repeat these:
 | [C-018](C-018-dev-panel.md) | Web UI dev panel: the event stream, unclassified lines and rate, brain build and restarts, re-sync | B | M | C-017 | |
 | [C-019](C-019-serve-and-watcher.md) | `wayfarer serve` runs the brain in-process; `scripts/dev/brain.sh` under a watcher; the dev rig doc | C | S | C-008, C-014, C-016 | |
 
+## Index (wave 3, M2 plus two pulls)
+
+| Id | Title | Tier | Size | Depends | Review |
+|---|---|---|---|---|---|
+| [C-020](C-020-m1-follow-ups.md) | M1 follow-ups: `sent` ordered with output, more events applied to the model, inventory on the wire | B | S | C-016, C-018 | |
+| [C-021](C-021-routing-and-belief.md) | `wayfarer-world`: the room graph, routing, the position belief, and the map layout | B | L | C-011, C-015 | review |
+| [C-022](C-022-walker.md) | The executor and the walker: protocol M2 (map view, walk to, stop), confirmed moves, doors, relocation | B | L | C-020, C-021 | review |
+| [C-023](C-023-map-panel.md) | Web UI map panel: rooms around the character on a canvas, the belief, click a room to walk | B | L | C-022 | review |
+| [C-024](C-024-generated-loops.md) | Generated loops: circuits over an area's spawn rooms, listed and walkable once | B | M | C-021, C-023, C-025 | |
+| [C-025](C-025-fight-here.md) | Fight here: the Fight and Recover modes in the current room, start/stop/pause, typed lines pause the bot | B | L | C-022, C-023 | review |
+| [C-026](C-026-server-run.md) | Running wayfarer on a server: build, data directory, token, systemd unit, Tailscale | C | S | C-019 | |
+
 Tier: B Opus, C Sonnet. Size: S under half a day of agent time, M about a day, L two to three
 days.
 
 Parallelism, wave 1: C-002, C-003, C-010 and C-011 together after C-001; then C-004; then
 C-005 and C-006 together; then C-007, C-008 and C-009 together. Wave 2: C-012, C-014 and
-C-015 together; then C-013 and C-016; then C-017 and C-019; then C-018.
+C-015 together; then C-013 and C-016; then C-017 and C-019; then C-018. Wave 3: C-020,
+C-021 and C-026 together; then C-022; then C-023; then C-025; then C-024 (C-023, C-025 and
+C-024 all edit the UI's keys table, docs and generated protocol files, so they run one at a time).
 
 **M0 is done** when John opens the browser on his rig, sees one tile per configured
 character, each logged on by its logon script, types into them, scrolls back, reloads the
@@ -113,3 +128,10 @@ cleanly.
 character in the realm, the dev panel shows the event stream and the unclassified lines with
 their rate, the help overlay and resizable tiles work, and John stops and starts the brain
 (`scripts/dev/brain.sh`) while nobody is logged off and the headers fill again.
+
+**M2 is done** (with the two pulls) when, on John's rig: the map panel shows the character's
+surroundings with the believed room lit, he clicks a room a few steps away and the character
+walks there confirming each step, with the route drawn and a stop that works; a generated
+loop is listed for the area and walks once; in a room he picks, Start makes the character
+fight what comes and rest when low, typing pauses it and `F9` resumes it, and it stops itself
+below 30% HP; and `docs/server.md` has been tried end to end on a Linux machine.

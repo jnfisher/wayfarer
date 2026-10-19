@@ -36,3 +36,12 @@ on 2026-10-19, once M0 was live (`tasks/README.md`): the protocol's brain famili
 typed events (C-015), the brain process with attach and re-sync (C-016; nothing to persist
 yet), the status header (C-017), the dev panel (C-018), `serve` and the watcher (C-019), and
 two things John asked for after M0: a help overlay (C-012) and resizable tiles (C-013).
+
+## Third wave (M2, plus two pulls), written 2026-10-19
+
+After John tried M1 and said go (`tasks/README.md`): the room graph, routing, the position
+belief and the map layout (C-021); the executor and the walker with the M2 messages (C-022);
+the map panel (C-023); generated loops (C-024); the M1 follow-ups first (C-020). Pulled
+forward at John's request: the first slice of M3, "fight here" (C-025: Fight and Recover in
+the current room, start/stop/pause, no flee), and a page for running wayfarer on a server
+over Tailscale (C-026), ahead of M6's installers.
