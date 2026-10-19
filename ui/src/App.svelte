@@ -2,6 +2,8 @@
   import { onMount } from "svelte";
   import Tile from "./Tile.svelte";
   import { GatewayClient, gatewayUrl, type ConnectionStatus, type TokenStore } from "./lib/gateway";
+  import Help from "./Help.svelte";
+  import { FOCUS_TILE_CODE, ZOOM_IN_KEYS, ZOOM_OUT_KEYS, ZOOM_RESET_KEYS } from "./lib/keys";
   import { tileGrid } from "./lib/layout";
   import { TerminalSinks } from "./lib/sinks";
   import type { SessionInfo } from "./proto";
@@ -14,6 +16,19 @@
   let zooms = $state<Record<string, number>>({});
   let gridWidth = $state(0);
   let gridHeight = $state(0);
+  let helpArea = $state<{ left: number; top: number; width: number; height: number } | null>(null);
+
+  /** Open (over the focused tile) or close the help overlay. */
+  function toggleHelp() {
+    if (helpArea) {
+      helpArea = null;
+      return;
+    }
+    const r = document.querySelectorAll(".grid > .tile")[focused]?.getBoundingClientRect();
+    helpArea = r
+      ? { left: r.left, top: r.top, width: r.width, height: r.height }
+      : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+  }
 
   const grid = $derived(tileGrid(sessions.length, gridWidth, gridHeight));
   const offline = $derived(
@@ -69,7 +84,7 @@
 
   // Alt+1..Alt+6 focus a tile; Ctrl +/-/0 zoom the focused one. Captured before xterm sees them.
   function onkeydown(e: KeyboardEvent) {
-    if (e.altKey && !e.ctrlKey && !e.metaKey && /^Digit[1-6]$/.test(e.code)) {
+    if (e.altKey && !e.ctrlKey && !e.metaKey && FOCUS_TILE_CODE.test(e.code)) {
       const n = Number(e.code.slice(5)) - 1;
       if (n < sessions.length) {
         e.preventDefault();
@@ -79,7 +94,13 @@
     }
     const id = sessions[focused]?.id;
     if (!id || !e.ctrlKey || e.altKey || e.metaKey) return;
-    const step = e.key === "+" || e.key === "=" ? 1 : e.key === "-" ? -1 : e.key === "0" ? 0 : null;
+    const step = ZOOM_IN_KEYS.includes(e.key)
+      ? 1
+      : ZOOM_OUT_KEYS.includes(e.key)
+        ? -1
+        : ZOOM_RESET_KEYS.includes(e.key)
+          ? 0
+          : null;
     if (step === null) return;
     e.preventDefault();
     zooms[id] = step === 0 ? 0 : (zooms[id] ?? 0) + step;
@@ -110,6 +131,7 @@
         {client}
         {sinks}
         onfocus={() => (focused = i)}
+        onhelp={toggleHelp}
       />
     {:else}
       <p class="empty">
@@ -118,6 +140,10 @@
     {/each}
   </div>
 </main>
+
+{#if helpArea}
+  <Help area={helpArea} onclose={() => (helpArea = null)} />
+{/if}
 
 <style>
   main {

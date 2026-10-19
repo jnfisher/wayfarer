@@ -23,9 +23,17 @@ opens it already shows the last 2,000 pieces of output from the gateway's log.
 |---|---|
 | `Enter` in a tile's input line | Sends the line (an empty line sends just Enter) |
 | `Up`, `Down` in the input line | That tile's command history |
+| `keys` button | Sends what you type in the terminal straight to the game, key by key; click it again to go back to the input line |
 | `Alt+1` to `Alt+6` | Focus a tile (on a Mac, `Option`) |
 | `Ctrl +`, `Ctrl -` | Make the focused tile's font larger or smaller |
 | `Ctrl 0` | Back to "fit to tile" |
+| `?` on an empty input line, or the `?` button | Open or close this help |
+| `Esc`, `?` again, or a click outside | Close this help |
+
+The `?` overlay shows these keys, what the state badges mean and where the data files live. It
+is wayfarer's help only, never the game's; a `?` typed after other text on the line is sent to
+the game as text. The table above and the overlay come from one table in `ui/src/lib/keys.ts`,
+and a test fails when they differ.
 
 Clicking a tile focuses it. The **keys** button sends what you type in the terminal itself
 straight to the game, key by key, instead of a line at a time: for the character editor and

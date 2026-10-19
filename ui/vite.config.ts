@@ -11,6 +11,7 @@ export default defineConfig({
       "/ws": { target: "ws://127.0.0.1:7373", ws: true },
     },
   },
+  resolve: process.env.VITEST ? { conditions: ["browser"] } : undefined,
   test: {
     include: ["tests/**/*.test.ts"],
   },
