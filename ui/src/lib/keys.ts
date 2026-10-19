@@ -10,7 +10,6 @@ export interface KeyRow {
   group: string;
 }
 
-/** Layout is left for C-013 to add as a group of its own. */
 export const KEY_ROWS: KeyRow[] = [
   { group: "Input", keys: "Enter in a tile's input line", does: "Sends the line (an empty line sends just Enter)" },
   { group: "Input", keys: "Up, Down in the input line", does: "That tile's command history" },
@@ -22,6 +21,9 @@ export const KEY_ROWS: KeyRow[] = [
   { group: "Tiles", keys: "Alt+1 to Alt+6", does: "Focus a tile (on a Mac, Option)" },
   { group: "Display", keys: "Ctrl +, Ctrl -", does: "Make the focused tile's font larger or smaller" },
   { group: "Display", keys: "Ctrl 0", does: 'Back to "fit to tile"' },
+  { group: "Layout", keys: "Drag the line between two tiles", does: "Gives one tile more room and the other less; remembered per browser" },
+  { group: "Layout", keys: "Double-click a line between tiles", does: "Back to equal shares for that direction (columns or rows)" },
+  { group: "Layout", keys: "Alt+0", does: "Back to equal shares for columns and rows (on a Mac, Option)" },
   { group: "Help", keys: "? on an empty input line, or the ? button", does: "Open or close this help" },
   { group: "Help", keys: "Esc, ? again, or a click outside", does: "Close this help" },
 ];
@@ -47,6 +49,7 @@ export const INPUT_VS_KEYS =
 // Key names the handlers share with the table above.
 export const HELP_KEY = "?";
 export const FOCUS_TILE_CODE = /^Digit[1-6]$/;
+export const RESET_LAYOUT_CODE = "Digit0";
 export const ZOOM_IN_KEYS = ["+", "="];
 export const ZOOM_OUT_KEYS = ["-"];
 export const ZOOM_RESET_KEYS = ["0"];

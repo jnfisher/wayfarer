@@ -27,6 +27,9 @@ opens it already shows the last 2,000 pieces of output from the gateway's log.
 | `Alt+1` to `Alt+6` | Focus a tile (on a Mac, `Option`) |
 | `Ctrl +`, `Ctrl -` | Make the focused tile's font larger or smaller |
 | `Ctrl 0` | Back to "fit to tile" |
+| Drag the line between two tiles | Gives one tile more room and the other less; remembered per browser |
+| Double-click a line between tiles | Back to equal shares for that direction (columns or rows) |
+| `Alt+0` | Back to equal shares for columns and rows (on a Mac, `Option`) |
 | `?` on an empty input line, or the `?` button | Open or close this help |
 | `Esc`, `?` again, or a click outside | Close this help |
 
@@ -38,6 +41,21 @@ and a test fails when they differ.
 Clicking a tile focuses it. The **keys** button sends what you type in the terminal itself
 straight to the game, key by key, instead of a line at a time: for the character editor and
 `Hit any key` prompts. Click it again to go back to the input line.
+
+## Resizing tiles
+
+Between two columns or two rows of tiles is a line about 6 px wide. Drag it to give one tile
+more room; only the two tiles beside it change, and a drag stops when a tile would be narrower
+than an 80-column terminal at the smallest font (6 px) or shorter than a few rows. Touch works
+too. Double-click a line to put that direction back to equal shares; `Alt+0` does both.
+Tiles refit their font as they change, still 80 columns wide.
+
+The sizes are proportions, so resizing the window keeps them. They are kept per grid shape
+(`1x2`, `2x2`, `2x3`, and so on, rows by columns) in the browser's `localStorage` under
+`wayfarer.layout`, as `{"v": 1, "shapes": {"2x2": {"cols": [1.4, 0.6], "rows": [1, 1]}}}`;
+adding or removing a character changes the shape, so that shape's own sizes apply. The layout
+is per browser until settings arrive (`docs/plan/04-settings.md`); it is not written to
+`wayfarer.toml`. With storage unavailable the layout still works and is forgotten on reload.
 
 ## Connection
 
