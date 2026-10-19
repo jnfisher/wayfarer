@@ -1,0 +1,23 @@
+[package]
+name = "wayfarer-brain"
+description = "The brain: attaches to the gateway, parses every session, keeps each character's model and re-syncs it (docs/brain.md)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+futures-util = "0.3.34"
+serde_json.workspace = true
+sha2 = "0.11"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-tungstenite = "0.30.0"
+tracing.workspace = true
+wayfarer-parse = { path = "../wayfarer-parse" }
+wayfarer-proto = { path = "../wayfarer-proto" }
+wayfarer-world = { path = "../wayfarer-world" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

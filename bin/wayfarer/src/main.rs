@@ -3,11 +3,15 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
+use std::time::Duration;
 
 use clap::{Args, Parser, Subcommand};
+use futures_util::StreamExt;
+use wayfarer_brain::{Brain, BrainError, SystemClock, World, WsLink};
 use wayfarer_gateway::{
-    Gateway, Hub, Options, Paths, ServerOptions, bind, create_token, serve, stop_signals,
-    token_for_bind,
+    Gateway, Hub, Options, Paths, ServerOptions, bind, create_token, read_token, serve,
+    stop_signals, token_for_bind,
 };
 
 #[derive(Parser)]
@@ -38,10 +42,32 @@ struct GatewayArgs {
     new_token: bool,
 }
 
+#[derive(Args)]
+struct BrainArgs {
+    /// The gateway's WebSocket.
+    #[arg(long, default_value = "ws://127.0.0.1:7373/ws")]
+    gateway: String,
+    /// The world pack (`wayfarer import-world` builds it). Default: `world.sqlite` in the data
+    /// directory.
+    #[arg(long)]
+    world: Option<PathBuf>,
+    /// The gateway's token. Default: the `gateway-token` file beside the config, if there is
+    /// one (a loopback gateway needs none).
+    #[arg(long)]
+    token: Option<String>,
+    /// The gateway's config file; its directory is the data directory. Default: the user's
+    /// wayfarer data directory.
+    #[arg(long)]
+    config: Option<PathBuf>,
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// Run the gateway: telnet sessions, logs and the WebSocket server.
     Gateway(GatewayArgs),
+    /// Run the brain against a running gateway: parse every session, keep each character's
+    /// state for the UIs, re-sync it (docs/brain.md).
+    Brain(BrainArgs),
     /// Run everything in one process: the gateway now, the brain from M1.
     Serve(GatewayArgs),
     /// Build a world pack (SQLite) from the stock-world export, optionally with MegaMud's path set.
@@ -64,6 +90,15 @@ fn main() -> ExitCode {
     let (name, args) = match cli.command {
         Command::Gateway(args) => ("gateway", args),
         Command::Serve(args) => ("serve", args),
+        Command::Brain(args) => {
+            return match run_brain(args) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("wayfarer brain: {e}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Command::ImportWorld {
             export,
             megamud,
@@ -91,13 +126,25 @@ fn main() -> ExitCode {
     }
 }
 
-fn run_gateway(args: GatewayArgs) -> Result<(), Box<dyn std::error::Error>> {
-    let paths = match args.config {
+fn paths(config: Option<PathBuf>) -> Result<Paths, Box<dyn std::error::Error>> {
+    Ok(match config {
         Some(config) => Paths::for_config(config),
         None => Paths::in_dir(
             Paths::default_data_dir().ok_or("no data directory on this platform: use --config")?,
         ),
-    };
+    })
+}
+
+fn init_tracing() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .init();
+}
+
+fn run_gateway(args: GatewayArgs) -> Result<(), Box<dyn std::error::Error>> {
+    let paths = paths(args.config)?;
     let token_file = paths.credentials.with_file_name("gateway-token");
     if args.new_token {
         println!("{}", create_token(&token_file)?);
@@ -110,12 +157,7 @@ fn run_gateway(args: GatewayArgs) -> Result<(), Box<dyn std::error::Error>> {
         .enable_all()
         .build()?
         .block_on(async {
-            tracing_subscriber::fmt()
-                .with_env_filter(
-                    tracing_subscriber::EnvFilter::try_from_default_env()
-                        .unwrap_or_else(|_| "info".into()),
-                )
-                .init();
+            init_tracing();
             let gateway = Gateway::start(&paths, Options::default())?;
             let listener = bind(args.bind).await?;
             tracing::info!("listening on {}", listener.local_addr()?);
@@ -125,5 +167,78 @@ fn run_gateway(args: GatewayArgs) -> Result<(), Box<dyn std::error::Error>> {
             let hub = Hub::new(gateway, token);
             serve(listener, hub, options, stop_signals()?).await?;
             Ok(())
+        })
+}
+
+/// The brain's reconnect backoff, the web UI's: half a second, doubling up to ten.
+const RETRY_MIN: Duration = Duration::from_millis(500);
+const RETRY_MAX: Duration = Duration::from_secs(10);
+
+fn run_brain(args: BrainArgs) -> Result<(), Box<dyn std::error::Error>> {
+    let paths = paths(args.config)?;
+    let dir = paths.config.parent().map(PathBuf::from).unwrap_or_default();
+    let world_path = args.world.unwrap_or_else(|| dir.join("world.sqlite"));
+    if !world_path.is_file() {
+        return Err(format!(
+            "no world pack at {path}: build it from the stock-world export (in a wayfarer \
+             checkout, tests/fixtures/world) with\n  wayfarer import-world --export \
+             tests/fixtures/world --out '{path}'",
+            path = world_path.display()
+        )
+        .into());
+    }
+    let token = match args.token {
+        Some(token) => Some(token),
+        None => read_token(&paths.credentials.with_file_name("gateway-token"))?,
+    };
+
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?
+        .block_on(async {
+            init_tracing();
+            let world = World::open(&world_path)?;
+            let mut brain = Brain::new(world, Arc::new(SystemClock), token);
+            tracing::info!(
+                build = wayfarer_brain::BUILD,
+                world = %world_path.display(),
+                "brain started"
+            );
+            let mut stops = std::pin::pin!(stop_signals()?);
+            let mut retry = RETRY_MIN;
+            loop {
+                let connected = tokio::select! {
+                    link = WsLink::connect(&args.gateway) => link,
+                    _ = stops.next() => break,
+                };
+                match connected {
+                    Ok(mut link) => {
+                        let ended = tokio::select! {
+                            ended = brain.run(&mut link) => Some(ended),
+                            _ = stops.next() => None,
+                        };
+                        // Nothing goes to the game on the way out: just close the socket.
+                        link.close().await;
+                        match ended {
+                            None => break,
+                            Some(Ok(())) => {
+                                tracing::warn!("the gateway went away");
+                                retry = RETRY_MIN;
+                            }
+                            Some(Err(e @ BrainError::Refused(_))) => return Err(e.into()),
+                            Some(Err(e)) => tracing::warn!("{e}"),
+                        }
+                    }
+                    Err(e) => tracing::warn!("{e}"),
+                }
+                tracing::info!("connecting again in {:.1} s", retry.as_secs_f64());
+                tokio::select! {
+                    () = tokio::time::sleep(retry) => {}
+                    _ = stops.next() => break,
+                }
+                retry = (retry * 2).min(RETRY_MAX);
+            }
+            tracing::info!("brain stopped");
+            Ok::<_, Box<dyn std::error::Error>>(())
         })
 }

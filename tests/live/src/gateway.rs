@@ -36,6 +36,14 @@ pub struct Gateway {
     pub state: SessionState,
     /// When the last output arrived.
     last_output: Instant,
+    /// Where it listens (`127.0.0.1:PORT`).
+    pub addr: String,
+    /// The last `brain_state` (None before one).
+    pub brain_attached: Option<bool>,
+    /// The session's character as the brain's `character` and `character_patch` built it.
+    pub character: serde_json::Value,
+    /// The brain's `notice` texts for the session.
+    pub notices: Vec<String>,
 }
 
 /// How a stop went: whether the character logged off, and the gateway's own account.
@@ -114,6 +122,10 @@ impl Gateway {
             output: BTreeMap::new(),
             state: SessionState::Closed,
             last_output: Instant::now(),
+            addr: addr.clone(),
+            brain_attached: None,
+            character: serde_json::Value::Null,
+            notices: Vec::new(),
         };
         match gateway.next(Instant::now() + START_TIMEOUT).await {
             Some(ToClient::Welcome { sessions, .. }) => {
@@ -185,6 +197,16 @@ impl Gateway {
                     }
                 }
                 ToClient::SessionState { state, .. } => self.state = *state,
+                ToClient::BrainState { attached } => self.brain_attached = Some(*attached),
+                ToClient::Character { session, state } if session == SESSION => {
+                    self.character = serde_json::to_value(state).unwrap_or_default();
+                }
+                ToClient::CharacterPatch { session, patch } if session == SESSION => {
+                    apply_patch(&mut self.character, patch);
+                }
+                ToClient::Notice { session, text } if session.as_deref() == Some(SESSION) => {
+                    self.notices.push(text.clone());
+                }
                 ToClient::SessionList { sessions } | ToClient::Welcome { sessions, .. } => {
                     if let Some(s) = sessions.iter().find(|s| s.id == SESSION) {
                         self.state = s.state;
@@ -306,7 +328,7 @@ impl Drop for Gateway {
 
 /// Read `from` line by line into `log` and `file`, and send on the address the gateway says
 /// it listens on.
-fn keep_lines(
+pub(crate) fn keep_lines(
     from: impl tokio::io::AsyncRead + Unpin + Send + 'static,
     log: Arc<Mutex<Vec<String>>>,
     file: Arc<tokio::sync::Mutex<tokio::fs::File>>,
@@ -330,7 +352,7 @@ fn keep_lines(
 }
 
 /// SIGTERM, never SIGKILL: a killed gateway drops its character in the realm.
-fn terminate(pid: Option<u32>) {
+pub(crate) fn terminate(pid: Option<u32>) {
     if let Some(pid) = pid {
         let _ = std::process::Command::new("kill")
             .args(["-TERM", &pid.to_string()])
@@ -357,6 +379,25 @@ pub fn logoff_verdict(log: &[String]) -> Result<&'static str, &'static str> {
         Ok("logged off")
     } else {
         Ok("closed (not in the game)")
+    }
+}
+
+/// Apply a JSON merge patch (RFC 7386).
+fn apply_patch(target: &mut serde_json::Value, patch: &serde_json::Value) {
+    let serde_json::Value::Object(patch) = patch else {
+        *target = patch.clone();
+        return;
+    };
+    if !target.is_object() {
+        *target = serde_json::Value::Object(Default::default());
+    }
+    let obj = target.as_object_mut().expect("an object");
+    for (k, v) in patch {
+        if v.is_null() {
+            obj.remove(k);
+        } else {
+            apply_patch(obj.entry(k.clone()).or_insert(serde_json::Value::Null), v);
+        }
     }
 }
 
