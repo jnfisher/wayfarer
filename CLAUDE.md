@@ -57,10 +57,12 @@ command-line knobs (settings replace them), `plans/*.json` as the source of trut
 - **No dependency on mmud-exploration or silvermere at build or test time.** Test data is
   copied into `tests/fixtures/<subdir>/` with a `PROVENANCE.md`; never edit the copies, add a
   new subdirectory instead.
-- **Knowledge**: confirmed facts about the game or MegaMud that the KB lacks go in the PR
-  description under "KB notes". The KB lives in `jnfisher/mmud-exploration`, `kb/` (on the
-  laptop, the checkout beside this one: `../mmud-exploration/kb/`); read it, don't change it
-  from a wayfarer card.
+- **Knowledge**: the KB is `docs/kb/` in this repository (moved from mmud-exploration on
+  2026-10-19). A card that confirms a fact about the game or MegaMud that the KB lacks
+  updates the right file with its provenance tag ([C], [I], [F], [M]) and adds a line to
+  `docs/kb/changelog.md` in the same PR, and says so under "KB notes" in the PR description.
+  Facts about silvermere's own behaviour go to mmud-exploration's `kb/server-behaviours.md`
+  instead, as a note for John.
 - **Checks before pushing**: `cargo fmt --all`, `cargo clippy --workspace --all-targets --
   -D warnings`, `cargo nextest run --workspace`.
 - **Commits and PRs**: no model names.

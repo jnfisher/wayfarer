@@ -128,14 +128,13 @@ Dependency direction: proto ← telnet ← gateway; proto ← parse ← world �
 store are leaves used by brain. Nothing in the shipped client depends on silvermere's crates.
 The test harness and simulator may (`07-development-and-testing.md`).
 
-## Repositories (*Needs John* on the KB move)
+## Repositories
 
 - **`jnfisher/wayfarer`** (new, public): the client.
 - **`jnfisher/mmud-exploration`**: research, the recovered source, the prototype in
   `test/play/` (frozen once wayfarer reaches parity; it stays silvermere's soak driver until
   then), and today the KB.
 - **`jnfisher/silvermere`**: the test server, run from a pinned build.
-- **The KB.** Recommendation: when wayfarer reaches milestone M1, move the client-facing KB
-  files to `wayfarer/docs/kb/` and point CLAUDE.md's "keep `kb/` updated" rule there.
-  `kb/server-behaviours.md` stays here (it serves the server). Until then the KB stays here
-  and wayfarer sessions attach this repository read-only.
+- **The KB.** Moved to `wayfarer/docs/kb/` at M1 (John, 2026-10-19; `docs/kb/PROVENANCE.md`),
+  and cards keep it there in their own PRs. `kb/server-behaviours.md` stays in
+  mmud-exploration (it serves the server).

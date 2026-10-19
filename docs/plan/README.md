@@ -7,8 +7,9 @@ Moved here from `jnfisher/mmud-exploration` (`client-plan/` at commit `55b129a`)
 2026-10-17 by card C-001; **this copy is the live one.**
 
 **Paths that point outside this repository.** The plan names files in two other repositories
-in backticks: `kb/...`, `test/play/...`, `reference/...`, `server-plan/...`, `HANDOFF.md` and
-`CLAUDE.md` (where it means the old one) are in
+in backticks: `kb/...` is [docs/kb/](../kb/README.md) in this repository since 2026-10-19;
+`test/play/...`, `reference/...`, `server-plan/...`, `HANDOFF.md` and `CLAUDE.md` (where it
+means the old one) are in
 [jnfisher/mmud-exploration](https://github.com/jnfisher/mmud-exploration); paths starting
 `silvermere/` or naming silvermere's crates are in
 [jnfisher/silvermere](https://github.com/jnfisher/silvermere). Fixtures the tests need are
