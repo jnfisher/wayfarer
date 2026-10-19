@@ -6,6 +6,7 @@
   import "@xterm/xterm/css/xterm.css";
   import { keyBytes, type GatewayClient } from "./lib/gateway";
   import { InputHistory } from "./lib/input";
+  import { HELP_KEY } from "./lib/keys";
   import { TERM_COLS, TERM_ROWS, fitFontSize } from "./lib/layout";
   import type { TerminalSinks } from "./lib/sinks";
   import { FONT_FAMILY, FONT_NAME, VGA_THEME } from "./lib/theme";
@@ -23,9 +24,11 @@
     client: GatewayClient;
     sinks: TerminalSinks;
     onfocus: () => void;
+    /** Open or close the help overlay. */
+    onhelp: () => void;
   }
 
-  let { info, number, focused, zoom, offline, client, sinks, onfocus }: Props = $props();
+  let { info, number, focused, zoom, offline, client, sinks, onfocus, onhelp }: Props = $props();
 
   let host: HTMLDivElement;
   let input: HTMLInputElement;
@@ -125,7 +128,10 @@
   }
 
   function onkeydown(e: KeyboardEvent) {
-    if (e.key === "Enter") {
+    if (e.key === HELP_KEY && line === "") {
+      e.preventDefault();
+      onhelp();
+    } else if (e.key === "Enter") {
       e.preventDefault();
       client.sendLine(info.id, line);
       history.push(line);
@@ -183,6 +189,14 @@
         e.stopPropagation();
         toggleKeys();
       }}>keys</button
+    >
+    <button
+      title="Show wayfarer's keys and controls"
+      aria-label="Help"
+      onclick={(e) => {
+        e.stopPropagation();
+        onhelp();
+      }}>?</button
     >
   </footer>
 </section>
