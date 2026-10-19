@@ -26,6 +26,11 @@ export const KEY_ROWS: KeyRow[] = [
   { group: "Layout", keys: "Alt+0", does: "Back to equal shares for columns and rows (on a Mac, Option)" },
   { group: "Help", keys: "? on an empty input line, or the ? button", does: "Open or close this help" },
   { group: "Help", keys: "Esc, ? again, or a click outside", does: "Close this help" },
+  {
+    group: "Development",
+    keys: "Alt+D, or the dev button",
+    does: "Open or close the dev panel: the focused character's events, unclassified lines and the brain (on a Mac, Option)",
+  },
 ];
 
 export const BADGE_MEANINGS: Record<SessionState, string> = {
@@ -50,6 +55,7 @@ export const INPUT_VS_KEYS =
 export const HELP_KEY = "?";
 export const FOCUS_TILE_CODE = /^Digit[1-6]$/;
 export const RESET_LAYOUT_CODE = "Digit0";
+export const DEV_PANEL_CODE = "KeyD";
 export const ZOOM_IN_KEYS = ["+", "="];
 export const ZOOM_OUT_KEYS = ["-"];
 export const ZOOM_RESET_KEYS = ["0"];

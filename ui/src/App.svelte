@@ -3,7 +3,8 @@
   import Tile from "./Tile.svelte";
   import { GatewayClient, gatewayUrl, type ConnectionStatus, type TokenStore } from "./lib/gateway";
   import Help from "./Help.svelte";
-  import { FOCUS_TILE_CODE, RESET_LAYOUT_CODE, ZOOM_IN_KEYS, ZOOM_OUT_KEYS, ZOOM_RESET_KEYS } from "./lib/keys";
+  import DevPanel from "./DevPanel.svelte";
+  import { DEV_PANEL_CODE, FOCUS_TILE_CODE, RESET_LAYOUT_CODE, ZOOM_IN_KEYS, ZOOM_OUT_KEYS, ZOOM_RESET_KEYS } from "./lib/keys";
   import {
     drag,
     equalWeights,
@@ -19,7 +20,17 @@
     type Weights,
   } from "./lib/layout";
   import { TerminalSinks } from "./lib/sinks";
-  import { applyBrainState, applyCharacter, applyCharacterPatch, emptyBrainView } from "./lib/state";
+  import {
+    addEvent,
+    addNote,
+    applyBrainState,
+    applyCharacter,
+    applyCharacterPatch,
+    emptyBrainView,
+    emptyDevLog,
+    loadDevPrefs,
+    saveDevPrefs,
+  } from "./lib/state";
   import type { SessionInfo } from "./proto";
 
   let sessions = $state<SessionInfo[]>([]);
@@ -32,6 +43,21 @@
   let gridWidth = $state(0);
   let gridHeight = $state(0);
   let helpArea = $state<{ left: number; top: number; width: number; height: number } | null>(null);
+
+  // The dev panel's buffers are plain (not `$state`); `devTick` says they changed, at most once
+  // a frame, so a burst of events costs one redraw of the panel.
+  const dev = emptyDevLog();
+  let devTick = $state(0);
+  let devFrame = 0;
+  function devChanged() {
+    if (devFrame) return;
+    devFrame = requestAnimationFrame(() => {
+      devFrame = 0;
+      devTick += 1;
+    });
+  }
+  const devPrefs = $state(loadDevPrefs(browserStorage()));
+  $effect(() => saveDevPrefs(browserStorage(), { open: devPrefs.open, tab: devPrefs.tab }));
 
   /** Open (over the focused tile) or close the help overlay. */
   function toggleHelp() {
@@ -151,7 +177,33 @@
       error: (message) => console.warn("gateway:", message),
       character: (id, state) => applyCharacter(brain, id, state),
       characterPatch: (id, patch) => applyCharacterPatch(brain, id, patch),
-      brainState: (attached) => applyBrainState(brain, attached),
+      brainState: (attached) => {
+        if (attached !== brain.attached) {
+          const text = attached ? "brain attached" : brain.attached ? "brain left" : "no brain attached";
+          addNote(dev, "brain", text, undefined, Date.now());
+          devChanged();
+        }
+        applyBrainState(brain, attached);
+      },
+      event: (id, e) => {
+        addEvent(dev, id, e);
+        devChanged();
+      },
+      brainInfo: (info) => {
+        if (info.started_at !== dev.info?.started_at) {
+          addNote(dev, "brain", `brain ${info.build} started ${info.started_at}`, undefined, Date.now());
+        }
+        dev.info = { build: info.build, started_at: info.started_at, world_pack: info.world_pack };
+        devChanged();
+      },
+      notice: (kind, text, id) => {
+        addNote(dev, kind, text, id, Date.now());
+        devChanged();
+      },
+      brainLagged: (missed) => {
+        addNote(dev, "brain", `brain lagged: ${missed} messages dropped; asked for state again`, undefined, Date.now());
+        devChanged();
+      },
     },
   });
 
@@ -170,8 +222,13 @@
     }
   }
 
-  // Alt+1..Alt+6 focus a tile; Ctrl +/-/0 zoom the focused one. Captured before xterm sees them.
+  // Alt+D opens the dev panel; Alt+1..Alt+6 focus a tile; Ctrl +/-/0 zoom the focused one. Captured before xterm sees them.
   function onkeydown(e: KeyboardEvent) {
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === DEV_PANEL_CODE) {
+      e.preventDefault();
+      devPrefs.open = !devPrefs.open;
+      return;
+    }
     if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === RESET_LAYOUT_CODE) {
       e.preventDefault();
       resetAxes(["cols", "rows"]);
@@ -205,58 +262,77 @@
 <main>
   <div class="bar">
     <span class="title">wayfarer</span>
-    <span class="conn {status}">{status === "open" ? "connected" : status}</span>
+    <span class="right">
+      <button class="devbtn" class:on={devPrefs.open} onclick={() => (devPrefs.open = !devPrefs.open)} title="Dev panel (Alt+D)">
+        dev
+      </button>
+      <span class="conn {status}">{status === "open" ? "connected" : status}</span>
+    </span>
   </div>
-  <div
-    class="grid"
-    class:dragging
-    bind:clientWidth={gridWidth}
-    bind:clientHeight={gridHeight}
-    style:grid-template-columns={toTemplate(weights.cols)}
-    style:grid-template-rows={toTemplate(weights.rows)}
-  >
-    {#each sessions as info, i (info.id)}
-      <Tile
-        {info}
-        number={i + 1}
-        focused={i === focused}
-        zoom={zooms[info.id] ?? 0}
-        {offline}
-        {client}
-        {sinks}
-        onfocus={() => (focused = i)}
-        onhelp={toggleHelp}
-        character={brain.attached ? (brain.characters[info.id] ?? {}) : null}
+  <div class="body">
+    <div
+      class="grid"
+      class:dragging
+      bind:clientWidth={gridWidth}
+      bind:clientHeight={gridHeight}
+      style:grid-template-columns={toTemplate(weights.cols)}
+      style:grid-template-rows={toTemplate(weights.rows)}
+    >
+      {#each sessions as info, i (info.id)}
+        <Tile
+          {info}
+          number={i + 1}
+          focused={i === focused}
+          zoom={zooms[info.id] ?? 0}
+          {offline}
+          {client}
+          {sinks}
+          onfocus={() => (focused = i)}
+          onhelp={toggleHelp}
+          character={brain.attached ? (brain.characters[info.id] ?? {}) : null}
+        />
+      {:else}
+        <p class="empty">
+          {status === "open" ? "No characters are configured in wayfarer.toml." : offline}
+        </p>
+      {/each}
+      {#each weights.cols.slice(0, -1) as _, i}
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
+        <div
+          class="handle cols"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize columns {i + 1} and {i + 2}"
+          style:left="{handleAt('cols', i)}px"
+          onpointerdown={(e) => startDrag(e, "cols", i)}
+          ondblclick={() => resetAxes(["cols"])}
+        ></div>
+      {/each}
+      {#each weights.rows.slice(0, -1) as _, i}
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
+        <div
+          class="handle rows"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize rows {i + 1} and {i + 2}"
+          style:top="{handleAt('rows', i)}px"
+          onpointerdown={(e) => startDrag(e, "rows", i)}
+          ondblclick={() => resetAxes(["rows"])}
+        ></div>
+      {/each}
+    </div>
+    {#if devPrefs.open}
+      <DevPanel
+        session={sessions[focused]}
+        log={dev}
+        tick={devTick}
+        character={sessions[focused] ? brain.characters[sessions[focused].id] : undefined}
+        attached={brain.attached}
+        bind:tab={devPrefs.tab}
+        onresync={(id) => client.resync(id)}
+        onclose={() => (devPrefs.open = false)}
       />
-    {:else}
-      <p class="empty">
-        {status === "open" ? "No characters are configured in wayfarer.toml." : offline}
-      </p>
-    {/each}
-    {#each weights.cols.slice(0, -1) as _, i}
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
-      <div
-        class="handle cols"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize columns {i + 1} and {i + 2}"
-        style:left="{handleAt('cols', i)}px"
-        onpointerdown={(e) => startDrag(e, "cols", i)}
-        ondblclick={() => resetAxes(["cols"])}
-      ></div>
-    {/each}
-    {#each weights.rows.slice(0, -1) as _, i}
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
-      <div
-        class="handle rows"
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label="Resize rows {i + 1} and {i + 2}"
-        style:top="{handleAt('rows', i)}px"
-        onpointerdown={(e) => startDrag(e, "rows", i)}
-        ondblclick={() => resetAxes(["rows"])}
-      ></div>
-    {/each}
+    {/if}
   </div>
 </main>
 
@@ -278,6 +354,29 @@
     color: #000;
     background: var(--vga-lightgray);
   }
+  .right {
+    display: flex;
+    gap: 2ch;
+  }
+  .devbtn {
+    font: inherit;
+    line-height: 16px;
+    padding: 0 1ch;
+    color: var(--vga-lightgray);
+    background: var(--vga-blue);
+    border: none;
+    cursor: pointer;
+  }
+  .devbtn.on {
+    color: #000;
+    background: var(--vga-lightcyan);
+  }
+  /* The tiles, and the dev panel to their right when it is open. */
+  .body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
   .conn.open {
     color: var(--vga-green);
   }
@@ -288,6 +387,7 @@
   .grid {
     flex: 1;
     min-height: 0;
+    min-width: 0;
     display: grid;
     position: relative;
     gap: 6px;
