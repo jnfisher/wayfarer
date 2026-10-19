@@ -24,10 +24,9 @@
     attached: boolean | null;
     tab: DevTab;
     onresync: (session: string) => void;
-    onclose: () => void;
   }
 
-  let { session, log, tick, character, attached, tab = $bindable(), onresync, onclose }: Props = $props();
+  let { session, log, tick, character, attached, tab = $bindable(), onresync }: Props = $props();
 
   const TABS: { id: DevTab; label: string }[] = [
     { id: "events", label: "Events" },
@@ -104,11 +103,7 @@
   }
 </script>
 
-<aside class="dev" aria-label="dev panel">
-  <div class="title">
-    <span>═ dev ═ <span class="who">{session?.name ?? "no character"}</span> ═</span>
-    <button onclick={onclose} title="Close (Alt+D)">x</button>
-  </div>
+<div class="dev">
   <div class="tabs" role="tablist">
     {#each TABS as t (t.id)}
       <button role="tab" aria-selected={tab === t.id} class:on={tab === t.id} onclick={() => (tab = t.id)}>
@@ -193,34 +188,16 @@
       {/each}
     </div>
   {/if}
-</aside>
+</div>
 
 <style>
-  /* A drawer on the right of the tiles, a third of the width at most; the tiles refit. */
+  /* The dev tab of the drawer (App.svelte). */
   .dev {
-    flex: 0 0 auto;
-    width: min(33.333%, 100ch);
-    box-sizing: border-box;
+    flex: 1;
     display: flex;
     flex-direction: column;
     min-width: 0;
     min-height: 0;
-    margin: 2px 2px 2px 0;
-    color: var(--vga-lightgray);
-    background: var(--bg);
-    border: 4px double var(--frame);
-    line-height: 16px;
-    font-size: 16px;
-  }
-  .title {
-    display: flex;
-    justify-content: space-between;
-    padding: 0 1ch;
-    color: var(--frame);
-    white-space: pre;
-  }
-  .title .who {
-    color: var(--vga-yellow);
   }
   button {
     font: inherit;

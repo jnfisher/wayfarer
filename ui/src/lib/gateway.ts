@@ -8,6 +8,7 @@
 
 import { PROTOCOL } from "../proto";
 import type { CharacterState, Chunk, SessionInfo, SessionState, ToClient, ToGateway } from "../proto";
+import { clampRadius, type MapView } from "./map";
 
 /** The part of the browser's `WebSocket` the client uses. */
 export interface SocketLike {
@@ -65,6 +66,8 @@ export interface GatewayEvents {
   notice?(kind: "notice" | "warning", text: string, session?: string): void;
   /** Relayed brain messages were dropped; a `state_request` has been sent. */
   brainLagged?(missed: number): void;
+  /** The rooms around a character, for the map panel. */
+  mapView?(view: MapView): void;
 }
 
 export interface GatewayOptions {
@@ -159,6 +162,21 @@ export class GatewayClient {
   /** Ask the brain to re-sync a character (`st`, `exp`, `i`, look); false when not connected. */
   resync(session: string): boolean {
     return this.send({ type: "resync", session });
+  }
+
+  /** Walk a character to a room (replacing a walk in progress); false when not connected. */
+  walkTo(session: string, map: number, room: number): boolean {
+    return this.send({ type: "walk_to", session, map, room });
+  }
+
+  /** Stop a character's walk after the move in flight; false when not connected. */
+  walkStop(session: string): boolean {
+    return this.send({ type: "walk_stop", session });
+  }
+
+  /** Ask for a `map_view` now, of the rooms within `radius` steps (clamped to 1-30). */
+  requestMap(session: string, radius?: number): boolean {
+    return this.send({ type: "map_request", session, radius: clampRadius(radius) });
   }
 
   private send(message: ToGateway): boolean {
@@ -279,6 +297,9 @@ export class GatewayClient {
         break;
       case "character_patch":
         this.opts.events.characterPatch?.(message.session, message.patch);
+        break;
+      case "map_view":
+        this.opts.events.mapView?.(message);
         break;
     }
   }

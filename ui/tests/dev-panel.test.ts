@@ -26,7 +26,6 @@ function mount(tab: DevTab, attached: boolean | null, log = filled()) {
     attached,
     tab,
     onresync,
-    onclose: () => {},
   });
   return { ...r, onresync, log };
 }

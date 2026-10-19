@@ -4,7 +4,17 @@
   import { GatewayClient, gatewayUrl, type ConnectionStatus, type TokenStore } from "./lib/gateway";
   import Help from "./Help.svelte";
   import DevPanel from "./DevPanel.svelte";
-  import { DEV_PANEL_CODE, FOCUS_TILE_CODE, RESET_LAYOUT_CODE, ZOOM_IN_KEYS, ZOOM_OUT_KEYS, ZOOM_RESET_KEYS } from "./lib/keys";
+  import MapPanel from "./MapPanel.svelte";
+  import {
+    DEV_PANEL_CODE,
+    FOCUS_TILE_CODE,
+    MAP_PANEL_CODE,
+    RESET_LAYOUT_CODE,
+    ZOOM_IN_KEYS,
+    ZOOM_OUT_KEYS,
+    ZOOM_RESET_KEYS,
+  } from "./lib/keys";
+  import { MAP_RADIUS, type MapView } from "./lib/map";
   import {
     drag,
     equalWeights,
@@ -31,6 +41,8 @@
     emptyDevLog,
     loadDevPrefs,
     saveDevPrefs,
+    toggleDrawer,
+    type DrawerPanel,
   } from "./lib/state";
   import type { SessionInfo } from "./proto";
 
@@ -58,7 +70,25 @@
     });
   }
   const devPrefs = $state(loadDevPrefs(browserStorage()));
-  $effect(() => saveDevPrefs(browserStorage(), { open: devPrefs.open, tab: devPrefs.tab }));
+  $effect(() => saveDevPrefs(browserStorage(), { open: devPrefs.open, panel: devPrefs.panel, tab: devPrefs.tab }));
+
+  const DRAWER_BUTTONS: { panel: DrawerPanel; title: string }[] = [
+    { panel: "map", title: "Map (Alt+M)" },
+    { panel: "dev", title: "Dev panel (Alt+D)" },
+  ];
+
+  // The brain's last `map_view` per session (replaced whole, so not deeply reactive).
+  let mapViews = $state.raw<Record<string, MapView>>({});
+  // Sessions whose map has been asked for since the connection opened or the brain attached:
+  // the brain sends a view by itself only when the believed room or the route changes.
+  const mapAsked = new Set<string>();
+  const focusedId = $derived(sessions[focused]?.id);
+  $effect(() => {
+    const id = focusedId;
+    if (!devPrefs.open || devPrefs.panel !== "map" || !id || status !== "open" || !brain.attached) return;
+    if (brain.characters[id]?.position?.room === undefined || mapAsked.has(id)) return;
+    if (client.requestMap(id, MAP_RADIUS)) mapAsked.add(id);
+  });
 
   /** Open (over the focused tile) or close the help overlay. */
   function toggleHelp() {
@@ -175,6 +205,7 @@
       write: (id, text) => sinks.write(id, text),
       reset: (id) => sinks.reset(id),
       connection: (s, detail) => {
+        if (s !== "open") mapAsked.clear();
         status = s;
         reason = detail?.reason ?? "";
         retryInMs = detail?.retryInMs ?? 0;
@@ -188,7 +219,11 @@
           addNote(dev, "brain", text, undefined, Date.now());
           devChanged();
         }
+        if (attached !== brain.attached) mapAsked.clear();
         applyBrainState(brain, attached);
+      },
+      mapView: (view) => {
+        mapViews = { ...mapViews, [view.session]: view };
       },
       event: (id, e) => {
         addEvent(dev, id, e);
@@ -227,11 +262,13 @@
     }
   }
 
-  // Alt+D opens the dev panel; Alt+1..Alt+6 focus a tile; Ctrl +/-/0 zoom the focused one. Captured before xterm sees them.
+  // Alt+M and Alt+D open the drawer on the map or dev panel; Alt+1..Alt+6 focus a tile; Ctrl +/-/0
+  // zoom the focused one. Captured before xterm sees them.
   function onkeydown(e: KeyboardEvent) {
-    if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === DEV_PANEL_CODE) {
+    const drawer: DrawerPanel | null = e.code === MAP_PANEL_CODE ? "map" : e.code === DEV_PANEL_CODE ? "dev" : null;
+    if (e.altKey && !e.ctrlKey && !e.metaKey && drawer) {
       e.preventDefault();
-      devPrefs.open = !devPrefs.open;
+      toggleDrawer(devPrefs, drawer);
       return;
     }
     if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === RESET_LAYOUT_CODE) {
@@ -268,9 +305,16 @@
   <div class="bar">
     <span class="title">wayfarer</span>
     <span class="right">
-      <button class="devbtn" class:on={devPrefs.open} onclick={() => (devPrefs.open = !devPrefs.open)} title="Dev panel (Alt+D)">
-        dev
-      </button>
+      {#each DRAWER_BUTTONS as b (b.panel)}
+        <button
+          class="devbtn"
+          class:on={devPrefs.open && devPrefs.panel === b.panel}
+          onclick={() => toggleDrawer(devPrefs, b.panel)}
+          title={b.title}
+        >
+          {b.panel}
+        </button>
+      {/each}
       <span class="conn {status}">{status === "open" ? "connected" : status}</span>
     </span>
   </div>
@@ -327,16 +371,45 @@
       {/each}
     </div>
     {#if devPrefs.open}
-      <DevPanel
-        session={sessions[focused]}
-        log={dev}
-        tick={devTick}
-        character={sessions[focused] ? brain.characters[sessions[focused].id] : undefined}
-        attached={brain.attached}
-        bind:tab={devPrefs.tab}
-        onresync={(id) => client.resync(id)}
-        onclose={() => (devPrefs.open = false)}
-      />
+      <!-- A drawer on the right of the tiles, a third of the width at most; the tiles refit. -->
+      <aside class="drawer" aria-label="{devPrefs.panel} panel">
+        <div class="title">
+          <span class="tabs" role="tablist">
+            {#each DRAWER_BUTTONS as b (b.panel)}
+              <button
+                role="tab"
+                aria-selected={devPrefs.panel === b.panel}
+                class:on={devPrefs.panel === b.panel}
+                onclick={() => (devPrefs.panel = b.panel)}
+              >
+                {b.panel}
+              </button>
+            {/each}
+          </span>
+          <span>═ <span class="who">{sessions[focused]?.name ?? "no character"}</span> ═</span>
+          <button onclick={() => (devPrefs.open = false)} title="Close">x</button>
+        </div>
+        {#if devPrefs.panel === "map"}
+          <MapPanel
+            session={sessions[focused]}
+            view={focusedId ? mapViews[focusedId] : undefined}
+            character={focusedId ? brain.characters[focusedId] : undefined}
+            attached={brain.attached}
+            onwalk={(id, map, room) => client.walkTo(id, map, room)}
+            onstop={(id) => client.walkStop(id)}
+          />
+        {:else}
+          <DevPanel
+            session={sessions[focused]}
+            log={dev}
+            tick={devTick}
+            character={focusedId ? brain.characters[focusedId] : undefined}
+            attached={brain.attached}
+            bind:tab={devPrefs.tab}
+            onresync={(id) => client.resync(id)}
+          />
+        {/if}
+      </aside>
     {/if}
   </div>
 </main>
@@ -374,6 +447,49 @@
   }
   .devbtn.on {
     color: #000;
+    background: var(--vga-lightcyan);
+  }
+  .drawer {
+    flex: 0 0 auto;
+    width: min(33.333%, 100ch);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    margin: 2px 2px 2px 0;
+    color: var(--vga-lightgray);
+    background: var(--bg);
+    border: 4px double var(--frame);
+    line-height: 16px;
+    font-size: 16px;
+  }
+  .drawer .title {
+    display: flex;
+    justify-content: space-between;
+    gap: 1ch;
+    padding: 0 1ch 2px;
+    color: var(--frame);
+    white-space: pre;
+    border-bottom: 1px solid var(--frame);
+  }
+  .drawer .tabs {
+    display: flex;
+    gap: 1ch;
+  }
+  .drawer .who {
+    color: var(--vga-yellow);
+  }
+  .drawer button {
+    font: inherit;
+    line-height: 16px;
+    padding: 0 1ch;
+    color: #000;
+    background: var(--vga-lightgray);
+    border: none;
+    cursor: pointer;
+  }
+  .drawer button.on {
     background: var(--vga-lightcyan);
   }
   /* The tiles, and the dev panel to their right when it is open. */

@@ -65,7 +65,10 @@ opens it already shows the last 2,000 pieces of output from the gateway's log.
 | `Alt+0` | Back to equal shares for columns and rows (on a Mac, `Option`) |
 | `?` on an empty input line, or the `?` button | Open or close this help |
 | `Esc`, `?` again, or a click outside | Close this help |
-| `Alt+D`, or the `dev` button | Open or close the dev panel: the focused character's events, unclassified lines and the brain (on a Mac, `Option`) |
+| `Alt+M`, or the `map` button | Open the drawer on the map of the focused character's surroundings, or close it (on a Mac, `Option`) |
+| Click a room on the map | Walk the character there; `stop` under the map ends the walk |
+| Mouse wheel, drag on the map | Zoom (three sizes), pan; `centre` goes back to the character |
+| `Alt+D`, or the `dev` button | Open the drawer on the dev panel: the focused character's events, unclassified lines and the brain; or close it (on a Mac, `Option`) |
 
 The `?` overlay shows these keys, what the state badges mean and where the data files live. It
 is wayfarer's help only, never the game's; a `?` typed after other text on the line is sent to
@@ -91,12 +94,63 @@ adding or removing a character changes the shape, so that shape's own sizes appl
 is per browser until settings arrive (`docs/plan/04-settings.md`); it is not written to
 `wayfarer.toml`. With storage unavailable the layout still works and is forgotten on reload.
 
+## The drawer
+
+The map and the dev panel share one drawer on the right, a third of the window at most; the
+tiles refit beside it. Its title has the two tabs, `map` and `dev`, the focused character's
+name and a close button. `Alt+M` (on a Mac, `Option+M`) or the `map` button opens it on the
+map, and again closes it; `Alt+D` or the `dev` button does the same for the dev panel, and
+either key switches tabs when the drawer is open on the other. It follows the focused tile.
+It is closed by default; whether it is open, its tab and the dev panel's own tab are kept in
+the browser's `localStorage` under `wayfarer.dev`.
+
+## The map
+
+The rooms around the focused character, drawn the way the old mapper programs drew them:
+each room a box, exits as lines between boxes, one level at a time. The brain lays the rooms
+out and sends them (`map_view`, [protocol.md](protocol.md)); the panel draws what it is sent
+and works nothing out itself.
+
+![The map: the believed room lit, a walk under way with its route and steps, beside one tile](images/web-ui-map.png)
+
+- **Rooms**: a box of 3x2 character cells per room. The room the brain believes the
+  character is in is bright white with a double frame. While the brain is not sure (several
+  rooms fit what was seen) the other candidates are framed in yellow, and the tools line says
+  how many there are; they collapse to one as the character moves. Rooms the character has
+  certainly been in since the brain started are framed light grey, the rest dark grey. Rooms
+  where monsters spawn are filled dim red. A letter marks the kind of room: `S` shop, `T`
+  trainer, `B` bank, `A` arena, `L` lair. `▲` and `▼` in a box mean an exit up or down.
+- **Exits**: a solid line for a plain exit, a gap with a brown `+` for a door (gates and key
+  doors too), a dotted line for a hidden or text exit, and an arrow head at the far end of a
+  one-way exit. A room whose place on the grid was already taken by another room is drawn
+  there as a dashed frame inside the other one, without exits; hovering the cell names the
+  room underneath first.
+- **Levels**: one level at a time, the believed room's first. The `level` buttons show the
+  floors above and below that are in the view.
+- **Moving around**: the map centres on the believed room and follows it as the character
+  moves. Drag to pan; once panned (or on another level) it stays where you put it, and a
+  `centre` button brings it back. The mouse wheel zooms between three sizes (the VGA font at
+  8, 12 and 16 px; 16 to start), about the pointer.
+- **Hover** a room for its name, `map:room` and kind, whether monsters spawn there, its exits
+  in view (with their kind) and whether the character was there.
+- **Walking**: click a room and the character walks there, confirming each step
+  ([brain.md](brain.md), "Walking"). The route shows on the map as a green path with each
+  room's step number, and in the bar under the map: the destination, the step in progress and
+  the steps left, and the commands still to type (`n, n, open e, e`). A door shows as `open`
+  and then the move, though the walker opens it only if it is closed; a text exit shows as
+  `text` and its direction, as the view does not carry the phrase. **stop** stops the walk
+  after the move in flight. Clicking another room while walking replaces the walk. Two
+  characters can walk at once; the panel shows the focused one.
+- **Without a brain** the panel says so and draws nothing; with a brain but no known position
+  (no world pack, or the room did not match) it says `position unknown: re-sync or look`.
+
+The panel asks the brain for the view when it opens on a character, and again after a
+reconnect or when the brain re-attaches; after that the brain sends a new one whenever the
+believed room or the route changes. The view holds the rooms within 15 steps.
+
 ## The dev panel
 
-For development: what the brain sees. `Alt+D` (on a Mac, `Option+D`) or the `dev` button in
-the top bar opens it as a drawer on the right, a third of the window at most, and the tiles
-refit. It follows the focused tile. It is closed by default; whether it is open, and its tab,
-are kept in the browser's `localStorage` under `wayfarer.dev`.
+For development: what the brain sees. It is the drawer's `dev` tab (above).
 
 ![The dev panel on the Events tab, a room_title picked, beside two tiles replaying recorded sessions](images/web-ui-dev-panel.png)
 
