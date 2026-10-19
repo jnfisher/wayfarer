@@ -65,7 +65,7 @@ Cards don't repeat these:
 | Wave | Milestone | Written |
 |---|---|---|
 | 1 | M0: gateway and a live terminal | Now (this index) |
-| 2 | M1: parser, events, status; brain process | Partly now: C-010 (parser) and C-011 (world pack) need nothing from M0 and run beside wave 1. The rest once M0 is live |
+| 2 | M1: parser, events, status; brain process | C-010 and C-011 early (they needed nothing from M0); C-012 to C-019 on 2026-10-19, after John tried M0 and said go |
 | 3+ | M2 onward | When the wave before is merged and John has played with it |
 
 ## Index (wave 1, M0)
@@ -82,20 +82,34 @@ Cards don't repeat these:
 | [C-008](C-008-dev-rig.md) | Development setup on the laptop: `docs/dev-rig.md`, gateway and watcher scripts, worktrees and background sessions | C | S | C-005, C-006 | |
 | [C-009](C-009-live-check.md) | `scripts/live-check.sh`: against the local silvermere, test-character pool, logon/log-off scenario | B | S | C-005, C-006 | |
 
-## Index (wave 2, written early)
+## Index (wave 2, M1)
 
 | Id | Title | Tier | Size | Depends | Review |
 |---|---|---|---|---|---|
 | [C-010](C-010-parser.md) | `wayfarer-parse`: pattern table, generated game-text patterns, incremental parser, golden parity with `patterns.py` | B | L | C-001 | review |
 | [C-011](C-011-world-pack.md) | `wayfarer-world`: the world pack (SQLite) from the stock-world export, MegaMud waypoints and verified loops | B | M | C-001 | |
+| [C-012](C-012-help-overlay.md) | Web UI help: `?` opens an overlay of wayfarer's keys and controls, with a `?` button beside `keys` | C | S | C-007 | |
+| [C-013](C-013-resizable-tiles.md) | Web UI: drag the boundaries between tiles to resize them; the layout is remembered | C | M | C-012 | |
+| [C-014](C-014-proto-m1.md) | Protocol M1: event, state, control and dev messages; the gateway relays between the brain and the UIs | B | M | C-002, C-006 | review |
+| [C-015](C-015-parse-typed-events.md) | `wayfarer-parse`: game texts from the world pack; typed events for the character model | B | S | C-010, C-011 | |
+| [C-016](C-016-brain.md) | `wayfarer-brain` and `wayfarer brain`: attach, parse every session, the character model, snapshots, re-sync | B | L | C-009, C-014, C-015 | review |
+| [C-017](C-017-status-header.md) | Web UI status header: live HP and mana bars, level and class, exp and room; the frame corners line up | B | M | C-013, C-016 | review |
+| [C-018](C-018-dev-panel.md) | Web UI dev panel: the event stream, unclassified lines and rate, brain build and restarts, re-sync | B | M | C-017 | |
+| [C-019](C-019-serve-and-watcher.md) | `wayfarer serve` runs the brain in-process; `scripts/dev/brain.sh` under a watcher; the dev rig doc | C | S | C-008, C-014, C-016 | |
 
 Tier: B Opus, C Sonnet. Size: S under half a day of agent time, M about a day, L two to three
 days.
 
-Parallelism: C-002, C-003, C-010 and C-011 together after C-001; then C-004; then C-005 and
-C-006 together; then C-007, C-008 and C-009 together.
+Parallelism, wave 1: C-002, C-003, C-010 and C-011 together after C-001; then C-004; then
+C-005 and C-006 together; then C-007, C-008 and C-009 together. Wave 2: C-012, C-014 and
+C-015 together; then C-013 and C-016; then C-017 and C-019; then C-018.
 
 **M0 is done** when John opens the browser on his rig, sees one tile per configured
 character, each logged on by its logon script, types into them, scrolls back, reloads the
 page without anyone being logged off, and stops the gateway with every character logged off
 cleanly.
+
+**M1 is done** when the tiles on John's rig show live HP, mana, exp, level and room for a
+character in the realm, the dev panel shows the event stream and the unclassified lines with
+their rate, the help overlay and resizable tiles work, and John stops and starts the brain
+(`scripts/dev/brain.sh`) while nobody is logged off and the headers fill again.
