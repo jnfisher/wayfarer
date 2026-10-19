@@ -11,7 +11,10 @@ use tokio::task::JoinHandle;
 use tokio::time::Instant;
 use wayfarer_brain::{Brain, BrainError, ChannelLink, FixedClock, World, apply_patch};
 use wayfarer_parse::{GameTexts, Parser, Registry};
-use wayfarer_proto::{CharacterState, Chunk, SessionInfo, SessionState, ToClient, ToGateway};
+use wayfarer_proto::{
+    CharacterState, Chunk, CoinCount, Coins, Encumbrance, SessionInfo, SessionState, ToClient,
+    ToGateway,
+};
 
 const ID: &str = "kasimir";
 
@@ -84,6 +87,8 @@ struct Fake {
     log: Vec<Chunk>,
     /// Everything the brain sent, in order.
     seen: Vec<ToGateway>,
+    /// Whether the brain's own lines come back as `sent` (not when the broadcast lagged).
+    report_own: bool,
 }
 
 type Run = JoinHandle<(Brain, Result<(), BrainError>)>;
@@ -102,6 +107,7 @@ fn start(brain: Option<Brain>) -> (Fake, Run) {
         rx,
         log: Vec::new(),
         seen: Vec::new(),
+        report_own: true,
     };
     (fake, run)
 }
@@ -188,7 +194,7 @@ impl Fake {
                 })
                 .await;
             }
-            ToGateway::InputLine { text, .. } => {
+            ToGateway::InputLine { text, .. } if self.report_own => {
                 self.send(ToClient::Sent {
                     session: ID.into(),
                     seq: self.log.len() as u64,
@@ -709,4 +715,186 @@ async fn a_refused_brain_stops_with_the_reason() {
         Err(BrainError::Refused(reason)) => assert_eq!(reason, "a brain is already attached"),
         other => panic!("{other:?}"),
     }
+}
+
+/// The names of the events read from lines that are exactly `line`, in order.
+fn names_of(seen: &[ToGateway], line: &str) -> Vec<String> {
+    seen.iter()
+        .filter_map(|m| match m {
+            ToGateway::Event { name, line: l, .. } if l == line => Some(name.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Answer a whole re-sync; the snapshot that ends it.
+async fn resync(fake: &mut Fake) -> CharacterState {
+    for (cmd, answer) in [("st", ST), ("exp", EXP), ("i", INV)] {
+        assert_eq!(fake.input().await, cmd);
+        fake.output(answer).await;
+    }
+    assert_eq!(fake.input().await, "look");
+    fake.output(&look()).await;
+    fake.character().await
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_echo_of_a_typed_st_is_an_echo_never_unknown() {
+    let (mut fake, run, _) = attached(SessionState::Menu).await;
+    // The gateway's order: the `sent`, then the output that echoes it.
+    fake.play(&[Step::Sent("st".into()), Step::Out(ST.into())])
+        .await;
+    let (brain, seen) = fake.close(run).await;
+    assert_eq!(names_of(&seen, "st"), ["echo"]);
+    assert_eq!(brain.snapshot(ID).unwrap().parse.unwrap().unclassified, 0);
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_own_queue_is_empty_after_each_resync() {
+    // Whether or not the `sent` for the brain's own lines came back (a lagged broadcast).
+    for report_own in [true, false] {
+        let (mut fake, run, _) = attached(SessionState::Realm).await;
+        fake.report_own = report_own;
+        resync(&mut fake).await;
+        // So the player's `st` afterwards is the player's.
+        fake.play(&[Step::Sent("st".into()), Step::Out(ST.into())])
+            .await;
+        let (brain, seen) = fake.close(run).await;
+        assert_eq!(brain.own_pending(ID), Some(0), "report_own: {report_own}");
+        assert_eq!(
+            names_of(&seen, "st"),
+            ["echo", "echo"],
+            "report_own: {report_own}"
+        );
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_own_line_whose_sent_never_comes_is_forgotten() {
+    let (mut fake, run, _) = attached(SessionState::Realm).await;
+    fake.report_own = false;
+    assert_eq!(fake.input().await, "st");
+    tokio::time::sleep(wayfarer_brain::OWN_PATIENCE + Duration::from_secs(1)).await;
+    // The player types `st`: theirs, so the re-sync waits for an idle prompt again.
+    fake.play(&[Step::Sent("st".into())]).await;
+    let typed = Instant::now();
+    fake.output(ST).await;
+    assert_eq!(fake.input().await, "exp");
+    assert_eq!(typed.elapsed(), wayfarer_brain::IDLE);
+    fake.close(run).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_log_restart_resumes_events_and_counts() {
+    let (mut fake, run) = start(None);
+    for _ in 0..5 {
+        fake.history("\r\nYou feel better.\r\n");
+    }
+    fake.history("[HP=30]:");
+    fake.welcome(SessionState::Menu).await;
+    let lines = fake.character().await.parse.unwrap().lines;
+    let (brain, _) = fake.close(run).await;
+
+    // The gateway's output log was deleted: its `seq` starts again from 1.
+    let (mut fake, run) = start(Some(brain));
+    fake.history("[HP=30]:");
+    fake.welcome(SessionState::Menu).await;
+    fake.character().await;
+    fake.output("\r\nYou took 3 damage.\r\n").await;
+    fake.output("[HP=27]:").await;
+    let (brain, seen) = fake.close(run).await;
+    assert!(
+        seen.iter()
+            .any(|m| matches!(m, ToGateway::Event { seq: 2, name, .. } if name == "took_damage")),
+        "no event for the new output"
+    );
+    let s = brain.snapshot(ID).unwrap();
+    assert_eq!(s.parse.unwrap().lines, lines + 1);
+    assert_eq!(s.hp, Some(27));
+}
+
+/// Send `text` as live output; the snapshot as the UIs have it once the brain has patched it.
+async fn after(fake: &mut Fake, text: &str) -> CharacterState {
+    fake.output(text).await;
+    fake.until(|m| matches!(m, ToGateway::CharacterPatch { .. }).then_some(()))
+        .await;
+    serde_json::from_value(as_ui_sees(&fake.seen)).unwrap()
+}
+
+fn has(s: &CharacterState, status: &str) -> bool {
+    s.statuses
+        .as_ref()
+        .is_some_and(|l| l.iter().any(|x| x == status))
+}
+
+#[tokio::test(start_paused = true)]
+async fn hp_statuses_kills_and_inventory_follow_the_typed_events() {
+    // The lines are the pattern table's examples and the captures' (`fight-arena`,
+    // `death-rebirth`).
+    let (mut fake, run, _) = attached(SessionState::Menu).await;
+    let s = after(&mut fake, ST).await;
+    assert_eq!((s.hp, s.hp_max), (Some(35), Some(35)));
+
+    let s = after(&mut fake, "\r\nYou took 3 damage.\r\n").await;
+    assert_eq!(s.hp, Some(32), "lowered until the next prompt");
+    let s = after(
+        &mut fake,
+        "[HP=32]:\r\nYou hand over 3 silver nobles and all your wounds are healed.\r\n",
+    )
+    .await;
+    assert_eq!(s.hp, Some(35));
+
+    let s = after(&mut fake, "You feel ill.\r\n").await;
+    assert!(has(&s, "poisoned"));
+    let s = after(
+        &mut fake,
+        "You hand over 1 silver noble and your poisoning is cured.\r\n",
+    )
+    .await;
+    assert!(!has(&s, "poisoned"));
+    let s = after(&mut fake, "You are blind.\r\n").await;
+    assert!(has(&s, "blind"));
+
+    assert_eq!(s.kills, None);
+    let s = after(
+        &mut fake,
+        "The giant rat falls to the ground with a tortured squeak.\r\n",
+    )
+    .await;
+    assert_eq!(s.kills, Some(1));
+
+    // Someone else dropping changes nothing; the character itself, by first name, does.
+    let s = after(&mut fake, "Thornwyn drops to the ground!\r\n").await;
+    assert_eq!((s.hp, s.in_combat), (Some(35), None));
+    let s = after(&mut fake, "Aldric drops to the ground!\r\n").await;
+    assert_eq!((s.hp, s.in_combat), (Some(0), Some(false)));
+    let s = after(&mut fake, "You have been killed!\r\n").await;
+    assert!(!has(&s, "blind"), "death clears statuses");
+
+    let s = after(
+        &mut fake,
+        "i\r\nYou are carrying 3 silver nobles, padded vest (Torso)\r\nYou have no keys.\r\n\
+         Wealth: 30 copper farthings\r\nEncumbrance: 515/2400 - Light [21%]\r\n\r\n[HP=35]:",
+    )
+    .await;
+    assert_eq!(
+        s.coins,
+        Some(Coins {
+            copper: Some(30),
+            carried: vec![CoinCount {
+                coin: "silver nobles".into(),
+                count: 3
+            }],
+        })
+    );
+    assert_eq!(s.carrying, Some(vec!["padded vest".into()]));
+    assert_eq!(
+        s.encumbrance,
+        Some(Encumbrance {
+            current: Some(515),
+            max: Some(2400),
+            level: Some("Light".into()),
+        })
+    );
+    fake.close(run).await;
 }

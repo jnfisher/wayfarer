@@ -36,7 +36,7 @@ parser.sent("a rat");                                          // so its echo is
   optional; the standard prompt has no maxima), the status screen (`StatusName`,
   `StatusRace`, `StatusClass`, `StatusHits`, `StatusMana`, `StatusStat`), `Health`,
   `ExpScreen`, room title, exits and darkness, combat on and off, monster deaths, exp gained,
-  damage, healing, resting, unconscious, killed, lives left, poison, blind, stunned,
+  damage, healing, resting, unconscious, killed, lives left, poison and its cure, blind, stunned,
   inventory, wealth and encumbrance. A line nothing recognised is `Unknown`; every other
   event is `Other`, with the event. Values the patterns capture in unnamed groups (the stat
   lines, and the skill at the end of the race, class, hits and mana lines) are read from the

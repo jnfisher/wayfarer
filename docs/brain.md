@@ -46,14 +46,22 @@ line when it starts and attaches, one per re-sync. Nothing the player types is l
   follows the live output. A session that appears later gets the same.
 - **Parse.** Every line of live output goes out as an `event` (with its output `seq` and
   `line_no`). Each line the gateway reports as `sent` is told to the parser, so the game's echo
-  of it is read as an echo. A line nothing recognises is counted (`parse.unclassified`), never
-  an error.
+  of it is read as an echo; the gateway sends a line's `sent` before the output that echoes it.
+  The brain's own re-sync lines are told to the parser when they go; their `sent` is matched
+  off and not told twice, and one whose `sent` has not come within 10 s (or after a `lagged`,
+  or once the re-sync is done) is forgotten, so a line the player types later is never taken
+  for the brain's. A line nothing recognises is counted (`parse.unclassified`), never an error.
+  If the gateway's output log started again (its `last_seq` is below what the brain fed), the
+  parser and the line count start afresh and events go out again from the new log's live
+  output.
 - **Model.** The character applies each typed event: the prompt's HP, mana and resting mark;
   the status screen (name, lives and CP, race, class, level, HP and mana with their maxima,
   stats, poison); the `exp` screen; the room's title and exits (a dark room has neither); combat
-  on and off; exp gained; death and lives; blindness; inventory, wealth and encumbrance (kept
-  in the brain; the M1 snapshot has no fields for them). After each chunk that changed
-  anything it sends a `character_patch`, the merge patch from the last snapshot sent.
+  on and off; exp gained; damage taken and a healer's healing (HP until the next prompt); the
+  character's own collapse (HP at most 0, out of combat); monster deaths (`kills`); death and
+  lives; poison (until a cure or death) and blindness (until death); inventory, wealth and
+  encumbrance (`coins`, `carrying`, `encumbrance`). After each chunk that changed anything it
+  sends a `character_patch`, the merge patch from the last snapshot sent.
 - **Fell behind.** On `lagged`, or a gap in the live `seq`s, it fetches the missed chunks with
   `history_request` and holds live output until they are in.
 - **Control.** `resync` starts a re-sync; `state_request` gets the whole `character` (one

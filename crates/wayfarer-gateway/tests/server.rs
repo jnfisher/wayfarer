@@ -671,6 +671,98 @@ async fn sent_tells_the_brain_each_line_that_went_to_the_game_with_the_password_
 }
 
 #[tokio::test]
+async fn the_brain_gets_each_sent_line_before_the_output_that_echoes_it() {
+    // 1,000 lines typed at random moments while the game streams output in random pieces and
+    // echoes each line as soon as it reads it.
+    const LINES: usize = 1000;
+    let dir = tempfile::tempdir().unwrap();
+    let rig = Rig::start(dir.path(), None).await;
+    let mut ui = rig.welcomed().await;
+    let mut brain = rig.brain().await;
+    let mut game = rig.connect_game().await;
+    while rig.gateway.state(ID).unwrap() != SessionState::Connected {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+
+    let game_task = tokio::spawn(async move {
+        let mut rng = fastrand::Rng::with_seed(20);
+        let (mut buf, mut input) = ([0u8; 256], Vec::new());
+        let mut echoed = 0;
+        while echoed < LINES {
+            tokio::select! {
+                n = game.read(&mut buf) => {
+                    input.extend_from_slice(&buf[..n.unwrap()]);
+                    while let Some(end) = input.iter().position(|&b| b == b'\r') {
+                        let line: Vec<u8> = input.drain(..=end).collect();
+                        let n = std::str::from_utf8(&line[1..end]).unwrap();
+                        game.write_all(format!("[e{n}]\r\n").as_bytes()).await.unwrap();
+                        echoed += 1;
+                    }
+                }
+                () = tokio::task::yield_now() => {
+                    let filler = ".".repeat(rng.usize(1..40));
+                    game.write_all(filler.as_bytes()).await.unwrap();
+                }
+            }
+        }
+        game
+    });
+    let ui_task = tokio::spawn(async move {
+        let mut rng = fastrand::Rng::with_seed(17);
+        for n in 0..LINES {
+            for _ in 0..rng.usize(0..4) {
+                tokio::task::yield_now().await;
+            }
+            let line = ToGateway::InputLine {
+                session: ID.into(),
+                text: format!("L{n}"),
+            };
+            send(&mut ui, &line).await;
+        }
+        ui
+    });
+
+    // What the brain got, in order: for each line, where its `sent` came; and the chunks.
+    let mut sent_at = vec![None; LINES];
+    let mut chunks: Vec<(usize, String)> = Vec::new();
+    let mut text = String::new();
+    let mut i = 0;
+    while sent_at.iter().any(Option::is_none) || !text.contains(&format!("[e{}]", LINES - 1)) {
+        match recv(&mut brain).await {
+            ToClient::Sent { session, text, .. } => {
+                assert_eq!(session, ID);
+                let n: usize = text[1..].parse().unwrap();
+                sent_at[n] = Some(i);
+            }
+            ToClient::Output { text: t, .. } => {
+                text.push_str(&t);
+                chunks.push((i, t));
+            }
+            ToClient::SessionState { .. } => {}
+            other => panic!("unexpected {other:?}"),
+        }
+        i += 1;
+    }
+    let mut starts = Vec::with_capacity(chunks.len());
+    let mut offset = 0;
+    for (at, t) in &chunks {
+        starts.push((offset, *at));
+        offset += t.len();
+    }
+    for (n, sent) in sent_at.iter().enumerate() {
+        let echo = text.find(&format!("[e{n}]")).expect("every line is echoed");
+        let chunk = starts.partition_point(|(start, _)| *start <= echo) - 1;
+        assert!(
+            sent.unwrap() < starts[chunk].1,
+            "line {n}: sent after the chunk holding its echo"
+        );
+    }
+    ui_task.await.unwrap();
+    drop(game_task.await.unwrap());
+    rig.stop().await;
+}
+
+#[tokio::test]
 async fn a_channel_client_follows_the_same_handshake_relay_and_refusal_rules() {
     let dir = tempfile::tempdir().unwrap();
     let rig = Rig::start(dir.path(), None).await;

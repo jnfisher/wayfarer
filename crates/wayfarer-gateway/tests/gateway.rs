@@ -10,8 +10,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast::{self, error::RecvError};
 use wayfarer_gateway::{
-    Chunk, Config, Credentials, Gateway, GatewayError, HistoryQuery, Options, Paths, SessionState,
-    StateChange,
+    Chunk, Config, Credentials, Gateway, GatewayError, HistoryQuery, Options, Output, Paths,
+    SessionState, StateChange,
 };
 use wayfarer_telnet::cp437;
 
@@ -62,15 +62,16 @@ async fn accept(l: &TcpListener) -> TcpStream {
         .0
 }
 
-/// Receive chunks until their text adds up to `len` bytes.
-async fn receive_text(rx: &mut broadcast::Receiver<Chunk>, len: usize) -> Vec<Chunk> {
+/// Receive chunks until their text adds up to `len` bytes, skipping sent lines.
+async fn receive_text(rx: &mut broadcast::Receiver<Output>, len: usize) -> Vec<Chunk> {
     let mut chunks = Vec::new();
     let mut have = 0;
     while have < len {
-        let chunk = tokio::time::timeout(PATIENCE, rx.recv())
+        let item = tokio::time::timeout(PATIENCE, rx.recv())
             .await
             .expect("output arrives")
             .unwrap();
+        let Output::Chunk(chunk) = item else { continue };
         have += chunk.text.len();
         chunks.push(chunk);
     }
@@ -264,7 +265,10 @@ async fn a_subscriber_that_never_reads_stalls_nobody() {
         Err(RecvError::Lagged(missed)) => assert_eq!(missed, N - 4),
         other => panic!("expected a lag, got {other:?}"),
     }
-    assert_eq!(idle.recv().await.unwrap().seq, N - 3);
+    match idle.recv().await.unwrap() {
+        Output::Chunk(chunk) => assert_eq!(chunk.seq, N - 3),
+        other => panic!("expected a chunk, got {other:?}"),
+    }
     // History fills the gap.
     let gap = gw.history(ID, HistoryQuery::after(0, 1000)).await.unwrap();
     assert_eq!(gap.chunks.len() as u64, N);

@@ -128,6 +128,11 @@ impl Brain {
         self.sessions.get(session).map(|s| s.character.snapshot())
     }
 
+    /// How many of the brain's own lines to `session` still wait for the gateway's `sent`.
+    pub fn own_pending(&self, session: &str) -> Option<usize> {
+        self.sessions.get(session).map(Session::own_pending)
+    }
+
     /// Attach over `link` and follow the gateway until the connection ends (`Ok`): the caller
     /// may connect again and call `run` once more, and the brain carries on where it was.
     /// `Err` when the gateway refuses the brain or ends the connection before welcoming it.

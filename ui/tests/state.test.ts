@@ -18,6 +18,7 @@ import {
   MAX_NOTICES,
   MAX_UNKNOWN,
   mergePatch,
+  pruneCharacters,
   saveDevPrefs,
   trim,
   unknownLines,
@@ -76,6 +77,32 @@ describe("the brain view", () => {
     const view = emptyBrainView();
     applyCharacterPatch(view, "b", { hp: 5, room_title: null });
     expect(view.characters.b).toEqual({ hp: 5 });
+  });
+
+  it("merges the new optional fields", () => {
+    const view = emptyBrainView();
+    applyCharacter(view, "a", { name: "Aria", coins: { copper: 30, carried: [] } });
+    applyCharacterPatch(view, "a", {
+      coins: { carried: [{ coin: "silver nobles", count: 3 }] },
+      carrying: ["padded vest"],
+      encumbrance: { current: 515, max: 2400, level: "Light" },
+      kills: 1,
+    });
+    expect(view.characters.a).toEqual({
+      name: "Aria",
+      coins: { copper: 30, carried: [{ coin: "silver nobles", count: 3 }] },
+      carrying: ["padded vest"],
+      encumbrance: { current: 515, max: 2400, level: "Light" },
+      kills: 1,
+    });
+  });
+
+  it("a session list forgets the characters of sessions not in it", () => {
+    const view = emptyBrainView();
+    applyCharacter(view, "a", { name: "Aria" });
+    applyCharacter(view, "b", { name: "Brienne" });
+    pruneCharacters(view, ["a", "c"]);
+    expect(view.characters).toEqual({ a: { name: "Aria" } });
   });
 
   it("keeps brain_state", () => {

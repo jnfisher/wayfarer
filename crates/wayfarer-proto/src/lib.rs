@@ -134,6 +134,51 @@ pub struct CharacterState {
     /// The output `seq` this snapshot reflects.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_seq: Option<u64>,
+    /// The coins carried, from the inventory (`i`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coins: Option<Coins>,
+    /// The items carried, by name, as the inventory lists them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub carrying: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encumbrance: Option<Encumbrance>,
+    /// Monster deaths seen since the brain attached.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kills: Option<u64>,
+}
+
+/// A character's coins.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(optional_fields)]
+pub struct Coins {
+    /// Their total value in copper farthings (the inventory's `Wealth:` line).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub copper: Option<u64>,
+    /// Each kind carried, as the inventory lists it (`silver nobles`, 3).
+    #[serde(default)]
+    pub carried: Vec<CoinCount>,
+}
+
+/// So many coins of one kind.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct CoinCount {
+    /// As the game names it: `runic coins`, `platinum pieces`, `gold crowns`, `silver nobles`,
+    /// `copper farthings`.
+    pub coin: String,
+    pub count: u64,
+}
+
+/// What a character carries against what it can (`Encumbrance: 520/3792 - None [13%]`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(optional_fields)]
+pub struct Encumbrance {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<u32>,
+    /// The game's word for it: `None`, `Light`, `Medium`, `Heavy`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub level: Option<String>,
 }
 
 /// A character's six stats.

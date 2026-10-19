@@ -25,4 +25,4 @@ pub use brain::{BUILD, Brain, BrainError, World};
 pub use character::{Character, apply_patch, merge_patch};
 pub use clock::{Clock, FixedClock, SystemClock, rfc3339};
 pub use link::{ChannelLink, ConnectError, Link, WsLink};
-pub use session::{ANSWER_TIMEOUT, HISTORY_CHUNKS, IDLE, RESYNC_COMMANDS};
+pub use session::{ANSWER_TIMEOUT, HISTORY_CHUNKS, IDLE, OWN_PATIENCE, RESYNC_COMMANDS};
