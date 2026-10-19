@@ -27,9 +27,16 @@ export const KEY_ROWS: KeyRow[] = [
   { group: "Help", keys: "? on an empty input line, or the ? button", does: "Open or close this help" },
   { group: "Help", keys: "Esc, ? again, or a click outside", does: "Close this help" },
   {
+    group: "Map",
+    keys: "Alt+M, or the map button",
+    does: "Open the drawer on the map of the focused character's surroundings, or close it (on a Mac, Option)",
+  },
+  { group: "Map", keys: "Click a room on the map", does: "Walk the character there; stop under the map ends the walk" },
+  { group: "Map", keys: "Mouse wheel, drag on the map", does: "Zoom (three sizes), pan; centre goes back to the character" },
+  {
     group: "Development",
     keys: "Alt+D, or the dev button",
-    does: "Open or close the dev panel: the focused character's events, unclassified lines and the brain (on a Mac, Option)",
+    does: "Open the drawer on the dev panel: the focused character's events, unclassified lines and the brain; or close it (on a Mac, Option)",
   },
 ];
 
@@ -56,6 +63,7 @@ export const HELP_KEY = "?";
 export const FOCUS_TILE_CODE = /^Digit[1-6]$/;
 export const RESET_LAYOUT_CODE = "Digit0";
 export const DEV_PANEL_CODE = "KeyD";
+export const MAP_PANEL_CODE = "KeyM";
 export const ZOOM_IN_KEYS = ["+", "="];
 export const ZOOM_OUT_KEYS = ["-"];
 export const ZOOM_RESET_KEYS = ["0"];

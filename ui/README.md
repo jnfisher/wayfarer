@@ -20,11 +20,13 @@ npm test           # vitest
 | `src/lib/state.ts`, `src/lib/header.ts` | What the brain has said (snapshots, merge patches, `brain_state`, and the dev panel's bounded event, unclassified-line and notice buffers); the header's bars, text and which items fit |
 | `src/lib/input.ts`, `src/lib/sinks.ts` | A tile's command history; terminal text waiting for its terminal |
 | `src/lib/theme.ts`, `src/app.css` | The 16 VGA colours and the IBM VGA font |
-| `src/App.svelte`, `src/Tile.svelte`, `src/DevPanel.svelte` | The page, one tile, and the dev panel (`Alt+D`) |
+| `src/lib/map.ts` | The map panel's drawing from a `map_view` on a 2D canvas, no Svelte: boxes, exits, the belief, the route; hit-testing, zoom, pan |
+| `src/App.svelte`, `src/Tile.svelte`, `src/MapPanel.svelte`, `src/DevPanel.svelte` | The page and its drawer, one tile, the map (`Alt+M`) and the dev panel (`Alt+D`) |
 | `public/fonts/` | The VGA web font and its licence |
 | `scripts/fake-bbs.mjs` | A stand-in game server replaying `tests/fixtures/captures/*/raw.bin` |
 | `scripts/screenshot.mjs` | A Playwright screenshot of a running gateway's page (`npx playwright install chromium` once) |
 | `scripts/frame-check.mjs` | Screenshots of a tile's corners at 90%, 100% and 125% zoom, and a check that the side borders meet the corner glyphs |
+| `scripts/map-check.mjs` | Drives the map against a running gateway with a brain: opens it, walks by hand, clicks a room three steps away, stops a walk; screenshots each (moves the character) |
 
 **Output, once each and in order.** The client keeps each session's last written `seq`. A new
 tile asks for the latest 2,000 chunks (`before_seq` = the session's `last_seq` + 1, from

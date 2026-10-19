@@ -216,26 +216,48 @@ export function clock(at: number): string {
   return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, "0")).join(":");
 }
 
-/** Where the dev panel's open state and tab are kept. */
+/** Where the right-hand drawer's open state, panel and dev tab are kept (the name is C-018's). */
 export const DEV_KEY = "wayfarer.dev";
 export const DEV_TABS = ["events", "unclassified", "brain"] as const;
 export type DevTab = (typeof DEV_TABS)[number];
+/** The drawer's two panels (C-023). */
+export const DRAWER_PANELS = ["map", "dev"] as const;
+export type DrawerPanel = (typeof DRAWER_PANELS)[number];
 export interface DevPrefs {
   open: boolean;
+  panel: DrawerPanel;
   tab: DevTab;
 }
 
-/** The panel's open state and tab; closed on the events tab when nothing (readable) is kept. */
+/** The drawer's state; closed, on the map, dev on events when nothing (readable) is kept. */
 export function loadDevPrefs(storage: Pick<Storage, "getItem"> | undefined): DevPrefs {
   try {
     const raw: unknown = JSON.parse(storage?.getItem(DEV_KEY) ?? "null");
     if (isObject(raw)) {
-      return { open: raw.open === true, tab: DEV_TABS.find((t) => t === raw.tab) ?? "events" };
+      return {
+        open: raw.open === true,
+        // Kept before the map existed: the drawer was the dev panel.
+        panel: DRAWER_PANELS.find((p) => p === raw.panel) ?? (raw.panel === undefined ? "dev" : "map"),
+        tab: DEV_TABS.find((t) => t === raw.tab) ?? "events",
+      };
     }
   } catch {
     // Unreadable or blocked: the defaults.
   }
-  return { open: false, tab: "events" };
+  return { open: false, panel: "map", tab: "events" };
+}
+
+/**
+ * `Alt+M` / `Alt+D` and the two buttons: open the drawer on that panel, or close it when it is
+ * already open there.
+ */
+export function toggleDrawer(prefs: DevPrefs, panel: DrawerPanel): void {
+  if (prefs.open && prefs.panel === panel) {
+    prefs.open = false;
+  } else {
+    prefs.open = true;
+    prefs.panel = panel;
+  }
 }
 
 export function saveDevPrefs(storage: Pick<Storage, "setItem"> | undefined, prefs: DevPrefs): void {

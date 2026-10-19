@@ -187,6 +187,10 @@ pub struct Walking {
     pub steps_left: u32,
     /// The step in progress, from 1, counted over the whole walk (replans included).
     pub step: u32,
+    /// What the walker will type for each step left, the one in progress first: `n`, or a
+    /// text exit's phrase (`borrow skiff`). A closed door adds an `open` it does not list.
+    #[serde(default)]
+    pub commands: Vec<String>,
 }
 
 /// What kind of place a room is, for the map panel to mark: from the room's type and shop,

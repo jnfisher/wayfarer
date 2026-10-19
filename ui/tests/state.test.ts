@@ -20,6 +20,7 @@ import {
   mergePatch,
   pruneCharacters,
   saveDevPrefs,
+  toggleDrawer,
   trim,
   unknownLines,
   unknownMarkdown,
@@ -246,6 +247,32 @@ describe("the dev panel's messages", () => {
   });
 });
 
+describe("the map panel's messages", () => {
+  it("hands on map_view, sends walk_to and walk_stop, and clamps the map_request radius", () => {
+    const socket = new FakeSocket();
+    const views: unknown[] = [];
+    const client = new GatewayClient({ url: "ws://test/ws", socket: () => socket, events: { mapView: (v) => views.push(v) } });
+    client.connect();
+    socket.open();
+    expect(client.walkTo("a", 1, 2)).toBe(false); // not welcomed yet
+    socket.receive({ type: "welcome", protocol: PROTOCOL, server_build: "test", sessions: [] });
+    const view: ToClient = { type: "map_view", session: "a", center: { map: 1, room: 2 }, level: 0, rooms: [], exits: [] };
+    socket.receive(view);
+    expect(views).toEqual([view]);
+    expect(client.walkTo("a", 1, 2150)).toBe(true);
+    expect(client.walkStop("a")).toBe(true);
+    client.requestMap("a");
+    client.requestMap("a", 500);
+    expect(socket.sent.slice(-4)).toEqual([
+      { type: "walk_to", session: "a", map: 1, room: 2150 },
+      { type: "walk_stop", session: "a" },
+      { type: "map_request", session: "a", radius: 15 },
+      { type: "map_request", session: "a", radius: 30 },
+    ]);
+    client.close();
+  });
+});
+
 const ev = (name: string, line = "", seq = 1, fields: Record<string, unknown> = {}) => ({
   seq,
   line_no: seq,
@@ -350,27 +377,32 @@ describe("the dev panel's text", () => {
   });
 });
 
-describe("the dev panel's prefs", () => {
+describe("the drawer's prefs", () => {
   const store = (value: string | null) => ({ getItem: () => value });
+  const closed = { open: false, panel: "map", tab: "events" };
 
-  it("default to closed on the events tab", () => {
-    expect(loadDevPrefs(undefined)).toEqual({ open: false, tab: "events" });
-    expect(loadDevPrefs(store(null))).toEqual({ open: false, tab: "events" });
-    expect(loadDevPrefs(store("not json"))).toEqual({ open: false, tab: "events" });
-    expect(loadDevPrefs(store('{"open":true,"tab":"nonsense"}'))).toEqual({ open: true, tab: "events" });
+  it("default to closed on the map, dev on the events tab", () => {
+    expect(loadDevPrefs(undefined)).toEqual(closed);
+    expect(loadDevPrefs(store(null))).toEqual(closed);
+    expect(loadDevPrefs(store("not json"))).toEqual(closed);
+    expect(loadDevPrefs(store('{"open":true,"panel":"nonsense","tab":"nonsense"}'))).toEqual({ ...closed, open: true });
     expect(
       loadDevPrefs({
         getItem: () => {
           throw new Error("blocked");
         },
       }),
-    ).toEqual({ open: false, tab: "events" });
+    ).toEqual(closed);
+  });
+
+  it("read the prefs kept before the map as the dev panel's", () => {
+    expect(loadDevPrefs(store('{"open":true,"tab":"brain"}'))).toEqual({ open: true, panel: "dev", tab: "brain" });
   });
 
   it("round-trip, and a failing store is ignored", () => {
     const kept: Record<string, string> = {};
-    saveDevPrefs({ setItem: (k, v) => (kept[k] = v) }, { open: true, tab: "brain" });
-    expect(loadDevPrefs({ getItem: (k) => kept[k] ?? null })).toEqual({ open: true, tab: "brain" });
+    saveDevPrefs({ setItem: (k, v) => (kept[k] = v) }, { open: true, panel: "dev", tab: "brain" });
+    expect(loadDevPrefs({ getItem: (k) => kept[k] ?? null })).toEqual({ open: true, panel: "dev", tab: "brain" });
     expect(() =>
       saveDevPrefs(
         {
@@ -378,8 +410,20 @@ describe("the dev panel's prefs", () => {
             throw new Error("full");
           },
         },
-        { open: true, tab: "brain" },
+        { open: true, panel: "map", tab: "brain" },
       ),
     ).not.toThrow();
+  });
+
+  it("toggle: open on a panel, switch panels, close on the same one", () => {
+    const prefs = loadDevPrefs(undefined);
+    toggleDrawer(prefs, "map");
+    expect(prefs).toMatchObject({ open: true, panel: "map" });
+    toggleDrawer(prefs, "dev");
+    expect(prefs).toMatchObject({ open: true, panel: "dev" });
+    toggleDrawer(prefs, "dev");
+    expect(prefs).toMatchObject({ open: false, panel: "dev" });
+    toggleDrawer(prefs, "map");
+    expect(prefs).toMatchObject({ open: true, panel: "map" });
   });
 });

@@ -119,6 +119,10 @@ impl Walker {
             name: w.name.clone(),
             steps_left: u32::try_from(w.route.len() - w.next).unwrap_or(u32::MAX),
             step: w.confirmed + 1,
+            commands: w.route[w.next..]
+                .iter()
+                .map(|s| s.command.clone())
+                .collect(),
         })
     }
 
