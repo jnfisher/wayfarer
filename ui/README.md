@@ -17,12 +17,14 @@ npm test           # vitest
 | `src/proto/` | The wire types, generated from `wayfarer-proto` (`cargo test -p wayfarer-proto -- --ignored regenerate`); never edit by hand |
 | `src/lib/gateway.ts` | The protocol client, no Svelte: hello, dispatch, backfill, catching up after a gap or a reconnect, backoff, the token |
 | `src/lib/layout.ts` | The tile grid by count and screen shape, and "fit to tile" font sizing |
+| `src/lib/state.ts`, `src/lib/header.ts` | What the brain has said (snapshots, merge patches, `brain_state`); the header's bars, text and which items fit |
 | `src/lib/input.ts`, `src/lib/sinks.ts` | A tile's command history; terminal text waiting for its terminal |
 | `src/lib/theme.ts`, `src/app.css` | The 16 VGA colours and the IBM VGA font |
 | `src/App.svelte`, `src/Tile.svelte` | The page and one tile |
 | `public/fonts/` | The VGA web font and its licence |
 | `scripts/fake-bbs.mjs` | A stand-in game server replaying `tests/fixtures/captures/*/raw.bin` |
 | `scripts/screenshot.mjs` | A Playwright screenshot of a running gateway's page (`npx playwright install chromium` once) |
+| `scripts/frame-check.mjs` | Screenshots of a tile's corners at 90%, 100% and 125% zoom, and a check that the side borders meet the corner glyphs |
 
 **Output, once each and in order.** The client keeps each session's last written `seq`. A new
 tile asks for the latest 2,000 chunks (`before_seq` = the session's `last_seq` + 1, from

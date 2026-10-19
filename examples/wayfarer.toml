@@ -1,6 +1,7 @@
 # wayfarer.toml: the game servers and the characters the gateway holds sessions for.
 # Passwords go in credentials.toml beside this file, never here.
-# The gateway reads this from your data directory (on Linux ~/.local/share/wayfarer/), or from
+# The gateway reads this from your data directory (on macOS ~/Library/Application Support/wayfarer/,
+# on Linux ~/.local/share/wayfarer/), or from
 # the path given with --config.
 
 [[server]]

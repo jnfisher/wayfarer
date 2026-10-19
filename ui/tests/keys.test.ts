@@ -59,7 +59,7 @@ describe("help overlay", () => {
     sendLine.mockClear();
     sendKeys.mockClear();
     Object.defineProperty(document, "fonts", { value: { load: () => Promise.resolve([]) }, configurable: true });
-    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   });
   afterEach(cleanup);
 

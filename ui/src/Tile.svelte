@@ -5,12 +5,13 @@
   import { WebglAddon } from "@xterm/addon-webgl";
   import "@xterm/xterm/css/xterm.css";
   import { keyBytes, type GatewayClient } from "./lib/gateway";
+  import { HEADER_CELL_PX, bar, expText, fitHeader, levelClass, roomText } from "./lib/header";
   import { InputHistory } from "./lib/input";
   import { HELP_KEY } from "./lib/keys";
   import { TERM_COLS, TERM_ROWS, fitFontSize } from "./lib/layout";
   import type { TerminalSinks } from "./lib/sinks";
   import { FONT_FAMILY, FONT_NAME, VGA_THEME } from "./lib/theme";
-  import type { SessionInfo } from "./proto";
+  import type { CharacterState, SessionInfo } from "./proto";
 
   interface Props {
     info: SessionInfo;
@@ -26,9 +27,23 @@
     onfocus: () => void;
     /** Open or close the help overlay. */
     onhelp: () => void;
+    /** What the brain knows of the character; null when no brain is attached. */
+    character?: CharacterState | null;
   }
 
-  let { info, number, focused, zoom, offline, client, sinks, onfocus, onhelp }: Props = $props();
+  let { info, number, focused, zoom, offline, client, sinks, onfocus, onhelp, character = null }: Props =
+    $props();
+
+  let headerWidth = $state(0);
+  const c = $derived(character);
+  const hp = $derived(bar(c?.hp, c?.hp_max));
+  const mana = $derived(bar(c?.mana, c?.mana_max));
+  const shown = $derived(
+    fitHeader(
+      { number, name: info.name, server: info.server, state: info.state, character: c },
+      Math.floor(headerWidth / HEADER_CELL_PX),
+    ),
+  );
 
   let host: HTMLDivElement;
   let input: HTMLInputElement;
@@ -38,6 +53,8 @@
   let line = $state("");
   let ready = $state(false);
   const history = new InputHistory();
+  /** A side of the frame: enough ║ for a tile 4,800 px tall. */
+  const SIDE = "║\n".repeat(300);
 
   onMount(() => {
     let disposed = false;
@@ -155,15 +172,45 @@
     focusInput();
   }}
 >
-  <header>
-    <span class="frame">╔═</span>
+  <!-- Every span's width in cells is counted in lib/header.ts: change both together. -->
+  <header bind:clientWidth={headerWidth}>
+    <span class="frame">{"╔═ "}</span>
     <span class="num">{number}</span>
-    <span class="name">{info.name}</span>
+    <span class="name">{" " + info.name}</span>
+    {#if c}
+      {#if shown.has("level")}
+        <span class="level">{"  " + levelClass(c)}</span>
+      {/if}
+      {#if shown.has("hp")}
+        <span class="frame">{" ═ "}</span>
+        <span class="label">{"HP "}</span>
+        <span class="bar {hp.tone}"><span class="full">{hp.full}</span><span class="empty">{hp.empty}</span></span>
+        <span class="nums">{" " + hp.text}</span>
+      {/if}
+      {#if shown.has("mana")}
+        <span class="label">{"  MA "}</span>
+        <span class="bar {mana.tone}"><span class="full">{mana.full}</span><span class="empty">{mana.empty}</span></span>
+        <span class="nums">{" " + mana.text}</span>
+      {/if}
+      {#if shown.has("exp")}
+        <span class="frame">{" ═ "}</span>
+        <span class="exp">{expText(c)}</span>
+      {/if}
+      {#if shown.has("room")}
+        <span class="frame">{" ═ "}</span>
+        <span class="room">{roomText(c)}</span>
+      {/if}
+    {/if}
     <span class="frame fill"></span>
-    <span class="server">{info.server}</span>
-    <span class="frame">═</span>
+    {#if shown.has("server")}
+      <span class="server">{info.server}</span>
+      <span class="frame">{" ═ "}</span>
+    {/if}
     <span class="badge {info.state}">{info.state}</span>
-    <span class="frame">═╗</span>
+    {#if !c}
+      <span class="nobrain">{" no brain"}</span>
+    {/if}
+    <span class="frame">{" ═╗"}</span>
   </header>
   <div class="screen">
     <div class="term" bind:this={host}></div>
@@ -199,42 +246,122 @@
       }}>?</button
     >
   </footer>
+  <div class="bottom" aria-hidden="true">
+    <span>╚</span><span class="fill"></span><span>╝</span>
+  </div>
+  <div class="side left" aria-hidden="true">{SIDE}</div>
+  <div class="side right" aria-hidden="true">{SIDE}</div>
 </section>
 
 <style>
+  /* The frame is drawn with the VGA font's own double-line glyphs, at the fixed 16 px of the
+     header: ╔ ═ ╗ in the header, a column of ║ down each side, ╚ ═ ╝ at the bottom. So the
+     strokes meet at every tile size and browser zoom (in the 8x16 cell ║ is two 2 px strokes
+     at x 2-3 and 5-6, and ═ two 1 px strokes at rows 5 and 7; docs/web-ui.md). */
   .tile {
+    --cell: 8px;
+    position: relative;
     display: flex;
     flex-direction: column;
     min-width: 0;
     min-height: 0;
-    border: 4px double var(--frame);
-    border-top: none;
+    padding: 0 var(--cell);
     background: var(--bg);
+  }
+  /* 1 px into the header and the bottom row, where ╔ ╗ ╚ ╝ have the same two strokes, so no
+     seam shows where they meet. */
+  .side {
+    position: absolute;
+    top: 15px;
+    bottom: calc(var(--cell) - 1px);
+    width: var(--cell);
+    overflow: hidden;
+    white-space: pre;
+    line-height: 16px;
+    color: var(--frame);
+    /* The same strokes under the glyphs, for the seams between them at fractional zooms. */
+    background: linear-gradient(
+      to right,
+      transparent 2px,
+      var(--frame) 2px 4px,
+      transparent 4px 5px,
+      var(--frame) 5px 7px,
+      transparent 7px
+    );
+    pointer-events: none;
+  }
+  .side.left {
+    left: 0;
+  }
+  .side.right {
+    right: 0;
   }
   .tile.focused {
     --frame: var(--frame-focus);
   }
-  header {
+  header,
+  .bottom {
     display: flex;
-    gap: 0.5ch;
-    white-space: nowrap;
+    margin: 0 calc(-1 * var(--cell));
+    white-space: pre;
     overflow: hidden;
     color: var(--frame);
     line-height: 16px;
+  }
+  header {
     height: 16px;
   }
-  header .frame.fill {
+  /* ╚ and ╝ have all their strokes in the cell's top half. */
+  .bottom {
+    height: var(--cell);
+  }
+  .fill {
     flex: 1;
+    min-width: 1ch;
     overflow: hidden;
   }
-  header .frame.fill::before {
-    content: "══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════";
+  header .fill {
+    margin: 0 1ch;
+  }
+  .fill::before {
+    content: "══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════";
   }
   .num {
     color: var(--dim);
   }
   .name {
     color: var(--vga-yellow);
+  }
+  .level,
+  .label {
+    color: var(--vga-lightgray);
+  }
+  .nums,
+  .room {
+    color: var(--vga-white);
+  }
+  .exp {
+    color: var(--vga-lightcyan);
+  }
+  .room {
+    max-width: 30ch; /* ROOM_MAX in lib/header.ts */
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bar .empty {
+    color: var(--dim);
+  }
+  .bar.good .full {
+    color: var(--vga-lightgreen);
+  }
+  .bar.warn .full {
+    color: var(--vga-yellow);
+  }
+  .bar.bad .full {
+    color: var(--vga-lightred);
+  }
+  .nobrain {
+    color: var(--dim);
   }
   .server {
     color: var(--vga-cyan);

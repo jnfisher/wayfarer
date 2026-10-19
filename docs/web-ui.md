@@ -3,14 +3,47 @@
 `wayfarer gateway` serves the web UI at its address (default `http://127.0.0.1:7373/`) once it
 is built (`npm --prefix ui ci && npm --prefix ui run build`, which writes `ui/dist/`).
 
-![Four tiles, replaying recorded sessions](images/web-ui-four-tiles.png)
+![Four tiles, replaying recorded sessions, with the brain attached](images/web-ui-four-tiles.png)
 
 ## Tiles
 
 One tile per character in `wayfarer.toml`, laid out by count: 1; 1x2; 2x2; 2x3 or 3x2 (two,
 five or six tiles go side by side or stacked, whichever makes the terminals larger on your
-screen). Each tile's header shows its number, the character's name, the server and the
-session's state: `connecting`, `connected`, `logon`, `menu`, `realm`, `lost` or `closed`.
+screen). Each tile is framed in the font's double lines, with a header on the top line
+(below).
+
+## The header
+
+```
+╔═ 1 Waydeva  L3 Warrior ═ HP ███████░░░ 28/40  MA ░░░░░░░░░░ 0/0 ═ 1,230 (45%) ═ Town Square ═ 127.0.0.1:2323 ═ realm ═╗
+```
+
+From the left: the tile's number (for `Alt+n`), the character's name, then what the brain
+knows of them: level and class, HP and mana as bars with their numbers, exp with how far
+through the level it is, and the room's title. On the right, the server and the session's
+state badge: `connecting`, `connected`, `logon`, `menu`, `realm`, `lost` or `closed`.
+
+- **Bars** are ten blocks: green above two thirds, yellow above one third, red below. HP and
+  mana maxima come from the status screen, which the brain asks for when it re-syncs (the
+  game's prompt has none), so until then a bar is empty and its maximum shows `--`.
+- **Unknown values** show as `--`. Values update live as the brain reads the game; on leaving
+  the realm (`x` to the menu) the last values stay and the badge changes.
+- **Narrow tiles** drop items from the right: the server first, then the room, exp, mana, HP
+  and the level, so the name and the badge always show. Room titles longer than 30
+  characters end in `…`.
+- **No brain**: without a brain attached the header is just the number, name, server and
+  badge, with a dim `no brain` after the badge. The brain is `wayfarer brain` (`docs/brain.md`).
+- A page that opens or reconnects while a brain is attached asks it for every character's
+  state, so the headers fill at once.
+
+Colours: the frame dark grey (light cyan on the focused tile), the name yellow, level, class
+and labels light grey, numbers and the room white, exp light cyan, the server cyan.
+
+The frame is drawn with the VGA font's own glyphs (`╔ ═ ╗` along the top, a column of `║` down
+each side, `╚ ═ ╝` along the bottom) at the header's fixed 16 px, so the corners meet the
+sides at every tile size and browser zoom. In the font's 8x16 cell `║` is two 2 px strokes in
+columns 2-3 and 5-6, and `═` two 1 px strokes in rows 5 and 7. `node ui/scripts/frame-check.mjs
+URL OUT_DIR` checks them against a running gateway at 90%, 100% and 125%.
 
 The terminal is always 80 columns wide, in the IBM VGA 8x16 font and the 16 DOS colours. The
 font is sized so the 80 columns fill the tile ("fit to tile"), and the terminal has as many

@@ -7,7 +7,7 @@
 // for everything after the last `seq`.
 
 import { PROTOCOL } from "../proto";
-import type { Chunk, SessionInfo, SessionState, ToClient, ToGateway } from "../proto";
+import type { CharacterState, Chunk, SessionInfo, SessionState, ToClient, ToGateway } from "../proto";
 
 /** The part of the browser's `WebSocket` the client uses. */
 export interface SocketLike {
@@ -51,6 +51,12 @@ export interface GatewayEvents {
   connection?(status: ConnectionStatus, detail?: { reason?: string; retryInMs?: number }): void;
   /** An `error` message from the gateway; the connection stays up. */
   error?(message: string): void;
+  /** The brain's whole snapshot of a character. */
+  character?(session: string, state: CharacterState): void;
+  /** A JSON merge patch to the last snapshot. */
+  characterPatch?(session: string, patch: unknown): void;
+  /** Whether a brain is attached: right after `welcome`, then on every change. */
+  brainState?(attached: boolean): void;
 }
 
 export interface GatewayOptions {
@@ -88,6 +94,8 @@ export class GatewayClient {
     Pick<GatewayOptions, "askToken" | "tokens">;
   private socket: SocketLike | null = null;
   private welcomed = false;
+  /** The first `brain_state` since `welcome` is still to come. */
+  private brainUnheard = false;
   private stopped = false;
   private refused = false;
   private retries = 0;
@@ -133,6 +141,11 @@ export class GatewayClient {
   /** Send raw key bytes; false when not connected. */
   sendKeys(session: string, bytes: number[]): boolean {
     return bytes.length > 0 && this.send({ type: "input_keys", session, bytes });
+  }
+
+  /** Ask the brain for every character's snapshot again; false when not connected. */
+  requestState(): boolean {
+    return this.send({ type: "state_request" });
   }
 
   private send(message: ToGateway): boolean {
@@ -198,6 +211,7 @@ export class GatewayClient {
     switch (message.type) {
       case "welcome":
         this.welcomed = true;
+        this.brainUnheard = true;
         this.retries = 0;
         this.opts.events.connection?.("open");
         this.sessionList(message.sessions);
@@ -224,6 +238,23 @@ export class GatewayClient {
       }
       case "error":
         this.opts.events.error?.(message.message);
+        break;
+      case "brain_state":
+        this.opts.events.brainState?.(message.attached);
+        // A page that opens (or reconnects) after the brain attached asks for the snapshots;
+        // a brain that attaches later sends them itself.
+        if (this.brainUnheard && message.attached) this.requestState();
+        this.brainUnheard = false;
+        break;
+      case "brain_lagged":
+        // Relayed patches were dropped: start again from whole snapshots.
+        this.requestState();
+        break;
+      case "character":
+        this.opts.events.character?.(message.session, message.state);
+        break;
+      case "character_patch":
+        this.opts.events.characterPatch?.(message.session, message.patch);
         break;
     }
   }

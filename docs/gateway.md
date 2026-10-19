@@ -1,7 +1,7 @@
 # The gateway: configuration and logs
 
 The gateway holds one telnet session per character. It reads two files from your data
-directory (the platform's per-user data directory, on Linux `~/.local/share/wayfarer/`), or
+directory (the platform's per-user data directory: on macOS `~/Library/Application Support/wayfarer/`, on Linux `~/.local/share/wayfarer/`), or
 from the directory of the file given with `--config`.
 
 ## `wayfarer.toml`
