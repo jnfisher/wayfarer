@@ -24,8 +24,8 @@ pub enum Expect {
     BashResult,
     /// Anything: the next prompt.
     Prompt,
-    /// An attack: `*Combat Engaged*`. `You do not see <x> here!` and `Your weapon has no
-    /// effect` refuse it.
+    /// An attack: `*Combat Engaged*`. `You do not see <x> here!`, `Your weapon has no
+    /// effect` and the other [`ATTACK_REFUSALS`] refuse it.
     Engaged,
 }
 
@@ -84,7 +84,8 @@ pub enum Refused {
     },
     /// `open` on a locked door.
     Locked,
-    /// The attack's target is not here, or the weapon does nothing to it.
+    /// The game would not start the attack: the target is not here, the weapon does nothing
+    /// to it, or another of the [`ATTACK_REFUSALS`].
     Target,
 }
 
@@ -94,6 +95,19 @@ pub enum Outcome {
     Refused(Refused),
     TimedOut,
 }
+
+/// The game's other answers to an attack that start no fight (`kb/screen-patterns.md`, the
+/// registry's names): unmapped, the attack would only time out, and go again.
+pub const ATTACK_REFUSALS: [&str; 8] = [
+    "evil_warning",
+    "wrong_weapon",
+    "unbalanced",
+    "need_rest_attack",
+    "too_afraid",
+    "lawful_block",
+    "guilt",
+    "ambiguous",
+];
 
 /// The game's command words for an attack (`kb/screen-parsing.md` "Command words": every
 /// prefix from the shortest accepted form to the full word): (full word, shortest form).
@@ -248,6 +262,11 @@ impl Executor {
                 Some(Outcome::Confirmed(Confirmed::Engaged))
             }
             (Expect::Engaged, GameEvent::YouDoNotSee { .. } | GameEvent::NoEffect) => {
+                Some(Outcome::Refused(Refused::Target))
+            }
+            (Expect::Engaged, GameEvent::Other(e))
+                if ATTACK_REFUSALS.contains(&e.name.as_str()) =>
+            {
                 Some(Outcome::Refused(Refused::Target))
             }
             _ => None,

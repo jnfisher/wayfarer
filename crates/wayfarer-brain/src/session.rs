@@ -375,7 +375,15 @@ impl Session {
         let mut changed = false;
         let mut combat = false;
         for ev in &events {
-            changed |= self.character.apply_event(ev);
+            let applied = self.character.apply_event(ev);
+            changed |= applied;
+            if applied && self.atlas.is_some() {
+                // Every HP value, not only those the bot sees at its ticks: a walk or an
+                // action in flight does not hold the stop back (`bot_held` below ends the walk).
+                let c = self.character.state();
+                let says = self.bot.hp(hp_percent(c.hp, c.hp_max));
+                self.say(says, out);
+            }
             let typed = GameEvent::from_event(ev);
             if let Resync::Waiting {
                 step,

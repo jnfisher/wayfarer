@@ -9,7 +9,11 @@ use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
 use game::*;
+use wayfarer_brain::ATTACK_TRIES;
+use wayfarer_brain::executor::{ATTACK_REFUSALS, Action, Executor, Expect, Outcome, Refused};
 use wayfarer_brain::policy::{self, RestAt};
+use wayfarer_parse::Parser;
+use wayfarer_parse::typed::GameEvent;
 use wayfarer_proto::{BotAction, BotMode, BotState};
 
 fn fight_capture() -> &'static str {
@@ -413,6 +417,130 @@ async fn a_refused_target_is_skipped_for_the_session() {
     g.idle(Duration::from_secs(30)).await;
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "a rat", "look"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_refusal_the_game_words_otherwise_skips_the_target_too() {
+    // `unbalanced`, one of the executor's other attack refusals: no `*Combat Engaged*` comes,
+    // and the attack does not go again.
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    g.expect(
+        "a rat",
+        line(
+            "Such an attack would result in a very unbalanced combat round.",
+            35,
+        ),
+    );
+    g.expect("look", arena(&["large giant rat"], 35));
+    g.narrated("Fight: large giant rat").await;
+    g.narrated("Waiting here").await;
+    g.idle(Duration::from_secs(60)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "look"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_attack_never_answered_is_tried_again_then_left_alone() {
+    // A bare prompt: neither engaged nor refused. Each try waits out the action's timeout.
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    for _ in 0..ATTACK_TRIES {
+        g.expect("a rat", prompt(35));
+        g.expect("look", arena(&["large giant rat"], 35));
+    }
+    g.narrated("Fight: large giant rat").await;
+    g.narrated("Waiting here").await;
+    g.idle(Duration::from_secs(60)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "look", "a rat", "look"]);
+}
+
+#[test]
+fn every_attack_refusal_line_refuses_the_attack() {
+    // Each refusal's own example line (patterns.json), through the parser and the executor.
+    let registry = world().registry;
+    for name in ATTACK_REFUSALS {
+        let pattern = registry
+            .patterns()
+            .iter()
+            .find(|p| p.name == name && p.template.is_none())
+            .unwrap_or_else(|| panic!("no pattern {name}"));
+        let mut parser = Parser::new(registry.clone());
+        let mut events = parser.feed(&format!("{}\n", pattern.example));
+        events.extend(parser.finish());
+        let mut ex = Executor::default();
+        let now = tokio::time::Instant::now();
+        ex.submit(Action::new("a rat", Expect::Engaged), Some(false))
+            .unwrap();
+        ex.take_ready(now);
+        for ev in &events {
+            ex.event(&GameEvent::from_event(ev));
+        }
+        assert_eq!(
+            ex.finished(true, now).map(|(_, o)| o),
+            Some(Outcome::Refused(Refused::Target)),
+            "{name}: {events:?}"
+        );
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn below_30_percent_mid_walk_the_bot_stops_and_so_does_the_walk() {
+    // Recover walks out of the room beyond the Arena (it spawns) to the Narrow Road: south,
+    // then up. A monster hits the character on the way; at 22% the bot stops, and the walk
+    // with it, without waiting for the bot's next tick (which a walk holds back).
+    let beyond = |hp| at_hp(&room(BEYOND_ARENA), hp);
+    let (mut g, run) = Game::start_with(SessionState::Realm, beyond(35)).await;
+    g.idle(Duration::from_secs(20)).await;
+    g.expect("st", status(20));
+    g.expect("look", beyond(20));
+    g.expect(
+        "s",
+        format!(
+            "{}{}",
+            line("The thin giant rat lunges at you!", 8),
+            arena(&["thin giant rat"], 8)
+        ),
+    );
+    g.bot(BotAction::Start).await;
+    let said = g
+        .narrated("Stopped at 22% HP: flee is not built yet; fight or run by hand")
+        .await;
+    assert!(
+        said.iter().any(|n| n.starts_with("Recover: walking to")),
+        "{said:?}"
+    );
+    g.idle(Duration::from_secs(60)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "s"]);
+    let ui = as_ui_sees(&seen);
+    assert_eq!(ui.bot.unwrap().state, BotState::Stopped);
+    assert_eq!(ui.walking, None);
+}
+
+#[tokio::test(start_paused = true)]
+async fn walk_to_pauses_the_bot() {
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 35).await;
+    g.narrated("Waiting here").await;
+    g.expect("u", room(NARROW_ROAD));
+    g.walk_to(NARROW_ROAD).await;
+    let said = g.narrated("Paused: you took over").await;
+    assert!(
+        said.contains(&"You took over Aldric".to_owned()),
+        "{said:?}"
+    );
+    g.narrated("Arrived: Newhaven, Narrow Road").await;
+    // Paused: nothing more goes, not even back to the Arena.
+    g.idle(Duration::from_secs(60)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u"]);
+    let b = bot(&seen);
+    assert_eq!(
+        (b.state, b.reason.as_deref()),
+        (BotState::Paused, Some("you took over"))
+    );
 }
 
 #[tokio::test(start_paused = true)]

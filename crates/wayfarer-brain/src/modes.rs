@@ -268,6 +268,18 @@ impl Bot {
         }
     }
 
+    /// An HP value, wherever it came from (pitfall 27: every one is checked, mid-walk and
+    /// mid-action too): below [`STOP_BELOW`] a running bot stops itself, with a warning.
+    pub fn hp(&mut self, hp: Option<i32>) -> Vec<Say> {
+        match hp {
+            Some(hp) if hp < STOP_BELOW && self.running() => {
+                let why = format!("at {hp}% HP: flee is not built yet; fight or run by hand");
+                self.stop(&why, true)
+            }
+            _ => Vec::new(),
+        }
+    }
+
     /// The outcome of the bot's action: to the mode that asked for it. A pause asked for
     /// meanwhile takes effect now.
     pub fn outcome(&mut self, action: &Action, outcome: Outcome) -> Vec<Say> {
@@ -305,11 +317,9 @@ impl Bot {
         if self.state != BotState::Running || self.pausing.is_some() {
             return (None, says);
         }
-        if let Some(hp) = v.hp
-            && hp < STOP_BELOW
-        {
-            let why = format!("at {hp}% HP: flee is not built yet; fight or run by hand");
-            return (None, self.stop(&why, true));
+        let stopped = self.hp(v.hp);
+        if !stopped.is_empty() {
+            return (None, stopped);
         }
         // A mode that finishes in its step (rested, back home) hands over at once: the stack
         // is asked again, once.

@@ -4,14 +4,19 @@
 //! fight ends with `*Combat Off*` or a kill, or lapses unannounced (pitfall 42, the session's
 //! quiet rule); then it looks again and picks the next.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
 
-use crate::executor::{Action, Expect, Outcome};
+use crate::executor::{Action, Expect, Outcome, Refused};
 use crate::modes::{Mode, Step, View};
 use crate::policy::{attack_word, target};
+
+/// How many attacks on one monster may go unanswered (no `*Combat Engaged*`, no refusal)
+/// before it is left alone for the session: a missed line is tried again, a refusal the
+/// executor does not know is not tried for ever.
+pub const ATTACK_TRIES: u32 = 2;
 
 #[derive(Debug, Default)]
 pub(crate) struct Fight {
@@ -19,9 +24,11 @@ pub(crate) struct Fight {
     target: Option<String>,
     /// Look before choosing again: after a kill, `*Combat Off*` or a refused target.
     look: bool,
-    /// Monsters the game refused as targets (not here, the weapon does nothing): left alone
-    /// for the rest of the session.
+    /// Monsters the game refused as targets (not here, the weapon does nothing), or whose
+    /// attacks went unanswered [`ATTACK_TRIES`] times: left alone for the rest of the session.
     skip: BTreeSet<String>,
+    /// The attacks on each monster that timed out.
+    timeouts: BTreeMap<String, u32>,
 }
 
 impl Mode for Fight {
@@ -68,13 +75,7 @@ impl Mode for Fight {
                 self.target = None;
                 self.look = true;
             }
-            GameEvent::YouDoNotSee { .. } | GameEvent::NoEffect => {
-                if let Some(t) = self.target.take() {
-                    tracing::info!(target = %t, "refused: skipped for the session");
-                    self.skip.insert(t);
-                }
-                self.look = true;
-            }
+            GameEvent::YouDoNotSee { .. } | GameEvent::NoEffect => self.refused(),
             GameEvent::YouKilled => {
                 self.target = None;
                 self.look = false;
@@ -84,13 +85,32 @@ impl Mode for Fight {
     }
 
     fn outcome(&mut self, action: &Action, outcome: Outcome) {
-        match action.expect {
-            Expect::RoomSeen => self.look = false,
-            Expect::Engaged if outcome == Outcome::TimedOut => {
-                self.target = None;
+        match (action.expect, outcome) {
+            (Expect::RoomSeen, _) => self.look = false,
+            (Expect::Engaged, Outcome::Refused(Refused::Target)) => self.refused(),
+            (Expect::Engaged, Outcome::TimedOut) => {
+                if let Some(t) = self.target.take() {
+                    let n = self.timeouts.entry(t.clone()).or_default();
+                    *n += 1;
+                    if *n >= ATTACK_TRIES {
+                        tracing::info!(target = %t, "unanswered: skipped for the session");
+                        self.skip.insert(t);
+                    }
+                }
                 self.look = true;
             }
             _ => {}
         }
+    }
+}
+
+impl Fight {
+    /// The game refused the target: leave it alone for the session, and look again.
+    fn refused(&mut self) {
+        if let Some(t) = self.target.take() {
+            tracing::info!(target = %t, "refused: skipped for the session");
+            self.skip.insert(t);
+        }
+        self.look = true;
     }
 }
