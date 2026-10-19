@@ -2,8 +2,8 @@
 //! examples in the README and `docs/protocol.md`.
 
 use wayfarer_proto::{
-    Chunk, ClientKind, DecodeError, PROTOCOL, SessionInfo, SessionState, ToClient, ToGateway,
-    protocol_mismatch,
+    CharacterState, Chunk, ClientKind, DecodeError, Family, PROTOCOL, ParseCounts, SessionInfo,
+    SessionState, Stats, ToClient, ToGateway, WorldPackInfo, protocol_mismatch,
 };
 
 fn kasimir(state: SessionState, last_seq: u64) -> SessionInfo {
@@ -14,6 +14,114 @@ fn kasimir(state: SessionState, last_seq: u64) -> SessionInfo {
         state,
         last_seq,
     }
+}
+
+/// The brain's messages (the same JSON whichever way they go), in `ToGateway` order.
+fn brain_messages() -> Vec<(ToGateway, &'static str)> {
+    let fields = serde_json::json!({"dmg": "1", "target": "fat giant rat", "verb": "punch"});
+    vec![
+        (
+            ToGateway::Event {
+                session: "kasimir".into(),
+                seq: 43,
+                line_no: 88,
+                name: "you_hit".into(),
+                cat: "combat".into(),
+                fields: fields.as_object().unwrap().clone(),
+                line: "You punch fat giant rat for 1 damage!".into(),
+            },
+            r#"{"type":"event","session":"kasimir","seq":43,"line_no":88,"name":"you_hit","cat":"combat","fields":{"dmg":"1","target":"fat giant rat","verb":"punch"},"line":"You punch fat giant rat for 1 damage!"}"#,
+        ),
+        (
+            ToGateway::Character {
+                session: "kasimir".into(),
+                state: Box::new(CharacterState {
+                    name: Some("Kasimir".into()),
+                    race: Some("Human".into()),
+                    class: Some("Warrior".into()),
+                    level: Some(3),
+                    hp: Some(30),
+                    hp_max: Some(35),
+                    exp: Some(1520),
+                    stats: Some(Stats {
+                        strength: Some(60),
+                        agility: Some(50),
+                        ..Stats::default()
+                    }),
+                    room_title: Some("Newhaven, Village Entrance".into()),
+                    room_exits: Some(vec!["north".into(), "south".into()]),
+                    in_combat: Some(false),
+                    statuses: Some(vec![]),
+                    prompt_form: Some("hp".into()),
+                    parse: Some(ParseCounts {
+                        lines: 412,
+                        unclassified: 3,
+                    }),
+                    synced_at: Some("2026-10-19T12:00:05Z".into()),
+                    updated_seq: Some(43),
+                    ..CharacterState::default()
+                }),
+            },
+            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43}}"#,
+        ),
+        (
+            ToGateway::CharacterPatch {
+                session: "kasimir".into(),
+                patch: serde_json::json!({"hp": 23, "in_combat": true, "room_title": null}),
+            },
+            r#"{"type":"character_patch","session":"kasimir","patch":{"hp":23,"in_combat":true,"room_title":null}}"#,
+        ),
+        (
+            ToGateway::BrainInfo {
+                build: "0.1.0 (3f2a9c1)".into(),
+                started_at: "2026-10-19T12:00:00Z".into(),
+                world_pack: Some(WorldPackInfo {
+                    path: "worlds/stock-1.11p.sqlite".into(),
+                    hash: "sha256:5d41402abc4b2a76".into(),
+                }),
+            },
+            r#"{"type":"brain_info","build":"0.1.0 (3f2a9c1)","started_at":"2026-10-19T12:00:00Z","world_pack":{"path":"worlds/stock-1.11p.sqlite","hash":"sha256:5d41402abc4b2a76"}}"#,
+        ),
+        (
+            ToGateway::Notice {
+                session: Some("kasimir".into()),
+                text: "re-synced".into(),
+            },
+            r#"{"type":"notice","session":"kasimir","text":"re-synced"}"#,
+        ),
+        (
+            ToGateway::Warning {
+                session: None,
+                text: "world pack not found; walking blind".into(),
+            },
+            r#"{"type":"warning","text":"world pack not found; walking blind"}"#,
+        ),
+    ]
+}
+
+/// The control messages, in `ToGateway` order.
+fn control_messages() -> Vec<(ToGateway, &'static str)> {
+    vec![
+        (
+            ToGateway::Resync {
+                session: "kasimir".into(),
+            },
+            r#"{"type":"resync","session":"kasimir"}"#,
+        ),
+        (
+            ToGateway::StateRequest {
+                session: Some("kasimir".into()),
+            },
+            r#"{"type":"state_request","session":"kasimir"}"#,
+        ),
+    ]
+}
+
+fn relayed(messages: Vec<(ToGateway, &'static str)>) -> Vec<(ToClient, &'static str)> {
+    messages
+        .into_iter()
+        .map(|(msg, json)| (msg.into_relayed().unwrap(), json))
+        .collect()
 }
 
 fn to_client() -> Vec<(ToClient, &'static str)> {
@@ -84,6 +192,28 @@ fn to_client() -> Vec<(ToClient, &'static str)> {
             r#"{"type":"error","message":"unknown session \"nobody\""}"#,
         ),
     ]
+    .into_iter()
+    .chain(relayed(brain_messages()))
+    .chain(relayed(control_messages()))
+    .chain([
+        (
+            ToClient::Sent {
+                session: "kasimir".into(),
+                seq: 42,
+                text: "********".into(),
+            },
+            r#"{"type":"sent","session":"kasimir","seq":42,"text":"********"}"#,
+        ),
+        (
+            ToClient::BrainState { attached: true },
+            r#"{"type":"brain_state","attached":true}"#,
+        ),
+        (
+            ToClient::BrainLagged { missed: 17 },
+            r#"{"type":"brain_lagged","missed":17}"#,
+        ),
+    ])
+    .collect()
 }
 
 fn to_gateway() -> Vec<(ToGateway, &'static str)> {
@@ -126,6 +256,10 @@ fn to_gateway() -> Vec<(ToGateway, &'static str)> {
             r#"{"type":"subscribe","sessions":["kasimir"]}"#,
         ),
     ]
+    .into_iter()
+    .chain(control_messages())
+    .chain(brain_messages())
+    .collect()
 }
 
 #[test]
@@ -184,6 +318,25 @@ fn optional_fields_may_be_left_out() {
         (
             ToGateway::Subscribe { sessions: None },
             r#"{"type":"subscribe"}"#,
+        ),
+        (
+            ToGateway::StateRequest { session: None },
+            r#"{"type":"state_request"}"#,
+        ),
+        (
+            ToGateway::BrainInfo {
+                build: "0.1.0".into(),
+                started_at: "2026-10-19T12:00:00Z".into(),
+                world_pack: None,
+            },
+            r#"{"type":"brain_info","build":"0.1.0","started_at":"2026-10-19T12:00:00Z"}"#,
+        ),
+        (
+            ToGateway::Character {
+                session: "kasimir".into(),
+                state: Box::default(),
+            },
+            r#"{"type":"character","session":"kasimir","state":{}}"#,
         ),
     ];
     for (msg, json) in cases {
@@ -271,4 +424,59 @@ fn every_example_is_in_the_docs() {
         assert!(readme.contains(json), "README.md lacks {json}");
         assert!(protocol.contains(json), "docs/protocol.md lacks {json}");
     }
+}
+
+#[test]
+fn families_say_who_may_send_what() {
+    for (msg, _) in to_gateway() {
+        let family = msg.family();
+        let want = match msg.type_name() {
+            "resync" | "state_request" => Family::Control,
+            "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning" => {
+                Family::Brain
+            }
+            _ => Family::Gateway,
+        };
+        assert_eq!(family, want, "{}", msg.type_name());
+        // Relayed messages keep their type; the gateway's own are not relayed.
+        let name = msg.type_name();
+        match msg.into_relayed() {
+            Some(relayed) => {
+                assert_ne!(family, Family::Gateway);
+                assert_eq!(relayed.type_name(), name);
+            }
+            None => assert_eq!(family, Family::Gateway, "{name}"),
+        }
+    }
+    assert!(Family::Gateway.allowed_from(ClientKind::Ui));
+    assert!(Family::Gateway.allowed_from(ClientKind::Brain));
+    assert!(Family::Control.allowed_from(ClientKind::Ui));
+    assert!(!Family::Control.allowed_from(ClientKind::Brain));
+    assert!(Family::Brain.allowed_from(ClientKind::Brain));
+    assert!(!Family::Brain.allowed_from(ClientKind::Ui));
+}
+
+#[test]
+fn a_message_names_its_session_when_it_has_one() {
+    for (msg, json) in to_client() {
+        let value: serde_json::Value = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            msg.session(),
+            value.get("session").and_then(|s| s.as_str()),
+            "{json}"
+        );
+    }
+}
+
+#[test]
+fn a_patch_and_fields_pass_through_as_any_json() {
+    let json = r#"{"type":"character_patch","session":"kasimir","patch":[1,"two",{"three":null}]}"#;
+    let msg = ToGateway::from_json(json).unwrap();
+    assert_eq!(msg.to_json(), json);
+    // A snapshot with fields the struct doesn't know yet still reads.
+    let json = r#"{"type":"character","session":"kasimir","state":{"hp":3,"mood":"grim"}}"#;
+    let ToClient::Character { state, .. } = ToClient::from_json(json).unwrap() else {
+        panic!("expected a character");
+    };
+    assert_eq!(state.hp, Some(3));
 }

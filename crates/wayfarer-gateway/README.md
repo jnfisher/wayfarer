@@ -55,6 +55,10 @@ gw.shutdown_on_signal().await?;                     // Ctrl-C/SIGTERM: everyone 
   it, oldest first, up to `max_chunks`; `before_seq` the `max_chunks` chunks just before it;
   neither the latest. The newest `Options::memory_bytes` of text (4 MB) are answered from
   memory, anything older from disk.
+- **Sent lines**: `sent_lines()` streams a `Sent {session, seq, text}` for every line a session
+  writes to its game (typed lines, not keys, and logon and log-off steps) once it is on the
+  socket; `seq` is the session's latest output `seq` then. Passwords are masked as in
+  `sent.bin`. The server forwards them to the brain as `sent`.
 - **Credentials** never reach a log: `Login`'s `Debug` hides the password, a broken
   `credentials.toml` is reported by line number only, nothing traces input text, a script's
   `{password}` is recorded in `sent.bin` as `********`, and so is a typed line that is exactly
@@ -63,12 +67,12 @@ gw.shutdown_on_signal().await?;                     // Ctrl-C/SIGTERM: everyone 
 ## The server
 
 `wayfarer gateway [--config PATH] [--bind ADDR] [--ui-dir DIR] [--new-token]` (and `wayfarer
-serve`, the same in M0) runs `Gateway::start` behind `serve()`. Default bind `127.0.0.1:7373`,
+serve`, the same in M0) runs `Gateway::start` behind a `Hub` and `serve()`. Default bind `127.0.0.1:7373`,
 default UI directory `./ui/dist`. No TLS: reach it over SSH or Tailscale.
 
 | Route | What |
 |---|---|
-| `GET /ws` | WebSocket speaking the `wayfarer-proto` messages as JSON text frames: `hello` → `welcome` (or `refused`, then the connection closes), then `output`, `session_state`, `history`, `lagged` and `error` going out and `input_line`, `input_keys`, `history_request` and `subscribe` coming in. A message that cannot be handled gets an `error` and the connection stays up. A connection receives every session until it sends `subscribe`. |
+| `GET /ws` | WebSocket speaking the `wayfarer-proto` messages as JSON text frames: `hello` → `welcome` (or `refused`, then the connection closes), then `output`, `session_state`, `history`, `lagged` and `error` going out and `input_line`, `input_keys`, `history_request` and `subscribe` coming in, plus the brain's messages (below). A message that cannot be handled gets an `error` and the connection stays up. A connection receives every session until it sends `subscribe`. |
 | `GET /healthz` | `{"status":"ok","sessions":n}` |
 | `GET /`, other paths | The files in the UI directory. With no `index.html` there, a 503 page says the UI is not built; `/ws` still works. |
 
@@ -87,12 +91,35 @@ content-length: 141
 <!doctype html><title>wayfarer</title><p>The web UI is not built: nothing in <code>./ui/dist</code>. The WebSocket at <code>/ws</code> works.
 ```
 
+**The hub and the brain.** `Hub::new(gateway, token)` holds what the connections share: the
+token, the one brain and the relay. Each connection is a `Connection` running over a sink and
+a stream of messages, so the same code serves a WebSocket (`serve`) and a pair of tokio
+channels (`Hub::connect()`, for an in-process brain: send the `hello` first; dropping the
+sender ends it). The rules are the same either way:
+
+- At most one connection whose `hello` says `client: brain`; another is `refused` ("a brain is
+  already attached") until it goes. The UIs get `brain_state` right after `welcome` and
+  whenever a brain attaches or leaves.
+- The brain receives what a UI does (output, states, history, for every session unless it
+  subscribes) and also `sent`.
+- Relay is by `Family` (`wayfarer-proto`), never by reading `fields` or `patch`: the brain's
+  messages go into a `broadcast` channel (1024), and each UI has a forwarder that keeps those
+  about its subscribed sessions (or about none) and waits on that UI's outbox. A slow UI only
+  stalls its own forwarder, which lags and tells it `brain_lagged`; the brain never waits.
+  Output forwarders still wait and drop nothing until the session's own channel lags.
+- A UI's control message (`resync`, `state_request`) goes to the brain's outbox; with no brain
+  it gets `error "no brain attached"`. A UI sending a brain message, or the brain sending a
+  control one, gets an `error` and the message is dropped.
+- Input still goes straight to the game from any client (no arbitration until a bot plays);
+  `Connection::handle_own` marks where it will hook in.
+
 **Token.** On a loopback bind `hello.token` is not checked. On any other bind the gateway
 refuses to start until `wayfarer gateway --new-token` has written `gateway-token` (mode 0600,
 beside `wayfarer.toml`) and printed it once; every client must then send it, and a missing or
 wrong one gets `refused`. Running `--new-token` again replaces the token.
 
-**Stopping.** SIGINT or SIGTERM stops accepting, ends the WebSocket connections and logs every
+**Stopping.** SIGINT or SIGTERM stops accepting, ends the connections (`Hub::stop`, channel
+ones included) and logs every
 character off (`Gateway::shutdown`: in parallel, up to 120 s) before the process exits. A
 second signal during the log-off closes what is left at once (`shutdown_now`), which the game
 punishes. `serve` takes the stops as a stream (`stop_signals()` in the binary), so tests drive

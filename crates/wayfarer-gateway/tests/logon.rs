@@ -11,9 +11,10 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::Instant;
 use wayfarer_gateway::{
-    Config, Connect, Credentials, Gateway, Options, ServerOptions, SessionState, StateChange,
+    Config, Connect, Credentials, Gateway, Hub, Options, ServerOptions, SessionState, StateChange,
     Stream, serve,
 };
+use wayfarer_proto::{ClientKind, PROTOCOL, ToClient, ToGateway};
 use wayfarer_telnet::cp437;
 
 use SessionState::{Closed, Connected, Connecting, Logon, Lost, Menu, Realm};
@@ -518,14 +519,18 @@ async fn a_second_stop_closes_the_server_at_once() {
     rig.states_until(ID, Realm).await;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let options = ServerOptions {
-        token: None,
         ui_dir: rig.dir.path().join("no-ui-here"),
     };
     let (stop, stops) = mpsc::unbounded_channel();
     let stops = futures_util::stream::unfold(stops, |mut stops| async move {
         stops.recv().await.map(|()| ((), stops))
     });
-    let server = tokio::spawn(serve(listener, rig.gw.clone(), options, stops));
+    let server = tokio::spawn(serve(
+        listener,
+        Hub::new(rig.gw.clone(), None),
+        options,
+        stops,
+    ));
     stop.send(()).unwrap();
     assert_eq!(game.line().await, "x");
     // The character meditates; the player won't wait.
@@ -613,4 +618,57 @@ async fn closing_during_logon_just_disconnects() {
     rig.gw.close(ID).await.unwrap();
     game.closed().await;
     assert_eq!(rig.gw.state(ID).unwrap(), Closed);
+}
+
+/// `sent` for every logon and log-off step, password masked, at a brain attached over channels.
+#[tokio::test(start_paused = true)]
+async fn the_brain_hears_each_step_sent_with_the_password_masked() {
+    let (pieces, lines) = capture_dialogue("logoff-in-realm");
+    let mut rig = Rig::new();
+    let hub = Hub::new(rig.gw.clone(), None);
+    let (brain, mut heard) = hub.connect();
+    brain
+        .send(ToGateway::Hello {
+            protocol: PROTOCOL,
+            client: ClientKind::Brain,
+            token: None,
+        })
+        .await
+        .unwrap();
+    // Read everything as it comes, keeping the `sent` lines.
+    let sent = tokio::spawn(async move {
+        let mut sent = Vec::new();
+        while let Some(msg) = heard.recv().await {
+            if let ToClient::Sent { session, seq, text } = msg {
+                assert_eq!(session, ID);
+                sent.push((seq, text));
+            }
+        }
+        sent
+    });
+
+    rig.gw.open(ID).unwrap();
+    let mut game = rig.accept().await;
+    game.say_bytes(&pieces[0]).await;
+    for i in 0..4 {
+        assert_eq!(game.line().await, lines[i]);
+        game.say_bytes(&pieces[i + 1]).await;
+    }
+    rig.states_until(ID, Realm).await;
+    let gw = rig.gw.clone();
+    let closing = tokio::spawn(async move { gw.close(ID).await });
+    for i in 4..8 {
+        assert_eq!(game.line().await, lines[i]);
+        game.say_bytes(&pieces[i + 1]).await;
+    }
+    drop(game);
+    closing.await.unwrap().unwrap();
+    hub.stop();
+
+    let sent = sent.await.unwrap();
+    let texts: Vec<&str> = sent.iter().map(|(_, text)| text.as_str()).collect();
+    assert_eq!(texts, ["Aldric", "********", "M", "E", "x", "X", "X", "Y"]);
+    // Each went after the prompt it answers, so after some output, and in order.
+    assert!(sent[0].0 >= 1);
+    assert!(sent.windows(2).all(|w| w[0].0 <= w[1].0), "{sent:?}");
 }

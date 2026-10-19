@@ -21,7 +21,7 @@ pub use gateway::{Gateway, GatewayError, Options, stop_signals};
 pub use log::{History, HistoryQuery};
 pub use logon::Script;
 pub use server::{
-    ServerError, ServerOptions, bind, create_token, read_token, serve, token_for_bind,
+    Hub, ServerError, ServerOptions, bind, create_token, read_token, serve, token_for_bind,
 };
-pub use session::{Connect, Connecting, StateChange, Stream, Tcp};
+pub use session::{Connect, Connecting, Sent, StateChange, Stream, Tcp};
 pub use wayfarer_proto::{Chunk, SessionInfo, SessionState};

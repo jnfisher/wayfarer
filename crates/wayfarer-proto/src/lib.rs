@@ -5,8 +5,10 @@
 //! [`ToClient`] and receives [`ToGateway`]. `docs/protocol.md` lists them with an example
 //! each; the TypeScript for the web UI is generated into `ui/src/proto/` ([`export_typescript`]).
 //!
-//! M0 has the hello, session, terminal and input families. Adding a variant later bumps
-//! nothing; removing or changing one bumps [`PROTOCOL`].
+//! M0 has the hello, session, terminal and input families; M1 adds the brain's: events, state
+//! and dev (brain → UIs), control (UI → brain) and `sent` (gateway → brain). [`Family`] says
+//! who may send what. Adding a variant later bumps nothing; removing or changing one bumps
+//! [`PROTOCOL`].
 
 use std::path::Path;
 
@@ -72,6 +74,124 @@ pub struct Chunk {
     pub text: String,
 }
 
+/// What the brain knows about one character: the wire's `character` snapshot, and the shape a
+/// `character_patch` (a JSON merge patch, RFC 7386) applies to. Every field is left out until
+/// it is known; in a patch, `null` clears one.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(optional_fields)]
+pub struct CharacterState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub race: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub level: Option<u32>,
+    /// Hit points; below zero while dying.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hp: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hp_max: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mana: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mana_max: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exp: Option<u64>,
+    /// Experience still needed for the next level.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exp_next: Option<u64>,
+    /// How far through the level, as the game shows it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exp_percent: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lives: Option<u32>,
+    /// Unspent character points.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cp: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stats: Option<Stats>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub room_title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub room_exits: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub in_combat: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resting: Option<bool>,
+    /// `poisoned`, `blind`, `held`, `diseased`, ...
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statuses: Option<Vec<String>>,
+    /// Which form the character's last prompt had (`hp`, `hp_mana`, ...).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_form: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parse: Option<ParseCounts>,
+    /// When the last re-sync finished (RFC 3339).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub synced_at: Option<String>,
+    /// The output `seq` this snapshot reflects.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_seq: Option<u64>,
+}
+
+/// A character's six stats.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(optional_fields)]
+pub struct Stats {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strength: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intellect: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub willpower: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agility: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub health: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub charm: Option<u32>,
+}
+
+/// How the parser is doing on a character, counted since the brain attached.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct ParseCounts {
+    pub lines: u64,
+    /// Lines nothing recognised (`unknown` events).
+    pub unclassified: u64,
+}
+
+/// The world pack a brain loaded.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct WorldPackInfo {
+    pub path: String,
+    pub hash: String,
+}
+
+/// Who may send a [`ToGateway`] message, and what the gateway does with it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Family {
+    /// Hello, input, history and subscribe: from any client, handled by the gateway.
+    Gateway,
+    /// From a UI, relayed to the brain: `resync`, `state_request`.
+    Control,
+    /// From the brain, relayed to the UIs: events, state and dev (`event`, `character`,
+    /// `character_patch`, `brain_info`, `notice`, `warning`).
+    Brain,
+}
+
+impl Family {
+    /// Whether a client of this kind may send messages of this family.
+    pub fn allowed_from(self, client: ClientKind) -> bool {
+        match self {
+            Self::Gateway => true,
+            Self::Control => client == ClientKind::Ui,
+            Self::Brain => client == ClientKind::Brain,
+        }
+    }
+}
+
 /// Gateway → client.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -83,9 +203,13 @@ pub enum ToClient {
         sessions: Vec<SessionInfo>,
     },
     /// The handshake failed; the gateway closes the connection after sending it.
-    Refused { reason: String },
+    Refused {
+        reason: String,
+    },
     /// The full list of sessions, sent when it changes.
-    SessionList { sessions: Vec<SessionInfo> },
+    SessionList {
+        sessions: Vec<SessionInfo>,
+    },
     /// A session's connection state changed.
     SessionState {
         session: SessionId,
@@ -108,9 +232,84 @@ pub enum ToClient {
     /// This connection fell behind and `missed` chunks of the session's live output were not
     /// sent to it. Live output carries on after the gap; fetch the gap with a
     /// `history_request` `after_seq` the last `seq` seen.
-    Lagged { session: SessionId, missed: u64 },
+    Lagged {
+        session: SessionId,
+        missed: u64,
+    },
     /// Something the client sent could not be handled; the connection stays up.
-    Error { message: String },
+    Error {
+        message: String,
+    },
+
+    // From the brain, relayed to the UIs subscribed to `session` (to every UI when there is
+    // none). `ToGateway` says what each one means.
+    Event {
+        session: SessionId,
+        seq: u64,
+        line_no: u64,
+        name: String,
+        cat: String,
+        #[ts(type = "Record<string, unknown>")]
+        fields: serde_json::Map<String, serde_json::Value>,
+        line: String,
+    },
+    Character {
+        session: SessionId,
+        state: Box<CharacterState>,
+    },
+    CharacterPatch {
+        session: SessionId,
+        #[ts(type = "unknown")]
+        patch: serde_json::Value,
+    },
+    BrainInfo {
+        build: String,
+        started_at: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        world_pack: Option<WorldPackInfo>,
+    },
+    Notice {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        session: Option<SessionId>,
+        text: String,
+    },
+    Warning {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        session: Option<SessionId>,
+        text: String,
+    },
+
+    // From a UI, relayed to the brain.
+    Resync {
+        session: SessionId,
+    },
+    StateRequest {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        session: Option<SessionId>,
+    },
+
+    /// To the brain only: a line went to the game, typed by a client or sent by a logon or
+    /// log-off step; `seq` is the session's latest output `seq` at that moment. A password is
+    /// `********`.
+    Sent {
+        session: SessionId,
+        seq: u64,
+        text: String,
+    },
+    /// To UIs only: whether a brain is attached. Sent right after `welcome` and whenever it
+    /// changes.
+    BrainState {
+        attached: bool,
+    },
+    /// To a UI only: it fell behind and `missed` relayed brain messages were dropped. Recover
+    /// with a `state_request`.
+    BrainLagged {
+        missed: u64,
+    },
 }
 
 /// Client → gateway.
@@ -151,6 +350,63 @@ pub enum ToGateway {
         #[ts(optional)]
         sessions: Option<Vec<SessionId>>,
     },
+
+    /// UI → brain: re-sync the character (`st`, `exp`, `i`, look).
+    Resync { session: SessionId },
+    /// UI → brain: send a fresh `character` snapshot (of one session, or of all) and a
+    /// `brain_info`.
+    StateRequest {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        session: Option<SessionId>,
+    },
+
+    /// Brain → UIs: one parsed event, as `wayfarer-parse` produced it, with the output `seq`
+    /// its line came from. The gateway never reads `fields`.
+    Event {
+        session: SessionId,
+        seq: u64,
+        line_no: u64,
+        name: String,
+        cat: String,
+        #[ts(type = "Record<string, unknown>")]
+        fields: serde_json::Map<String, serde_json::Value>,
+        line: String,
+    },
+    /// Brain → UIs: the whole character snapshot.
+    Character {
+        session: SessionId,
+        state: Box<CharacterState>,
+    },
+    /// Brain → UIs: a JSON merge patch (RFC 7386) to apply to the last snapshot. The gateway
+    /// never reads it.
+    CharacterPatch {
+        session: SessionId,
+        #[ts(type = "unknown")]
+        patch: serde_json::Value,
+    },
+    /// Brain → UIs: who the brain is. `started_at` is RFC 3339.
+    BrainInfo {
+        build: String,
+        started_at: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        world_pack: Option<WorldPackInfo>,
+    },
+    /// Brain → UIs: something the brain did or saw, worth a line in the dev panel.
+    Notice {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        session: Option<SessionId>,
+        text: String,
+    },
+    /// Brain → UIs: something wrong but not fatal.
+    Warning {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        session: Option<SessionId>,
+        text: String,
+    },
 }
 
 /// Why a received message could not be decoded. The receiver reports it (an `error` reply)
@@ -181,6 +437,17 @@ impl ToClient {
         "history",
         "lagged",
         "error",
+        "event",
+        "character",
+        "character_patch",
+        "brain_info",
+        "notice",
+        "warning",
+        "resync",
+        "state_request",
+        "sent",
+        "brain_state",
+        "brain_lagged",
     ];
 
     /// This message's `type`.
@@ -194,6 +461,42 @@ impl ToClient {
             Self::History { .. } => "history",
             Self::Lagged { .. } => "lagged",
             Self::Error { .. } => "error",
+            Self::Event { .. } => "event",
+            Self::Character { .. } => "character",
+            Self::CharacterPatch { .. } => "character_patch",
+            Self::BrainInfo { .. } => "brain_info",
+            Self::Notice { .. } => "notice",
+            Self::Warning { .. } => "warning",
+            Self::Resync { .. } => "resync",
+            Self::StateRequest { .. } => "state_request",
+            Self::Sent { .. } => "sent",
+            Self::BrainState { .. } => "brain_state",
+            Self::BrainLagged { .. } => "brain_lagged",
+        }
+    }
+
+    /// The session this message is about, if it names one.
+    pub fn session(&self) -> Option<&str> {
+        match self {
+            Self::SessionState { session, .. }
+            | Self::Output { session, .. }
+            | Self::History { session, .. }
+            | Self::Lagged { session, .. }
+            | Self::Event { session, .. }
+            | Self::Character { session, .. }
+            | Self::CharacterPatch { session, .. }
+            | Self::Resync { session }
+            | Self::Sent { session, .. } => Some(session),
+            Self::Notice { session, .. }
+            | Self::Warning { session, .. }
+            | Self::StateRequest { session } => session.as_deref(),
+            Self::Welcome { .. }
+            | Self::Refused { .. }
+            | Self::SessionList { .. }
+            | Self::Error { .. }
+            | Self::BrainInfo { .. }
+            | Self::BrainState { .. }
+            | Self::BrainLagged { .. } => None,
         }
     }
 
@@ -214,6 +517,14 @@ impl ToGateway {
         "input_keys",
         "history_request",
         "subscribe",
+        "resync",
+        "state_request",
+        "event",
+        "character",
+        "character_patch",
+        "brain_info",
+        "notice",
+        "warning",
     ];
 
     /// This message's `type`.
@@ -224,7 +535,77 @@ impl ToGateway {
             Self::InputKeys { .. } => "input_keys",
             Self::HistoryRequest { .. } => "history_request",
             Self::Subscribe { .. } => "subscribe",
+            Self::Resync { .. } => "resync",
+            Self::StateRequest { .. } => "state_request",
+            Self::Event { .. } => "event",
+            Self::Character { .. } => "character",
+            Self::CharacterPatch { .. } => "character_patch",
+            Self::BrainInfo { .. } => "brain_info",
+            Self::Notice { .. } => "notice",
+            Self::Warning { .. } => "warning",
         }
+    }
+
+    /// Who may send this message, and whether the gateway relays it.
+    pub fn family(&self) -> Family {
+        match self {
+            Self::Hello { .. }
+            | Self::InputLine { .. }
+            | Self::InputKeys { .. }
+            | Self::HistoryRequest { .. }
+            | Self::Subscribe { .. } => Family::Gateway,
+            Self::Resync { .. } | Self::StateRequest { .. } => Family::Control,
+            Self::Event { .. }
+            | Self::Character { .. }
+            | Self::CharacterPatch { .. }
+            | Self::BrainInfo { .. }
+            | Self::Notice { .. }
+            | Self::Warning { .. } => Family::Brain,
+        }
+    }
+
+    /// A [`Family::Control`] or [`Family::Brain`] message as the gateway relays it, unchanged;
+    /// `None` for a message the gateway handles itself.
+    pub fn into_relayed(self) -> Option<ToClient> {
+        Some(match self {
+            Self::Resync { session } => ToClient::Resync { session },
+            Self::StateRequest { session } => ToClient::StateRequest { session },
+            Self::Event {
+                session,
+                seq,
+                line_no,
+                name,
+                cat,
+                fields,
+                line,
+            } => ToClient::Event {
+                session,
+                seq,
+                line_no,
+                name,
+                cat,
+                fields,
+                line,
+            },
+            Self::Character { session, state } => ToClient::Character { session, state },
+            Self::CharacterPatch { session, patch } => ToClient::CharacterPatch { session, patch },
+            Self::BrainInfo {
+                build,
+                started_at,
+                world_pack,
+            } => ToClient::BrainInfo {
+                build,
+                started_at,
+                world_pack,
+            },
+            Self::Notice { session, text } => ToClient::Notice { session, text },
+            Self::Warning { session, text } => ToClient::Warning { session, text },
+            Self::Hello { .. }
+            | Self::InputLine { .. }
+            | Self::InputKeys { .. }
+            | Self::HistoryRequest { .. }
+            | Self::Subscribe { .. } => return None,
+        })
     }
 
     pub fn from_json(text: &str) -> Result<Self, DecodeError> {

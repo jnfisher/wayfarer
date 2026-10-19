@@ -14,7 +14,7 @@ use wayfarer_telnet::Capture;
 
 use crate::config::{Config, ConfigError, Credentials, Paths};
 use crate::log::{History, HistoryQuery, OutputLog};
-use crate::session::{self, Command, Connect, Running, Slot, SlotParts, StateChange, Tcp};
+use crate::session::{self, Command, Connect, Running, Sent, Slot, SlotParts, StateChange, Tcp};
 
 /// Tunables; the defaults suit a real gateway, tests shrink them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,6 +71,7 @@ struct Inner {
     /// In config order.
     slots: Vec<Arc<Slot>>,
     states: broadcast::Sender<StateChange>,
+    sent: broadcast::Sender<Sent>,
     logs: PathBuf,
     logoff_patience: Duration,
 }
@@ -118,6 +119,7 @@ impl Gateway {
         connector: Arc<dyn Connect>,
     ) -> Result<Self, GatewayError> {
         let states = broadcast::channel(256).0;
+        let sent = broadcast::channel(options.subscriber_capacity.max(1)).0;
         let mut slots = Vec::with_capacity(config.characters.len());
         for c in &config.characters {
             let server = config
@@ -143,12 +145,14 @@ impl Gateway {
                 connector: Arc::clone(&connector),
                 subscriber_capacity: options.subscriber_capacity,
                 states: states.clone(),
+                sent: sent.clone(),
             })));
         }
         Ok(Self {
             inner: Arc::new(Inner {
                 slots,
                 states,
+                sent,
                 logs: logs.to_path_buf(),
                 logoff_patience: options.logoff_patience,
             }),
@@ -183,6 +187,13 @@ impl Gateway {
     /// changes and should re-read [`Gateway::sessions`].
     pub fn state_changes(&self) -> broadcast::Receiver<StateChange> {
         self.inner.states.subscribe()
+    }
+
+    /// Every line any session sends to its game from now on: typed lines (not keys) and logon
+    /// and log-off steps, each once it has gone to the socket, with passwords masked. A
+    /// listener more than [`Options::subscriber_capacity`] lines behind has missed some.
+    pub fn sent_lines(&self) -> broadcast::Receiver<Sent> {
+        self.inner.sent.subscribe()
     }
 
     /// Connect a session: `connecting`, then `logon` while its logon script runs, `menu` and

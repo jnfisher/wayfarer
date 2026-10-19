@@ -3,8 +3,10 @@
 The gateway, the brain and the UIs talk over one WebSocket per client, in JSON text frames.
 Every message is an object whose `"type"` field names it. The types are defined in
 `crates/wayfarer-proto`; the web UI's TypeScript in `ui/src/proto/` is generated from them.
-This page lists the messages of milestone M0: sessions, terminal output and input. Events,
-state and control (the brain's families) come later.
+There are two kinds of client: UIs (the browser, the desktop app, the terminal UI) and at
+most one brain, which parses the game and keeps each character's state. The gateway handles
+sessions, terminal output and input itself, and relays the brain's events, state and dev
+messages to the UIs and the UIs' control messages to the brain.
 
 ## Handshake
 
@@ -13,6 +15,10 @@ The client's first message is `hello`. The gateway answers `welcome` and starts 
 sides' numbers differ the gateway refuses, naming both. `client` is `ui` or `brain`. `token`
 may be left out where the gateway doesn't check it (it listens on localhost only); otherwise a
 wrong or missing token is refused.
+
+Only one brain may be attached at a time: another `hello` with `client: brain` while one is attached
+gets `refused` with the reason `a brain is already attached`. A UI's `welcome` is followed at once
+by `brain_state` (below).
 
 ```json
 {"type":"hello","protocol":1,"client":"ui","token":"TOKEN"}
@@ -103,6 +109,84 @@ send. Live output carries on after the gap; the client fetches the gap with `his
 {"type":"input_line","session":"kasimir","text":"look north"}
 {"type":"input_keys","session":"kasimir","bytes":[13]}
 ```
+
+Any client may send input, the brain included; it goes straight to the game. (Once a bot
+plays, a UI's input will go through the brain instead; not yet.)
+
+## The brain
+
+A brain connection receives everything a UI does (output, session states, history, for every
+session unless it subscribes), and also `sent`: each line that went to the game, whoever sent
+it.
+
+| Message | Direction | Meaning |
+|---|---|---|
+| `sent {session, seq, text}` | gateway → brain | A line went to the game: typed by any client (`input_line`; not `input_keys`), or sent by a logon or log-off step, after it was written to the socket. `seq` is the session's latest output `seq` at that moment. A password, or a typed line equal to it, is `********` |
+| `brain_state {attached}` | gateway → UIs | Whether a brain is attached: right after `welcome`, then whenever one attaches or leaves |
+| `brain_lagged {missed}` | gateway → UI | The UI read too slowly and `missed` relayed brain messages were dropped for it. Recover with `state_request` |
+
+```json
+{"type":"sent","session":"kasimir","seq":42,"text":"********"}
+{"type":"brain_state","attached":true}
+{"type":"brain_lagged","missed":17}
+```
+
+### Events, state and dev (brain → UIs)
+
+The gateway relays each to every UI subscribed to its `session`; one without a `session` goes
+to every UI. It relays by message type and never reads `fields` or `patch`.
+
+| Message | Meaning |
+|---|---|
+| `event {session, seq, line_no, name, cat, fields, line}` | One parsed event, as the parser produced it: `name` (`you_hit`, `room_title`, `prompt`, ...), category `cat`, the named `fields`, the `line` it was read from, its `line_no` in the session's text and the output `seq` it came from |
+| `character {session, state}` | The whole character snapshot (below) |
+| `character_patch {session, patch}` | A JSON merge patch (RFC 7386) to apply to the last snapshot; `null` clears a field |
+| `brain_info {build, started_at, world_pack?}` | Who the brain is: version and build id, start time (RFC 3339), the world pack's `path` and `hash` |
+| `notice {session?, text}` | Something the brain did or saw worth a line in the dev panel ("re-synced", "parser reset") |
+| `warning {session?, text}` | Something wrong but not fatal |
+
+```json
+{"type":"event","session":"kasimir","seq":43,"line_no":88,"name":"you_hit","cat":"combat","fields":{"dmg":"1","target":"fat giant rat","verb":"punch"},"line":"You punch fat giant rat for 1 damage!"}
+{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43}}
+{"type":"character_patch","session":"kasimir","patch":{"hp":23,"in_combat":true,"room_title":null}}
+{"type":"brain_info","build":"0.1.0 (3f2a9c1)","started_at":"2026-10-19T12:00:00Z","world_pack":{"path":"worlds/stock-1.11p.sqlite","hash":"sha256:5d41402abc4b2a76"}}
+{"type":"notice","session":"kasimir","text":"re-synced"}
+{"type":"warning","text":"world pack not found; walking blind"}
+```
+
+The character snapshot: every field is optional and left out until the brain knows it.
+
+| Field | What |
+|---|---|
+| `name`, `race`, `class` | Strings |
+| `level`, `lives`, `cp` | Numbers (`cp`: unspent character points) |
+| `hp`, `hp_max`, `mana`, `mana_max` | Numbers; `hp` goes below zero while dying |
+| `exp`, `exp_next`, `exp_percent` | Experience, what the next level still needs, and how far through the level |
+| `stats` | `{strength, intellect, willpower, agility, health, charm}`, each optional |
+| `room_title`, `room_exits` | The room as last seen: its title and its exits |
+| `in_combat`, `resting` | Booleans |
+| `statuses` | A list: `poisoned`, `blind`, `held`, `diseased`, ... |
+| `prompt_form` | Which form the last prompt had |
+| `parse` | `{lines, unclassified}`: lines parsed and lines nothing recognised, since the brain attached |
+| `synced_at` | When the last re-sync finished (RFC 3339) |
+| `updated_seq` | The output `seq` the snapshot reflects |
+
+### Control (UI → brain)
+
+Relayed to the brain. With no brain attached the gateway answers `error` `no brain attached`.
+
+| Message | Meaning |
+|---|---|
+| `resync {session}` | Re-sync that character (`st`, `exp`, `i`, look) |
+| `state_request {session?}` | Send a fresh `character` snapshot (of one session, or of all when `session` is left out) and a `brain_info` |
+
+```json
+{"type":"resync","session":"kasimir"}
+{"type":"state_request","session":"kasimir"}
+```
+
+A UI that sends a brain message (`event`, `character`, ...), or a brain that sends a control
+message, gets an `error`; the message is dropped and the connection stays up.
 
 ## Errors
 
