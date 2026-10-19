@@ -57,6 +57,14 @@ export interface GatewayEvents {
   characterPatch?(session: string, patch: unknown): void;
   /** Whether a brain is attached: right after `welcome`, then on every change. */
   brainState?(attached: boolean): void;
+  /** One parsed event, for the dev panel. */
+  event?(session: string, event: Extract<ToClient, { type: "event" }>): void;
+  /** Who the brain is: on attach and after each `state_request`. */
+  brainInfo?(info: Extract<ToClient, { type: "brain_info" }>): void;
+  /** The brain's `notice` and `warning` lines. */
+  notice?(kind: "notice" | "warning", text: string, session?: string): void;
+  /** Relayed brain messages were dropped; a `state_request` has been sent. */
+  brainLagged?(missed: number): void;
 }
 
 export interface GatewayOptions {
@@ -146,6 +154,11 @@ export class GatewayClient {
   /** Ask the brain for every character's snapshot again; false when not connected. */
   requestState(): boolean {
     return this.send({ type: "state_request" });
+  }
+
+  /** Ask the brain to re-sync a character (`st`, `exp`, `i`, look); false when not connected. */
+  resync(session: string): boolean {
+    return this.send({ type: "resync", session });
   }
 
   private send(message: ToGateway): boolean {
@@ -249,6 +262,17 @@ export class GatewayClient {
       case "brain_lagged":
         // Relayed patches were dropped: start again from whole snapshots.
         this.requestState();
+        this.opts.events.brainLagged?.(message.missed);
+        break;
+      case "event":
+        this.opts.events.event?.(message.session, message);
+        break;
+      case "brain_info":
+        this.opts.events.brainInfo?.(message);
+        break;
+      case "notice":
+      case "warning":
+        this.opts.events.notice?.(message.type, message.text, message.session);
         break;
       case "character":
         this.opts.events.character?.(message.session, message.state);

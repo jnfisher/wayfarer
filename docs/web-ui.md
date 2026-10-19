@@ -65,6 +65,7 @@ opens it already shows the last 2,000 pieces of output from the gateway's log.
 | `Alt+0` | Back to equal shares for columns and rows (on a Mac, `Option`) |
 | `?` on an empty input line, or the `?` button | Open or close this help |
 | `Esc`, `?` again, or a click outside | Close this help |
+| `Alt+D`, or the `dev` button | Open or close the dev panel: the focused character's events, unclassified lines and the brain (on a Mac, `Option`) |
 
 The `?` overlay shows these keys, what the state badges mean and where the data files live. It
 is wayfarer's help only, never the game's; a `?` typed after other text on the line is sent to
@@ -89,6 +90,34 @@ The sizes are proportions, so resizing the window keeps them. They are kept per 
 adding or removing a character changes the shape, so that shape's own sizes apply. The layout
 is per browser until settings arrive (`docs/plan/04-settings.md`); it is not written to
 `wayfarer.toml`. With storage unavailable the layout still works and is forgotten on reload.
+
+## The dev panel
+
+For development: what the brain sees. `Alt+D` (on a Mac, `Option+D`) or the `dev` button in
+the top bar opens it as a drawer on the right, a third of the window at most, and the tiles
+refit. It follows the focused tile. It is closed by default; whether it is open, and its tab,
+are kept in the browser's `localStorage` under `wayfarer.dev`.
+
+![The dev panel on the Events tab, a room_title picked, beside two tiles replaying recorded sessions](images/web-ui-dev-panel.png)
+
+- **Events**: the brain's parsed events for the character, newest at the bottom, each with
+  the output `seq` it came from, its name, category and fields (`hp=28 maxhp=40`). The list
+  follows new events until you scroll up. The filter box matches the name or the line's text;
+  **pause** holds the list while events keep arriving (**resume** shows them). Click an event
+  to see its whole line and line number.
+- **Unclassified**: the lines the parser did not recognise (`unknown` events), grouped by
+  text with their counts, most frequent first, and the unclassified rate: the snapshot's
+  unclassified lines over lines parsed since the brain attached, as a percentage to two
+  decimals, red above 0.2% (the soak metric, `docs/plan/03-engine.md`). **copy as KB notes**
+  puts the list on the clipboard as a Markdown list (``- `line` (3x)``) for a PR's "KB notes".
+- **Brain**: the brain's build, start time and world pack, whether it is attached, and a log:
+  the brain attaching and leaving, each new start, `brain_lagged` (after which the page asks
+  for every snapshot again), and the brain's notices and warnings with their character and
+  time. **Re-sync** asks the brain to re-sync the focused character (`st`, `exp`, `i`, look);
+  it is off with no brain attached.
+
+The panel keeps the last 2,000 events and 500 notices per character, and up to 1,000
+distinct unclassified lines, from when the page opened; a reload starts it empty.
 
 ## Connection
 

@@ -17,10 +17,10 @@ npm test           # vitest
 | `src/proto/` | The wire types, generated from `wayfarer-proto` (`cargo test -p wayfarer-proto -- --ignored regenerate`); never edit by hand |
 | `src/lib/gateway.ts` | The protocol client, no Svelte: hello, dispatch, backfill, catching up after a gap or a reconnect, backoff, the token |
 | `src/lib/layout.ts` | The tile grid by count and screen shape, and "fit to tile" font sizing |
-| `src/lib/state.ts`, `src/lib/header.ts` | What the brain has said (snapshots, merge patches, `brain_state`); the header's bars, text and which items fit |
+| `src/lib/state.ts`, `src/lib/header.ts` | What the brain has said (snapshots, merge patches, `brain_state`, and the dev panel's bounded event, unclassified-line and notice buffers); the header's bars, text and which items fit |
 | `src/lib/input.ts`, `src/lib/sinks.ts` | A tile's command history; terminal text waiting for its terminal |
 | `src/lib/theme.ts`, `src/app.css` | The 16 VGA colours and the IBM VGA font |
-| `src/App.svelte`, `src/Tile.svelte` | The page and one tile |
+| `src/App.svelte`, `src/Tile.svelte`, `src/DevPanel.svelte` | The page, one tile, and the dev panel (`Alt+D`) |
 | `public/fonts/` | The VGA web font and its licence |
 | `scripts/fake-bbs.mjs` | A stand-in game server replaying `tests/fixtures/captures/*/raw.bin` |
 | `scripts/screenshot.mjs` | A Playwright screenshot of a running gateway's page (`npx playwright install chromium` once) |
