@@ -25,7 +25,7 @@ small scripts so the routine steps are one command each. Nothing runs on a sched
   "Where work runs", "Live tests against the local server".
 - `docs/plan/tasks/README.md` "How cards run" (worktrees, `claude --bg`, permissions).
 - The setup John already did (2026-10-17): repositories in `~/repos/`, silvermere built in
-  `~/repos/silvermere` and run from `~/repos/silvermere-wayfarer` with
+  `~/repos/wayfarer-dev/silvermere` and run from `~/repos/wayfarer-dev/silvermere-wayfarer` with
   `[server] telnet_bind = "127.0.0.1:2323"`, `admin_bind = "127.0.0.1:8080"`.
 - `silvermere/README.md` and `docs/install.md` (build, `import`, `serve`, `account`, `backup`).
 - C-006 (`wayfarer gateway`), C-007 (the UI, `npm run dev`).
@@ -34,7 +34,7 @@ small scripts so the routine steps are one command each. Nothing runs on a sched
 
 - `docs/dev-rig.md`, written for macOS:
   - **silvermere**: build, first-time `import`, `serve` in a terminal tab from
-    `~/repos/silvermere-wayfarer`; Ctrl-C saves and stops; upgrading (pull, rebuild,
+    `~/repos/wayfarer-dev/silvermere-wayfarer`; Ctrl-C saves and stops; upgrading (pull, rebuild,
     restart); backups with `silvermere backup`. Why it lives outside the checkout.
   - **The gateway**: `scripts/dev/gateway.sh` builds `wayfarer` in release mode and runs
     `wayfarer gateway` with the dev config (`examples/dev.toml`, placeholders; the real

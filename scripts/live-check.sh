@@ -23,7 +23,7 @@ else
 fi
 if ! up; then
     echo "live check: nothing answers at $addr: start silvermere first (docs/dev-rig.md):" >&2
-    echo "  cd ~/repos/silvermere-wayfarer && ~/repos/silvermere/target/release/silvermere serve" >&2
+    echo "  cd ~/repos/wayfarer-dev/silvermere-wayfarer && ~/repos/wayfarer-dev/silvermere/target/release/silvermere serve" >&2
     exit 2
 fi
 

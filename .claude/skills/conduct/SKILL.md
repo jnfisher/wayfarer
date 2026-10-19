@@ -1,6 +1,6 @@
 ---
 name: conduct
-description: Run the task cards for John. On each tick, start the cards whose dependencies are merged as background sessions, check their pull requests, merge the finished ones and report what needs John. Only for the conductor session John starts with `/loop /conduct` in ~/repos/wayfarer; never from a card session.
+description: Run the task cards for John. On each tick, start the cards whose dependencies are merged as background sessions, check their pull requests, merge the finished ones and report what needs John. Only for the conductor session John starts with `/loop /conduct` in ~/repos/wayfarer-dev/wayfarer; never from a card session.
 ---
 
 # Conduct the task cards
@@ -21,8 +21,8 @@ at the state, act, report in a few lines, and pick the next wake-up. GitHub and
    - Pull request: `gh pr list --state all --head card/<id>-<slug> --json number,state,isDraft,mergeable,headRefOid,url`.
    - Session: `claude agents --json --all` (working, blocked, done, failed, stopped);
      sessions you start are named after the card (`C-005`, `C-005-fix`).
-   - A card is **merged** when its PR state is `MERGED`. C-001 to C-004, C-010 and C-011
-     are merged already.
+   - A card is **merged** when its PR state is `MERGED`. Wave 1 (C-001 to C-009) and the early
+     wave 2 cards C-010 and C-011 were all merged by 2026-10-18.
 3. **Act, in this order:**
    1. **Blocked or failed sessions.** Blocked means waiting on a prompt or a question: tell
       John its name and `claude attach <name>`. Failed: read `claude logs <name>`, then
