@@ -31,6 +31,15 @@ pub struct StateChange {
     pub state: SessionState,
 }
 
+/// A line went to the game (the wire's `sent`): typed by a client, or a logon or log-off step.
+/// `seq` is the session's latest output `seq` when it went; a password is [`MASK`]ed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Sent {
+    pub session: SessionId,
+    pub seq: u64,
+    pub text: String,
+}
+
 /// A connection to a game server: anything the session can read and write.
 pub trait Stream: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send> Stream for T {}
@@ -81,6 +90,7 @@ pub(crate) struct Slot {
     pub reconnect: bool,
     pub connector: Arc<dyn Connect>,
     states: broadcast::Sender<StateChange>,
+    sent: broadcast::Sender<Sent>,
     state: Mutex<SessionState>,
     /// Why the session closed or was lost, when there is more to say than the state.
     reason: Mutex<Option<String>>,
@@ -112,6 +122,7 @@ pub(crate) struct SlotParts {
     pub connector: Arc<dyn Connect>,
     pub subscriber_capacity: usize,
     pub states: broadcast::Sender<StateChange>,
+    pub sent: broadcast::Sender<Sent>,
 }
 
 impl Slot {
@@ -129,6 +140,7 @@ impl Slot {
             reconnect: p.reconnect,
             connector: p.connector,
             states: p.states,
+            sent: p.sent,
             // Never opened: nothing is connected, and on purpose.
             state: Mutex::new(SessionState::Closed),
             reason: Mutex::new(None),
@@ -151,6 +163,15 @@ impl Slot {
                 state,
             });
         }
+    }
+
+    /// Tell the listeners that `text` went to the game.
+    fn sent_line(&self, text: String) {
+        let _ = self.sent.send(Sent {
+            session: self.id.clone(),
+            seq: self.log.last_seq(),
+            text,
+        });
     }
 
     pub fn reason(&self) -> Option<String> {
@@ -333,6 +354,7 @@ async fn connection(
                             if let Err(e) = write(slot, &mut writer, capture, &bytes, &record).await {
                                 return End::Lost(e);
                             }
+                            slot.sent_line(shown);
                             // The next step's timeout runs from here.
                             deadline = runner.as_ref().map(|r| Instant::now() + r.timeout());
                         }
@@ -359,25 +381,23 @@ async fn connection(
                         if let Err(e) = write(slot, &mut writer, capture, &bytes, &bytes).await {
                             return End::Lost(e);
                         }
+                        slot.sent_line(line);
                         deadline = Some(Instant::now() + l.timeout());
                     }
                 }
             }
             cmd = commands.recv() => {
-                let (bytes, record) = match cmd {
+                // The bytes, what `sent.bin` records, and the line for `sent` (keys are none).
+                let (bytes, record, line) = match cmd {
                     Some(Command::Line(text)) => {
                         let bytes = telnet.encode_line(&text);
                         let is_password = slot.login.as_ref().is_some_and(|l| l.password == text);
-                        let record = if is_password {
-                            telnet.encode_line(MASK)
-                        } else {
-                            bytes.clone()
-                        };
-                        (bytes, record)
+                        let shown = if is_password { MASK.to_owned() } else { text };
+                        (bytes, telnet.encode_line(&shown), Some(shown))
                     }
                     Some(Command::Keys(keys)) => {
                         let bytes = telnet.encode_bytes(&keys);
-                        (bytes.clone(), bytes)
+                        (bytes.clone(), bytes, None)
                     }
                     Some(Command::Close(ack)) => {
                         acks.push(ack);
@@ -395,7 +415,7 @@ async fn connection(
                         deadline = Some(Instant::now() + l.timeout());
                         logoff = Some(l);
                         let bytes = telnet.encode_line(&first);
-                        (bytes.clone(), bytes)
+                        (bytes.clone(), bytes, Some(first))
                     }
                     Some(Command::Hangup(ack)) => {
                         acks.push(ack);
@@ -407,6 +427,9 @@ async fn connection(
                 };
                 if let Err(e) = write(slot, &mut writer, capture, &bytes, &record).await {
                     return End::Lost(e);
+                }
+                if let Some(line) = line {
+                    slot.sent_line(line);
                 }
             }
             () = tokio::time::sleep_until(deadline.unwrap_or_else(Instant::now)), if deadline.is_some() => {

@@ -6,7 +6,8 @@ use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
 use wayfarer_gateway::{
-    Gateway, Options, Paths, ServerOptions, bind, create_token, serve, stop_signals, token_for_bind,
+    Gateway, Hub, Options, Paths, ServerOptions, bind, create_token, serve, stop_signals,
+    token_for_bind,
 };
 
 #[derive(Parser)]
@@ -119,10 +120,10 @@ fn run_gateway(args: GatewayArgs) -> Result<(), Box<dyn std::error::Error>> {
             let listener = bind(args.bind).await?;
             tracing::info!("listening on {}", listener.local_addr()?);
             let options = ServerOptions {
-                token,
                 ui_dir: args.ui_dir,
             };
-            serve(listener, gateway, options, stop_signals()?).await?;
+            let hub = Hub::new(gateway, token);
+            serve(listener, hub, options, stop_signals()?).await?;
             Ok(())
         })
 }

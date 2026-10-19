@@ -2,9 +2,13 @@
 
 export const PROTOCOL = 1;
 
+export type { CharacterState } from "./CharacterState";
 export type { Chunk } from "./Chunk";
 export type { ClientKind } from "./ClientKind";
+export type { ParseCounts } from "./ParseCounts";
 export type { SessionInfo } from "./SessionInfo";
 export type { SessionState } from "./SessionState";
+export type { Stats } from "./Stats";
 export type { ToClient } from "./ToClient";
 export type { ToGateway } from "./ToGateway";
+export type { WorldPackInfo } from "./WorldPackInfo";

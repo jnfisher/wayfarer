@@ -8,17 +8,21 @@ use std::time::Duration;
 use futures_util::{SinkExt, StreamExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use wayfarer_gateway::{
-    Config, Credentials, Gateway, Options, ServerError, ServerOptions, create_token, serve,
+    Config, Credentials, Gateway, Hub, Options, ServerError, ServerOptions, create_token, serve,
     token_for_bind,
 };
-use wayfarer_proto::{ClientKind, PROTOCOL, SessionState, ToClient, ToGateway};
+use wayfarer_proto::{CharacterState, ClientKind, PROTOCOL, SessionState, ToClient, ToGateway};
 
 const ID: &str = "kasimir";
+/// A second character, never connected.
+const OTHER: &str = "brienne";
+/// Kasimir's password, which `sent` must never carry.
+const PASSWORD: &str = "hunter2";
 /// Far longer than any test should take; only a broken server waits this long.
 const PATIENCE: Duration = Duration::from_secs(5);
 
@@ -28,6 +32,7 @@ struct Rig {
     addr: SocketAddr,
     game: TcpListener,
     gateway: Gateway,
+    hub: Hub,
     stop: Option<oneshot::Sender<()>>,
     server: JoinHandle<Result<(), ServerError>>,
 }
@@ -37,32 +42,34 @@ impl Rig {
         let game = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let config = Config::parse(&format!(
             "[[server]]\nid = \"local\"\nhost = \"127.0.0.1\"\nport = {}\n\n\
-             [[character]]\nid = \"{ID}\"\nname = \"Kasimir\"\nserver = \"local\"\n",
+             [[character]]\nid = \"{ID}\"\nname = \"Kasimir\"\nserver = \"local\"\n\n\
+             [[character]]\nid = \"{OTHER}\"\nname = \"Brienne\"\nserver = \"local\"\n",
             game.local_addr().unwrap().port()
         ))
         .unwrap();
-        let gateway = Gateway::new(
-            &config,
-            &Credentials::default(),
-            &dir.join("logs"),
-            Options::default(),
-        )
+        // No logon script: the password is only there to be masked.
+        let credentials = Credentials::parse(&format!(
+            "[character.{ID}]\nuser = \"Kasimir\"\npassword = \"{PASSWORD}\"\n"
+        ))
         .unwrap();
+        let gateway =
+            Gateway::new(&config, &credentials, &dir.join("logs"), Options::default()).unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let (stop, stopped) = oneshot::channel();
         let options = ServerOptions {
-            token: token.map(str::to_owned),
             ui_dir: dir.join("no-ui-here"),
         };
+        let hub = Hub::new(gateway.clone(), token.map(str::to_owned));
         let stops = futures_util::stream::once(async {
             let _ = stopped.await;
         });
-        let server = tokio::spawn(serve(listener, gateway.clone(), options, stops));
+        let server = tokio::spawn(serve(listener, hub.clone(), options, stops));
         Self {
             addr,
             game,
             gateway,
+            hub,
             stop: Some(stop),
             server,
         }
@@ -83,10 +90,22 @@ impl Rig {
         tokio_tungstenite::connect_async(url).await.unwrap().0
     }
 
-    /// A client that has said hello and been welcomed.
+    /// A UI that has said hello and been welcomed, and told no brain is attached.
     async fn welcomed(&self) -> Client {
         let mut ws = self.client().await;
         hello(&mut ws, PROTOCOL, None).await;
+        assert!(matches!(recv(&mut ws).await, ToClient::Welcome { .. }));
+        assert_eq!(
+            recv(&mut ws).await,
+            ToClient::BrainState { attached: false }
+        );
+        ws
+    }
+
+    /// A brain that has said hello and been welcomed.
+    async fn brain(&self) -> Client {
+        let mut ws = self.client().await;
+        send(&mut ws, &brain_hello()).await;
         assert!(matches!(recv(&mut ws).await, ToClient::Welcome { .. }));
         ws
     }
@@ -112,6 +131,14 @@ async fn hello(ws: &mut Client, protocol: u32, token: Option<&str>) {
         token: token.map(str::to_owned),
     };
     send(ws, &msg).await;
+}
+
+fn brain_hello() -> ToGateway {
+    ToGateway::Hello {
+        protocol: PROTOCOL,
+        client: ClientKind::Brain,
+        token: None,
+    }
 }
 
 async fn recv(ws: &mut Client) -> ToClient {
@@ -161,7 +188,7 @@ async fn handshake_welcomes_with_the_session_list_and_health_check_answers() {
         panic!("expected welcome");
     };
     assert_eq!(protocol, PROTOCOL);
-    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions.len(), 2);
     assert_eq!(sessions[0].id, ID);
     assert_eq!(sessions[0].state, SessionState::Closed);
 
@@ -172,7 +199,7 @@ async fn handshake_welcomes_with_the_session_list_and_health_check_answers() {
     let mut body = String::new();
     http.read_to_string(&mut body).await.unwrap();
     assert!(body.starts_with("HTTP/1.0 200"), "{body}");
-    assert!(body.ends_with(r#"{"sessions":1,"status":"ok"}"#), "{body}");
+    assert!(body.ends_with(r#"{"sessions":2,"status":"ok"}"#), "{body}");
     rig.stop().await;
 }
 
@@ -383,6 +410,357 @@ async fn a_missing_ui_directory_says_so_and_stopping_closes_the_sessions() {
         .unwrap();
     let ended = tokio::time::timeout(PATIENCE, async { while ws.next().await.is_some() {} }).await;
     assert!(ended.is_ok(), "the WebSocket ends");
+}
+
+/// The next message `want` accepts, skipping the others (output and state changes go on
+/// meanwhile).
+async fn recv_where(ws: &mut Client, want: impl Fn(&ToClient) -> bool) -> ToClient {
+    loop {
+        let msg = recv(ws).await;
+        if want(&msg) {
+            return msg;
+        }
+    }
+}
+
+/// The next message on a channel client; `None` once the gateway has closed it.
+async fn recv_channel(rx: &mut mpsc::Receiver<ToClient>) -> Option<ToClient> {
+    tokio::time::timeout(PATIENCE, rx.recv())
+        .await
+        .expect("a message or the end arrives")
+}
+
+fn error(message: &str) -> ToClient {
+    ToClient::Error {
+        message: message.to_owned(),
+    }
+}
+
+fn kasimir_state() -> CharacterState {
+    CharacterState {
+        name: Some("Kasimir".into()),
+        hp: Some(30),
+        hp_max: Some(35),
+        room_exits: Some(vec!["north".into(), "south".into()]),
+        ..CharacterState::default()
+    }
+}
+
+#[tokio::test]
+async fn one_brain_attaches_and_the_uis_hear_when_it_comes_and_goes() {
+    let dir = tempfile::tempdir().unwrap();
+    let rig = Rig::start(dir.path(), None).await;
+    let mut ui = rig.welcomed().await;
+    let brain = rig.brain().await;
+    assert_eq!(recv(&mut ui).await, ToClient::BrainState { attached: true });
+
+    let mut second = rig.client().await;
+    send(&mut second, &brain_hello()).await;
+    assert_eq!(
+        recv(&mut second).await,
+        ToClient::Refused {
+            reason: "a brain is already attached".into()
+        }
+    );
+
+    // A UI that arrives now is told at once, right after the welcome.
+    let mut late = rig.client().await;
+    hello(&mut late, PROTOCOL, None).await;
+    assert!(matches!(recv(&mut late).await, ToClient::Welcome { .. }));
+    assert_eq!(
+        recv(&mut late).await,
+        ToClient::BrainState { attached: true }
+    );
+
+    drop(brain);
+    assert_eq!(
+        recv(&mut ui).await,
+        ToClient::BrainState { attached: false }
+    );
+    assert_eq!(
+        recv(&mut late).await,
+        ToClient::BrainState { attached: false }
+    );
+    // The next brain may attach.
+    let _brain = rig.brain().await;
+    assert_eq!(recv(&mut ui).await, ToClient::BrainState { attached: true });
+    rig.stop().await;
+}
+
+#[tokio::test]
+async fn brain_messages_reach_the_uis_subscribed_to_their_session_untouched() {
+    let dir = tempfile::tempdir().unwrap();
+    let rig = Rig::start(dir.path(), None).await;
+    let mut all = rig.welcomed().await;
+    let mut other = rig.welcomed().await;
+    send(
+        &mut other,
+        &ToGateway::Subscribe {
+            sessions: Some(vec![OTHER.into()]),
+        },
+    )
+    .await;
+    // Messages are handled in order: once this error is back, the subscription is in force.
+    send(&mut other, &ToGateway::Resync { session: ID.into() }).await;
+    assert_eq!(recv(&mut other).await, error("no brain attached"));
+    let mut brain = rig.brain().await;
+    for ui in [&mut all, &mut other] {
+        assert_eq!(recv(ui).await, ToClient::BrainState { attached: true });
+    }
+
+    let fields =
+        serde_json::json!({"damage": 7, "monster": "giant rat", "nested": {"x": [1, null]}});
+    let sent = [
+        ToGateway::Character {
+            session: ID.into(),
+            state: kasimir_state().into(),
+        },
+        ToGateway::CharacterPatch {
+            session: ID.into(),
+            patch: serde_json::json!({"hp": 23, "room_title": null, "stats": {"charm": 40}}),
+        },
+        ToGateway::Event {
+            session: ID.into(),
+            seq: 43,
+            line_no: 120,
+            name: "you_hit".into(),
+            cat: "combat".into(),
+            fields: fields.as_object().unwrap().clone(),
+            line: "You slash the giant rat for 7 damage!".into(),
+        },
+        ToGateway::Character {
+            session: OTHER.into(),
+            state: Box::default(),
+        },
+        ToGateway::Notice {
+            session: None,
+            text: "parser reset".into(),
+        },
+        ToGateway::BrainInfo {
+            build: "0.1.0 (abc123)".into(),
+            started_at: "2026-10-19T12:00:00Z".into(),
+            world_pack: None,
+        },
+    ];
+    for msg in &sent {
+        send(&mut brain, msg).await;
+    }
+    let relayed: Vec<ToClient> = sent
+        .into_iter()
+        .map(|msg| msg.into_relayed().unwrap())
+        .collect();
+    for want in &relayed {
+        assert_eq!(&recv(&mut all).await, want);
+    }
+    // Only the other session's snapshot and the messages for everyone, in order.
+    for want in &relayed[3..] {
+        assert_eq!(&recv(&mut other).await, want);
+    }
+    rig.stop().await;
+}
+
+#[tokio::test]
+async fn control_reaches_the_brain_and_each_side_may_send_only_its_own_families() {
+    let dir = tempfile::tempdir().unwrap();
+    let rig = Rig::start(dir.path(), None).await;
+    let mut ui = rig.welcomed().await;
+    send(&mut ui, &ToGateway::Resync { session: ID.into() }).await;
+    assert_eq!(recv(&mut ui).await, error("no brain attached"));
+
+    let mut brain = rig.brain().await;
+    assert_eq!(recv(&mut ui).await, ToClient::BrainState { attached: true });
+    send(&mut ui, &ToGateway::Resync { session: ID.into() }).await;
+    send(&mut ui, &ToGateway::StateRequest { session: None }).await;
+    assert_eq!(
+        recv(&mut brain).await,
+        ToClient::Resync { session: ID.into() }
+    );
+    assert_eq!(
+        recv(&mut brain).await,
+        ToClient::StateRequest { session: None }
+    );
+
+    let notice = ToGateway::Notice {
+        session: None,
+        text: "re-synced".into(),
+    };
+    send(&mut ui, &notice).await;
+    assert_eq!(recv(&mut ui).await, error(r#"a UI may not send "notice""#));
+    send(&mut brain, &ToGateway::Resync { session: ID.into() }).await;
+    assert_eq!(
+        recv(&mut brain).await,
+        error(r#"the brain may not send "resync""#)
+    );
+    // Both connections are still up.
+    send(&mut brain, &notice).await;
+    assert_eq!(recv(&mut ui).await, notice.into_relayed().unwrap());
+    rig.stop().await;
+}
+
+#[tokio::test]
+async fn sent_tells_the_brain_each_line_that_went_to_the_game_with_the_password_masked() {
+    let dir = tempfile::tempdir().unwrap();
+    let rig = Rig::start(dir.path(), None).await;
+    let mut ui = rig.welcomed().await;
+    let mut brain = rig.brain().await;
+    assert_eq!(recv(&mut ui).await, ToClient::BrainState { attached: true });
+    let mut game = rig.connect_game().await;
+    game.write_all(b"Password: ").await.unwrap();
+    recv_output(&mut ui, 10).await;
+    while rig.gateway.state(ID).unwrap() != SessionState::Connected {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+
+    for text in ["look", PASSWORD] {
+        let line = ToGateway::InputLine {
+            session: ID.into(),
+            text: text.into(),
+        };
+        send(&mut ui, &line).await;
+    }
+    // Keys are not lines.
+    send(
+        &mut ui,
+        &ToGateway::InputKeys {
+            session: ID.into(),
+            bytes: vec![b'q'],
+        },
+    )
+    .await;
+    let mut got = [0u8; 14];
+    tokio::time::timeout(PATIENCE, game.read_exact(&mut got))
+        .await
+        .expect("the lines reach the game")
+        .unwrap();
+    assert_eq!(&got, b"look\rhunter2\rq");
+    // The brain's own lines too.
+    send(
+        &mut brain,
+        &ToGateway::InputLine {
+            session: ID.into(),
+            text: "st".into(),
+        },
+    )
+    .await;
+    let mut got = [0u8; 3];
+    tokio::time::timeout(PATIENCE, game.read_exact(&mut got))
+        .await
+        .expect("the line reaches the game")
+        .unwrap();
+    assert_eq!(&got, b"st\r");
+
+    for text in ["look", "********", "st"] {
+        let msg = recv_where(&mut brain, |m| matches!(m, ToClient::Sent { .. })).await;
+        assert_eq!(
+            msg,
+            ToClient::Sent {
+                session: ID.into(),
+                seq: 1,
+                text: text.into()
+            }
+        );
+    }
+    // UIs never get `sent`; the line above proves the UI's messages are flowing.
+    send(&mut ui, &ToGateway::Resync { session: ID.into() }).await;
+    recv_where(&mut brain, |m| matches!(m, ToClient::Resync { .. })).await;
+    rig.stop().await;
+    while let Some(Ok(Message::Text(text))) = ui.next().await {
+        let msg = ToClient::from_json(text.as_str()).unwrap();
+        assert!(!matches!(msg, ToClient::Sent { .. }), "a UI got {msg:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_channel_client_follows_the_same_handshake_relay_and_refusal_rules() {
+    let dir = tempfile::tempdir().unwrap();
+    let rig = Rig::start(dir.path(), None).await;
+
+    let (tx, mut rx) = rig.hub.connect();
+    let mismatched = ToGateway::Hello {
+        protocol: PROTOCOL + 1,
+        client: ClientKind::Brain,
+        token: None,
+    };
+    tx.send(mismatched).await.unwrap();
+    assert!(
+        matches!(recv_channel(&mut rx).await, Some(ToClient::Refused { reason }) if reason.contains("protocol mismatch"))
+    );
+    assert_eq!(recv_channel(&mut rx).await, None, "refused, then closed");
+
+    // A brain over channels: a WebSocket UI hears it attach, a WebSocket brain is refused.
+    let mut ui = rig.welcomed().await;
+    let (brain_tx, mut brain_rx) = rig.hub.connect();
+    brain_tx.send(brain_hello()).await.unwrap();
+    assert!(matches!(
+        recv_channel(&mut brain_rx).await,
+        Some(ToClient::Welcome { .. })
+    ));
+    assert_eq!(recv(&mut ui).await, ToClient::BrainState { attached: true });
+    let mut ws_brain = rig.client().await;
+    send(&mut ws_brain, &brain_hello()).await;
+    assert!(matches!(
+        recv(&mut ws_brain).await,
+        ToClient::Refused { .. }
+    ));
+
+    // Relay both ways.
+    send(&mut ui, &ToGateway::Resync { session: ID.into() }).await;
+    assert_eq!(
+        recv_channel(&mut brain_rx).await,
+        Some(ToClient::Resync { session: ID.into() })
+    );
+    let character = ToGateway::Character {
+        session: ID.into(),
+        state: kasimir_state().into(),
+    };
+    brain_tx.send(character.clone()).await.unwrap();
+    assert_eq!(
+        recv(&mut ui).await,
+        character.clone().into_relayed().unwrap()
+    );
+
+    // A UI over channels: told about the brain after its welcome, refused a brain's message,
+    // and relayed to like any other.
+    let (ui_tx, mut ui_rx) = rig.hub.connect();
+    ui_tx
+        .send(ToGateway::Hello {
+            protocol: PROTOCOL,
+            client: ClientKind::Ui,
+            token: None,
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        recv_channel(&mut ui_rx).await,
+        Some(ToClient::Welcome { .. })
+    ));
+    assert_eq!(
+        recv_channel(&mut ui_rx).await,
+        Some(ToClient::BrainState { attached: true })
+    );
+    ui_tx.send(character.clone()).await.unwrap();
+    assert_eq!(
+        recv_channel(&mut ui_rx).await,
+        Some(error(r#"a UI may not send "character""#))
+    );
+    brain_tx.send(character.clone()).await.unwrap();
+    let relayed = character.into_relayed().unwrap();
+    assert_eq!(recv_channel(&mut ui_rx).await, Some(relayed.clone()));
+    assert_eq!(recv(&mut ui).await, relayed);
+
+    // Dropping the brain's sender ends its connection.
+    drop(brain_tx);
+    assert_eq!(
+        recv(&mut ui).await,
+        ToClient::BrainState { attached: false }
+    );
+    assert_eq!(
+        recv_channel(&mut ui_rx).await,
+        Some(ToClient::BrainState { attached: false })
+    );
+    while recv_channel(&mut brain_rx).await.is_some() {}
+    rig.stop().await;
+    assert_eq!(recv_channel(&mut ui_rx).await, None, "stopping ends it too");
 }
 
 #[test]
