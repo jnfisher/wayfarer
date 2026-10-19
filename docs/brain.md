@@ -16,6 +16,16 @@ wayfarer import-world --export tests/fixtures/world --out "$WAYFARER_DATA_DIR/wo
 wayfarer brain
 ```
 
+In a release, one process runs both: `wayfarer serve` takes the gateway's flags plus `--world`
+and attaches the brain to the gateway over in-process channels, with no socket. The UIs see
+the same `brain_state` and messages as with two processes, and stopping `serve` logs everyone
+off as `gateway` does. With no world pack at `--world` (default: `world.sqlite` in the data
+directory) it warns, prints the `import-world` command and runs the gateway alone. In
+development the two stay apart (`scripts/dev/brain.sh`, [dev-rig.md](dev-rig.md)) so the
+brain restarts without the characters.
+
+`wayfarer brain` takes:
+
 | Flag | Default | What |
 |---|---|---|
 | `--gateway URL` | `ws://127.0.0.1:7373/ws` | The gateway's WebSocket |
@@ -94,5 +104,4 @@ hold.
 ## Not yet
 
 No bot, no modes, no executor; no input arbitration (every client's input still goes straight
-to the game, `docs/protocol.md`); no position belief from the world pack (M2). `wayfarer
-serve` running the brain in-process and the watcher script are C-019.
+to the game, `docs/protocol.md`); no position belief from the world pack (M2).

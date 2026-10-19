@@ -16,3 +16,8 @@ tracing-subscriber.workspace = true
 wayfarer-brain = { path = "../../crates/wayfarer-brain" }
 wayfarer-gateway = { path = "../../crates/wayfarer-gateway" }
 wayfarer-world = { path = "../../crates/wayfarer-world" }
+
+[dev-dependencies]
+tempfile = "3"
+wayfarer-parse = { path = "../../crates/wayfarer-parse" }
+wayfarer-proto = { path = "../../crates/wayfarer-proto" }

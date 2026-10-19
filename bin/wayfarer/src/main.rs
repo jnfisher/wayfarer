@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use clap::{Args, Parser, Subcommand};
 use futures_util::StreamExt;
+use wayfarer::spawn_brain;
 use wayfarer_brain::{Brain, BrainError, SystemClock, World, WsLink};
 use wayfarer_gateway::{
     Gateway, Hub, Options, Paths, ServerOptions, bind, create_token, read_token, serve,
@@ -43,6 +44,16 @@ struct GatewayArgs {
 }
 
 #[derive(Args)]
+struct ServeArgs {
+    #[command(flatten)]
+    gateway: GatewayArgs,
+    /// The world pack (`wayfarer import-world` builds it). Default: `world.sqlite` in the data
+    /// directory. Without one, serve runs the gateway alone.
+    #[arg(long)]
+    world: Option<PathBuf>,
+}
+
+#[derive(Args)]
 struct BrainArgs {
     /// The gateway's WebSocket.
     #[arg(long, default_value = "ws://127.0.0.1:7373/ws")]
@@ -68,8 +79,8 @@ enum Command {
     /// Run the brain against a running gateway: parse every session, keep each character's
     /// state for the UIs, re-sync it (docs/brain.md).
     Brain(BrainArgs),
-    /// Run everything in one process: the gateway now, the brain from M1.
-    Serve(GatewayArgs),
+    /// Run everything in one process: the gateway, and the brain attached to it in-process.
+    Serve(ServeArgs),
     /// Build a world pack (SQLite) from the stock-world export, optionally with MegaMud's path set.
     ImportWorld {
         /// The export directory: one `<TABLE>.jsonl.gz` per table and `MANIFEST.json`.
@@ -87,9 +98,9 @@ enum Command {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let (name, args) = match cli.command {
-        Command::Gateway(args) => ("gateway", args),
-        Command::Serve(args) => ("serve", args),
+    let (name, args, world) = match cli.command {
+        Command::Gateway(args) => ("gateway", args, None),
+        Command::Serve(args) => ("serve", args.gateway, Some(args.world)),
         Command::Brain(args) => {
             return match run_brain(args) {
                 Ok(()) => ExitCode::SUCCESS,
@@ -117,7 +128,7 @@ fn main() -> ExitCode {
             };
         }
     };
-    match run_gateway(args) {
+    match run_gateway(args, world) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("wayfarer {name}: {e}");
@@ -143,7 +154,12 @@ fn init_tracing() {
         .init();
 }
 
-fn run_gateway(args: GatewayArgs) -> Result<(), Box<dyn std::error::Error>> {
+/// `world`: `None` runs the gateway alone (`wayfarer gateway`); `Some(path)` is `wayfarer
+/// serve`, which also runs the brain in-process (the default pack if `path` is `None`).
+fn run_gateway(
+    args: GatewayArgs,
+    world: Option<Option<PathBuf>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let paths = paths(args.config)?;
     let token_file = paths.credentials.with_file_name("gateway-token");
     if args.new_token {
@@ -152,6 +168,8 @@ fn run_gateway(args: GatewayArgs) -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     let token = token_for_bind(args.bind, &token_file)?;
+    let world_path =
+        world.map(|path| path.unwrap_or_else(|| token_file.with_file_name("world.sqlite")));
 
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -164,8 +182,35 @@ fn run_gateway(args: GatewayArgs) -> Result<(), Box<dyn std::error::Error>> {
             let options = ServerOptions {
                 ui_dir: args.ui_dir,
             };
-            let hub = Hub::new(gateway, token);
+            let hub = Hub::new(gateway, token.clone());
+            let brain = match world_path {
+                Some(path) if path.is_file() => {
+                    let world = World::open(&path)?;
+                    tracing::info!(
+                        build = wayfarer_brain::BUILD,
+                        world = %path.display(),
+                        "brain running in-process"
+                    );
+                    Some(spawn_brain(&hub, world, token))
+                }
+                Some(path) => {
+                    tracing::warn!(
+                        "no world pack at {path}: running the gateway alone, without the brain; \
+                         build it with\n  wayfarer import-world --export tests/fixtures/world \
+                         --out '{path}'",
+                        path = path.display()
+                    );
+                    None
+                }
+                None => None,
+            };
             serve(listener, hub, options, stop_signals()?).await?;
+            if let Some(brain) = brain {
+                // The hub stopped, so the brain's connection has ended and it returns.
+                if let Err(e) = brain.await? {
+                    tracing::warn!("the in-process brain stopped: {e}");
+                }
+            }
             Ok(())
         })
 }
