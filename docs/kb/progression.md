@@ -140,9 +140,18 @@ then CP), and choose again. Quests are occasional big boosts. [F, John]
   map-9 area, and he died. Plans are predictable, reviewable and safe by construction.
 
 ## Choosing where to grind
-- A room's spawn pool = its `genmonster`, plus every known monster with `montype ==
-  room.mongroup` and `genindex` within `[room.minlevel, room.maxlevel]`, if `maxmonsters > 0`.
-  [C] `LJNMONST.C generate_monster`
+- A room's spawn pool: nothing unless `maxmonsters > 0`; then **its `genmonster` alone** when it
+  has one, else every known monster with `montype == room.mongroup` and `genindex` within
+  `[room.minlevel, room.maxlevel]` (`minlevel` 0 = no floor; **`maxlevel` 0 = no group spawn at
+  all**). Plus the room's specific monster `specmon`, which is made at start-up and again whenever
+  a player enters while it is dead: that is how shopkeepers, healers and the ferryman are there
+  (Newhaven's shops have `maxmonsters` 1-5 but `maxlevel` 0, and their keeper as `specmon`). The
+  spawn pass only visits Normal, Arena and Lair rooms. [C] `LJNMONST.C:493-496, 510-515,
+  594-603` (`generate_monster`: `monnum` given = that monster, no random pick),
+  `LJNBKGND.C:2466-2620`, `LJNUTIL.C:2525-2535`, `LJNBUFF.C:825-845`. (Earlier this said
+  `genmonster` *plus* the group, as `mmud_data.spawn_pool` computes; that over-includes, see
+  `aoe-grinding.md`.) Stock rooms with `maxmonsters > 0` and a `genmonster` or a `maxlevel`:
+  20,355 Normal, 3,102 Lair, 62 Colliseum, 57 Shop, 3 Arena. [C, stock export, wayfarer C-021]
 - **Respawn**: after a kill, a room spawns nothing until its `regendelay` minutes have passed
   (default `regenmins` = 5). **Exempt, so they respawn immediately: arenas (room type 2),
   forced spawns, and a room's own specific monster (`genmonster`/`specmon`).** [C]

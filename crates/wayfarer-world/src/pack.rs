@@ -8,6 +8,7 @@ use wayfarer_parse::{GameTexts, ItemTexts, Message, MonsterAttack, MonsterTexts}
 
 use crate::Error;
 use crate::schema::SCHEMA_VERSION;
+use crate::walk::Key;
 
 /// An open world pack, read only.
 pub struct WorldPack {
@@ -182,6 +183,22 @@ fn room_row(r: &Row) -> rusqlite::Result<Room> {
 const ROOM_COLS: &str = "map, room, name, light, type, shop_num, min_level, max_level, \
                          gen_monster, max_monsters, mon_group, regen_delay, spec_mon, flags, mm_id";
 
+const MONSTER_COLS: &str = "number, name, level, exp, max_hp, mon_type, gen_index, alignment, raw";
+
+fn monster_row(r: &Row) -> rusqlite::Result<Monster> {
+    Ok(Monster {
+        number: r.get(0)?,
+        name: r.get(1)?,
+        level: r.get(2)?,
+        exp: r.get(3)?,
+        max_hp: r.get(4)?,
+        mon_type: r.get(5)?,
+        gen_index: r.get(6)?,
+        alignment: r.get(7)?,
+        raw: r.get(8)?,
+    })
+}
+
 fn path_row(r: &Row) -> rusqlite::Result<MmPath> {
     let pair = |a: Option<i64>, b: Option<i64>| a.zip(b);
     Ok(MmPath {
@@ -315,27 +332,54 @@ impl WorldPack {
         self.rooms_where("mm_id = ?1", mm_id)
     }
 
+    /// Every room, by key.
+    pub fn all_rooms(&self) -> Result<Vec<Room>, Error> {
+        let mut st = self
+            .conn
+            .prepare(&format!("SELECT {ROOM_COLS} FROM rooms ORDER BY map, room"))?;
+        let rows = st.query_map([], room_row)?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Every exit with the room it leaves, by room key and direction.
+    pub fn all_exits(&self) -> Result<Vec<(Key, Exit)>, Error> {
+        let mut st = self.conn.prepare(
+            "SELECT from_map, from_room, dir, to_map, to_room, type, type_code, par1, par2, par3, \
+             par4 FROM exits ORDER BY from_map, from_room, dir",
+        )?;
+        let rows = st.query_map([], |r| {
+            Ok((
+                (r.get(0)?, r.get(1)?),
+                Exit {
+                    dir: r.get(2)?,
+                    to_map: r.get(3)?,
+                    to_room: r.get(4)?,
+                    exit_type: r.get(5)?,
+                    type_code: r.get(6)?,
+                    params: [r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?],
+                },
+            ))
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
     pub fn monster(&self, number: i64) -> Result<Option<Monster>, Error> {
         Ok(self
             .conn
-            .prepare_cached(
-                "SELECT number, name, level, exp, max_hp, mon_type, gen_index, alignment, raw \
-                 FROM monsters WHERE number = ?1",
-            )?
-            .query_row([number], |r| {
-                Ok(Monster {
-                    number: r.get(0)?,
-                    name: r.get(1)?,
-                    level: r.get(2)?,
-                    exp: r.get(3)?,
-                    max_hp: r.get(4)?,
-                    mon_type: r.get(5)?,
-                    gen_index: r.get(6)?,
-                    alignment: r.get(7)?,
-                    raw: r.get(8)?,
-                })
-            })
+            .prepare_cached(&format!(
+                "SELECT {MONSTER_COLS} FROM monsters WHERE number = ?1"
+            ))?
+            .query_row([number], monster_row)
             .optional()?)
+    }
+
+    /// Every monster, by number.
+    pub fn all_monsters(&self) -> Result<Vec<Monster>, Error> {
+        let mut st = self.conn.prepare(&format!(
+            "SELECT {MONSTER_COLS} FROM monsters ORDER BY number"
+        ))?;
+        let rows = st.query_map([], monster_row)?;
+        Ok(rows.collect::<Result<_, _>>()?)
     }
 
     pub fn item(&self, number: i64) -> Result<Option<Item>, Error> {
