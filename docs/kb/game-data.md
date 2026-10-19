@@ -99,8 +99,9 @@ record length of every file equals the header's, except `WCCTEXT` (below).
 - Alignments: Good, Evil, Chaotic Evil, Neutral, Lawful Good, Neutral Evil, Lawful Evil.
 
 ## Spawn rule
-See `progression.md`. Pool = `genmonster`, plus monsters with `montype == mongroup` and
-`genindex` within `[minlevel, maxlevel]`, if `maxmonsters > 0`.
+See `progression.md`. If `maxmonsters > 0`: `genmonster` alone when set, else monsters with
+`montype == mongroup` and `genindex` within `[minlevel, maxlevel]` (`maxlevel` 0: none); plus
+the room's `specmon`.
 
 ## Text blocks and lookups [C]
 - **A text block** is a run of WCCTEXT records with the same `number` and `part` 0, 1, 2, ... (`struct textblk`:

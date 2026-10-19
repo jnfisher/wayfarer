@@ -3,19 +3,30 @@
 //! path checked against the rooms (`docs/plan/02-architecture.md` "World data").
 //!
 //! [`build`] makes a pack from the stock-world export (`wayfarer import-world`);
-//! [`WorldPack`] reads one.
+//! [`WorldPack`] reads one. [`RoomGraph`] holds its rooms and exits in memory for [`route`],
+//! the position [`Belief`] and the map [`layout`]; [`Monsters`] says what rooms spawn.
 
+pub mod belief;
 pub mod build;
 pub mod cp437;
+pub mod layout;
 pub mod mm;
+pub mod monsters;
+pub mod nav;
 pub mod pack;
+pub mod route;
 pub mod schema;
 pub mod walk;
 
 use std::path::PathBuf;
 
+pub use belief::Belief;
 pub use build::{BuildReport, MegaMudReport, build};
+pub use layout::{Layout, Placed, Segment, SegmentKind, layout};
+pub use monsters::{Monsters, huntable};
+pub use nav::{Category, DirSet, Edge, ExitType, Gate, Key, LockState, RoomGraph};
 pub use pack::WorldPack;
+pub use route::{Costs, Route, Step, Traveller, distances, route};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

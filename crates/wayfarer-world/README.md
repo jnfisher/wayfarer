@@ -5,7 +5,9 @@ shops, spells, classes, races, messages, text blocks, actions), optionally with 
 waypoints and path library, each path checked against the rooms (`docs/plan/02-architecture.md`
 "World data"). MegaMud's data is not part of this repository: it comes from a player's own
 MegaMud copy, or from `jnfisher/mmud-exploration`'s `reference/megamud/` when developing.
-Every later part of the bot reads it. No routing or position tracking yet (M2).
+Every later part of the bot reads it. The crate also holds everything about *where* a
+character is and how to get somewhere: the room graph, routes, the position belief, the map
+layout and spawn pools ("Rooms in memory" below). Nothing here sends a command.
 
 ## Building a pack: `wayfarer import-world`
 
@@ -121,3 +123,56 @@ export's record order (`_id` in `raw`), which decides between equally good patte
 Also `rooms_by_name`, `room_raw`, `item`, `spell`, `shop` (with stock), `message`,
 `text_block`, `waypoints`, `paths`, `path_steps` and `meta`. The pack is opened read only and
 nothing is loaded up front.
+
+## Rooms in memory: graph, routes, belief, layout, monsters
+
+Pure data and functions over `&RoomGraph` and plain values; no I/O beyond loading from the pack,
+no clock. The brain advances the belief and asks for routes; the map panel asks for a layout.
+
+```rust
+let graph = RoomGraph::load(&pack)?;     // every room and exit, ~50 ms in release
+let t = Traveller { level: Some(2), ..Traveller::default() };
+let r = route(&graph, (1, 2140), (1, 2150), &t);   // Some([w, w, d])
+let mut b = Belief::unknown();
+b.observe(&graph, Some("Docks"), Some(DirSet::from_names(["north", "south"]).unwrap()), false);
+b.moved(&graph, "n");
+let map = layout(&graph, b.best().unwrap(), 15);
+let monsters = Monsters::load(&pack)?;
+```
+
+- **`RoomGraph`** (`nav.rs`): rooms in key order, edges in one flat list. Each `Edge` has the
+  direction, the `ExitType` (the pack's names mapped once, at load; an unknown name fails the
+  load), the command (`n`, or a Text exit's phrase from its WCCMSG record, all three texts in
+  `phrases`), its `Gate` (level, class, race, alignment, item, toll, spell, cast, key, ability)
+  and, for doors, gates and key doors, the pack's `LockState`. `Node::spawns` says the spawn pass
+  makes monsters there. `listed_exits`/`exits_fit` say what `Obvious exits` can show: Text and
+  Remote Action never, Trap, Spell Trap, Timed and Hidden maybe (a found Hidden exit shows).
+- **`route`** (`route.rs`): Dijkstra, 1 per step, plus `Costs::spawn` (40) for entering a room
+  that spawns (the destination exempt) and `Costs::door` (2) per door. A `Traveller` carries the
+  level, class, race and evil points for gated exits (`None`: not checked), the exits refused
+  this session (`blocked`), the Hidden exits `found`, and the `Category`s allowed beyond the
+  default (Key, Spell, Item, Toll, Cast, Ability, every Hidden). Remote Action exits are never
+  walked. `distances` is a breadth-first search to a radius.
+- **`Belief`** (`belief.rs`): the candidate rooms, empty for unknown. `observe(title, exits,
+  dark)` keeps the candidates with that name whose exits fit; from unknown it starts from every
+  room of that name; when nothing fits it widens to 12 steps around the old candidates (name and
+  exits, then name), then the world. No title: the exits narrow it. `moved(command)` follows the
+  exit `command` takes from each candidate; `refused(command)` returns those exits for the
+  `Traveller`'s `blocked` (a "no exit" refusal means the position is wrong: look and observe,
+  `kb/pitfalls.md` 34). `best()` is the lowest key, `certain()` one candidate.
+- **`layout`** (`layout.rs`): the center at (0, 0, level 0), each room one cell from the room it
+  was reached from in its exit's direction (x east, y south, Up raises the level), breadth first.
+  A room whose cell is taken comes back with `collides` and nothing is placed from it. Segments
+  join placed rooms, a two-way pair once, with a kind (plain, door, hidden, text) and `one_way`.
+  Within 15 steps of Newhaven, Village Entrance two rooms collide, both where the river meets the
+  island: The Silver River, North of Silvermere (1:2363) on Newhaven, Docks, and Gravelly Beach
+  (1:1816) on Newhaven, Forest Path.
+- **`Monsters`** (`monsters.rs`): `by_name` (any case; leading words stripped until a name
+  matches, so "thin giant rat" finds the giant rats), `iter`, `generated(room)` (what the spawn
+  pass makes: `genmonster` alone, else the group within `minlevel..maxlevel`, only when
+  `maxmonsters` > 0 and never with `maxlevel` 0) and `spawn_pool(room)` (that plus the room's
+  `specmon`); `huntable` is evil, not an NPC (`montype` 2) and worth exp; `hunt_room` is a pool
+  with a huntable monster (`kb/progression.md`, `kb/combat.md`).
+
+The graph has no state: doors relock at a cold start, found Hidden exits hide again after about
+five minutes (`kb/navigation.md`); the brain's `Traveller` holds what it learns.
