@@ -11,7 +11,7 @@ use wayfarer_parse::{GameTexts, Registry};
 use wayfarer_proto::{
     CharacterState, ClientKind, PROTOCOL, RoomKind, SessionInfo, ToClient, ToGateway, WorldPackInfo,
 };
-use wayfarer_world::{Key, RoomGraph, WorldPack};
+use wayfarer_world::{Key, Monsters, RoomGraph, WorldPack};
 
 use crate::clock::{Clock, rfc3339};
 use crate::link::Link;
@@ -44,6 +44,8 @@ pub struct Atlas {
     /// Class and race numbers by name, for the gated exits.
     pub classes: HashMap<String, i64>,
     pub races: HashMap<String, i64>,
+    /// Every monster, for the bot: who is worth fighting, what a room spawns.
+    pub monsters: Monsters,
 }
 
 /// Room types (`kb/game-data.md` "Enumerations") and shop types (`kb/economy.md`).
@@ -95,6 +97,7 @@ impl Atlas {
             kinds,
             classes: by_name(pack.classes()?),
             races: by_name(pack.races()?),
+            monsters: Monsters::load(pack)?,
         })
     }
 }
@@ -337,6 +340,10 @@ impl Brain {
             ToClient::WalkStop { session } => match self.sessions.get_mut(&session) {
                 Some(s) => s.walk_stop(out),
                 None => out.push(no_session("walk_stop", &session)),
+            },
+            ToClient::BotControl { session, action } => match self.sessions.get_mut(&session) {
+                Some(s) => s.bot_control(action, now, out),
+                None => out.push(no_session("bot_control", &session)),
             },
             ToClient::MapRequest { session, radius } => match self.sessions.get_mut(&session) {
                 Some(s) => s.map_request(radius, out),

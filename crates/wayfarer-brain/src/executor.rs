@@ -24,6 +24,9 @@ pub enum Expect {
     BashResult,
     /// Anything: the next prompt.
     Prompt,
+    /// An attack: `*Combat Engaged*`. `You do not see <x> here!`, `Your weapon has no
+    /// effect` and the other [`ATTACK_REFUSALS`] refuse it.
+    Engaged,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,6 +72,7 @@ pub enum Confirmed {
     DoorOpened,
     Bash { ok: bool },
     Prompt,
+    Engaged,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,6 +84,9 @@ pub enum Refused {
     },
     /// `open` on a locked door.
     Locked,
+    /// The game would not start the attack: the target is not here, the weapon does nothing
+    /// to it, or another of the [`ATTACK_REFUSALS`].
+    Target,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,6 +95,19 @@ pub enum Outcome {
     Refused(Refused),
     TimedOut,
 }
+
+/// The game's other answers to an attack that start no fight (`kb/screen-patterns.md`, the
+/// registry's names): unmapped, the attack would only time out, and go again.
+pub const ATTACK_REFUSALS: [&str; 8] = [
+    "evil_warning",
+    "wrong_weapon",
+    "unbalanced",
+    "need_rest_attack",
+    "too_afraid",
+    "lawful_block",
+    "guilt",
+    "ambiguous",
+];
 
 /// The game's command words for an attack (`kb/screen-parsing.md` "Command words": every
 /// prefix from the shortest accepted form to the full word): (full word, shortest form).
@@ -136,12 +156,13 @@ pub fn is_train_stats(command: &str) -> bool {
     )
 }
 
-/// Refuse what a guard forbids.
-pub fn guard(command: &str, in_combat: bool) -> Result<(), Guard> {
+/// Refuse what a guard forbids. `in_combat` unknown counts as engaged: an attack goes only
+/// when the character is known to be out of combat.
+pub fn guard(command: &str, in_combat: Option<bool>) -> Result<(), Guard> {
     if is_train_stats(command) {
         return Err(Guard::TrainStats);
     }
-    if in_combat && is_attack(command) {
+    if in_combat != Some(false) && is_attack(command) {
         return Err(Guard::AttackInCombat);
     }
     Ok(())
@@ -173,7 +194,7 @@ impl Default for Executor {
 impl Executor {
     /// Queue an action to go at the next prompt boundary. A guard refuses it; so does a busy
     /// executor (one action at a time), which is a caller's bug.
-    pub fn submit(&mut self, action: Action, in_combat: bool) -> Result<(), Guard> {
+    pub fn submit(&mut self, action: Action, in_combat: Option<bool>) -> Result<(), Guard> {
         guard(&action.command, in_combat)?;
         debug_assert_eq!(self.state, State::Idle, "one action at a time");
         self.state = State::Queued(action);
@@ -236,6 +257,17 @@ impl Executor {
             }
             (Expect::Prompt, GameEvent::Prompt { .. }) => {
                 Some(Outcome::Confirmed(Confirmed::Prompt))
+            }
+            (Expect::Engaged, GameEvent::CombatEngaged) => {
+                Some(Outcome::Confirmed(Confirmed::Engaged))
+            }
+            (Expect::Engaged, GameEvent::YouDoNotSee { .. } | GameEvent::NoEffect) => {
+                Some(Outcome::Refused(Refused::Target))
+            }
+            (Expect::Engaged, GameEvent::Other(e))
+                if ATTACK_REFUSALS.contains(&e.name.as_str()) =>
+            {
+                Some(Outcome::Refused(Refused::Target))
             }
             _ => None,
         };
@@ -302,17 +334,24 @@ mod tests {
             "a rat", "att rat", "attack", "bash rat", "bas", "bs thug", "aa", "pu rat",
         ] {
             assert!(is_attack(cmd), "{cmd}");
-            assert_eq!(guard(cmd, true), Err(Guard::AttackInCombat), "{cmd}");
-            assert_eq!(guard(cmd, false), Ok(()), "{cmd}");
+            assert_eq!(guard(cmd, Some(true)), Err(Guard::AttackInCombat), "{cmd}");
+            // Not known to be out of combat: engaged, as far as the guard goes.
+            assert_eq!(guard(cmd, None), Err(Guard::AttackInCombat), "{cmd}");
+            assert_eq!(guard(cmd, Some(false)), Ok(()), "{cmd}");
         }
         // A door, a move, a look: not attacks.
         for cmd in ["bash n", "bash north", "n", "look", "ba", "open n", "st"] {
             assert!(!is_attack(cmd), "{cmd}");
-            assert_eq!(guard(cmd, true), Ok(()), "{cmd}");
+            assert_eq!(guard(cmd, Some(true)), Ok(()), "{cmd}");
+            assert_eq!(guard(cmd, None), Ok(()), "{cmd}");
         }
         let mut ex = Executor::default();
         assert_eq!(
-            ex.submit(Action::new("a rat", Expect::Prompt), true),
+            ex.submit(Action::new("a rat", Expect::Engaged), Some(true)),
+            Err(Guard::AttackInCombat)
+        );
+        assert_eq!(
+            ex.submit(Action::new("a rat", Expect::Engaged), None),
             Err(Guard::AttackInCombat)
         );
         assert!(!ex.busy());
@@ -321,12 +360,12 @@ mod tests {
     #[test]
     fn train_stats_is_refused_always() {
         for cmd in ["train stats", "TRAIN STATS", "tra st", "train  stat"] {
-            assert_eq!(guard(cmd, false), Err(Guard::TrainStats), "{cmd}");
+            assert_eq!(guard(cmd, Some(false)), Err(Guard::TrainStats), "{cmd}");
         }
-        assert_eq!(guard("train", false), Ok(()));
+        assert_eq!(guard("train", Some(false)), Ok(()));
         let mut ex = Executor::default();
         assert_eq!(
-            ex.submit(Action::new("train stats", Expect::Prompt), false),
+            ex.submit(Action::new("train stats", Expect::Prompt), Some(false)),
             Err(Guard::TrainStats)
         );
         assert!(!ex.busy());
@@ -336,7 +375,7 @@ mod tests {
     async fn one_action_answered_then_the_prompt() {
         let mut ex = Executor::default();
         let now = Instant::now();
-        ex.submit(Action::new("n", Expect::RoomSeen), false)
+        ex.submit(Action::new("n", Expect::RoomSeen), Some(false))
             .unwrap();
         assert!(ex.busy() && ex.in_flight().is_none());
         assert_eq!(ex.take_ready(now).as_deref(), Some("n"));
@@ -349,7 +388,7 @@ mod tests {
         assert_eq!(outcome, Outcome::Confirmed(Confirmed::Room));
         assert!(!ex.busy());
 
-        ex.submit(Action::new("n", Expect::RoomSeen), false)
+        ex.submit(Action::new("n", Expect::RoomSeen), Some(false))
             .unwrap();
         ex.take_ready(now);
         ex.event(&GameEvent::DoorClosed { locked: false });
@@ -359,7 +398,7 @@ mod tests {
             Outcome::Refused(Refused::DoorClosed { locked: false })
         );
 
-        ex.submit(Action::new("bash n", Expect::BashResult), false)
+        ex.submit(Action::new("bash n", Expect::BashResult), Some(false))
             .unwrap();
         ex.take_ready(now);
         assert_eq!(ex.deadline(), Some(now + ACTION_TIMEOUT));
@@ -367,5 +406,34 @@ mod tests {
             ex.finished(true, now + ACTION_TIMEOUT).unwrap().1,
             Outcome::TimedOut
         );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_attack_is_engaged_or_refused() {
+        let mut ex = Executor::default();
+        let now = Instant::now();
+        ex.submit(Action::new("a rat", Expect::Engaged), Some(false))
+            .unwrap();
+        ex.take_ready(now);
+        ex.event(&GameEvent::CombatEngaged);
+        assert_eq!(
+            ex.finished(true, now).unwrap().1,
+            Outcome::Confirmed(Confirmed::Engaged)
+        );
+        for refusal in [
+            GameEvent::YouDoNotSee {
+                target: "rat".into(),
+            },
+            GameEvent::NoEffect,
+        ] {
+            ex.submit(Action::new("a rat", Expect::Engaged), Some(false))
+                .unwrap();
+            ex.take_ready(now);
+            ex.event(&refusal);
+            assert_eq!(
+                ex.finished(true, now).unwrap().1,
+                Outcome::Refused(Refused::Target)
+            );
+        }
     }
 }

@@ -2,6 +2,10 @@
 
 export const PROTOCOL = 1;
 
+export type { Bot } from "./Bot";
+export type { BotAction } from "./BotAction";
+export type { BotMode } from "./BotMode";
+export type { BotState } from "./BotState";
 export type { CharacterState } from "./CharacterState";
 export type { Chunk } from "./Chunk";
 export type { ClientKind } from "./ClientKind";

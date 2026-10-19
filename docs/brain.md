@@ -3,9 +3,10 @@
 The brain is the part of wayfarer that understands the game. It attaches to a running gateway
 as its one brain client, parses every session's output, keeps a model of each character and
 sends the UIs events and snapshots of it. With a world pack it also knows where each character
-is, serves the map panel, and walks a character to a room when a UI asks ("Walking", below).
-Otherwise it plays nothing: the lines it sends to the game are a re-sync's and a walk's. It
-can be stopped and started at any time; the gateway keeps the characters logged in meanwhile.
+is, serves the map panel, walks a character to a room when a UI asks ("Walking", below), and
+plays a character where it stands when the player presses Start ("Fight here"). Otherwise it
+plays nothing: the lines it sends to the game are a re-sync's, a walk's and the bot's. It can
+be stopped and started at any time; the gateway keeps the characters logged in meanwhile.
 
 ## Running it
 
@@ -66,7 +67,8 @@ line when it starts and attaches, one per re-sync. Nothing the player types is l
 - **Fell behind.** On `lagged`, or a gap in the live `seq`s, it fetches the missed chunks with
   `history_request` and holds live output until they are in.
 - **Control.** `resync` starts a re-sync; `state_request` gets the whole `character` (one
-  session's or all) and `brain_info` again.
+  session's or all) and `brain_info` again; `walk_to` and `walk_stop` walk ("Walking");
+  `bot_control` starts, stops, pauses and resumes the bot ("Fight here").
 - **Closed sessions** keep their last snapshot; the UI shows the session's state beside it.
 
 ## The re-sync
@@ -134,8 +136,56 @@ progress (after the move in flight).
 - **Arrival**: "Arrived: Newhaven, Arena"; `walking` leaves the snapshot.
 
 **The guards** live in the executor every action goes through, so nothing the bot ever does can
-break them: no attack command (`a`, `bash rat`, `bs`, ...) while combat is engaged, and never
-`train stats` (`docs/plan/01-goals.md` "Rules"). Nothing sends either yet.
+break them: no attack command (`a`, `bash rat`, `bs`, ...) unless the character is known to be
+out of combat (engaged, or not known either way, refuses it), and never `train stats`
+(`docs/plan/01-goals.md` "Rules").
+
+## Fight here
+
+The first slice of the bot (`docs/plan/03-engine.md` sections 4 and 5). With the character
+standing in a room the player chose, **Start** (`F10` or the tile's `[►]`, `bot_control
+start`) makes it fight what comes there, rest when low, and stop itself when HP is
+dangerously low. Every character starts **stopped**; the snapshot's `bot` says `{state, mode,
+narration, reason?}`, and every change of what the bot is doing is a `notice` (its narration).
+It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
+
+- **Start** re-syncs first (`st` for the HP maximum, `look` for who is here), remembers the room
+  as *home*, then decides at every prompt with nothing in flight.
+- **The modes**, highest first; the first that wants control has it:
+
+  | Mode | Wants control when | Does |
+  |---|---|---|
+  | Recover | HP below 80% (or poisoned) and not fighting; or a rest it began is not finished | Rests: in this room if nothing spawns here; else walks (through the walker, each step confirmed) to the nearest room within 5 steps where nothing spawns, and rests there; else rests here anyway. `rest` again when the next prompt lacks `(Resting)` (three times, then a 30 s wait; `You are too sick to rest!` waits 30 s too). Rested at 95%, it walks back home |
+  | Fight | Engaged; or a monster worth fighting is here | Picks one that is attacking the character first, else the first listed; sends `a <its last word>` once and lets auto-combat run. After `*Combat Off*` or a kill it looks (`look`) and picks the next. A target the game refuses (`You do not see rat here!`, `Your weapon has no effect`) is left alone for the rest of the session. Never leaves the room |
+  | Idle | Otherwise | Sends nothing: "Waiting here" |
+
+- **Worth fighting**: every record the name finds (adjectives stripped: `fat giant rat` is a
+  giant rat) is evil, not an NPC and worth experience (`kb/pitfalls.md` 1). **A room spawns**
+  when the spawn pass makes monsters there or it holds one worth fighting; a room the position
+  is not sure of counts as spawning. A shopkeeper's room is quiet.
+- **Engaged** comes from `*Combat Engaged*` and `*Combat Off*`. Auto-combat can also end without
+  a word (pitfall 42): 12 s with none of the character's own blows and it counts as over. A
+  monster's blows are not the character's: one attacking a character that is not fighting
+  back is fought at once. Before the brain has seen either, the character counts as engaged
+  until 12 s pass without its blows.
+- **A monster that attacks while resting** wakes the bot: Fight takes the character (in the
+  quiet room, if it is there), then Recover carries on and walks home when rested. One that
+  arrives and doesn't attack leaves the rest alone.
+- **Stop in place of Flee**: below 30% HP the bot stops itself with a warning, "Stopped at 24%
+  HP: flee is not built yet; fight or run by hand". Auto-combat goes on in the game: the fight
+  is the player's. So does dying (`You have been killed!`) and leaving the realm.
+- **Pause and take-over**: a line the player types (not the brain's own) while the bot runs
+  pauses it after the action in flight: "You took over Waydeva", then "Paused: you took over".
+  So do a `walk_to` from the map and `pause` (`F9`, `[║]`). Paused, it sends nothing. **Resume**
+  (`F9`, `[►]`) re-syncs first, then narrates what it does next. **Stop** (`F10`, `[■]`)
+  sends nothing more; a walk of the bot's stops after the move in flight.
+- **Constants** in this slice, settings in M4 (`docs/plan/04-settings.md` section 3): rest
+  below 80%, rest until 95%, stop below 30%, a quiet room within 5 steps
+  (`crates/wayfarer-brain/src/policy.rs`).
+
+Not in this slice: coins and loot, healing spells and healers, bash and the other attacks,
+flee, "guard while paused" (paused means nothing is sent), and a fight the bot thinks it
+cannot win.
 
 ## Stopping, restarting, the gateway going away
 
@@ -155,12 +205,14 @@ break them: no attack command (`a`, `bash rat`, `bs`, ...) while combat is engag
 
 Nothing on disk. M1 has no plan, loop position, death pile or pause state to keep (John,
 2026-10-19), so a restarted brain rebuilds everything from the gateway's history and a
-re-sync. The store arrives with the first card that has state to keep across restarts (the
+re-sync; the bot's state is kept only while the brain runs (a restarted brain's bots are
+stopped). The store arrives with the first card that has state to keep across restarts (the
 bot's modes and plans, M2 onward); `docs/plan/03-engine.md` section 7 lists what it will
 hold.
 
 ## Not yet
 
-No bot and no modes beyond walking; no input arbitration (every client's input still goes
-straight to the game, `docs/protocol.md`; a typed line stops a walk); moves are not pipelined
-along a known route (one in flight); the refused exits are forgotten when the brain restarts.
+No modes beyond Fight, Recover and Idle (no Flee, Maintain or Task); no input arbitration
+(every client's input still goes straight to the game, `docs/protocol.md`; a typed line stops
+a walk and pauses the bot); moves are not pipelined along a known route (one in flight); the
+refused exits are forgotten when the brain restarts.

@@ -4,6 +4,7 @@
   import { FitAddon } from "@xterm/addon-fit";
   import { WebglAddon } from "@xterm/addon-webgl";
   import "@xterm/xterm/css/xterm.css";
+  import { botButtons, narrationLine } from "./lib/bot";
   import { keyBytes, type GatewayClient } from "./lib/gateway";
   import { HEADER_CELL_PX, bar, expText, fitHeader, levelClass, roomText } from "./lib/header";
   import { InputHistory } from "./lib/input";
@@ -38,6 +39,8 @@
   const c = $derived(character);
   const hp = $derived(bar(c?.hp, c?.hp_max));
   const mana = $derived(bar(c?.mana, c?.mana_max));
+  const buttons = $derived(botButtons(c?.bot));
+  const narration = $derived(narrationLine(c?.bot));
   const shown = $derived(
     fitHeader(
       { number, name: info.name, server: info.server, state: info.state, character: c },
@@ -202,6 +205,20 @@
       {/if}
     {/if}
     <span class="frame fill"></span>
+    {#if buttons.length > 0}
+      {#each buttons as b (b.action)}
+        <button
+          class="ctl {b.action}"
+          title={b.title}
+          aria-label="{b.action} the bot"
+          onclick={(e) => {
+            e.stopPropagation();
+            client.botControl(info.id, b.action);
+          }}>[{b.label}]</button
+        >
+      {/each}
+      <span class="frame">{" ═ "}</span>
+    {/if}
     {#if shown.has("server")}
       <span class="server">{info.server}</span>
       <span class="frame">{" ═ "}</span>
@@ -212,6 +229,9 @@
     {/if}
     <span class="frame">{" ═╗"}</span>
   </header>
+  {#if narration !== null}
+    <div class="narration {c?.bot?.state}" title={c?.bot?.reason ?? ""}>{narration}</div>
+  {/if}
   <div class="screen">
     <div class="term" bind:this={host}></div>
     {#if offline}
@@ -394,6 +414,37 @@
   .badge.closed {
     background: var(--vga-darkgray);
     color: var(--vga-lightgray);
+  }
+  /* The bot's buttons sit in the header's 16 px line: one cell each for the brackets and the
+     glyph (lib/bot.ts BUTTON_CELLS). */
+  header .ctl {
+    padding: 0;
+    border: none;
+    line-height: 16px;
+    color: var(--vga-lightgray);
+  }
+  header .ctl:hover {
+    color: var(--vga-white);
+  }
+  header .ctl.start,
+  header .ctl.resume {
+    color: var(--vga-lightgreen);
+  }
+  header .ctl.stop {
+    color: var(--vga-lightred);
+  }
+  /* What the bot is doing, under the header while it runs or is paused. */
+  .narration {
+    height: 16px;
+    line-height: 16px;
+    padding: 0 1ch;
+    overflow: hidden;
+    white-space: pre;
+    text-overflow: ellipsis;
+    color: var(--vga-lightcyan);
+  }
+  .narration.paused {
+    color: var(--vga-yellow);
   }
   .screen {
     position: relative;

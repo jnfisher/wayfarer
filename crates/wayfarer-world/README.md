@@ -169,8 +169,8 @@ let monsters = Monsters::load(&pack)?;
   (1:1816) on Newhaven, Forest Path.
 - **`Monsters`** (`monsters.rs`): `by_name` (any case; leading words stripped until a name
   matches, so "thin giant rat" finds the giant rats), `iter`, `generated(room)` (what the spawn
-  pass makes: `genmonster` alone, else the group within `minlevel..maxlevel`, only when
-  `maxmonsters` > 0 and never with `maxlevel` 0) and `spawn_pool(room)` (that plus the room's
+  pass makes: `genmonster` alone, else the group within `minlevel..maxlevel`, only in Normal,
+  Arena and Lair rooms, only when `maxmonsters` > 0 and never with `maxlevel` 0) and `spawn_pool(room)` (that plus the room's
   `specmon`); `huntable` is evil, not an NPC (`montype` 2) and worth exp; `hunt_room` is a pool
   with a huntable monster (`kb/progression.md`, `kb/combat.md`).
 

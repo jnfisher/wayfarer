@@ -280,6 +280,11 @@ impl Character {
     pub fn snapshot(&self) -> CharacterState {
         self.state.clone()
     }
+
+    /// The snapshot, borrowed.
+    pub fn state(&self) -> &CharacterState {
+        &self.state
+    }
 }
 
 /// The JSON merge patch (RFC 7386) that turns `old` into `new`: changed fields with their new

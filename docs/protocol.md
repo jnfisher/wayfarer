@@ -150,7 +150,7 @@ to every UI. It relays by message type and never reads `fields` or `patch`.
 
 ```json
 {"type":"event","session":"kasimir","seq":43,"line_no":88,"name":"you_hit","cat":"combat","fields":{"dmg":"1","target":"fat giant rat","verb":"punch"},"line":"You punch fat giant rat for 1 damage!"}
-{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]}}}
+{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]},"bot":{"state":"running","mode":"fight","narration":"Fight: large giant rat"}}}
 {"type":"character_patch","session":"kasimir","patch":{"hp":23,"in_combat":true,"room_title":null}}
 {"type":"brain_info","build":"0.1.0 (3f2a9c1)","started_at":"2026-10-19T12:00:00Z","world_pack":{"path":"worlds/stock-1.11p.sqlite","hash":"sha256:5d41402abc4b2a76"}}
 {"type":"notice","session":"kasimir","text":"re-synced"}
@@ -179,6 +179,7 @@ The character snapshot: every field is optional and left out until the brain kno
 | `encumbrance` | `{current?, max?, level?}`: weight carried, what the character can carry, and the game's word for it (`None`, `Light`, ...) |
 | `kills` | Monster deaths seen since the brain attached |
 | `position` | `{map?, room?, candidates, title?}`: the room the brain believes the character is in (the lowest key among the candidates; absent when unknown), how many rooms fit what was seen (1 is certain), and the last room title seen. Absent without a world pack |
+| `bot` | `{state, mode, narration, reason?}`, with a world pack: `state` is `stopped` (the default), `running` or `paused`; `mode` is `idle`, `fight` or `recover`; `narration` is what it is doing ("Fight: large giant rat", "Recover: resting to 95% in Newhaven, Narrow Road", "Paused: you took over"); `reason` why it stopped or paused, when it did so itself or for the player ([brain.md](brain.md) "Fight here") |
 | `walking` | `{to, name, steps_left, step, commands}` while a walk is in progress: the destination (`{map, room}`) and its name, the steps not yet confirmed, the step in progress from 1 (counted over the whole walk, replans included), and what the walker will type for each step left, the one in progress first (`n`, or a text exit's phrase such as `borrow skiff`; a closed door adds an `open` not listed). Absent when not walking |
 
 `hp` follows the prompt. Between prompts the brain also applies `You took 3 damage.` (lowered),
@@ -210,6 +211,7 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 | `walk_to {session, map, room}` | Walk the character to that room, confirming each step ([brain.md](brain.md) "Walking"); replaces a walk in progress |
 | `walk_stop {session}` | Stop walking after the move in flight |
 | `map_request {session, radius?}` | Send a `map_view` now, of the rooms within `radius` steps (15 when left out); later views use the same radius |
+| `bot_control {session, action}` | The bot ([brain.md](brain.md) "Fight here"): `start` (fight here: re-sync, then fight what comes and rest when low), `stop`, `pause` (after the action in flight) or `resume` (re-sync, then carry on) |
 
 ```json
 {"type":"resync","session":"kasimir"}
@@ -217,6 +219,7 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 {"type":"walk_to","session":"kasimir","map":1,"room":2150}
 {"type":"walk_stop","session":"kasimir"}
 {"type":"map_request","session":"kasimir","radius":15}
+{"type":"bot_control","session":"kasimir","action":"start"}
 ```
 
 A UI that sends a brain message (`event`, `character`, ...), or a brain that sends a control

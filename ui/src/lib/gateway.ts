@@ -7,7 +7,7 @@
 // for everything after the last `seq`.
 
 import { PROTOCOL } from "../proto";
-import type { CharacterState, Chunk, SessionInfo, SessionState, ToClient, ToGateway } from "../proto";
+import type { BotAction, CharacterState, Chunk, SessionInfo, SessionState, ToClient, ToGateway } from "../proto";
 import { clampRadius, type MapView } from "./map";
 
 /** The part of the browser's `WebSocket` the client uses. */
@@ -172,6 +172,11 @@ export class GatewayClient {
   /** Stop a character's walk after the move in flight; false when not connected. */
   walkStop(session: string): boolean {
     return this.send({ type: "walk_stop", session });
+  }
+
+  /** Start, stop, pause or resume a character's bot; false when not connected. */
+  botControl(session: string, action: BotAction): boolean {
+    return this.send({ type: "bot_control", session, action });
   }
 
   /** Ask for a `map_view` now, of the rooms within `radius` steps (clamped to 1-30). */

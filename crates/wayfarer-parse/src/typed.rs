@@ -14,7 +14,7 @@ use std::sync::OnceLock;
 use regex::Regex;
 
 use crate::event::{Event, Value};
-use crate::helpers::{Carried, Exit, parse_carrying, parse_exits};
+use crate::helpers::{Carried, Exit, parse_also_here, parse_carrying, parse_exits};
 
 /// Which prompt form a prompt was read in (`set statline`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -221,6 +221,38 @@ pub enum GameEvent {
         ok: bool,
     },
 
+    /// `room_also_here`: who else is in the room, as listed. `players` are the capitalised
+    /// single words (a named monster looks the same: check the monster names); `monsters` the
+    /// rest, with their adjectives (`large giant rat`).
+    AlsoHere {
+        players: Vec<String>,
+        monsters: Vec<String>,
+    },
+    /// `monster_arrives` (the monster's own text) or `monster_arrives_generic`: a monster came
+    /// in. `name` as shown, without its article (`thin giant rat`).
+    MonsterArrives {
+        name: String,
+    },
+    /// `monster_leaves` or `monster_leaves_generic`.
+    MonsterLeaves {
+        name: String,
+    },
+    /// Someone attacked this character: `attacks_you` (`moves to attack you!`), or a monster's
+    /// blow, miss, dodge or deflect at it (`mon_hits_you`, `mon_miss_you`, ... and the built-in
+    /// forms). `name` without its article.
+    AttackedBy {
+        name: String,
+    },
+    /// `target_missing`: `You do not see rat here!` (`target` empty for `You don't see your
+    /// target here!`).
+    YouDoNotSee {
+        target: String,
+    },
+    /// `no_effect_weapon`: `Your weapon has no effect against this monster!`.
+    NoEffect,
+    /// `rest_sick`: `You are too sick to rest!` (poisoned; or to meditate).
+    TooSick,
+
     CombatEngaged,
     CombatOff,
     /// `monster_death`: a monster's death text, with the monsters that text belongs to (one
@@ -342,6 +374,17 @@ fn mana_kind(s: Option<&str>) -> Option<ManaKind> {
     }
 }
 
+/// A monster's name as a line shows it, without the article a sentence starts with (`The
+/// large giant rat`, `A thin giant rat`).
+fn monster_name(ev: &Event, field: &str) -> String {
+    let name = ev.text(field).unwrap_or_default().trim();
+    ["The ", "the ", "An ", "an ", "A ", "a "]
+        .iter()
+        .find_map(|a| name.strip_prefix(a))
+        .unwrap_or(name)
+        .to_owned()
+}
+
 fn prompt(ev: &Event) -> GameEvent {
     let form = match ev.text("form") {
         Some("custom") => PromptForm::Custom,
@@ -441,6 +484,39 @@ impl GameEvent {
             name if Refusal::of(name).is_some() => G::MoveRefused {
                 reason: Refusal::of(name).expect("a refusal"),
             },
+            "room_also_here" => {
+                let (players, monsters) = parse_also_here(ev.text("who").unwrap_or_default())
+                    .into_iter()
+                    .partition::<Vec<_>, _>(|p| p.player);
+                G::AlsoHere {
+                    players: players.into_iter().map(|p| p.name).collect(),
+                    monsters: monsters.into_iter().map(|p| p.name).collect(),
+                }
+            }
+            "monster_arrives" | "monster_arrives_generic" => G::MonsterArrives {
+                name: monster_name(ev, "mon"),
+            },
+            "monster_leaves" | "monster_leaves_generic" => G::MonsterLeaves {
+                name: monster_name(ev, "mon"),
+            },
+            "attacks_you" => G::AttackedBy {
+                name: monster_name(ev, "who"),
+            },
+            "mon_hits_you"
+            | "mon_hits_you_generic"
+            | "mon_miss_you"
+            | "mon_dodge_you"
+            | "mon_deflect_you"
+            | "mon_miss_builtin"
+            | "mon_dodge_builtin"
+            | "mon_deflect_builtin" => G::AttackedBy {
+                name: monster_name(ev, "mon"),
+            },
+            "target_missing" => G::YouDoNotSee {
+                target: text(ev, "target"),
+            },
+            "no_effect_weapon" => G::NoEffect,
+            "rest_sick" => G::TooSick,
             "combat_engaged" => G::CombatEngaged,
             "combat_off" => G::CombatOff,
             "monster_death" => G::MonsterDeath {

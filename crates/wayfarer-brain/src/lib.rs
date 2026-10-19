@@ -2,7 +2,8 @@
 //! client, parses every session's output, keeps a character model per session, publishes
 //! events and snapshots to the UIs, and re-syncs a character by asking the game (`st`, `exp`,
 //! `i`, `look`). With a world pack it also keeps each character's position, serves the map
-//! panel and walks a character to a room (`walk_to`) through the [`executor`].
+//! panel, walks a character to a room (`walk_to`) through the [`executor`], and plays it where
+//! it stands when asked (`bot_control`: "fight here", with the [`policy`] constants).
 //!
 //! ```no_run
 //! # async fn f() -> Result<(), Box<dyn std::error::Error>> {
@@ -20,14 +21,19 @@ mod brain;
 pub mod character;
 mod clock;
 pub mod executor;
+mod fight;
 mod link;
+mod modes;
+pub mod policy;
 mod position;
+mod recover;
 mod session;
 mod walker;
 
 pub use brain::{Atlas, BUILD, Brain, BrainError, World};
 pub use character::{Character, apply_patch, merge_patch};
 pub use clock::{Clock, FixedClock, SystemClock, rfc3339};
+pub use fight::ATTACK_TRIES;
 pub use link::{ChannelLink, ConnectError, Link, WsLink};
 pub use session::{
     ANSWER_TIMEOUT, HISTORY_CHUNKS, IDLE, MAP_RADIUS, OWN_PATIENCE, RESYNC_COMMANDS,

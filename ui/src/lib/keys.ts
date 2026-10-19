@@ -34,6 +34,16 @@ export const KEY_ROWS: KeyRow[] = [
   { group: "Map", keys: "Click a room on the map", does: "Walk the character there; stop under the map ends the walk" },
   { group: "Map", keys: "Mouse wheel, drag on the map", does: "Zoom (three sizes), pan; centre goes back to the character" },
   {
+    group: "Bot",
+    keys: "F10, or [►] and [■] in the tile's header",
+    does: "Start the focused character's bot where it stands (fight what comes, rest when low), or stop it",
+  },
+  {
+    group: "Bot",
+    keys: "F9, or [║] and [►] in the tile's header",
+    does: "Pause or resume the focused character's bot; a line you type pauses it too",
+  },
+  {
     group: "Development",
     keys: "Alt+D, or the dev button",
     does: "Open the drawer on the dev panel: the focused character's events, unclassified lines and the brain; or close it (on a Mac, Option)",

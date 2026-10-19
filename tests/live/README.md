@@ -78,6 +78,29 @@ It claims and logs on a character, then:
 
 The brain's log is `NN-walk/brain.log`.
 
+## Scenario "fight" (M2, "fight here")
+
+```sh
+scripts/live-check.sh --scenario fight
+```
+
+It claims and logs on a character (level 3 or below: the pool's are level 1), then:
+
+1. **The world pack** and **a brain**, as in "walk".
+2. **To the Arena**: `walk_to` the Newhaven Narrow Road (1/2146), then the Arena (1/2150) down
+   the stairs, each checked as in "walk" (skipped when the character is already there).
+3. **Start** (`bot_control start`): `*Combat Engaged*` must show within a minute (the bot
+   re-syncs first); a warning from the brain fails it.
+4. **A kill or a stop**: within three minutes, `You gain N experience.` or the bot stopping
+   itself (below 30% HP); the summary lists the HP values the snapshot went through.
+5. **Stop** (`bot_control stop`), whatever happened: the snapshot's `bot.state` is `stopped`.
+6. **Walk out** to the Narrow Road, once the character is not engaged (a minute at most: a
+   fight can lapse without `*Combat Off*`); tried three times, since a fight stops a walk.
+7. **Rest by hand** below half HP: `rest` until 80%, sent again if an attack breaks it.
+8. **Stopping the brain**, then the gateway logs off as in M0, out of the Arena.
+
+The brain's log is `NN-fight/brain.log`.
+
 ## The test-character pool
 
 `fixtures.toml` lists the characters: account, family name, race, class and the stat totals

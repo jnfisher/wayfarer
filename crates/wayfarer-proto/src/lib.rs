@@ -8,7 +8,7 @@
 //! M0 has the hello, session, terminal and input families; M1 adds the brain's: events, state
 //! and dev (brain → UIs), control (UI → brain) and `sent` (gateway → brain); M2 adds walking
 //! and the map (`walk_to`, `walk_stop`, `map_request`, `map_view`, and the character's
-//! `position` and `walking`). [`Family`] says who may send what. Adding a variant later bumps nothing; removing or changing one bumps
+//! `position` and `walking`), and the bot's first slice (`bot_control`, the character's `bot`). [`Family`] says who may send what. Adding a variant later bumps nothing; removing or changing one bumps
 //! [`PROTOCOL`].
 
 use std::path::Path;
@@ -152,6 +152,58 @@ pub struct CharacterState {
     /// The walk in progress; absent when not walking.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub walking: Option<Walking>,
+    /// The bot (M2's "fight here"); absent without a world pack.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bot: Option<Bot>,
+}
+
+/// Whether the bot is playing a character (`docs/plan/03-engine.md` section 5).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum BotState {
+    /// Sends nothing; the player plays. The default.
+    #[default]
+    Stopped,
+    Running,
+    /// Sends nothing until resumed: the player took over, or asked for a pause.
+    Paused,
+}
+
+/// The mode in control (`docs/plan/03-engine.md` section 4).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum BotMode {
+    #[default]
+    Idle,
+    Fight,
+    Recover,
+}
+
+/// What the bot is doing for a character.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct Bot {
+    pub state: BotState,
+    pub mode: BotMode,
+    /// One line on what it is doing and why ("Fight: large giant rat").
+    pub narration: String,
+    /// Why it stopped or paused, when it did so by itself or for the player.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub reason: Option<String>,
+}
+
+/// A `bot_control` request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum BotAction {
+    /// Start playing in the current room.
+    Start,
+    /// Stop: the player plays.
+    Stop,
+    /// Hold after the action in flight.
+    Pause,
+    /// Re-sync, then carry on.
+    Resume,
 }
 
 /// A room of the world pack: its map and room number.
@@ -463,6 +515,10 @@ pub enum ToClient {
         #[ts(optional)]
         radius: Option<u32>,
     },
+    BotControl {
+        session: SessionId,
+        action: BotAction,
+    },
 
     /// To the brain only: a line went to the game, typed by a client or sent by a logon or
     /// log-off step; `seq` is the session's latest output `seq` at that moment. A password is
@@ -548,6 +604,11 @@ pub enum ToGateway {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         radius: Option<u32>,
+    },
+    /// UI → brain: start, stop, pause or resume the bot for the character.
+    BotControl {
+        session: SessionId,
+        action: BotAction,
     },
 
     /// Brain → UIs: one parsed event, as `wayfarer-parse` produced it, with the output `seq`
@@ -653,6 +714,7 @@ impl ToClient {
         "walk_to",
         "walk_stop",
         "map_request",
+        "bot_control",
         "sent",
         "brain_state",
         "brain_lagged",
@@ -681,6 +743,7 @@ impl ToClient {
             Self::WalkTo { .. } => "walk_to",
             Self::WalkStop { .. } => "walk_stop",
             Self::MapRequest { .. } => "map_request",
+            Self::BotControl { .. } => "bot_control",
             Self::Sent { .. } => "sent",
             Self::BrainState { .. } => "brain_state",
             Self::BrainLagged { .. } => "brain_lagged",
@@ -702,6 +765,7 @@ impl ToClient {
             | Self::WalkTo { session, .. }
             | Self::WalkStop { session }
             | Self::MapRequest { session, .. }
+            | Self::BotControl { session, .. }
             | Self::Sent { session, .. } => Some(session),
             Self::Notice { session, .. }
             | Self::Warning { session, .. }
@@ -738,6 +802,7 @@ impl ToGateway {
         "walk_to",
         "walk_stop",
         "map_request",
+        "bot_control",
         "event",
         "character",
         "character_patch",
@@ -760,6 +825,7 @@ impl ToGateway {
             Self::WalkTo { .. } => "walk_to",
             Self::WalkStop { .. } => "walk_stop",
             Self::MapRequest { .. } => "map_request",
+            Self::BotControl { .. } => "bot_control",
             Self::Event { .. } => "event",
             Self::Character { .. } => "character",
             Self::CharacterPatch { .. } => "character_patch",
@@ -782,7 +848,8 @@ impl ToGateway {
             | Self::StateRequest { .. }
             | Self::WalkTo { .. }
             | Self::WalkStop { .. }
-            | Self::MapRequest { .. } => Family::Control,
+            | Self::MapRequest { .. }
+            | Self::BotControl { .. } => Family::Control,
             Self::Event { .. }
             | Self::Character { .. }
             | Self::CharacterPatch { .. }
@@ -802,6 +869,7 @@ impl ToGateway {
             Self::WalkTo { session, map, room } => ToClient::WalkTo { session, map, room },
             Self::WalkStop { session } => ToClient::WalkStop { session },
             Self::MapRequest { session, radius } => ToClient::MapRequest { session, radius },
+            Self::BotControl { session, action } => ToClient::BotControl { session, action },
             Self::Event {
                 session,
                 seq,

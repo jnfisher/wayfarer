@@ -5,6 +5,7 @@
   import Help from "./Help.svelte";
   import DevPanel from "./DevPanel.svelte";
   import MapPanel from "./MapPanel.svelte";
+  import { PAUSE_KEY, START_KEY, botKeyAction } from "./lib/bot";
   import {
     DEV_PANEL_CODE,
     FOCUS_TILE_CODE,
@@ -263,8 +264,16 @@
   }
 
   // Alt+M and Alt+D open the drawer on the map or dev panel; Alt+1..Alt+6 focus a tile; Ctrl +/-/0
-  // zoom the focused one. Captured before xterm sees them.
+  // zoom the focused one; F9 and F10 pause or resume, start or stop its bot. Captured before
+  // xterm sees them.
   function onkeydown(e: KeyboardEvent) {
+    if ((e.key === PAUSE_KEY || e.key === START_KEY) && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      e.preventDefault();
+      const id = sessions[focused]?.id;
+      const action = id && brain.attached ? botKeyAction(e.key, brain.characters[id]?.bot) : null;
+      if (id && action) client.botControl(id, action);
+      return;
+    }
     const drawer: DrawerPanel | null = e.code === MAP_PANEL_CODE ? "map" : e.code === DEV_PANEL_CODE ? "dev" : null;
     if (e.altKey && !e.ctrlKey && !e.metaKey && drawer) {
       e.preventDefault();

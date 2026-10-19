@@ -9,6 +9,10 @@ use crate::pack::{Monster, Room, WorldPack};
 /// `montype` of an NPC: shopkeepers, the ferryman, healers.
 pub const MONTYPE_NPC: i64 = 2;
 
+/// The room types the spawn pass visits (`kb/progression.md`, `LJNBKGND.C:2466-2620`): Normal,
+/// Arena and Lair. Shops get only the start-up fill; a Colliseum, hotel or jail nothing.
+const SPAWN_ROOM_TYPES: [i64; 3] = [0, 2, 3];
+
 /// Every known monster, in memory.
 pub struct Monsters {
     list: Vec<Monster>,
@@ -78,11 +82,11 @@ impl Monsters {
     }
 
     /// What the spawn pass makes in a room (`generate_monster`, `LJNMONST.C:458-620`): nothing
-    /// unless `maxmonsters` > 0; then the room's `genmonster` when it has one, else every
+    /// unless the pass visits the room's type and `maxmonsters` > 0; then the room's `genmonster` when it has one, else every
     /// monster with `montype` = `mongroup` and `genindex` within `minlevel` (0 = any) to
     /// `maxlevel` (0 = nothing).
     pub fn generated(&self, room: &Room) -> Vec<&Monster> {
-        if room.max_monsters <= 0 {
+        if room.max_monsters <= 0 || !SPAWN_ROOM_TYPES.contains(&room.room_type) {
             return Vec::new();
         }
         if room.gen_monster != 0 {
@@ -170,6 +174,16 @@ mod tests {
         assert_eq!(nums(&room(3, 3, 6, (1, 3))), [3]);
         assert!(nums(&room(0, 3, 6, (0, 0))).is_empty());
         assert!(nums(&room(0, 0, 6, (1, 3))).is_empty());
+        // Normal, Arena and Lair rooms only: not a shop or a Colliseum.
+        for (room_type, spawns) in [(0, true), (1, false), (2, true), (3, true), (5, false)] {
+            let mut r = room(0, 3, 6, (1, 3));
+            r.room_type = room_type;
+            assert_eq!(
+                !ms.generated(&r).is_empty(),
+                spawns,
+                "room type {room_type}"
+            );
+        }
         let mut shop = room(0, 1, 2, (0, 0));
         shop.spec_mon = 3;
         assert_eq!(ms.spawn_pool(&shop).len(), 1);

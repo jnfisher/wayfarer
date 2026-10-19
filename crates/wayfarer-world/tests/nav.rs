@@ -429,6 +429,19 @@ fn spawn_pools_and_huntable_monsters() {
     assert!(!ms.hunt_room(shop));
     assert!(!g.node((1, 2141)).unwrap().spawns);
 
+    // No Colliseum room spawns (the spawn pass never visits one), though some have spawn data.
+    const COLLISEUM: i64 = 5;
+    let colliseums: Vec<_> = g
+        .nodes()
+        .filter(|n| n.room.room_type == COLLISEUM)
+        .collect();
+    assert!(colliseums.iter().any(|n| n.room.max_monsters > 0));
+    assert!(
+        colliseums
+            .iter()
+            .all(|n| !n.spawns && ms.generated(&n.room).is_empty())
+    );
+
     let rats = ms.by_name("thin giant rat");
     assert!(rats.iter().any(|m| m.number == 1), "{rats:?}");
     assert!(rats.iter().all(|m| m.name == "giant rat"));
