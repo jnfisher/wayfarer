@@ -2,7 +2,8 @@
 //!
 //! A customised world has its own messages, monsters and rooms, so these come from the world's
 //! data rather than being compiled in: `GameTexts::from_export` reads the stock-world export
-//! (`tests/fixtures/world/`), and the world pack (card C-011) will fill the same struct.
+//! (`tests/fixtures/world/`), and `wayfarer_world::WorldPack::game_texts` fills the same struct
+//! from the world pack through `GameTexts::from_records`.
 
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
@@ -177,27 +178,38 @@ impl GameTexts {
                 name: m.name,
                 arrive_msg: m.arrivemsg,
                 death_msg: m.deathmsg,
-            })
-            .collect();
+            });
         let items = read_table::<ItemRow>(dir, "WCCITEMS")?
             .into_iter()
             .map(|i| ItemTexts {
                 hit_msg: i.hitmsg,
                 miss_msg: i.missmsg,
                 destroy_msg: i.destroymsg,
-            })
-            .collect();
+            });
         let spell_msgs = read_table::<SpellRow>(dir, "WCCSPELS")?
             .into_iter()
-            .map(|s| s.msgnum)
-            .collect();
+            .map(|s| s.msgnum);
         let room_names = read_room_names(dir)?;
-        Ok(GameTexts {
-            messages,
-            monsters,
-            items,
-            spell_msgs,
-            room_names,
-        })
+        Ok(GameTexts::from_records(
+            messages, monsters, items, spell_msgs, room_names,
+        ))
+    }
+
+    /// The texts from plain records, each table in its record order (the export's file order),
+    /// which decides between equally good patterns.
+    pub fn from_records(
+        messages: impl IntoIterator<Item = Message>,
+        monsters: impl IntoIterator<Item = MonsterTexts>,
+        items: impl IntoIterator<Item = ItemTexts>,
+        spell_msgs: impl IntoIterator<Item = i32>,
+        room_names: impl IntoIterator<Item = String>,
+    ) -> GameTexts {
+        GameTexts {
+            messages: messages.into_iter().collect(),
+            monsters: monsters.into_iter().collect(),
+            items: items.into_iter().collect(),
+            spell_msgs: spell_msgs.into_iter().collect(),
+            room_names: room_names.into_iter().collect(),
+        }
     }
 }

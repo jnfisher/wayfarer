@@ -13,6 +13,7 @@ rusqlite = { version = "0.40", features = ["bundled"] }
 serde_json.workspace = true
 sha2 = "0.11"
 thiserror.workspace = true
+wayfarer-parse = { path = "../wayfarer-parse" }
 zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 
 [dev-dependencies]

@@ -5,7 +5,7 @@ section 1). A port of the prototype's `test/play/patterns.py` (jnfisher/mmud-exp
 checked line for line against it (`tests/golden.rs`).
 
 ```rust
-let texts = GameTexts::from_export("tests/fixtures/world")?;   // or the world pack, later
+let texts = GameTexts::from_export("tests/fixtures/world")?;   // or WorldPack::game_texts()
 let reg = Arc::new(Registry::new(&texts));                     // ~100 ms, share it
 let mut parser = Parser::new(reg);                              // one per session
 for ev in parser.feed(chunk) { /* ev.name, ev.fields, ev.line, ev.seq, ev.line_no */ }
@@ -28,6 +28,19 @@ parser.sent("a rat");                                          // so its echo is
 - **Every line is an event**: lines nothing recognises are `unknown` (`unclassified`), or
   `room_desc` after a room title.
 - `helpers`: splitting exits, the inventory list and `Also here`.
+- **Game texts** come from the stock-world export (`GameTexts::from_export`) or from plain
+  records (`GameTexts::from_records`), which `wayfarer_world::WorldPack::game_texts` fills
+  from the world pack. Either gives the same registry.
+- **Typed events** (`typed::GameEvent::from_event`, or `GameEvent::from(&event)`): the events
+  the character model reads, with numbers parsed and lists split: the prompt (every value
+  optional; the standard prompt has no maxima), the status screen (`StatusName`,
+  `StatusRace`, `StatusClass`, `StatusHits`, `StatusMana`, `StatusStat`), `Health`,
+  `ExpScreen`, room title, exits and darkness, combat on and off, monster deaths, exp gained,
+  damage, healing, resting, unconscious, killed, lives left, poison, blind, stunned,
+  inventory, wealth and encumbrance. A line nothing recognised is `Unknown`; every other
+  event is `Other`, with the event. Values the patterns capture in unnamed groups (the stat
+  lines, and the skill at the end of the race, class, hits and mana lines) are read from the
+  event's line.
 
 Python regex sources are kept as the prototype builds them (specificity and index keys are
 computed on that text) and translated to the `regex` crate's syntax to compile (`pyre.rs`).

@@ -112,6 +112,12 @@ let orc = pack.monster(6)?;
 let loops = pack.loops()?;               // Vec<MmPath>, each with its Verification
 ```
 
+`pack.game_texts()?` gives the parser's game texts (`wayfarer_parse::GameTexts`: messages,
+monster and item message numbers, spell cast texts, room names), equal to
+`GameTexts::from_export` on the export the pack was built from. Each table is read in the
+export's record order (`_id` in `raw`), which decides between equally good patterns; about
+30 ms in a release build.
+
 Also `rooms_by_name`, `room_raw`, `item`, `spell`, `shop` (with stock), `message`,
 `text_block`, `waypoints`, `paths`, `path_steps` and `meta`. The pack is opened read only and
 nothing is loaded up front.
