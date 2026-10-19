@@ -27,7 +27,7 @@ use tokio::task::JoinHandle;
 use tower_http::services::ServeDir;
 use wayfarer_proto::{ClientKind, Family, SessionId, ToClient, ToGateway, protocol_mismatch};
 
-use crate::session::Sent;
+use crate::session::{Output, Sent};
 use crate::{Gateway, GatewayError, HistoryQuery};
 
 /// How long a new connection may take to say hello.
@@ -333,8 +333,7 @@ struct Connection {
     subscribed: Vec<(SessionId, JoinHandle<()>)>,
     /// The same sessions, for the forwarders below.
     sessions: watch::Sender<Vec<SessionId>>,
-    /// Forwarders for the life of the connection: relayed brain messages (a UI) or `sent`
-    /// (the brain).
+    /// Forwarders for the life of the connection: relayed brain messages (a UI).
     forwarders: Vec<JoinHandle<()>>,
 }
 
@@ -413,18 +412,11 @@ impl Connection {
         // Subscribe before the welcome goes out, so nothing falls between the two.
         let sessions = gateway.sessions();
         conn.subscribe(sessions.iter().map(|s| s.id.clone()).collect());
-        match kind {
-            ClientKind::Ui => conn.forward(hub.inner.relay.subscribe(), |msg| match msg {
+        if kind == ClientKind::Ui {
+            conn.forward(hub.inner.relay.subscribe(), |msg| match msg {
                 Ok(msg) => Some(msg),
                 Err(missed) => Some(ToClient::BrainLagged { missed }),
-            }),
-            ClientKind::Brain => conn.forward(gateway.sent_lines(), |sent| match sent {
-                Ok(Sent { session, seq, text }) => Some(ToClient::Sent { session, seq, text }),
-                Err(missed) => {
-                    tracing::warn!("the brain missed {missed} sent lines");
-                    None
-                }
-            }),
+            });
         }
         let welcome = ToClient::Welcome {
             protocol: wayfarer_proto::PROTOCOL,
@@ -489,14 +481,20 @@ impl Connection {
             };
             let out = self.out.clone();
             let session = id.clone();
+            // The brain gets `sent` from the same stream as the output, so in its order.
+            let sent_too = self.kind == ClientKind::Brain;
             let task = tokio::spawn(async move {
                 loop {
                     let msg = match rx.recv().await {
-                        Ok(chunk) => ToClient::Output {
+                        Ok(Output::Chunk(chunk)) => ToClient::Output {
                             session: session.clone(),
                             seq: chunk.seq,
                             text: chunk.text,
                         },
+                        Ok(Output::Sent(Sent { session, seq, text })) if sent_too => {
+                            ToClient::Sent { session, seq, text }
+                        }
+                        Ok(Output::Sent(_)) => continue,
                         Err(broadcast::error::RecvError::Lagged(missed)) => ToClient::Lagged {
                             session: session.clone(),
                             missed,

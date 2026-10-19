@@ -20,6 +20,11 @@ pub const RESYNC_COMMANDS: [&str; 4] = ["st", "exp", "i", "look"];
 pub const IDLE: Duration = Duration::from_secs(2);
 /// How long a re-sync command waits for its answer before the next one goes.
 pub const ANSWER_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long a line the brain sent waits for the gateway's `sent`. The gateway sends it before
+/// the line's echo, so it is normally back within a round trip; one still missing after this
+/// was lost (a lagged connection) and is forgotten, so a later line the player types is not
+/// taken for the brain's.
+pub const OWN_PATIENCE: Duration = Duration::from_secs(10);
 /// Chunks asked for per `history_request`.
 pub const HISTORY_CHUNKS: u32 = 2000;
 
@@ -109,8 +114,9 @@ pub(crate) struct Session {
     at_prompt: bool,
     /// When a line last went to the game (or the brain attached).
     last_sent: Instant,
-    /// The brain's own lines, until the gateway's `sent` for each comes back.
-    own: VecDeque<String>,
+    /// The brain's own lines and when each went, until the gateway's `sent` for each comes
+    /// back or [`OWN_PATIENCE`] runs out.
+    own: VecDeque<(String, Instant)>,
     pub resync: Resync,
     /// A re-sync finished since the brain attached, and the session stayed in the realm.
     pub synced: bool,
@@ -149,7 +155,10 @@ impl Session {
             // The gateway's log started again: what was fed is not this log's.
             tracing::warn!(session = %self.id, "the output log restarted; parsing afresh");
             self.parser = Parser::new(self.registry.clone());
+            self.character.parser_reset();
             self.fed = 0;
+            // The new log's output so far went by before this attach, like a new session's.
+            self.silent_until = info.last_seq;
             self.synced = false;
         }
         if let Resync::Waiting { step, .. } = self.resync {
@@ -218,6 +227,8 @@ impl Session {
 
     /// The connection lagged: fetch what it missed.
     pub fn lagged(&mut self, out: &mut Vec<ToGateway>) {
+        // The `sent` for a line of ours may have been among what was missed.
+        self.own.clear();
         if !self.fetching {
             self.fetch(out);
         }
@@ -312,7 +323,14 @@ impl Session {
 
     /// A line went to the game (the gateway's `sent`).
     pub fn sent(&mut self, text: &str, now: Instant) {
-        if self.own.front().is_some_and(|c| c == text) {
+        while self
+            .own
+            .front()
+            .is_some_and(|(_, at)| now.duration_since(*at) > OWN_PATIENCE)
+        {
+            self.own.pop_front();
+        }
+        if self.own.front().is_some_and(|(c, _)| c == text) {
             // Ours; the parser was told when it went.
             self.own.pop_front();
             return;
@@ -346,6 +364,11 @@ impl Session {
             session: self.id.clone(),
             state: Box::new(state),
         });
+    }
+
+    /// The brain's lines still waiting for the gateway's `sent`.
+    pub fn own_pending(&self) -> usize {
+        self.own.len()
     }
 
     /// Whether the session is caught up and published (it may then be sent to).
@@ -389,6 +412,8 @@ impl Session {
             Resync::Want { next, .. } if next >= RESYNC_COMMANDS.len() => {
                 self.resync = Resync::Off;
                 self.synced = true;
+                // Every answer has come, so every `sent` before it has: nothing is pending.
+                self.own.clear();
                 Progress::Done
             }
             Resync::Want { next, idle }
@@ -396,7 +421,7 @@ impl Session {
             {
                 let cmd = RESYNC_COMMANDS[next];
                 self.parser.sent(cmd);
-                self.own.push_back(cmd.to_owned());
+                self.own.push_back((cmd.to_owned(), now));
                 self.last_sent = now;
                 self.at_prompt = false;
                 self.resync = Resync::Waiting {

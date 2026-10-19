@@ -1,27 +1,20 @@
 //! The character model: what the game has shown of one character, from its typed events
 //! (docs/plan/03-engine.md section 2), and the merge patch between two snapshots.
 
-use std::collections::BTreeMap;
-
 use serde_json::{Map, Value};
 use wayfarer_parse::Event;
 use wayfarer_parse::helpers::Carried;
 use wayfarer_parse::typed::{GameEvent, PromptForm, Rest};
-use wayfarer_proto::{CharacterState, ParseCounts, Stats};
+use wayfarer_proto::{CharacterState, CoinCount, Coins, Encumbrance, ParseCounts, Stats};
 
 /// One character as the brain knows it. [`Character::snapshot`] is what goes on the wire; the
-/// inventory and wealth are kept here too, though the M1 snapshot has no fields for them.
+/// items are kept here with their slots and counts too, though the snapshot has only names.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Character {
     state: CharacterState,
     /// The last line counted in `parse.lines`.
     last_line: Option<u64>,
-    pub coins: BTreeMap<String, u64>,
     pub items: Vec<Carried>,
-    /// In copper farthings.
-    pub wealth: Option<i64>,
-    /// `(current, max)`.
-    pub encumbrance: Option<(Option<i64>, Option<i64>)>,
 }
 
 fn u32_of(n: Option<i64>) -> Option<u32> {
@@ -41,6 +34,12 @@ fn set<T>(slot: &mut Option<T>, value: Option<T>) {
     if value.is_some() {
         *slot = value;
     }
+}
+
+/// Whether `who`, as `drops_unconscious` names someone (by first name), is the character
+/// called `name`.
+fn is_me(name: Option<&str>, who: &str) -> bool {
+    name.is_some_and(|name| name == who || name.split_whitespace().next() == Some(who))
 }
 
 fn form_name(form: PromptForm, has_mana: bool) -> &'static str {
@@ -73,6 +72,11 @@ impl Character {
         self.state != before
     }
 
+    /// The parser started again (its line numbers with it): count its lines from scratch.
+    pub fn parser_reset(&mut self) {
+        self.last_line = None;
+    }
+
     fn parse_counts(&mut self) -> &mut ParseCounts {
         self.state.parse.get_or_insert_with(ParseCounts::default)
     }
@@ -81,6 +85,12 @@ impl Character {
         let statuses = self.state.statuses.get_or_insert_with(Vec::new);
         if !statuses.iter().any(|s| s == name) {
             statuses.push(name.to_owned());
+        }
+    }
+
+    fn clear_status(&mut self, name: &str) {
+        if let Some(statuses) = self.state.statuses.as_mut() {
+            statuses.retain(|s| s != name);
         }
     }
 
@@ -187,6 +197,21 @@ impl Character {
             }
             GameEvent::CombatEngaged => s.in_combat = Some(true),
             GameEvent::CombatOff => s.in_combat = Some(false),
+            GameEvent::TookDamage { amount } => {
+                // Until the next prompt says what it is.
+                if let (Some(hp), Ok(dmg)) = (s.hp.as_mut(), i32::try_from(*amount)) {
+                    *hp = hp.saturating_sub(dmg);
+                }
+            }
+            GameEvent::Healed => {
+                if let Some(max) = s.hp_max {
+                    s.hp = Some(max);
+                }
+            }
+            GameEvent::MonsterDeath { .. } => {
+                // No target is tracked yet (the bot's cards add one); the count is kept.
+                *s.kills.get_or_insert(0) += 1;
+            }
             GameEvent::ExpGain { amount } => {
                 if let (Some(exp), Ok(gain)) = (s.exp.as_mut(), u64::try_from(*amount)) {
                     *exp += gain;
@@ -203,15 +228,39 @@ impl Character {
                 s.statuses = Some(Vec::new());
             }
             GameEvent::Dead { lives_left } => set(&mut s.lives, u32_of(*lives_left)),
+            GameEvent::Unconscious { who } if is_me(s.name.as_deref(), who) => {
+                s.hp = Some(s.hp.map_or(0, |hp| hp.min(0)));
+                s.in_combat = Some(false);
+            }
             GameEvent::Poisoned | GameEvent::PoisonTick => self.status("poisoned"),
+            GameEvent::Cured => self.clear_status("poisoned"),
             GameEvent::Blind => self.status("blind"),
             GameEvent::Inventory { coins, items } => {
-                self.coins = coins.clone();
+                let carried = coins
+                    .iter()
+                    .map(|(coin, count)| CoinCount {
+                        coin: coin.clone(),
+                        count: *count,
+                    })
+                    .collect();
+                s.coins.get_or_insert_with(Coins::default).carried = carried;
+                s.carrying = Some(items.iter().map(|i| i.name.clone()).collect());
                 self.items = items.clone();
             }
-            GameEvent::Wealth { coins } => self.wealth = Some(*coins),
-            GameEvent::Encumbrance { current, max, .. } => {
-                self.encumbrance = Some((*current, *max));
+            GameEvent::Wealth { coins } => {
+                s.coins.get_or_insert_with(Coins::default).copper = u64_of(Some(*coins));
+            }
+            GameEvent::Encumbrance {
+                current,
+                max,
+                level,
+                ..
+            } => {
+                s.encumbrance = Some(Encumbrance {
+                    current: u32_of(*current),
+                    max: u32_of(*max),
+                    level: (!level.is_empty()).then(|| level.clone()),
+                });
             }
             _ => {}
         }

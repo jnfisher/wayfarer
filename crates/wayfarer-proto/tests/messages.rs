@@ -2,8 +2,9 @@
 //! examples in the README and `docs/protocol.md`.
 
 use wayfarer_proto::{
-    CharacterState, Chunk, ClientKind, DecodeError, Family, PROTOCOL, ParseCounts, SessionInfo,
-    SessionState, Stats, ToClient, ToGateway, WorldPackInfo, protocol_mismatch,
+    CharacterState, Chunk, ClientKind, CoinCount, Coins, DecodeError, Encumbrance, Family,
+    PROTOCOL, ParseCounts, SessionInfo, SessionState, Stats, ToClient, ToGateway, WorldPackInfo,
+    protocol_mismatch,
 };
 
 fn kasimir(state: SessionState, last_seq: u64) -> SessionInfo {
@@ -59,10 +60,24 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                     }),
                     synced_at: Some("2026-10-19T12:00:05Z".into()),
                     updated_seq: Some(43),
+                    coins: Some(Coins {
+                        copper: Some(320),
+                        carried: vec![CoinCount {
+                            coin: "silver nobles".into(),
+                            count: 32,
+                        }],
+                    }),
+                    carrying: Some(vec!["padded vest".into(), "dagger".into()]),
+                    encumbrance: Some(Encumbrance {
+                        current: Some(520),
+                        max: Some(3792),
+                        level: Some("None".into()),
+                    }),
+                    kills: Some(4),
                     ..CharacterState::default()
                 }),
             },
-            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43}}"#,
+            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4}}"#,
         ),
         (
             ToGateway::CharacterPatch {

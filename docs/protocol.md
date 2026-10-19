@@ -117,7 +117,9 @@ plays, a UI's input will go through the brain instead; not yet.)
 
 A brain connection receives everything a UI does (output, session states, history, for every
 session unless it subscribes), and also `sent`: each line that went to the game, whoever sent
-it.
+it. A session's `sent` and `output` reach the brain in the order they happened: a brain that
+receives `sent {seq: n}` has received every chunk up to `n` and none after, so the echo of a
+typed line always comes after its `sent`. UIs never get `sent`.
 
 | Message | Direction | Meaning |
 |---|---|---|
@@ -147,7 +149,7 @@ to every UI. It relays by message type and never reads `fields` or `patch`.
 
 ```json
 {"type":"event","session":"kasimir","seq":43,"line_no":88,"name":"you_hit","cat":"combat","fields":{"dmg":"1","target":"fat giant rat","verb":"punch"},"line":"You punch fat giant rat for 1 damage!"}
-{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43}}
+{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4}}
 {"type":"character_patch","session":"kasimir","patch":{"hp":23,"in_combat":true,"room_title":null}}
 {"type":"brain_info","build":"0.1.0 (3f2a9c1)","started_at":"2026-10-19T12:00:00Z","world_pack":{"path":"worlds/stock-1.11p.sqlite","hash":"sha256:5d41402abc4b2a76"}}
 {"type":"notice","session":"kasimir","text":"re-synced"}
@@ -170,6 +172,16 @@ The character snapshot: every field is optional and left out until the brain kno
 | `parse` | `{lines, unclassified}`: lines parsed and lines nothing recognised, since the brain attached |
 | `synced_at` | When the last re-sync finished (RFC 3339) |
 | `updated_seq` | The output `seq` the snapshot reflects |
+| `coins` | `{copper?, carried}`: the total value in copper farthings (the inventory's `Wealth:` line) and each kind carried, `[{coin, count}]` (`silver nobles`, 32) |
+| `carrying` | The items carried, by name, as the last inventory listed them |
+| `encumbrance` | `{current?, max?, level?}`: weight carried, what the character can carry, and the game's word for it (`None`, `Light`, ...) |
+| `kills` | Monster deaths seen since the brain attached |
+
+`hp` follows the prompt. Between prompts the brain also applies `You took 3 damage.` (lowered),
+a healer's `all your wounds are healed` (to `hp_max`) and the character's own `drops to the
+ground!` (at most 0, `in_combat` false); the next prompt confirms or corrects them.
+`poisoned` comes from `You feel ill.` and the status screen and goes with a cure, death or a
+status screen without it; `blind` likewise, without the cure.
 
 ### Control (UI → brain)
 

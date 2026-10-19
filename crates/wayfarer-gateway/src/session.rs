@@ -40,6 +40,15 @@ pub struct Sent {
     pub text: String,
 }
 
+/// What a session publishes, in the order it happened: a chunk of output, or a line that went
+/// to the game. A [`Sent`] comes after every chunk up to its `seq` and before the next one, so
+/// a subscriber sees a typed line before the output that echoes it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Output {
+    Chunk(Chunk),
+    Sent(Sent),
+}
+
 /// A connection to a game server: anything the session can read and write.
 pub trait Stream: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send> Stream for T {}
@@ -81,7 +90,7 @@ pub(crate) struct Slot {
     pub host: String,
     pub port: u16,
     pub log: OutputLog,
-    pub output: broadcast::Sender<Chunk>,
+    pub output: broadcast::Sender<Output>,
     /// The character's account: the logon script's `{user}` and `{password}`, and a line that
     /// is exactly the password is masked in `sent.bin`.
     pub login: Option<Login>,
@@ -90,7 +99,6 @@ pub(crate) struct Slot {
     pub reconnect: bool,
     pub connector: Arc<dyn Connect>,
     states: broadcast::Sender<StateChange>,
-    sent: broadcast::Sender<Sent>,
     state: Mutex<SessionState>,
     /// Why the session closed or was lost, when there is more to say than the state.
     reason: Mutex<Option<String>>,
@@ -122,7 +130,6 @@ pub(crate) struct SlotParts {
     pub connector: Arc<dyn Connect>,
     pub subscriber_capacity: usize,
     pub states: broadcast::Sender<StateChange>,
-    pub sent: broadcast::Sender<Sent>,
 }
 
 impl Slot {
@@ -140,7 +147,6 @@ impl Slot {
             reconnect: p.reconnect,
             connector: p.connector,
             states: p.states,
-            sent: p.sent,
             // Never opened: nothing is connected, and on purpose.
             state: Mutex::new(SessionState::Closed),
             reason: Mutex::new(None),
@@ -165,13 +171,14 @@ impl Slot {
         }
     }
 
-    /// Tell the listeners that `text` went to the game.
+    /// Tell the subscribers that `text` went to the game. Only the session task publishes, so
+    /// this lands between the chunks it went between.
     fn sent_line(&self, text: String) {
-        let _ = self.sent.send(Sent {
+        let _ = self.output.send(Output::Sent(Sent {
             session: self.id.clone(),
             seq: self.log.last_seq(),
             text,
-        });
+        }));
     }
 
     pub fn reason(&self) -> Option<String> {
@@ -337,7 +344,7 @@ async fn connection(
                 }
                 let chunk = slot.log.append(received.text);
                 // No subscribers is fine; a slow one lags without holding anyone up.
-                let _ = slot.output.send(chunk.clone());
+                let _ = slot.output.send(Output::Chunk(chunk.clone()));
                 let text = chunk.text.as_str();
 
                 // Where the character is now, whoever got it there.

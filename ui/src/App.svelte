@@ -26,6 +26,7 @@
     applyBrainState,
     applyCharacter,
     applyCharacterPatch,
+    pruneCharacters,
     emptyBrainView,
     emptyDevLog,
     loadDevPrefs,
@@ -162,6 +163,10 @@
       sessions: (list) => {
         sessions = list;
         if (focused >= list.length) focused = 0;
+        pruneCharacters(
+          brain,
+          list.map((s) => s.id),
+        );
       },
       state: (id, state) => {
         const info = sessions.find((s) => s.id === id);

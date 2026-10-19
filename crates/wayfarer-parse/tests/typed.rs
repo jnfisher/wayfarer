@@ -327,6 +327,7 @@ fn death_and_conditions() {
     );
     assert_eq!(example("st_poisoned"), GameEvent::Poisoned);
     assert_eq!(example("poison_tick"), GameEvent::PoisonTick);
+    assert_eq!(example("cured_paid"), GameEvent::Cured);
     assert_eq!(example("blind"), GameEvent::Blind);
     assert_eq!(example("stunned"), GameEvent::Stunned);
 }

@@ -9,19 +9,19 @@ use std::time::Duration;
 
 use futures_util::{FutureExt, Stream, StreamExt};
 use tokio::sync::{broadcast, mpsc, oneshot};
-use wayfarer_proto::{Chunk, SessionInfo, SessionState};
+use wayfarer_proto::{SessionInfo, SessionState};
 use wayfarer_telnet::Capture;
 
 use crate::config::{Config, ConfigError, Credentials, Paths};
 use crate::log::{History, HistoryQuery, OutputLog};
-use crate::session::{self, Command, Connect, Running, Sent, Slot, SlotParts, StateChange, Tcp};
+use crate::session::{self, Command, Connect, Output, Running, Slot, SlotParts, StateChange, Tcp};
 
 /// Tunables; the defaults suit a real gateway, tests shrink them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Options {
     /// Text kept in memory per session for fast history; older chunks are read from disk.
     pub memory_bytes: usize,
-    /// Chunks a subscriber may fall behind by before it is told it lagged.
+    /// Items (chunks and sent lines) a subscriber may fall behind by before it is told it lagged.
     pub subscriber_capacity: usize,
     /// The socket read size, so the largest chunk.
     pub read_buffer: usize,
@@ -71,7 +71,6 @@ struct Inner {
     /// In config order.
     slots: Vec<Arc<Slot>>,
     states: broadcast::Sender<StateChange>,
-    sent: broadcast::Sender<Sent>,
     logs: PathBuf,
     logoff_patience: Duration,
 }
@@ -119,7 +118,6 @@ impl Gateway {
         connector: Arc<dyn Connect>,
     ) -> Result<Self, GatewayError> {
         let states = broadcast::channel(256).0;
-        let sent = broadcast::channel(options.subscriber_capacity.max(1)).0;
         let mut slots = Vec::with_capacity(config.characters.len());
         for c in &config.characters {
             let server = config
@@ -145,14 +143,12 @@ impl Gateway {
                 connector: Arc::clone(&connector),
                 subscriber_capacity: options.subscriber_capacity,
                 states: states.clone(),
-                sent: sent.clone(),
             })));
         }
         Ok(Self {
             inner: Arc::new(Inner {
                 slots,
                 states,
-                sent,
                 logs: logs.to_path_buf(),
                 logoff_patience: options.logoff_patience,
             }),
@@ -187,13 +183,6 @@ impl Gateway {
     /// changes and should re-read [`Gateway::sessions`].
     pub fn state_changes(&self) -> broadcast::Receiver<StateChange> {
         self.inner.states.subscribe()
-    }
-
-    /// Every line any session sends to its game from now on: typed lines (not keys) and logon
-    /// and log-off steps, each once it has gone to the socket, with passwords masked. A
-    /// listener more than [`Options::subscriber_capacity`] lines behind has missed some.
-    pub fn sent_lines(&self) -> broadcast::Receiver<Sent> {
-        self.inner.sent.subscribe()
     }
 
     /// Connect a session: `connecting`, then `logon` while its logon script runs, `menu` and
@@ -310,11 +299,13 @@ impl Gateway {
         while running.join_next().await.is_some() {}
     }
 
-    /// Live output of a session from now on, whether or not it is connected. A receiver that
-    /// falls more than [`Options::subscriber_capacity`] chunks behind gets
-    /// `RecvError::Lagged(missed)` and should fetch the gap with [`Gateway::history`]; it never
-    /// holds up the session or other receivers.
-    pub fn subscribe(&self, id: &str) -> Result<broadcast::Receiver<Chunk>, GatewayError> {
+    /// Live output of a session from now on, whether or not it is connected: its chunks, and
+    /// each line it sends to its game (typed lines, not keys, and logon and log-off steps) once
+    /// it is on the socket, with passwords masked, in the order they happened. A receiver that
+    /// falls more than [`Options::subscriber_capacity`] items behind gets
+    /// `RecvError::Lagged(missed)` and should fetch the gap with [`Gateway::history`] (missed
+    /// `Sent`s are gone); it never holds up the session or other receivers.
+    pub fn subscribe(&self, id: &str) -> Result<broadcast::Receiver<Output>, GatewayError> {
         Ok(self.slot(id)?.output.subscribe())
     }
 

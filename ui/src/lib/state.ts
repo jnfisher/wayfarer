@@ -52,6 +52,17 @@ export function applyCharacterPatch(view: BrainView, session: string, patch: unk
   if (next !== current) view.characters[session] = isObject(next) ? (next as CharacterState) : {};
 }
 
+/**
+ * The gateway's whole session list (`welcome`, `session_list`): forget the snapshots of sessions
+ * no longer in it, such as a character taken out of the config while the page was open.
+ */
+export function pruneCharacters(view: BrainView, ids: Iterable<string>): void {
+  const keep = new Set(ids);
+  for (const id of Object.keys(view.characters)) {
+    if (!keep.has(id)) delete view.characters[id];
+  }
+}
+
 export function applyBrainState(view: BrainView, attached: boolean): void {
   view.attached = attached;
 }

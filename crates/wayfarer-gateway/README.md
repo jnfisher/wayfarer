@@ -7,7 +7,7 @@ server in front of it (below). How to configure it: [`docs/gateway.md`](../../do
 
 ```rust
 let gw = Gateway::start(&Paths::in_dir(data_dir), Options::default())?; // autostart sessions
-let mut output = gw.subscribe("kasimir")?;          // broadcast::Receiver<Chunk>
+let mut output = gw.subscribe("kasimir")?;          // broadcast::Receiver<Output>
 gw.open("kasimir")?;                                // connecting, logon, menu, realm
 gw.send_line("kasimir", "look").await?;             // CP437 plus CR
 gw.send_keys("kasimir", &[13]).await?;              // bytes as given
@@ -47,18 +47,23 @@ gw.shutdown_on_signal().await?;                     // Ctrl-C/SIGTERM: everyone 
   `Gateway::with_connector` takes another, which the tests use for in-memory pipes on a paused
   clock (`tests/logon.rs`).
 - **Subscribers** get a `tokio::sync::broadcast` receiver of `Options::subscriber_capacity`
-  (1024) chunks. One that falls further behind gets `RecvError::Lagged(missed)` (sent on the
-  wire as `lagged`) and fetches the gap with `history`; it never holds up the session or other
-  subscribers. A client that also wants the past subscribes first, then asks for history, and
-  drops live chunks whose `seq` it already has.
+  (1024) `Output` items: `Output::Chunk` for output and `Output::Sent` for each line that went
+  to the game (below), in the order they happened. One that falls further behind gets
+  `RecvError::Lagged(missed)` (sent on the wire as `lagged`) and fetches the gap with
+  `history`; it never holds up the session or other subscribers. A client that also wants the
+  past subscribes first, then asks for history, and drops live chunks whose `seq` it already
+  has.
 - **History** (`HistoryQuery`, the wire's `history_request`): `after_seq` gives the chunks after
   it, oldest first, up to `max_chunks`; `before_seq` the `max_chunks` chunks just before it;
   neither the latest. The newest `Options::memory_bytes` of text (4 MB) are answered from
   memory, anything older from disk.
-- **Sent lines**: `sent_lines()` streams a `Sent {session, seq, text}` for every line a session
-  writes to its game (typed lines, not keys, and logon and log-off steps) once it is on the
-  socket; `seq` is the session's latest output `seq` then. Passwords are masked as in
-  `sent.bin`. The server forwards them to the brain as `sent`.
+- **Sent lines**: a session publishes a `Sent {session, seq, text}` on its output stream for
+  every line it writes to its game (typed lines, not keys, and logon and log-off steps) once
+  it is on the socket; `seq` is the session's latest output `seq` then. Only the session task
+  publishes, so a `Sent` follows every chunk up to its `seq` and precedes the chunk that
+  echoes it. Passwords are masked as in `sent.bin`. The server forwards them to the brain as
+  `sent`, on the same task as its `output`, so the brain sees them in that order; UIs never
+  get them.
 - **Credentials** never reach a log: `Login`'s `Debug` hides the password, a broken
   `credentials.toml` is reported by line number only, nothing traces input text, a script's
   `{password}` is recorded in `sent.bin` as `********`, and so is a typed line that is exactly

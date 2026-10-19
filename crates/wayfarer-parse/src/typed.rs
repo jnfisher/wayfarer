@@ -163,6 +163,8 @@ pub enum GameEvent {
     },
     /// `st_poisoned`: `You are Poisoned!` on the status screen.
     Poisoned,
+    /// `cured_paid`: a healer cured the poisoning.
+    Cured,
     /// `poison_tick`: `You feel ill.`
     PoisonTick,
     Blind,
@@ -366,6 +368,7 @@ impl GameEvent {
                 lives_left: Some(0),
             },
             "st_poisoned" => G::Poisoned,
+            "cured_paid" => G::Cured,
             "poison_tick" => G::PoisonTick,
             "blind" => G::Blind,
             "stunned" => G::Stunned,
