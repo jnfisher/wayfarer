@@ -28,8 +28,8 @@ use gateway::{Gateway, SESSION, run_dir};
 const LOGON_TIMEOUT: Duration = Duration::from_secs(60);
 /// The punishment notice for dropping in the realm (kb/connection.md).
 const PUNISHED: &str = "disconnected while playing";
-const START_SILVERMERE: &str =
-    "cd ~/repos/silvermere-wayfarer && ~/repos/silvermere/target/release/silvermere serve";
+const START_SILVERMERE: &str = "cd ~/repos/wayfarer-dev/silvermere-wayfarer \
+    && ~/repos/wayfarer-dev/silvermere/target/release/silvermere serve";
 
 struct Args {
     addr: String,

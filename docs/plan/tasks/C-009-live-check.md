@@ -76,5 +76,5 @@ command, log off cleanly), and print a summary for the PR, in a minute or two.
 ## Notes for the agent
 
 - This card runs on John's laptop, where the server is. Don't touch
-  `~/repos/silvermere-wayfarer` or the server process.
+  `~/repos/wayfarer-dev/silvermere-wayfarer` or the server process.
 - Keep scenarios few in M0; later cards add theirs (walk, fight, rest, flee) here.

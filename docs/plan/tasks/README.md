@@ -9,14 +9,15 @@ when the wave before them is running (see "Waves" below).
 1. Create the empty **public** repository `jnfisher/wayfarer` (public so GitHub Actions has no
    minute limit; see `../07-development-and-testing.md` "Public repository"). Done.
 2. The laptop setup (`../07-development-and-testing.md`, "The development machine"): the
-   repositories side by side in `~/repos/`, Claude Code installed, and silvermere running from
-   `~/repos/silvermere-wayfarer` with telnet on `127.0.0.1:2323`. Done 2026-10-17.
+   repositories side by side in `~/repos/wayfarer-dev/` (moved there 2026-10-19), Claude Code
+   installed, and silvermere running from `~/repos/wayfarer-dev/silvermere-wayfarer` with
+   telnet on `127.0.0.1:2323`. Done 2026-10-17.
 
 ## How cards run (simpler than silvermere's)
 
 - One **local** Claude Code session per card on John's laptop, in its own git worktree, on
   branch `card/C-NNN-slug`, started with the card file as its brief. Either a background
-  session from `~/repos/wayfarer`:
+  session from `~/repos/wayfarer-dev/wayfarer`:
 
   ```sh
   claude --bg "Run task card C-005 for wayfarer: read CLAUDE.md, docs/plan/tasks/README.md and docs/plan/tasks/C-005-logon-scripts.md, work on branch card/C-005-logon-scripts, and finish with a pull request against main with green CI. Do not merge."
@@ -24,7 +25,7 @@ when the wave before them is running (see "Waves" below).
 
   or a desktop-app session (Cmd+N) with the worktree option. It ends by opening a pull request
   and never merges.
-- **Dispatching.** John, or a conductor session he starts in `~/repos/wayfarer` with
+- **Dispatching.** John, or a conductor session he starts in `~/repos/wayfarer-dev/wayfarer` with
   `/loop /conduct` (`.claude/skills/conduct/SKILL.md`), starts the cards whose dependencies
   are merged (one `claude --bg` each), reads the PRs, and merges the ones whose CI is green
   and whose review passes, without asking; anything marked "Needs John" waits for him. The

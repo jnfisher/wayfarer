@@ -4,14 +4,15 @@ How to run the whole loop on one MacBook: the local silvermere, the gateway, the
 card sessions in parallel worktrees. Nothing here runs on a schedule. The reasoning is in
 [plan/07-development-and-testing.md](plan/07-development-and-testing.md).
 
-Repositories sit side by side in `~/repos/`: `wayfarer`, `silvermere`, `silvermere-wayfarer`
-(the server's run directory, below) and `mmud-exploration`.
+Repositories sit side by side under one parent directory, `~/repos/wayfarer-dev/` (since
+2026-10-19; before that, `~/repos/`): `wayfarer`, `silvermere`, `mmud-exploration` and
+`silvermere-wayfarer` (the server's run directory, below).
 
 ## silvermere (the game server)
 
-It is built from `~/repos/silvermere` and run from its own directory,
-`~/repos/silvermere-wayfarer`, so that a `git pull` or rebuild never touches the world or the
-characters. Its `silvermere.toml` there has:
+It is built from `~/repos/wayfarer-dev/silvermere` and run from its own directory,
+`~/repos/wayfarer-dev/silvermere-wayfarer`, so that a `git pull` or rebuild never touches the
+world or the characters. Its `silvermere.toml` there has:
 
 ```toml
 [server]
@@ -22,10 +23,10 @@ admin_bind = "127.0.0.1:8080"
 First time:
 
 ```sh
-cd ~/repos/silvermere && cargo build --release
-cd ~/repos/silvermere-wayfarer
-~/repos/silvermere/target/release/silvermere import        # the built-in stock world
-~/repos/silvermere/target/release/silvermere account create NAME --sysop
+cd ~/repos/wayfarer-dev/silvermere && cargo build --release
+cd ~/repos/wayfarer-dev/silvermere-wayfarer
+~/repos/wayfarer-dev/silvermere/target/release/silvermere import        # the built-in stock world
+~/repos/wayfarer-dev/silvermere/target/release/silvermere account create NAME --sysop
 ```
 
 `account create` asks for the password on its own line. Make a few test accounts; they are what
@@ -34,15 +35,15 @@ cd ~/repos/silvermere-wayfarer
 Run it in its own terminal tab:
 
 ```sh
-cd ~/repos/silvermere-wayfarer && ~/repos/silvermere/target/release/silvermere serve
+cd ~/repos/wayfarer-dev/silvermere-wayfarer && ~/repos/wayfarer-dev/silvermere/target/release/silvermere serve
 ```
 
 Ctrl-C saves everyone and stops it. It is long-lived: **client work never restarts it, and
 cards never start, stop, rebuild or reset it.**
 
 **Upgrading** is a deliberate act: stop it, `git pull` and `cargo build --release` in
-`~/repos/silvermere`, start it again. **Backups**: `silvermere backup` from
-`~/repos/silvermere-wayfarer` writes to `data/backups/`; take one before an upgrade.
+`~/repos/wayfarer-dev/silvermere`, start it again. **Backups**: `silvermere backup` from
+`~/repos/wayfarer-dev/silvermere-wayfarer` writes to `data/backups/`; take one before an upgrade.
 
 ## The gateway
 
@@ -100,10 +101,10 @@ Two or three cards at a time: each is a full Rust build. The conductor session
 `.claude/settings.json` pre-approves the routine commands so a background session does not
 stall on a prompt nobody is there to answer: `cargo` build, test, fmt and clippy; read-only
 `git` plus add, commit, push and worktree handling; `npm` scripts; `gh pr` create, view,
-checks and comment; `scripts/live-check.sh`; and `claude --bg`, `agents` and `logs`. It
-denies force-pushes and pushes to `main`, and **asks** before `gh pr merge`. The conductor
-now merges on its own once CI is green and its review passes, and still waits for John on
-anything marked "Needs John".
+checks, comment and merge; `scripts/live-check.sh`; and `claude --bg`, `agents` and `logs`.
+It denies force-pushes and pushes to `main`. `gh pr merge` is pre-approved so that the
+conductor can merge on its own once CI is green and its review passes, without a prompt
+stalling the loop; it still waits for John on anything marked "Needs John".
 
 ## Sleep
 

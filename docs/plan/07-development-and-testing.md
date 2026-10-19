@@ -22,12 +22,12 @@ is playing.
 Agents, the game server and the UI all run on John's laptop; GitHub runs CI. The laptop stays
 open during development; when it sleeps, everything pauses and carries on when it wakes.
 
-- **silvermere**, built from the silvermere checkout (`~/repos/silvermere`) and run from its own
-  directory, `~/repos/silvermere-wayfarer` (its `silvermere.toml` and `./data` database), with
-  telnet on `127.0.0.1:2323`, started in a terminal tab (`silvermere serve`; Ctrl-C saves
-  everyone and stops it). It is long-lived: rebuilt and restarted only when John upgrades it,
-  never by a card. Keeping it outside the checkout means `git pull` or a rebuild never touches
-  its world or characters.
+- **silvermere**, built from the silvermere checkout (`~/repos/wayfarer-dev/silvermere`) and
+  run from its own directory, `~/repos/wayfarer-dev/silvermere-wayfarer` (its `silvermere.toml`
+  and `./data` database), with telnet on `127.0.0.1:2323`, started in a terminal tab
+  (`silvermere serve`; Ctrl-C saves everyone and stops it). It is long-lived: rebuilt and
+  restarted only when John upgrades it, never by a card. Keeping it outside the checkout means
+  `git pull` or a rebuild never touches its world or characters.
 - **The gateway** in another terminal tab, holding the characters' sessions.
 - **The brain** under a file watcher (`cargo watch` or the repo's own script), from M1.
 - **The browser** on `http://localhost:7373`.
