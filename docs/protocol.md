@@ -146,14 +146,16 @@ to every UI. It relays by message type and never reads `fields` or `patch`.
 | `brain_info {build, started_at, world_pack?}` | Who the brain is: version and build id, start time (RFC 3339), the world pack's `path` and `hash` |
 | `notice {session?, text}` | Something the brain did or saw worth a line in the dev panel ("re-synced", "parser reset") |
 | `warning {session?, text}` | Something wrong but not fatal |
+| `map_view {session, center, level, rooms, exits, route?}` | The rooms around the believed position, for the map panel (below) |
 
 ```json
 {"type":"event","session":"kasimir","seq":43,"line_no":88,"name":"you_hit","cat":"combat","fields":{"dmg":"1","target":"fat giant rat","verb":"punch"},"line":"You punch fat giant rat for 1 damage!"}
-{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4}}
+{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1}}}
 {"type":"character_patch","session":"kasimir","patch":{"hp":23,"in_combat":true,"room_title":null}}
 {"type":"brain_info","build":"0.1.0 (3f2a9c1)","started_at":"2026-10-19T12:00:00Z","world_pack":{"path":"worlds/stock-1.11p.sqlite","hash":"sha256:5d41402abc4b2a76"}}
 {"type":"notice","session":"kasimir","text":"re-synced"}
 {"type":"warning","text":"world pack not found; walking blind"}
+{"type":"map_view","session":"kasimir","center":{"map":1,"room":2140},"level":0,"rooms":[{"map":1,"room":2140,"name":"Newhaven, Village Entrance","x":0,"y":0,"level":0,"spawns":false,"visited":true,"candidate":true,"collides":false},{"map":1,"room":2141,"name":"Newhaven, Weapons Shop","x":0,"y":-1,"level":0,"spawns":false,"kind":"shop","visited":false,"candidate":false,"collides":false}],"exits":[{"from":{"map":1,"room":2140},"to":{"map":1,"room":2141},"dir":"n","kind":"plain","one_way":false}],"route":[{"map":1,"room":2140},{"map":1,"room":2141}]}
 ```
 
 The character snapshot: every field is optional and left out until the brain knows it.
@@ -176,12 +178,26 @@ The character snapshot: every field is optional and left out until the brain kno
 | `carrying` | The items carried, by name, as the last inventory listed them |
 | `encumbrance` | `{current?, max?, level?}`: weight carried, what the character can carry, and the game's word for it (`None`, `Light`, ...) |
 | `kills` | Monster deaths seen since the brain attached |
+| `position` | `{map?, room?, candidates, title?}`: the room the brain believes the character is in (the lowest key among the candidates; absent when unknown), how many rooms fit what was seen (1 is certain), and the last room title seen. Absent without a world pack |
+| `walking` | `{to, name, steps_left, step}` while a walk is in progress: the destination (`{map, room}`) and its name, the steps not yet confirmed, and the step in progress from 1 (counted over the whole walk, replans included). Absent when not walking |
 
 `hp` follows the prompt. Between prompts the brain also applies `You took 3 damage.` (lowered),
 a healer's `all your wounds are healed` (to `hp_max`) and the character's own `drops to the
 ground!` (at most 0, `in_combat` false); the next prompt confirms or corrects them.
 `poisoned` comes from `You feel ill.` and the status screen and goes with a cure, death or a
 status screen without it; `blind` likewise, without the cure.
+
+The map view: the rooms within `radius` steps of the believed room (15 unless a
+`map_request` asked for another), laid out on a grid with the believed room at `center`,
+(0, 0) on level 0. It goes out when the believed room changes, when a walk's route starts,
+changes or ends, and on `map_request`.
+
+| Field | What |
+|---|---|
+| `center`, `level` | The believed room (`{map, room}`), and its level: the floor to show first |
+| `rooms` | `[{map, room, name, x, y, level, spawns, kind?, visited, candidate, collides}]`: `x` grows east, `y` south, `level` up. `spawns`: monsters come here on their own. `kind`: `shop`, `trainer`, `bank`, `arena` or `lair`, from the room's type and shop and the MegaMud waypoint resolved to it. `visited`: the character was certainly here since the brain started. `candidate`: one of the rooms the character may be in. `collides`: its cell was already taken; drawn there, nothing placed beyond it |
+| `exits` | `[{from, to, dir, kind, one_way}]` between rooms of the view, a two-way pair once. `dir` is `n` ... `d`; `kind` is `plain`, `door`, `hidden` or `text` (a phrase such as `borrow skiff`) |
+| `route` | While walking: the rooms still to pass, from the one the character is in to the destination |
 
 ### Control (UI → brain)
 
@@ -191,10 +207,16 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 |---|---|
 | `resync {session}` | Re-sync that character (`st`, `exp`, `i`, look) |
 | `state_request {session?}` | Send a fresh `character` snapshot (of one session, or of all when `session` is left out) and a `brain_info` |
+| `walk_to {session, map, room}` | Walk the character to that room, confirming each step ([brain.md](brain.md) "Walking"); replaces a walk in progress |
+| `walk_stop {session}` | Stop walking after the move in flight |
+| `map_request {session, radius?}` | Send a `map_view` now, of the rooms within `radius` steps (15 when left out); later views use the same radius |
 
 ```json
 {"type":"resync","session":"kasimir"}
 {"type":"state_request","session":"kasimir"}
+{"type":"walk_to","session":"kasimir","map":1,"room":2150}
+{"type":"walk_stop","session":"kasimir"}
+{"type":"map_request","session":"kasimir","radius":15}
 ```
 
 A UI that sends a brain message (`event`, `character`, ...), or a brain that sends a control

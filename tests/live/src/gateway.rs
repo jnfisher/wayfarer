@@ -44,6 +44,10 @@ pub struct Gateway {
     pub character: serde_json::Value,
     /// The brain's `notice` texts for the session.
     pub notices: Vec<String>,
+    /// The brain's `warning` texts for the session.
+    pub warnings: Vec<String>,
+    /// The center of each `map_view` for the session, (map, room).
+    pub map_centers: Vec<(i64, i64)>,
 }
 
 /// How a stop went: whether the character logged off, and the gateway's own account.
@@ -126,6 +130,8 @@ impl Gateway {
             brain_attached: None,
             character: serde_json::Value::Null,
             notices: Vec::new(),
+            warnings: Vec::new(),
+            map_centers: Vec::new(),
         };
         match gateway.next(Instant::now() + START_TIMEOUT).await {
             Some(ToClient::Welcome { sessions, .. }) => {
@@ -145,6 +151,16 @@ impl Gateway {
             })
             .await?;
         Ok(gateway)
+    }
+
+    /// `walk_to` that room.
+    pub async fn walk_to(&mut self, map: i64, room: i64) -> Result<(), String> {
+        self.send(ToGateway::WalkTo {
+            session: SESSION.into(),
+            map,
+            room,
+        })
+        .await
     }
 
     async fn send(&mut self, msg: ToGateway) -> Result<(), String> {
@@ -207,6 +223,12 @@ impl Gateway {
                 ToClient::Notice { session, text } if session.as_deref() == Some(SESSION) => {
                     self.notices.push(text.clone());
                 }
+                ToClient::Warning { session, text } if session.as_deref() == Some(SESSION) => {
+                    self.warnings.push(text.clone());
+                }
+                ToClient::MapView {
+                    session, center, ..
+                } if session == SESSION => self.map_centers.push((center.map, center.room)),
                 ToClient::SessionList { sessions } | ToClient::Welcome { sessions, .. } => {
                     if let Some(s) = sessions.iter().find(|s| s.id == SESSION) {
                         self.state = s.state;

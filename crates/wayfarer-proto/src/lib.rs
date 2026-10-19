@@ -6,8 +6,9 @@
 //! each; the TypeScript for the web UI is generated into `ui/src/proto/` ([`export_typescript`]).
 //!
 //! M0 has the hello, session, terminal and input families; M1 adds the brain's: events, state
-//! and dev (brain → UIs), control (UI → brain) and `sent` (gateway → brain). [`Family`] says
-//! who may send what. Adding a variant later bumps nothing; removing or changing one bumps
+//! and dev (brain → UIs), control (UI → brain) and `sent` (gateway → brain); M2 adds walking
+//! and the map (`walk_to`, `walk_stop`, `map_request`, `map_view`, and the character's
+//! `position` and `walking`). [`Family`] says who may send what. Adding a variant later bumps nothing; removing or changing one bumps
 //! [`PROTOCOL`].
 
 use std::path::Path;
@@ -145,6 +146,104 @@ pub struct CharacterState {
     /// Monster deaths seen since the brain attached.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kills: Option<u64>,
+    /// Where the brain believes the character is (M2; absent without a world pack).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<Position>,
+    /// The walk in progress; absent when not walking.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub walking: Option<Walking>,
+}
+
+/// A room of the world pack: its map and room number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
+pub struct RoomKey {
+    pub map: i64,
+    pub room: i64,
+}
+
+/// The position belief: the room the brain takes the character to be in (the lowest key among
+/// the candidates), how many rooms it might be, and the last room title seen.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(optional_fields)]
+pub struct Position {
+    /// Absent when the position is unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub map: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub room: Option<i64>,
+    /// How many rooms fit what was seen: 1 is certain, 0 unknown.
+    pub candidates: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+}
+
+/// A walk the brain is making (`walk_to`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct Walking {
+    pub to: RoomKey,
+    /// The destination's name.
+    pub name: String,
+    /// Steps of the route not yet confirmed, the one in progress included.
+    pub steps_left: u32,
+    /// The step in progress, from 1, counted over the whole walk (replans included).
+    pub step: u32,
+}
+
+/// What kind of place a room is, for the map panel to mark: from the room's type and shop,
+/// and from the MegaMud waypoint resolved to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum RoomKind {
+    Shop,
+    Trainer,
+    Bank,
+    Arena,
+    Lair,
+}
+
+/// One room of a `map_view`. `x` grows east, `y` south, `level` up; the center is (0, 0, 0).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct MapRoom {
+    pub map: i64,
+    pub room: i64,
+    pub name: String,
+    pub x: i32,
+    pub y: i32,
+    pub level: i32,
+    /// Monsters spawn here.
+    pub spawns: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub kind: Option<RoomKind>,
+    /// The character has been here (certainly) since the brain started.
+    pub visited: bool,
+    /// One of the rooms the character may be in now.
+    pub candidate: bool,
+    /// Its cell was taken by another room: drawn there, nothing placed beyond it.
+    pub collides: bool,
+}
+
+/// How an exit of a `map_view` is drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum ExitKind {
+    Plain,
+    Door,
+    Hidden,
+    /// Taken by typing a phrase (`borrow skiff`).
+    Text,
+}
+
+/// An exit between two rooms of a `map_view`. A two-way pair is listed once.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct MapExit {
+    pub from: RoomKey,
+    pub to: RoomKey,
+    /// `n`, `s`, ..., `u`, `d`.
+    pub dir: String,
+    pub kind: ExitKind,
+    /// The far room has no exit back.
+    pub one_way: bool,
 }
 
 /// A character's coins.
@@ -326,6 +425,16 @@ pub enum ToClient {
         session: Option<SessionId>,
         text: String,
     },
+    MapView {
+        session: SessionId,
+        center: RoomKey,
+        level: i32,
+        rooms: Vec<MapRoom>,
+        exits: Vec<MapExit>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        route: Option<Vec<RoomKey>>,
+    },
 
     // From a UI, relayed to the brain.
     Resync {
@@ -335,6 +444,20 @@ pub enum ToClient {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         session: Option<SessionId>,
+    },
+    WalkTo {
+        session: SessionId,
+        map: i64,
+        room: i64,
+    },
+    WalkStop {
+        session: SessionId,
+    },
+    MapRequest {
+        session: SessionId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        radius: Option<u32>,
     },
 
     /// To the brain only: a line went to the game, typed by a client or sent by a logon or
@@ -405,6 +528,23 @@ pub enum ToGateway {
         #[ts(optional)]
         session: Option<SessionId>,
     },
+    /// UI → brain: walk the character to this room, confirming each step; replaces a walk in
+    /// progress.
+    WalkTo {
+        session: SessionId,
+        map: i64,
+        room: i64,
+    },
+    /// UI → brain: stop walking after the move in flight.
+    WalkStop { session: SessionId },
+    /// UI → brain: send a `map_view` now, of the rooms within `radius` steps (15 when left
+    /// out; later automatic views use the same radius).
+    MapRequest {
+        session: SessionId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        radius: Option<u32>,
+    },
 
     /// Brain → UIs: one parsed event, as `wayfarer-parse` produced it, with the output `seq`
     /// its line came from. The gateway never reads `fields`.
@@ -452,6 +592,21 @@ pub enum ToGateway {
         session: Option<SessionId>,
         text: String,
     },
+    /// Brain → UIs: the rooms around the believed position, laid out on a grid with `center`
+    /// at (0, 0) on `level` 0, and the walk's route (the rooms still to pass, from the one the
+    /// character is in) while walking. Sent when the believed room changes, when a route
+    /// starts, changes or ends, and on `map_request`.
+    MapView {
+        session: SessionId,
+        center: RoomKey,
+        /// The center's level: the floor the panel shows first.
+        level: i32,
+        rooms: Vec<MapRoom>,
+        exits: Vec<MapExit>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        route: Option<Vec<RoomKey>>,
+    },
 }
 
 /// Why a received message could not be decoded. The receiver reports it (an `error` reply)
@@ -488,8 +643,12 @@ impl ToClient {
         "brain_info",
         "notice",
         "warning",
+        "map_view",
         "resync",
         "state_request",
+        "walk_to",
+        "walk_stop",
+        "map_request",
         "sent",
         "brain_state",
         "brain_lagged",
@@ -512,8 +671,12 @@ impl ToClient {
             Self::BrainInfo { .. } => "brain_info",
             Self::Notice { .. } => "notice",
             Self::Warning { .. } => "warning",
+            Self::MapView { .. } => "map_view",
             Self::Resync { .. } => "resync",
             Self::StateRequest { .. } => "state_request",
+            Self::WalkTo { .. } => "walk_to",
+            Self::WalkStop { .. } => "walk_stop",
+            Self::MapRequest { .. } => "map_request",
             Self::Sent { .. } => "sent",
             Self::BrainState { .. } => "brain_state",
             Self::BrainLagged { .. } => "brain_lagged",
@@ -530,7 +693,11 @@ impl ToClient {
             | Self::Event { session, .. }
             | Self::Character { session, .. }
             | Self::CharacterPatch { session, .. }
+            | Self::MapView { session, .. }
             | Self::Resync { session }
+            | Self::WalkTo { session, .. }
+            | Self::WalkStop { session }
+            | Self::MapRequest { session, .. }
             | Self::Sent { session, .. } => Some(session),
             Self::Notice { session, .. }
             | Self::Warning { session, .. }
@@ -564,12 +731,16 @@ impl ToGateway {
         "subscribe",
         "resync",
         "state_request",
+        "walk_to",
+        "walk_stop",
+        "map_request",
         "event",
         "character",
         "character_patch",
         "brain_info",
         "notice",
         "warning",
+        "map_view",
     ];
 
     /// This message's `type`.
@@ -582,12 +753,16 @@ impl ToGateway {
             Self::Subscribe { .. } => "subscribe",
             Self::Resync { .. } => "resync",
             Self::StateRequest { .. } => "state_request",
+            Self::WalkTo { .. } => "walk_to",
+            Self::WalkStop { .. } => "walk_stop",
+            Self::MapRequest { .. } => "map_request",
             Self::Event { .. } => "event",
             Self::Character { .. } => "character",
             Self::CharacterPatch { .. } => "character_patch",
             Self::BrainInfo { .. } => "brain_info",
             Self::Notice { .. } => "notice",
             Self::Warning { .. } => "warning",
+            Self::MapView { .. } => "map_view",
         }
     }
 
@@ -599,13 +774,18 @@ impl ToGateway {
             | Self::InputKeys { .. }
             | Self::HistoryRequest { .. }
             | Self::Subscribe { .. } => Family::Gateway,
-            Self::Resync { .. } | Self::StateRequest { .. } => Family::Control,
+            Self::Resync { .. }
+            | Self::StateRequest { .. }
+            | Self::WalkTo { .. }
+            | Self::WalkStop { .. }
+            | Self::MapRequest { .. } => Family::Control,
             Self::Event { .. }
             | Self::Character { .. }
             | Self::CharacterPatch { .. }
             | Self::BrainInfo { .. }
             | Self::Notice { .. }
-            | Self::Warning { .. } => Family::Brain,
+            | Self::Warning { .. }
+            | Self::MapView { .. } => Family::Brain,
         }
     }
 
@@ -615,6 +795,9 @@ impl ToGateway {
         Some(match self {
             Self::Resync { session } => ToClient::Resync { session },
             Self::StateRequest { session } => ToClient::StateRequest { session },
+            Self::WalkTo { session, map, room } => ToClient::WalkTo { session, map, room },
+            Self::WalkStop { session } => ToClient::WalkStop { session },
+            Self::MapRequest { session, radius } => ToClient::MapRequest { session, radius },
             Self::Event {
                 session,
                 seq,
@@ -645,6 +828,21 @@ impl ToGateway {
             },
             Self::Notice { session, text } => ToClient::Notice { session, text },
             Self::Warning { session, text } => ToClient::Warning { session, text },
+            Self::MapView {
+                session,
+                center,
+                level,
+                rooms,
+                exits,
+                route,
+            } => ToClient::MapView {
+                session,
+                center,
+                level,
+                rooms,
+                exits,
+                route,
+            },
             Self::Hello { .. }
             | Self::InputLine { .. }
             | Self::InputKeys { .. }

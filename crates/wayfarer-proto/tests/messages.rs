@@ -2,9 +2,9 @@
 //! examples in the README and `docs/protocol.md`.
 
 use wayfarer_proto::{
-    CharacterState, Chunk, ClientKind, CoinCount, Coins, DecodeError, Encumbrance, Family,
-    PROTOCOL, ParseCounts, SessionInfo, SessionState, Stats, ToClient, ToGateway, WorldPackInfo,
-    protocol_mismatch,
+    CharacterState, Chunk, ClientKind, CoinCount, Coins, DecodeError, Encumbrance, ExitKind,
+    Family, MapExit, MapRoom, PROTOCOL, ParseCounts, Position, RoomKey, RoomKind, SessionInfo,
+    SessionState, Stats, ToClient, ToGateway, Walking, WorldPackInfo, protocol_mismatch,
 };
 
 fn kasimir(state: SessionState, last_seq: u64) -> SessionInfo {
@@ -74,10 +74,22 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                         level: Some("None".into()),
                     }),
                     kills: Some(4),
+                    position: Some(Position {
+                        map: Some(1),
+                        room: Some(2140),
+                        candidates: 1,
+                        title: Some("Newhaven, Village Entrance".into()),
+                    }),
+                    walking: Some(Walking {
+                        to: RoomKey { map: 1, room: 2150 },
+                        name: "Newhaven, Arena".into(),
+                        steps_left: 3,
+                        step: 1,
+                    }),
                     ..CharacterState::default()
                 }),
             },
-            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4}}"#,
+            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1}}}"#,
         ),
         (
             ToGateway::CharacterPatch {
@@ -111,6 +123,53 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
             },
             r#"{"type":"warning","text":"world pack not found; walking blind"}"#,
         ),
+        (
+            ToGateway::MapView {
+                session: "kasimir".into(),
+                center: RoomKey { map: 1, room: 2140 },
+                level: 0,
+                rooms: vec![
+                    MapRoom {
+                        map: 1,
+                        room: 2140,
+                        name: "Newhaven, Village Entrance".into(),
+                        x: 0,
+                        y: 0,
+                        level: 0,
+                        spawns: false,
+                        kind: None,
+                        visited: true,
+                        candidate: true,
+                        collides: false,
+                    },
+                    MapRoom {
+                        map: 1,
+                        room: 2141,
+                        name: "Newhaven, Weapons Shop".into(),
+                        x: 0,
+                        y: -1,
+                        level: 0,
+                        spawns: false,
+                        kind: Some(RoomKind::Shop),
+                        visited: false,
+                        candidate: false,
+                        collides: false,
+                    },
+                ],
+                exits: vec![MapExit {
+                    from: RoomKey { map: 1, room: 2140 },
+                    to: RoomKey { map: 1, room: 2141 },
+                    dir: "n".into(),
+                    kind: ExitKind::Plain,
+                    one_way: false,
+                }],
+                route: Some(vec![
+                    RoomKey { map: 1, room: 2140 },
+                    RoomKey { map: 1, room: 2141 },
+                ]),
+            },
+            r#"{"type":"map_view","session":"kasimir","center":{"map":1,"room":2140},"level":0,"rooms":[{"map":1,"room":2140,"name":"Newhaven, Village Entrance","x":0,"y":0,"level":0,"spawns":false,"visited":true,"candidate":true,"collides":false},{"map":1,"room":2141,"name":"Newhaven, Weapons Shop","x":0,"y":-1,"level":0,"spawns":false,"kind":"shop","visited":false,"candidate":false,"collides":false}],"exits":[{"from":{"map":1,"room":2140},"to":{"map":1,"room":2141},"dir":"n","kind":"plain","one_way":false}],"route":[{"map":1,"room":2140},{"map":1,"room":2141}]}"#,
+        ),
     ]
 }
 
@@ -128,6 +187,27 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
                 session: Some("kasimir".into()),
             },
             r#"{"type":"state_request","session":"kasimir"}"#,
+        ),
+        (
+            ToGateway::WalkTo {
+                session: "kasimir".into(),
+                map: 1,
+                room: 2150,
+            },
+            r#"{"type":"walk_to","session":"kasimir","map":1,"room":2150}"#,
+        ),
+        (
+            ToGateway::WalkStop {
+                session: "kasimir".into(),
+            },
+            r#"{"type":"walk_stop","session":"kasimir"}"#,
+        ),
+        (
+            ToGateway::MapRequest {
+                session: "kasimir".into(),
+                radius: Some(15),
+            },
+            r#"{"type":"map_request","session":"kasimir","radius":15}"#,
         ),
     ]
 }
@@ -446,10 +526,9 @@ fn families_say_who_may_send_what() {
     for (msg, _) in to_gateway() {
         let family = msg.family();
         let want = match msg.type_name() {
-            "resync" | "state_request" => Family::Control,
-            "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning" => {
-                Family::Brain
-            }
+            "resync" | "state_request" | "walk_to" | "walk_stop" | "map_request" => Family::Control,
+            "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
+            | "map_view" => Family::Brain,
             _ => Family::Gateway,
         };
         assert_eq!(family, want, "{}", msg.type_name());

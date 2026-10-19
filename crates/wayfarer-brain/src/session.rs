@@ -1,5 +1,6 @@
-//! One session as the brain follows it: its parser, its character, the catch-up on its output
-//! and the re-sync, which is the only thing in M1 that sends to the game.
+//! One session as the brain follows it: its parser, its character, the catch-up on its output,
+//! the re-sync, and with a world pack its position, the executor and the walker. The re-sync
+//! and the walker's actions are all it sends to the game.
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -8,9 +9,18 @@ use std::time::Duration;
 use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
 use wayfarer_parse::{Event, Parser, Registry};
-use wayfarer_proto::{Chunk, SessionId, SessionInfo, SessionState, ToGateway};
+use wayfarer_proto::{CharacterState, Chunk, SessionId, SessionInfo, SessionState, ToGateway};
+use wayfarer_world::Key;
 
+use crate::brain::Atlas;
 use crate::character::{Character, merge_patch};
+use crate::executor::Executor;
+use crate::position::Position;
+use crate::walker::{Next, Say, Walker};
+
+/// The rooms a `map_view` holds unless a `map_request` asks for another radius: those within
+/// this many steps.
+pub const MAP_RADIUS: u32 = 15;
 
 /// The re-sync's commands, in order: the "talk and look" kind (docs/plan/03-engine.md
 /// section 6). `look`, not an empty line: an empty line shows the room only in statline FULL
@@ -120,12 +130,35 @@ pub(crate) struct Session {
     pub resync: Resync,
     /// A re-sync finished since the brain attached, and the session stayed in the realm.
     pub synced: bool,
+    /// The world pack's rooms: without them there is no position, walking or map.
+    atlas: Option<Arc<Atlas>>,
+    position: Position,
+    executor: Executor,
+    walker: Walker,
+    /// How far a `map_view` reaches.
+    map_radius: u32,
+    /// The center of the last `map_view` sent in this attach.
+    map_center: Option<Key>,
+    /// The route changed since the last `map_view`.
+    map_dirty: bool,
 }
 
 impl Session {
     /// A session the brain has just learned of: its history up to now is fed silently.
-    pub fn new(info: &SessionInfo, registry: Arc<Registry>, now: Instant) -> Self {
+    pub fn new(
+        info: &SessionInfo,
+        registry: Arc<Registry>,
+        atlas: Option<Arc<Atlas>>,
+        now: Instant,
+    ) -> Self {
         Self {
+            atlas,
+            position: Position::default(),
+            executor: Executor::default(),
+            walker: Walker::default(),
+            map_radius: MAP_RADIUS,
+            map_center: None,
+            map_dirty: false,
             id: info.id.clone(),
             state: info.state,
             parser: Parser::new(registry.clone()),
@@ -148,9 +181,14 @@ impl Session {
     /// whole snapshot. `info` is the gateway's view of the session now.
     pub fn attach(&mut self, info: &SessionInfo, now: Instant, out: &mut Vec<ToGateway>) {
         self.published = None;
+        self.map_center = None;
         self.own.clear();
         self.last_sent = now;
         self.buffer.clear();
+        // An answer to the action in flight may have gone by unseen.
+        self.executor.cancel();
+        let next = self.walker.abandon("the brain re-attached");
+        self.apply(next, out);
         if info.last_seq < self.fed {
             // The gateway's log started again: what was fed is not this log's.
             tracing::warn!(session = %self.id, "the output log restarted; parsing afresh");
@@ -168,7 +206,7 @@ impl Session {
                 idle: true,
             };
         }
-        self.set_state(info.state);
+        self.set_state(info.state, out);
         self.fetch(out);
     }
 
@@ -182,11 +220,18 @@ impl Session {
         });
     }
 
-    pub fn set_state(&mut self, state: SessionState) {
+    pub fn set_state(&mut self, state: SessionState, out: &mut Vec<ToGateway>) {
         let was = self.state;
         self.state = state;
         if state != SessionState::Realm {
             self.synced = false;
+            // Nothing in flight will be answered now.
+            self.executor.cancel();
+            if self.walker.walking() {
+                let next = self.walker.abandon("the session left the realm");
+                self.apply(next, out);
+                self.flush_views(out);
+            }
             if self.resync != Resync::Off {
                 // Cut short: start again from `st` in the realm.
                 self.request_resync();
@@ -280,18 +325,28 @@ impl Session {
     fn feed(&mut self, chunk: Chunk, out: &mut Vec<ToGateway>) {
         let silent = chunk.seq <= self.silent_until;
         let events = self.parser.feed_at(chunk.seq, &chunk.text);
+        let now = Instant::now();
         let mut changed = false;
+        let mut combat = false;
         for ev in &events {
             changed |= self.character.apply_event(ev);
+            let typed = GameEvent::from_event(ev);
             if let Resync::Waiting {
                 step,
                 ref mut answered,
                 ..
             } = self.resync
-                && answers(step, &GameEvent::from_event(ev))
+                && answers(step, &typed)
             {
                 *answered = true;
             }
+            if let Some(atlas) = &self.atlas
+                && self.position.event(atlas, &typed).is_some()
+            {
+                self.executor.room_seen();
+            }
+            self.executor.event(&typed);
+            combat |= typed == GameEvent::CombatEngaged;
             if !silent {
                 out.push(event_message(&self.id, ev));
             }
@@ -304,8 +359,12 @@ impl Session {
         }
         if changed {
             self.character.set_updated_seq(chunk.seq);
-            self.publish_patch(out);
         }
+        if combat && self.walker.walking() {
+            self.stop_walk("combat started", out);
+        }
+        self.drive(now, out);
+        self.flush_views(out);
         if let Resync::Waiting {
             step,
             answered: true,
@@ -322,7 +381,7 @@ impl Session {
     }
 
     /// A line went to the game (the gateway's `sent`).
-    pub fn sent(&mut self, text: &str, now: Instant) {
+    pub fn sent(&mut self, text: &str, now: Instant, out: &mut Vec<ToGateway>) {
         while self
             .own
             .front()
@@ -331,22 +390,181 @@ impl Session {
             self.own.pop_front();
         }
         if self.own.front().is_some_and(|(c, _)| c == text) {
-            // Ours; the parser was told when it went.
+            // Ours; the parser and the position were told when it went.
             self.own.pop_front();
             return;
         }
         self.parser.sent(text);
+        if let Some(atlas) = &self.atlas {
+            self.position.sent(atlas, text);
+        }
         self.last_sent = now;
         match &mut self.resync {
             Resync::Waiting { typed, .. } => *typed = true,
             Resync::Want { idle, .. } => *idle = true,
             Resync::Off => {}
         }
+        if self.walker.walking() {
+            // The player comes first (docs/plan/02-architecture.md "Input arbitration").
+            self.stop_walk("you typed a line", out);
+            self.flush_views(out);
+        }
+    }
+
+    /// Send one of the brain's own lines to the game.
+    fn send_own(&mut self, cmd: &str, now: Instant, out: &mut Vec<ToGateway>) {
+        self.parser.sent(cmd);
+        if let Some(atlas) = &self.atlas {
+            self.position.sent(atlas, cmd);
+        }
+        self.own.push_back((cmd.to_owned(), now));
+        self.last_sent = now;
+        self.at_prompt = false;
+        out.push(ToGateway::InputLine {
+            session: self.id.clone(),
+            text: cmd.to_owned(),
+        });
+    }
+
+    /// `walk_to`: plan a route from the believed room and start on it.
+    pub fn walk_to(&mut self, to: Key, now: Instant, out: &mut Vec<ToGateway>) {
+        let Some(atlas) = self.atlas.clone() else {
+            out.push(self.warning("walk_to: the brain has no world pack"));
+            return;
+        };
+        if self.state != SessionState::Realm {
+            out.push(self.warning("walk_to: the character is not in the realm"));
+            return;
+        }
+        // An action queued but not sent yet is the old walk's: drop it.
+        if self.executor.in_flight().is_none() {
+            self.executor.cancel();
+        }
+        self.position.refresh(&atlas, &self.character.snapshot());
+        let busy = self.executor.in_flight().is_some();
+        let next = self.walker.start(&mut self.position, &atlas, to, busy);
+        self.apply(next, out);
+        self.drive(now, out);
+        self.flush_views(out);
+    }
+
+    /// `walk_stop`.
+    pub fn walk_stop(&mut self, out: &mut Vec<ToGateway>) {
+        self.stop_walk("asked to stop", out);
+        self.flush_views(out);
+    }
+
+    /// Stop walking after the action in flight; at once if none has gone.
+    fn stop_walk(&mut self, why: &str, out: &mut Vec<ToGateway>) {
+        if self.executor.in_flight().is_none() {
+            self.executor.cancel();
+        }
+        let busy = self.executor.in_flight().is_some();
+        let next = self.walker.stop(why, busy);
+        self.apply(next, out);
+    }
+
+    /// `map_request`.
+    pub fn map_request(&mut self, radius: Option<u32>, out: &mut Vec<ToGateway>) {
+        if let Some(r) = radius {
+            self.map_radius = r;
+        }
+        if self.atlas.is_none() {
+            out.push(self.warning("map: the brain has no world pack"));
+        } else if self.position.best().is_none() {
+            out.push(self.warning("map: the position is unknown"));
+        } else {
+            self.send_map(out);
+        }
+    }
+
+    fn warning(&self, text: &str) -> ToGateway {
+        ToGateway::Warning {
+            session: Some(self.id.clone()),
+            text: text.to_owned(),
+        }
+    }
+
+    /// Do what the walker asked: narrate, and submit its next action.
+    fn apply(&mut self, next: Next, out: &mut Vec<ToGateway>) {
+        for say in next.says {
+            let session = Some(self.id.clone());
+            tracing::info!(session = %self.id, "{say:?}");
+            out.push(match say {
+                Say::Notice(text) => ToGateway::Notice { session, text },
+                Say::Warning(text) => ToGateway::Warning { session, text },
+            });
+        }
+        self.map_dirty |= next.route_changed;
+        if let Some(action) = next.action {
+            let in_combat = self.character.snapshot().in_combat == Some(true);
+            if let Err(guard) = self.executor.submit(action, in_combat) {
+                out.push(self.warning(&format!("refused: {}", guard.describe())));
+                let next = self.walker.abandon(guard.describe());
+                self.apply(next, out);
+            }
+        }
+    }
+
+    /// Move the executor on: hand a finished action's outcome to the walker, and send the next
+    /// action if this is a prompt boundary in the realm with nothing else in flight.
+    fn drive(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
+        if let Some((action, outcome)) = self.executor.finished(self.at_prompt, now)
+            && let Some(atlas) = self.atlas.clone()
+        {
+            tracing::debug!(session = %self.id, cmd = %action.command, ?outcome, "action done");
+            self.position.refresh(&atlas, &self.character.snapshot());
+            let next = self
+                .walker
+                .outcome(&mut self.position, &atlas, &action, outcome);
+            self.apply(next, out);
+        }
+        if self.state == SessionState::Realm
+            && self.live()
+            && self.at_prompt
+            && !matches!(self.resync, Resync::Waiting { .. })
+            && let Some(cmd) = self.executor.take_ready(now)
+        {
+            self.send_own(&cmd, now, out);
+        }
+    }
+
+    /// The character with the session's position and walk.
+    pub fn snapshot(&self) -> CharacterState {
+        let mut s = self.character.snapshot();
+        if self.atlas.is_some() {
+            s.position = Some(self.position.snapshot());
+        }
+        s.walking = self.walker.snapshot();
+        s
+    }
+
+    /// Send what changed since the UIs last heard: a patch, and a `map_view` if the believed
+    /// room or the route changed.
+    fn flush_views(&mut self, out: &mut Vec<ToGateway>) {
+        self.publish_patch(out);
+        if self.published.is_some() && (self.map_dirty || self.map_center != self.position.best()) {
+            self.send_map(out);
+        }
+    }
+
+    /// A `map_view` now, if there is a world pack and a position.
+    pub fn send_map(&mut self, out: &mut Vec<ToGateway>) {
+        let Some(atlas) = &self.atlas else { return };
+        self.map_dirty = false;
+        self.map_center = self.position.best();
+        let route = self.walker.route_keys();
+        if let Some(view) = self
+            .position
+            .map_view(atlas, &self.id, self.map_radius, route)
+        {
+            out.push(view);
+        }
     }
 
     fn publish_patch(&mut self, out: &mut Vec<ToGateway>) {
         let Some(old) = &self.published else { return };
-        let new = serde_json::to_value(self.character.snapshot()).expect("serializes");
+        let new = serde_json::to_value(self.snapshot()).expect("serializes");
         if let Some(patch) = merge_patch(old, &new) {
             out.push(ToGateway::CharacterPatch {
                 session: self.id.clone(),
@@ -358,7 +576,7 @@ impl Session {
 
     /// The whole snapshot, which later patches are relative to.
     pub fn publish(&mut self, out: &mut Vec<ToGateway>) {
-        let state = self.character.snapshot();
+        let state = self.snapshot();
         self.published = Some(serde_json::to_value(&state).expect("serializes"));
         out.push(ToGateway::Character {
             session: self.id.clone(),
@@ -381,15 +599,19 @@ impl Session {
         if self.state != SessionState::Realm || !self.live() {
             return None;
         }
-        match self.resync {
-            Resync::Want { idle: true, .. } if self.at_prompt => Some(self.last_sent + IDLE),
+        let resync = match self.resync {
+            // The executor's action goes first; the re-sync waits for it.
+            Resync::Want { idle: true, .. } if self.at_prompt && !self.executor.busy() => {
+                Some(self.last_sent + IDLE)
+            }
             Resync::Waiting { deadline, .. } => Some(deadline),
             _ => None,
-        }
+        };
+        resync.into_iter().chain(self.executor.deadline()).min()
     }
 
-    /// Move the re-sync on: send the next command if its moment has come, give up waiting
-    /// for an answer that has not come.
+    /// Move the executor and the re-sync on: an action whose time ran out, the next re-sync
+    /// command if its moment has come, an answer that has not come.
     pub fn step(&mut self, now: Instant, out: &mut Vec<ToGateway>) -> Progress {
         if self.state != SessionState::Realm || !self.live() {
             return Progress::None;
@@ -408,6 +630,12 @@ impl Session {
                 idle: typed,
             };
         }
+        self.drive(now, out);
+        self.flush_views(out);
+        if self.executor.busy() {
+            // One line in flight: the re-sync waits for the executor.
+            return Progress::None;
+        }
         match self.resync {
             Resync::Want { next, .. } if next >= RESYNC_COMMANDS.len() => {
                 self.resync = Resync::Off;
@@ -419,21 +647,13 @@ impl Session {
             Resync::Want { next, idle }
                 if self.at_prompt && (!idle || now >= self.last_sent + IDLE) =>
             {
-                let cmd = RESYNC_COMMANDS[next];
-                self.parser.sent(cmd);
-                self.own.push_back((cmd.to_owned(), now));
-                self.last_sent = now;
-                self.at_prompt = false;
+                self.send_own(RESYNC_COMMANDS[next], now, out);
                 self.resync = Resync::Waiting {
                     step: next,
                     deadline: now + ANSWER_TIMEOUT,
                     answered: false,
                     typed: false,
                 };
-                out.push(ToGateway::InputLine {
-                    session: self.id.clone(),
-                    text: cmd.to_owned(),
-                });
                 Progress::None
             }
             _ => Progress::None,

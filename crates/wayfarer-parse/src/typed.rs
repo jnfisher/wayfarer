@@ -44,6 +44,81 @@ pub enum ManaKind {
     Kai,
 }
 
+/// Why the game refused a move (`kb/screen-patterns.md` "Movement results").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Refusal {
+    /// `There is no exit in that direction!`: for an exit the data has, the believed position
+    /// is wrong (`kb/pitfalls.md` 34).
+    NoExit,
+    /// `You have progressed too far ...`.
+    LevelHigh,
+    /// `You have not progressed far enough ...`.
+    LevelLow,
+    /// `You are not permitted in that room!`.
+    NotPermitted,
+    /// `You may not go through this exit!` (class and race exits among others).
+    Forbidden,
+    /// `You are too good/evil to go through this exit!`.
+    Alignment,
+    NeedSpell,
+    NeedItem,
+    /// `You do not have enough to cover the toll ...`.
+    TollShort,
+    /// `You may not pass through that exit at this point in time.`
+    Timed,
+    /// `You may not enter that room while in combat.` (or during a retaliation period).
+    Combat,
+    /// `You are not healthy enough to enter that room.`
+    Unhealthy,
+    /// `... must purchase the ... before you may move through this exit.`
+    Purchase,
+    /// `There is a closed door in that direction!` (a shut Key exit, or while dragging).
+    ClosedDoor,
+}
+
+impl Refusal {
+    /// The refusal a movement event names, if it is one.
+    pub fn of(name: &str) -> Option<Refusal> {
+        Some(match name {
+            "no_exit" => Refusal::NoExit,
+            "exit_level_high" => Refusal::LevelHigh,
+            "exit_level_low" => Refusal::LevelLow,
+            "not_permitted" => Refusal::NotPermitted,
+            "exit_forbidden" => Refusal::Forbidden,
+            "exit_alignment" => Refusal::Alignment,
+            "need_spell" => Refusal::NeedSpell,
+            "need_item" => Refusal::NeedItem,
+            "toll_short" => Refusal::TollShort,
+            "exit_timed" => Refusal::Timed,
+            "exit_combat" => Refusal::Combat,
+            "exit_unhealthy" => Refusal::Unhealthy,
+            "exit_purchase" => Refusal::Purchase,
+            "door_closed_drag" => Refusal::ClosedDoor,
+            _ => return None,
+        })
+    }
+
+    /// A few words for a narration: "no exit", "level too high", ...
+    pub fn describe(self) -> &'static str {
+        match self {
+            Refusal::NoExit => "no exit",
+            Refusal::LevelHigh => "level too high",
+            Refusal::LevelLow => "level too low",
+            Refusal::NotPermitted => "not permitted",
+            Refusal::Forbidden => "forbidden",
+            Refusal::Alignment => "wrong alignment",
+            Refusal::NeedSpell => "needs a spell",
+            Refusal::NeedItem => "needs an item",
+            Refusal::TollShort => "toll not covered",
+            Refusal::Timed => "closed at this time",
+            Refusal::Combat => "not while in combat",
+            Refusal::Unhealthy => "not healthy enough",
+            Refusal::Purchase => "not purchased",
+            Refusal::ClosedDoor => "a closed door",
+        }
+    }
+}
+
 /// The events the character model needs, typed; `Other` for the rest.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GameEvent {
@@ -126,6 +201,25 @@ pub enum GameEvent {
     },
     /// `The room is very dark - you can't see anything` (or pitch black).
     RoomDark,
+
+    /// A move the game did not take (the refusals of `kb/screen-patterns.md` "Movement
+    /// results").
+    MoveRefused {
+        reason: Refusal,
+    },
+    /// `door_closed`: a move into a shut door or gate. `The door is Closed!` (capital C) is
+    /// shut and unlocked, `The door is closed!` locked (`kb/navigation.md`).
+    DoorClosed {
+        locked: bool,
+    },
+    /// `door_opened` (`The door is now open.`) and `door_already_open`.
+    DoorOpened,
+    /// `door_locked`: `open` on a locked door (`The door is locked.`).
+    OpenRefused,
+    /// `bash_ok` (`You bashed the door open.`) or `bash_fail`.
+    BashResult {
+        ok: bool,
+    },
 
     CombatEngaged,
     CombatOff,
@@ -337,6 +431,16 @@ impl GameEvent {
                 exits: parse_exits(ev.text("exits").unwrap_or_default()),
             },
             "room_dark" => G::RoomDark,
+            "door_closed" => G::DoorClosed {
+                locked: !ev.line.contains("is Closed!"),
+            },
+            "door_opened" | "door_already_open" => G::DoorOpened,
+            "door_locked" => G::OpenRefused,
+            "bash_ok" => G::BashResult { ok: true },
+            "bash_fail" => G::BashResult { ok: false },
+            name if Refusal::of(name).is_some() => G::MoveRefused {
+                reason: Refusal::of(name).expect("a refusal"),
+            },
             "combat_engaged" => G::CombatEngaged,
             "combat_off" => G::CombatOff,
             "monster_death" => G::MonsterDeath {

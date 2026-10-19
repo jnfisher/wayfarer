@@ -2,7 +2,9 @@
 import type { Coins } from "./Coins";
 import type { Encumbrance } from "./Encumbrance";
 import type { ParseCounts } from "./ParseCounts";
+import type { Position } from "./Position";
 import type { Stats } from "./Stats";
+import type { Walking } from "./Walking";
 
 /**
  * What the brain knows about one character: the wire's `character` snapshot, and the shape a
@@ -53,4 +55,12 @@ carrying?: Array<string>, encumbrance?: Encumbrance,
 /**
  * Monster deaths seen since the brain attached.
  */
-kills?: number, };
+kills?: number, 
+/**
+ * Where the brain believes the character is (M2; absent without a world pack).
+ */
+position?: Position, 
+/**
+ * The walk in progress; absent when not walking.
+ */
+walking?: Walking, };

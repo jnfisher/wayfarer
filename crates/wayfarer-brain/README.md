@@ -2,11 +2,13 @@
 
 The brain (`docs/brain.md`): attaches to the gateway as its brain client, parses every
 session's output, keeps a character model per session, sends the UIs events and snapshots,
-and re-syncs a character (`st`, `exp`, `i`, `look`) at an idle prompt. Depends on
+re-syncs a character (`st`, `exp`, `i`, `look`) at an idle prompt, and with a world pack keeps
+each character's position, serves the map panel (`map_view`) and walks a character to a room
+(`walk_to`). Depends on
 `wayfarer-proto`, `wayfarer-parse` and `wayfarer-world`, not on the gateway.
 
 ```rust
-let world = World::open(path)?;                          // the world pack's game texts
+let world = World::open(path)?;                          // game texts, rooms (`Atlas`)
 let mut brain = Brain::new(world, Arc::new(SystemClock), token);
 let mut link = WsLink::connect("ws://127.0.0.1:7373/ws").await?;
 brain.run(&mut link).await?;                             // Ok when the gateway goes; run again
@@ -20,11 +22,22 @@ brain.run(&mut link).await?;                             // Ok when the gateway 
   carries on from the last `seq` seen. `Err(Refused)` when the gateway says no.
 - **`Character`**: `apply(&GameEvent)` and `snapshot() -> CharacterState`; `merge_patch` and
   `apply_patch` (RFC 7386) between snapshots.
-- **The re-sync** (`session.rs`): `Off`, `Want {next, idle}`, `Waiting {step, deadline}`; the
-  only code that sends to the game.
+- **The re-sync** (`session.rs`): `Off`, `Want {next, idle}`, `Waiting {step, deadline}`.
+- **`executor`**: an `Action` is a command, the events that confirm it (`Expect`) and a
+  timeout; one in flight per session, sent at a prompt in the realm; outcomes confirmed,
+  refused or timed out. The hard guards (`guard`): no attack while in combat, never `train
+  stats`. The re-sync and the executor never have a line in flight at once.
+- **`position.rs`**: the `Belief` fed by every room seen and every move sent, the `Traveller`
+  with the exits refused this session, the rooms visited, and the `map_view`.
+- **`walker.rs`**: the route and the per-step policy (doors, refusals, relocation, stops).
+- **`Atlas`** (`brain.rs`): the `RoomGraph`, room kinds and class and race numbers, loaded once
+  per brain and shared by its sessions; `World` keeps the `WorldPack` open beside it.
 - `BUILD`: the version and commit (`build.rs`), for `brain_info`.
 
 Tests: `cargo nextest run -p wayfarer-brain`. `tests/brain.rs` runs the brain against a fake
 gateway: the fixtures replayed as live output (the snapshot, the patches, the events), history
-catch-up, the re-sync's timing on a paused clock, reattach, restart and refusal. The live
-scenario: `scripts/live-check.sh --scenario brain`.
+catch-up, the re-sync's timing on a paused clock, reattach, restart and refusal.
+`tests/walk.rs` walks against a fake game (rooms from the `room-walk` capture and the pack built
+from `tests/fixtures/world`): confirmed steps, doors, bashing, refusals, "no exit", the stops,
+the map view. The live scenarios: `scripts/live-check.sh --scenario brain` and `--scenario
+walk`.

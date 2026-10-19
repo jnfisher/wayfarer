@@ -1,17 +1,17 @@
 //! The brain's loop: attach, follow every session, answer the UIs' control messages, re-sync.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::Read;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use sha2::{Digest, Sha256};
 use tokio::time::Instant;
 use wayfarer_parse::{GameTexts, Registry};
 use wayfarer_proto::{
-    CharacterState, ClientKind, PROTOCOL, SessionInfo, ToClient, ToGateway, WorldPackInfo,
+    CharacterState, ClientKind, PROTOCOL, RoomKind, SessionInfo, ToClient, ToGateway, WorldPackInfo,
 };
-use wayfarer_world::WorldPack;
+use wayfarer_world::{Key, RoomGraph, WorldPack};
 
 use crate::clock::{Clock, rfc3339};
 use crate::link::Link;
@@ -35,12 +35,78 @@ pub enum BrainError {
     },
 }
 
+/// The world pack's rooms in memory, loaded once per brain and shared by every session: the
+/// room graph for the position, the walker and the map, and what the map marks.
+pub struct Atlas {
+    pub graph: RoomGraph,
+    /// Shops, trainers, banks, arenas and lairs.
+    pub kinds: HashMap<Key, RoomKind>,
+    /// Class and race numbers by name, for the gated exits.
+    pub classes: HashMap<String, i64>,
+    pub races: HashMap<String, i64>,
+}
+
+/// Room types (`kb/game-data.md` "Enumerations") and shop types (`kb/economy.md`).
+const ROOM_SHOP: i64 = 1;
+const ROOM_ARENA: i64 = 2;
+const ROOM_LAIR: i64 = 3;
+const SHOP_BANK: i64 = 7;
+const SHOP_TRAINING: i64 = 8;
+
+impl Atlas {
+    pub fn load(pack: &WorldPack) -> Result<Atlas, wayfarer_world::Error> {
+        let graph = RoomGraph::load(pack)?;
+        let shops: HashMap<i64, i64> = pack.shop_types()?.into_iter().collect();
+        let mut kinds = HashMap::new();
+        for n in graph.nodes() {
+            let r = &n.room;
+            let kind = match r.room_type {
+                ROOM_SHOP => Some(match shops.get(&r.shop_num) {
+                    Some(&SHOP_BANK) => RoomKind::Bank,
+                    Some(&SHOP_TRAINING) => RoomKind::Trainer,
+                    _ => RoomKind::Shop,
+                }),
+                ROOM_ARENA => Some(RoomKind::Arena),
+                ROOM_LAIR => Some(RoomKind::Lair),
+                _ => None,
+            };
+            if let Some(kind) = kind {
+                kinds.insert(n.key(), kind);
+            }
+        }
+        // MegaMud's waypoints name places the room data does not mark.
+        for w in pack.waypoints()? {
+            let kind = if w.is_trainer {
+                RoomKind::Trainer
+            } else if w.is_bank {
+                RoomKind::Bank
+            } else if w.is_shop {
+                RoomKind::Shop
+            } else {
+                continue;
+            };
+            for &k in &w.rooms {
+                kinds.entry(k).or_insert(kind);
+            }
+        }
+        let by_name = |v: Vec<(i64, String)>| v.into_iter().map(|(n, s)| (s, n)).collect();
+        Ok(Atlas {
+            graph,
+            kinds,
+            classes: by_name(pack.classes()?),
+            races: by_name(pack.races()?),
+        })
+    }
+}
+
 /// What the brain parses with: the game texts' pattern registry, and which world pack it came
-/// from.
+/// from; with a pack, the pack itself (kept open) and its [`Atlas`].
 #[derive(Clone)]
 pub struct World {
     pub registry: Arc<Registry>,
     pub info: Option<WorldPackInfo>,
+    pub pack: Option<Arc<Mutex<WorldPack>>>,
+    pub atlas: Option<Arc<Atlas>>,
 }
 
 impl World {
@@ -51,19 +117,29 @@ impl World {
             source,
         };
         let pack = WorldPack::open(path).map_err(err)?;
-        let texts = pack.game_texts().map_err(err)?;
         let hash = file_sha256(path).map_err(|source| {
             err(wayfarer_world::Error::Io {
                 path: path.to_path_buf(),
                 source,
             })
         })?;
+        let mut world = Self::from_pack(pack).map_err(err)?;
+        world.info = Some(WorldPackInfo {
+            path: path.display().to_string(),
+            hash: format!("sha256:{hash}"),
+        });
+        Ok(world)
+    }
+
+    /// An open pack: its game texts and its atlas (no `info`).
+    pub fn from_pack(pack: WorldPack) -> Result<Self, wayfarer_world::Error> {
+        let texts = pack.game_texts()?;
+        let atlas = Atlas::load(&pack)?;
         Ok(Self {
             registry: Arc::new(Registry::new(&texts)),
-            info: Some(WorldPackInfo {
-                path: path.display().to_string(),
-                hash: format!("sha256:{hash}"),
-            }),
+            info: None,
+            pack: Some(Arc::new(Mutex::new(pack))),
+            atlas: Some(Arc::new(atlas)),
         })
     }
 
@@ -72,10 +148,13 @@ impl World {
         Self::from_registry(Arc::new(Registry::new(texts)))
     }
 
+    /// Parsing only: no rooms, so no position, walking or map.
     pub fn from_registry(registry: Arc<Registry>) -> Self {
         Self {
             registry,
             info: None,
+            pack: None,
+            atlas: None,
         }
     }
 }
@@ -125,7 +204,7 @@ impl Brain {
 
     /// The character the brain has for `session`, if it knows the session.
     pub fn snapshot(&self, session: &str) -> Option<CharacterState> {
-        self.sessions.get(session).map(|s| s.character.snapshot())
+        self.sessions.get(session).map(Session::snapshot)
     }
 
     /// How many of the brain's own lines to `session` still wait for the gateway's `sent`.
@@ -201,9 +280,14 @@ impl Brain {
         for info in infos {
             match self.sessions.get_mut(&info.id) {
                 Some(s) if attach => s.attach(info, now, out),
-                Some(s) => s.set_state(info.state),
+                Some(s) => s.set_state(info.state, out),
                 None => {
-                    let mut s = Session::new(info, self.world.registry.clone(), now);
+                    let mut s = Session::new(
+                        info,
+                        self.world.registry.clone(),
+                        self.world.atlas.clone(),
+                        now,
+                    );
                     s.attach(info, now, out);
                     self.sessions.insert(info.id.clone(), s);
                 }
@@ -226,6 +310,7 @@ impl Brain {
                     && s.history(chunks, out)
                 {
                     s.publish(out);
+                    s.send_map(out);
                 }
             }
             ToClient::Lagged { session, missed } => {
@@ -236,29 +321,39 @@ impl Brain {
             }
             ToClient::SessionState { session, state } => {
                 if let Some(s) = self.sessions.get_mut(&session) {
-                    s.set_state(state);
+                    s.set_state(state, out);
                 }
             }
             ToClient::SessionList { sessions } => self.sessions_seen(&sessions, false, out),
             ToClient::Sent { session, text, .. } => {
                 if let Some(s) = self.sessions.get_mut(&session) {
-                    s.sent(&text, now);
+                    s.sent(&text, now, out);
                 }
             }
+            ToClient::WalkTo { session, map, room } => match self.sessions.get_mut(&session) {
+                Some(s) => s.walk_to((map, room), now, out),
+                None => out.push(no_session("walk_to", &session)),
+            },
+            ToClient::WalkStop { session } => match self.sessions.get_mut(&session) {
+                Some(s) => s.walk_stop(out),
+                None => out.push(no_session("walk_stop", &session)),
+            },
+            ToClient::MapRequest { session, radius } => match self.sessions.get_mut(&session) {
+                Some(s) => s.map_request(radius, out),
+                None => out.push(no_session("map_request", &session)),
+            },
             ToClient::Resync { session } => match self.sessions.get_mut(&session) {
                 Some(s) => {
                     tracing::info!(%session, "re-sync asked for");
                     s.request_resync();
                 }
-                None => out.push(ToGateway::Warning {
-                    session: None,
-                    text: format!("re-sync: no session {session:?}"),
-                }),
+                None => out.push(no_session("re-sync", &session)),
             },
             ToClient::StateRequest { session } => {
                 for s in self.sessions.values_mut() {
                     if session.as_ref().is_none_or(|id| *id == s.id) {
                         s.publish(out);
+                        s.send_map(out);
                     }
                 }
                 out.push(self.brain_info());
@@ -281,6 +376,13 @@ impl Brain {
                 tracing::info!(session = %s.id, "re-synced");
             }
         }
+    }
+}
+
+fn no_session(what: &str, session: &str) -> ToGateway {
+    ToGateway::Warning {
+        session: None,
+        text: format!("{what}: no session {session:?}"),
     }
 }
 
