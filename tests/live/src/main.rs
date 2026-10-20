@@ -9,8 +9,10 @@
 //! and checks its snapshot, its re-sync and that stopping it logs nobody off. `--scenario
 //! walk` (M2) has that brain walk the character to a room a few steps away and back, and
 //! `--scenario fight` walks it to the Newhaven Arena and starts the bot there;
-//! `--scenario under-attack` then stops the gateway while a monster is attacking;
-//! `--scenario restart` restarts the brain while the bot fights there, and checks it resumes.
+//! `--scenario under-attack` then stops the gateway while a monster is attacking (the brain
+//! flees first); `--scenario restart` restarts the brain while the bot fights there, and checks
+//! it resumes; `--scenario flee` raises the flee line so the first blow sends the character
+//! out of the Arena to rest and back.
 
 mod brain;
 mod claim;
@@ -70,12 +72,16 @@ enum Scenario {
     /// C-029: as "fight", but `wayfarer brain` is restarted while the bot runs; the new brain
     /// resumes it running in the Arena, and `stats_request` shows the kills so far.
     Restart,
+    /// C-028: as "fight", from full HP with the flee line at 100% (`--flee-below 100`): the
+    /// first blow sends the character up to the Narrow Road, where it rests and from where it
+    /// walks back.
+    Flee,
 }
 
 fn usage() -> ! {
     eprintln!(
         "usage: wayfarer-live --wayfarer BIN --out DIR [--addr HOST:PORT] [--pool FILE] \
-         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart]\n(run it through \
+         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart|flee]\n(run it through \
          scripts/live-check.sh)"
     );
     std::process::exit(2);
@@ -111,6 +117,7 @@ fn args() -> Args {
                     "loop" => Scenario::Loop,
                     "under-attack" => Scenario::UnderAttack,
                     "restart" => Scenario::Restart,
+                    "flee" => Scenario::Flee,
                     _ => usage(),
                 }
             }
@@ -491,7 +498,7 @@ async fn run(ctx: &mut Ctx, pool: &Pool) -> Result<String, String> {
         let under_attack = ctx.args.scenario == Scenario::UnderAttack;
         let ok = match fight_scenario(ctx, &mut gw, under_attack).await {
             Fought::UnderAttack(running) => {
-                let left = logoff_under_attack(ctx, gw).await;
+                let left = logoff_under_attack(ctx, gw, &running).await;
                 let brain = stop_brain(ctx, *running).await;
                 let again = log_on_again(ctx, fixture, true).await;
                 left && brain && again
@@ -502,6 +509,12 @@ async fn run(ctx: &mut Ctx, pool: &Pool) -> Result<String, String> {
             }
         };
         return if ok { Ok(who) } else { Err(who) };
+    }
+    if ctx.args.scenario == Scenario::Flee {
+        let fled = flee_scenario(ctx, &mut gw).await;
+        let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
+        let again = logged_off && log_on_again(ctx, fixture, true).await;
+        return if fled && again { Ok(who) } else { Err(who) };
     }
     if ctx.args.scenario == Scenario::Restart {
         let restarted = restart_scenario(ctx, &mut gw).await;
@@ -622,12 +635,50 @@ async fn leave_the_arena(gw: &mut Gateway) -> Result<String, String> {
     last
 }
 
+/// The bot's narration in a brain's log (`Notice("...")`, `Warning("...")`), from the first
+/// line containing `from`.
+fn narration_from(log: &[String], from: &str) -> Vec<String> {
+    let said: Vec<String> = log
+        .iter()
+        .filter_map(|l| {
+            let at = l
+                .find("Notice(\"")
+                .map(|i| i + 8)
+                .or_else(|| l.find("Warning(\"").map(|i| i + 9))?;
+            let rest = &l[at..];
+            Some(rest[..rest.rfind("\")").unwrap_or(rest.len())].to_owned())
+        })
+        .collect();
+    let first = said
+        .iter()
+        .position(|n| n.contains(from))
+        .unwrap_or(said.len());
+    said[first..].to_vec()
+}
+
 /// Stop the gateway (SIGTERM) with the brain attached and a monster attacking: the brain is
-/// asked first, and the log-off keeps sending `x` until the character is out. Whether it
-/// logged off cleanly.
-async fn logoff_under_attack(ctx: &mut Ctx, gw: Gateway) -> bool {
+/// asked first and flees (an attack cancels the exit), then answers; the log-off keeps sending
+/// `x` until the character is out. Whether it logged off cleanly after a flee.
+async fn logoff_under_attack(ctx: &mut Ctx, gw: Gateway, brain: &brain::Brain) -> bool {
     let started = Instant::now();
     let stopped = gw.stop().await;
+    let fled = narration_from(&brain.log(), "Logging off under attack");
+    let flee = match fled.first() {
+        None => Err("the brain did not flee before answering logging_off".to_owned()),
+        Some(_)
+            if fled
+                .iter()
+                .any(|n| n.starts_with("Safe in") || n.starts_with("Fled ")) =>
+        {
+            Ok(fled.join("; "))
+        }
+        Some(_) => Err(format!("the flee did not get away: {}", fled.join("; "))),
+    };
+    ctx.record(
+        "logging_off under attack: the brain flees first",
+        started,
+        &flee,
+    );
     let lines = |s: &str| stopped.log.iter().filter(|l| l.contains(s)).count();
     let retries = lines("log-off interrupted");
     let result = if !stopped.clean {
@@ -650,7 +701,7 @@ async fn logoff_under_attack(ctx: &mut Ctx, gw: Gateway) -> bool {
         ))
     };
     ctx.record("stop the gateway under attack: log off", started, &result);
-    result.is_ok()
+    flee.is_ok() && result.is_ok()
 }
 
 /// The brain scenario, with the gateway in the realm; whether it got as far as stopping the
@@ -850,6 +901,7 @@ async fn placed_brain(
     ctx: &mut Ctx,
     gw: &mut Gateway,
     label: &str,
+    extra: &[String],
 ) -> Option<(brain::Brain, (i64, i64))> {
     let dir = run_dir(&ctx.args.out, &mut ctx.runs, label);
     let started = Instant::now();
@@ -867,13 +919,14 @@ async fn placed_brain(
     // The brain attaches and re-syncs: the `look` places the character.
     let started = Instant::now();
     let wayfarer = ctx.args.wayfarer.clone();
-    let running = match brain::Brain::start(&wayfarer, &dir, "brain", &gw.addr, &world).await {
-        Ok(b) => b,
-        Err(e) => {
-            ctx.record("the brain attaches and re-syncs", started, &Err(e));
-            return None;
-        }
-    };
+    let running =
+        match brain::Brain::start_with(&wayfarer, &dir, "brain", &gw.addr, &world, extra).await {
+            Ok(b) => b,
+            Err(e) => {
+                ctx.record("the brain attaches and re-syncs", started, &Err(e));
+                return None;
+            }
+        };
     let placed = gw
         .wait_for(Duration::from_secs(40), "a re-sync and a position", |g| {
             if !g.notices.iter().any(|n| n == "re-synced") {
@@ -922,7 +975,7 @@ async fn stop_brain(ctx: &mut Ctx, running: brain::Brain) -> bool {
 /// brain stopped. Whether it got as far as stopping the brain.
 async fn walk_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
     // 1. The brain attaches and re-syncs: the `look` places the character.
-    let Some((running, start)) = placed_brain(ctx, gw, "walk").await else {
+    let Some((running, start)) = placed_brain(ctx, gw, "walk", &[]).await else {
         return false;
     };
     // 2. There, confirming each room; 3. and back.
@@ -1003,7 +1056,7 @@ async fn newhaven_loops(gw: &mut Gateway) -> Result<(String, String), String> {
 /// Entrance; the brain stopped. Whether all of it went.
 async fn loop_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
     // 1. The brain attaches and re-syncs.
-    let Some((running, start)) = placed_brain(ctx, gw, "loop").await else {
+    let Some((running, start)) = placed_brain(ctx, gw, "loop", &[]).await else {
         return false;
     };
     let mut ok = true;
@@ -1138,10 +1191,10 @@ async fn fight_scenario(ctx: &mut Ctx, gw: &mut Gateway, under_attack: bool) -> 
     use wayfarer_proto::BotAction;
 
     // 1. The brain attaches and re-syncs.
-    let Some((running, start)) = placed_brain(ctx, gw, "fight").await else {
+    let Some((running, start)) = placed_brain(ctx, gw, "fight", &[]).await else {
         return Fought::Out(false);
     };
-    let ok = fight_in_the_arena(ctx, gw, start).await;
+    let ok = fight_in_the_arena(ctx, gw, start, true).await;
 
     // 5. A monster attacking, the bot fighting it, HP to spare.
     if ok && under_attack {
@@ -1155,12 +1208,27 @@ async fn fight_scenario(ctx: &mut Ctx, gw: &mut Gateway, under_attack: bool) -> 
                 }
                 let (now, max) = hp(c)?;
                 let engaged = c.get("in_combat").and_then(serde_json::Value::as_bool);
-                (engaged == Some(true) && now * 10 >= max * 6)
-                    .then(|| Ok(format!("engaged at {now}/{max} HP")))
+                // Attacked just now, so the log-off meets an attack, not luck.
+                let attack = g
+                    .attacks
+                    .last()
+                    .filter(|a| a.at.elapsed() < RECENT_ATTACK)?;
+                (engaged == Some(true) && now * 10 >= max * 6).then(|| {
+                    Ok(format!(
+                        "engaged at {now}/{max} HP; attacked by {}: \"{}\" ({} attacks seen)",
+                        attack.who,
+                        attack.line,
+                        g.attacks.len()
+                    ))
+                })
             })
             .await
             .and_then(|r| r);
-        ctx.record("a monster attacking, HP 60% or more", started, &ready);
+        ctx.record(
+            "a monster attacking, HP 60% or more, attacked just now",
+            started,
+            &ready,
+        );
         if ready.is_ok() {
             return Fought::UnderAttack(Box::new(running));
         }
@@ -1196,10 +1264,10 @@ async fn fight_scenario(ctx: &mut Ctx, gw: &mut Gateway, under_attack: bool) -> 
 async fn restart_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
     use wayfarer_proto::BotAction;
 
-    let Some((running, start)) = placed_brain(ctx, gw, "restart").await else {
+    let Some((running, start)) = placed_brain(ctx, gw, "restart", &[]).await else {
         return false;
     };
-    let mut ok = fight_in_the_arena(ctx, gw, start).await;
+    let mut ok = fight_in_the_arena(ctx, gw, start, true).await;
     let kills = |c: &serde_json::Value| c["run"]["kills"].as_u64().unwrap_or(0);
     let kills_before = kills(&gw.character);
     let mut running = Some(running);
@@ -1340,8 +1408,14 @@ async fn restart_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
     ok && stopped.is_ok() && out && rested && brain
 }
 
-/// Steps 2 to 4 of the fight scenario: the walk there, Start, the fight.
-async fn fight_in_the_arena(ctx: &mut Ctx, gw: &mut Gateway, start: (i64, i64)) -> bool {
+/// Steps 2 to 4 of the fight scenario: the walk there, Start, `*Combat Engaged*` and the fight
+/// to a kill or a stop; without `to_the_end`, only the walk there and Start.
+async fn fight_in_the_arena(
+    ctx: &mut Ctx,
+    gw: &mut Gateway,
+    start: (i64, i64),
+    to_the_end: bool,
+) -> bool {
     use wayfarer_proto::BotAction;
 
     let level = gw
@@ -1379,6 +1453,19 @@ async fn fight_in_the_arena(ctx: &mut Ctx, gw: &mut Gateway, start: (i64, i64)) 
     if let Err(e) = gw.bot(BotAction::Start).await {
         ctx.record("start: *Combat Engaged*", started, &Err(e));
         return false;
+    }
+    if !to_the_end {
+        let running = gw
+            .wait_for(Duration::from_secs(10), "the bot running", |g| {
+                (bot_field(&g.character, "state") == Some("running")).then(|| {
+                    bot_field(&g.character, "narration")
+                        .unwrap_or("")
+                        .to_owned()
+                })
+            })
+            .await;
+        ctx.record("start: the bot running", started, &running);
+        return running.is_ok();
     }
     let engaged = gw
         .wait_for(ENGAGE_TIMEOUT, "*Combat Engaged*", |g| {
@@ -1439,6 +1526,135 @@ async fn fight_in_the_arena(ctx: &mut Ctx, gw: &mut Gateway, start: (i64, i64)) 
     fought.is_ok()
 }
 
+/// An attack this recent counts as the character being under attack.
+const RECENT_ATTACK: Duration = Duration::from_secs(6);
+/// The flee scenario's flee line: at full HP, the first blow that takes any sets it off (a
+/// level-1 warrior has 40 HP and the Arena's rats take 1 or 2: 38/40 is still 95%).
+const FLEE_LINE: &str = "100";
+/// From the flee to the walk back into the Arena: a rest from just under 95% to 95%.
+const FLEE_BACK_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// The notices since `from` and whether the bot stopped meanwhile (a warning ends the wait).
+fn after(g: &Gateway, from: usize) -> &[String] {
+    &g.notices[from.min(g.notices.len())..]
+}
+
+/// The flee scenario, with the gateway in the realm: a brain fleeing below 100%; rest to full
+/// HP; to the Arena; Start; the first blow: Flee, by a confirmed exit to a quiet room; rested
+/// there; back to the Arena. Then as "fight" ends: Stop, out of the Arena, rest by hand,
+/// the brain stopped; and no death on the way. Whether all of it passed.
+async fn flee_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
+    use wayfarer_proto::BotAction;
+
+    let extra = ["--flee-below".to_owned(), FLEE_LINE.to_owned()];
+    let Some((running, start)) = placed_brain(ctx, gw, "flee", &extra).await else {
+        return false;
+    };
+    let notices = gw.notices.len();
+    let attacks = gw.attacks.len();
+    let mut ok = rest_to_full(ctx, gw).await && fight_in_the_arena(ctx, gw, start, false).await;
+
+    // 5. The first blow: Flee, out by a confirmed exit, to a room where nothing follows.
+    if ok {
+        let started = Instant::now();
+        let fled = gw
+            .wait_for(FIGHT_TIMEOUT, "Flee to a quiet room", |g| {
+                if bot_field(&g.character, "state") == Some("stopped") {
+                    let why = bot_field(&g.character, "narration").unwrap_or("");
+                    return Some(Err(format!("the bot stopped: {why}")));
+                }
+                let said = after(g, notices);
+                let from = said.iter().position(|n| n.starts_with("Fleeing: HP"))?;
+                let safe = said[from..]
+                    .iter()
+                    .position(|n| n.starts_with("Safe in") || n.starts_with("Fled "))?;
+                let attack = g.attacks[attacks.min(g.attacks.len())..]
+                    .first()
+                    .map_or_else(
+                        || "no attack seen".to_owned(),
+                        |a| format!("attacked by {}: \"{}\"", a.who, a.line),
+                    );
+                Some(Ok(format!(
+                    "{attack}; {}",
+                    said[from..=from + safe].join("; ")
+                )))
+            })
+            .await
+            .and_then(|r| r);
+        ctx.record("the first blow: flee to a quiet room", started, &fled);
+        ok = fled.is_ok();
+    }
+
+    // 6. Rest there, then walk back to the Arena (home).
+    if ok {
+        let started = Instant::now();
+        let back = gw
+            .wait_for(FLEE_BACK_TIMEOUT, "rested, back in the Arena", |g| {
+                if bot_field(&g.character, "state") == Some("stopped") {
+                    let why = bot_field(&g.character, "narration").unwrap_or("");
+                    return Some(Err(format!("the bot stopped: {why}")));
+                }
+                let said = after(g, notices);
+                let rest = said
+                    .iter()
+                    .position(|n| n.starts_with("Recover: resting"))?;
+                let walk = rest
+                    + said[rest..]
+                        .iter()
+                        .position(|n| n == "Recover: rested; walking back to Newhaven, Arena")?;
+                said[walk..]
+                    .iter()
+                    .any(|n| n == "Arrived: Newhaven, Arena")
+                    .then(|| {
+                        Ok(format!(
+                            "{}; {}; Arrived: Newhaven, Arena",
+                            said[rest], said[walk]
+                        ))
+                    })
+            })
+            .await
+            .and_then(|r| r);
+        ctx.record("rests in the quiet room, walks back", started, &back);
+        ok = back.is_ok();
+    }
+
+    // Whatever happened: the bot stopped, out of the Arena, HP back, the brain stopped.
+    let started = Instant::now();
+    let stopped = match gw.bot(BotAction::Stop).await {
+        Ok(()) => {
+            gw.wait_for(Duration::from_secs(10), "the bot stopped", |g| {
+                (bot_field(&g.character, "state") == Some("stopped")).then(|| {
+                    bot_field(&g.character, "narration")
+                        .unwrap_or("")
+                        .to_owned()
+                })
+            })
+            .await
+        }
+        Err(e) => Err(e),
+    };
+    ctx.record("stop the bot", started, &stopped);
+    let out = walk_out(ctx, gw).await;
+    let rested = rest_by_hand(ctx, gw).await;
+    let started = Instant::now();
+    let died = gw.transcript().contains("You have been killed");
+    let flees = gw.notices[notices.min(gw.notices.len())..]
+        .iter()
+        .filter(|n| n.starts_with("Fleeing: HP"))
+        .count();
+    let alive = if died {
+        Err("the character was killed".to_owned())
+    } else {
+        Ok(format!(
+            "no death; {flees} flees, {} attacks seen",
+            gw.attacks.len() - attacks
+        ))
+    };
+    ctx.record("no death", started, &alive);
+    let brain = stop_brain(ctx, running).await;
+    ok && stopped.is_ok() && out && rested && alive.is_ok() && brain
+}
+
 /// Let a fight end by itself (stopping the bot does not stop auto-combat), then walk to the
 /// Narrow Road, trying again if a fight stops the walk.
 async fn walk_out(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
@@ -1472,6 +1688,38 @@ async fn walk_out(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
         &out,
     );
     out.is_ok()
+}
+
+/// `rest` by hand to full HP, where the character stands (the flee scenario starts at full HP,
+/// so the first blow sets the flee off).
+async fn rest_to_full(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
+    let Some((now, max)) = hp(&gw.character) else {
+        return true;
+    };
+    if now >= max {
+        return true;
+    }
+    let started = Instant::now();
+    let deadline = Instant::now() + SETTLE_TIMEOUT;
+    let mut rested = Err(format!("HP {now}/{max}"));
+    while Instant::now() < deadline {
+        if let Err(e) = gw.send_line("rest").await {
+            rested = Err(e);
+            break;
+        }
+        let r = gw
+            .wait_for(Duration::from_secs(60), "full HP", |g| {
+                let (hp, max) = hp(&g.character)?;
+                (hp >= max).then(|| format!("rested from {now} to {hp} of {max}"))
+            })
+            .await;
+        if r.is_ok() {
+            rested = r;
+            break;
+        }
+    }
+    ctx.record("rest to full HP", started, &rested);
+    rested.is_ok()
 }
 
 /// Below half HP: `rest` by hand until 80% (resting is broken by an attack: sent again).

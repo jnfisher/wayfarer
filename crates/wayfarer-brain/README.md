@@ -39,11 +39,13 @@ brain.run(&mut link).await?;                             // Ok when the gateway 
   (cached per anchor, radius, level and doors); `walk_loop` is a `walk_to` per stop, on to the
   next when the walker says it arrived.
 - **The bot** (`modes.rs`): running, paused or stopped, `Presence` (who is in the room), and the
-  mode stack, each mode `wants`, `step`, `on_event` and `outcome`: `recover.rs`, `fight.rs`,
-  then Idle. A step asks for an action (through the executor) or a walk (through the walker),
-  and narrates. **`policy`**: the constants (rest below 80%, until 95%, stop below 30%, a quiet
+  mode stack, each mode `wants`, `step`, `on_event` and `outcome`: `flee.rs`, `recover.rs`,
+  `fight.rs`, then Idle. A step asks for an action (through the executor) or a walk (through
+  the walker), and narrates. Flee hops one move at a time through the executor; it also runs
+  alone before a log-off under attack (`Bot::leave`). **`policy`**: the constants (rest below
+  80%, until 95%, flee below 30% and at most three rooms, a 1.5 s watch for a follower, a quiet
   room within 5 steps, 12 s of quiet ends a fight) and pure functions over them and the pack
-  (`target`, `hostile`, `spawns_here`, `rest_at`, `hp_percent`).
+  (`target`, `hostile`, `spawns_here`, `rest_at`, `flee_exits`, `hp_percent`).
 - **`Atlas`** (`brain.rs`): the `RoomGraph`, room kinds, class and race numbers, the
   `Monsters` and MegaMud's verified loops, loaded once
   per brain and shared by its sessions; `World` keeps the `WorldPack` open beside it.
@@ -61,11 +63,15 @@ capture and the pack built from `tests/fixtures/world`): confirmed steps, doors,
 refusals, "no exit", the stops, the map view. `tests/fight.rs` starts the bot in the Arena
 against the same fake game (texts from the `fight-arena` capture): one attack per target,
 nothing while engaged, the look after a kill, an arrival, resting in a quiet room and walking
-back, the stop below 30%, pause, take-over and resume, determinism, `logging_off`, Recover's
+back, pause, take-over and resume, determinism, `logging_off`, Recover's
 two fallbacks narrated, knocked down not counting as quiet, players not taken for attackers,
-`in_combat` going false when a fight lapses, and the policies on the pack. `tests/loops.rs`: the Newhaven loops, `walk_loop` round the stops and back, from the
+`in_combat` going false when a fight lapses, and the policies on the pack. `tests/flee.rs`:
+under the line mid-fight a hop, a follower and a second hop, safe, rest and back; a shut door
+passed over or opened; three hops then `break` and a stop; cornered; the check while a walk is
+in flight; nothing while paused or stopped; the log-off under attack; determinism; and
+`flee_exits` on the pack. `tests/loops.rs`: the Newhaven loops, `walk_loop` round the stops and back, from the
 nearest stop, and its stops. `tests/store.rs`: a second brain on the same store resumes the bot
 paused with its home and the same run, a running bot resumes and fights, a stored loop's fields
 survive and its stops win, nothing is resumed outside the realm or when stopped, a run's kills,
-death, samples and exp per hour, and the run counted without a store. The live scenarios: `scripts/live-check.sh --scenario brain`,
+death, samples and exp per hour, flees (a log-off's too), and the run counted without a store. The live scenarios: `scripts/live-check.sh --scenario brain`,
 `--scenario walk`, `--scenario fight` and `--scenario loop`.

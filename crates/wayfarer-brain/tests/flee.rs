@@ -1,0 +1,498 @@
+//! Flee (docs/brain.md "Flee"): the bot started in the Newhaven Arena against the fake game of
+//! `game/mod.rs`, its HP dropped under the flee line (30%) by a giant rat. On a paused clock.
+
+mod game;
+
+use std::collections::{BTreeSet, HashMap};
+use std::time::UNIX_EPOCH;
+
+use game::arena::*;
+use game::*;
+use wayfarer_brain::policy::{self, Candidate, FLEE_HOPS};
+use wayfarer_brain::{Brain, FixedClock};
+use wayfarer_parse::Parser;
+use wayfarer_proto::{BotAction, BotMode, BotState};
+use wayfarer_world::LockState;
+
+const RAT: &str = "large giant rat";
+const SMALL_CAVERN: Key = (1, 2156);
+
+fn lunge(hp: i32) -> String {
+    line("The large giant rat lunges at you!", hp)
+}
+
+fn follows(hp: i32) -> String {
+    line("The large giant rat creeps in after you!", hp)
+}
+
+/// The Arena with its north door shown open (the capture has it closed).
+fn arena_door_open(monsters: &[&str], hp: i32) -> String {
+    arena(monsters, hp).replace("closed door north", "open door north")
+}
+
+/// Fighting the rat in the Arena at full HP.
+async fn fighting() -> (Game, Run) {
+    let (mut g, run) = in_arena(&[RAT]).await;
+    start(&mut g, &[RAT], 35).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    // Twice: the attack's answer may come after the first.
+    for _ in 0..2 {
+        g.round("The large giant rat lunges at you!", 20).await;
+    }
+    (g, run)
+}
+
+/// Under the line mid-fight: up to the Narrow Road, the rat follows; east to the Narrow Path,
+/// where nothing follows; rest there; walk home; fight again.
+async fn flee_rest_and_return() -> (Vec<String>, Vec<String>) {
+    let (mut g, run) = fighting().await;
+    // 8 of 35 is 22%.
+    g.expect(
+        "u",
+        format!("{}{}", at_hp(&room(NARROW_ROAD), 8), follows(8)),
+    );
+    g.expect("e", at_hp(&room(NARROW_PATH), 8));
+    g.output(&lunge(8)).await;
+    g.narrated("Fleeing: HP 22%: up to Newhaven, Narrow Road")
+        .await;
+    g.narrated("Followed by large giant rat: east to Newhaven, Narrow Path")
+        .await;
+    g.narrated("Safe in Newhaven, Narrow Path").await;
+    // Its own auto-combat lapses (no `*Combat Off*` here); then Recover rests where it is.
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(8)));
+    g.narrated("Recover: resting to 95% in Newhaven, Narrow Path")
+        .await;
+    for hp in [16, 24, 31] {
+        g.output(&resting(hp)).await;
+        g.idle(Duration::from_secs(20)).await;
+    }
+    g.expect("w", at_hp(&room(NARROW_ROAD), 34));
+    g.expect("d", arena(&[RAT], 34));
+    g.expect("a rat", line(ENGAGED, 34));
+    g.output(&resting(34)).await;
+    g.narrated("Recover: rested; walking back to Newhaven, Arena")
+        .await;
+    g.narrated("Fight: large giant rat").await;
+    let (seen, played) = g.close(run).await;
+    (played, notices(&seen))
+}
+
+#[tokio::test(start_paused = true)]
+async fn under_the_line_it_flees_keeps_running_when_followed_rests_and_returns() {
+    let (played, said) = flee_rest_and_return().await;
+    assert_eq!(
+        played,
+        ["st", "look", "a rat", "u", "e", "rest", "w", "d", "a rat"]
+    );
+    assert!(
+        said.contains(&"Arrived: Newhaven, Arena".to_owned()),
+        "{said:?}"
+    );
+    assert!(!said.iter().any(|n| n.starts_with("Stopped")), "{said:?}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn with_the_line_above_recovers_it_still_rests_and_walks_back() {
+    // The live check's `--flee-below 95`: the first blow (33 of 35, 94%) sets the flee off,
+    // with HP above the 80% Recover would rest below. It rests to 95% anyway, then goes back.
+    let clock = FixedClock(UNIX_EPOCH + Duration::from_secs(T0));
+    let brain = Brain::new(world(), Arc::new(clock), None).with_flee_below(95);
+    let (mut g, run) = Game::start_brain(SessionState::Realm, arena(&[RAT], 35), brain).await;
+    g.until(|m| matches!(m, ToGateway::MapView { .. }).then_some(()))
+        .await;
+    g.idle(Duration::from_secs(20)).await;
+    start(&mut g, &[RAT], 35).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    g.round("The large giant rat lunges at you!", 35).await;
+    g.expect("u", at_hp(&room(NARROW_ROAD), 33));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(33)));
+    g.output(&lunge(33)).await;
+    g.narrated("Fleeing: HP 94%: up to Newhaven, Narrow Road")
+        .await;
+    g.narrated("Safe in Newhaven, Narrow Road").await;
+    g.narrated("Recover: resting to 95% in Newhaven, Narrow Road")
+        .await;
+    g.expect("d", arena(&[RAT], 34));
+    g.expect("a rat", line(ENGAGED, 34));
+    g.idle(Duration::from_secs(20)).await;
+    g.output(&resting(34)).await;
+    g.narrated("Recover: rested; walking back to Newhaven, Arena")
+        .await;
+    g.narrated("Fight: large giant rat").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "u", "rest", "d", "a rat"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_same_flee_gives_the_same_commands() {
+    assert_eq!(flee_rest_and_return().await, flee_rest_and_return().await);
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_mode_is_flee_while_it_runs_and_the_follower_is_watched_for() {
+    let (mut g, run) = fighting().await;
+    g.expect("u", at_hp(&room(NARROW_ROAD), 8));
+    g.output(&lunge(8)).await;
+    g.narrated("Flee: in Newhaven, Narrow Road, watching for followers")
+        .await;
+    assert_eq!(bot(&g.seen).mode, BotMode::Flee);
+    // The watch is 1.5 s: nothing yet at 1 s.
+    let before = g.seen.len();
+    g.idle(Duration::from_secs(1)).await;
+    assert!(
+        notices(&g.seen[before..]).is_empty(),
+        "{:?}",
+        notices(&g.seen[before..])
+    );
+    g.narrated("Safe in Newhaven, Narrow Road").await;
+    g.bot(BotAction::Stop).await;
+    g.narrated("Stopped: asked to stop").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "u"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_shut_door_is_passed_over_for_the_next_exit_at_once() {
+    // The north door shows open; `up` answers that a (locked) door is shut. The next candidate
+    // goes straight away: the door north.
+    let (mut g, run) = Game::start_with(SessionState::Realm, arena_door_open(&[RAT], 35)).await;
+    g.idle(Duration::from_secs(20)).await;
+    g.expect("st", status(35));
+    g.expect("look", arena_door_open(&[RAT], 35));
+    g.expect("a rat", line(ENGAGED, 35));
+    g.bot(BotAction::Start).await;
+    g.narrated("Fight: large giant rat").await;
+    g.round("The large giant rat lunges at you!", 20).await;
+    g.expect("u", line("The door is closed!", 8));
+    g.expect("n", at_hp(&room(BEYOND_ARENA), 8));
+    g.output(&lunge(8)).await;
+    g.narrated("Fleeing: HP 22%: up to Newhaven, Narrow Road")
+        .await;
+    g.narrated("Fleeing: HP 22%: north to Dungeon, Entrance")
+        .await;
+    g.narrated("Flee: in Dungeon, Entrance, watching for followers")
+        .await;
+    g.bot(BotAction::Stop).await;
+    g.narrated("Stopped: asked to stop").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "u", "n"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_shut_door_that_is_not_locked_is_opened_then_taken() {
+    // Only the door is left (up refused while in combat); the game says it is shut, not
+    // locked (`Closed!`): `open`, then through it.
+    let (mut g, run) = Game::start_with(SessionState::Realm, arena_door_open(&[RAT], 35)).await;
+    g.idle(Duration::from_secs(20)).await;
+    g.expect("st", status(35));
+    g.expect("look", arena_door_open(&[RAT], 35));
+    g.expect("a rat", line(ENGAGED, 35));
+    g.bot(BotAction::Start).await;
+    g.narrated("Fight: large giant rat").await;
+    g.round("The large giant rat lunges at you!", 20).await;
+    g.expect("u", line("You may not enter that room while in combat.", 8));
+    g.expect("n", line("The door is Closed!", 8));
+    g.expect("open north", line("The door is now open.", 8));
+    g.expect("n", at_hp(&room(BEYOND_ARENA), 8));
+    g.output(&lunge(8)).await;
+    g.narrated("Fleeing: HP 22%: opening the door north").await;
+    g.narrated("Flee: in Dungeon, Entrance, watching for followers")
+        .await;
+    g.bot(BotAction::Stop).await;
+    g.narrated("Stopped: asked to stop").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "u", "n", "open north", "n"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn followed_through_three_rooms_it_breaks_off_and_stops() {
+    let (mut g, run) = fighting().await;
+    g.expect(
+        "u",
+        format!("{}{}", at_hp(&room(NARROW_ROAD), 8), follows(8)),
+    );
+    g.expect(
+        "e",
+        format!("{}{}", at_hp(&room(NARROW_PATH), 8), follows(8)),
+    );
+    g.expect(
+        "e",
+        format!("{}{}", at_hp(&room(VILLAGE_ENTRANCE), 8), follows(8)),
+    );
+    g.expect("break", prompt(8));
+    g.output(&lunge(8)).await;
+    let why = format!(
+        "Stopped at 22% HP: followed by large giant rat through {FLEE_HOPS} rooms; fight or run \
+         by hand"
+    );
+    let said = g.narrated(&why).await;
+    assert!(
+        said.contains(
+            &"Followed by large giant rat: east to Newhaven, Village Entrance".to_owned()
+        ),
+        "{said:?}"
+    );
+    g.idle(Duration::from_secs(60)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "u", "e", "e", "break"]);
+    assert_eq!(bot(&seen).state, BotState::Stopped);
+    assert!(
+        seen.iter()
+            .any(|m| matches!(m, ToGateway::Warning { text, .. } if *text == why)),
+        "a warning"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn cornered_it_breaks_off_and_stops_with_a_warning() {
+    // Up is refused while in combat; the north door is locked (the pack, a cold start).
+    let (mut g, run) = fighting().await;
+    g.expect("u", line("You may not enter that room while in combat.", 8));
+    g.expect("break", prompt(8));
+    g.output(&lunge(8)).await;
+    let why = "Stopped at 22% HP: cornered in Newhaven, Arena: no exit to flee by; fight or run \
+               by hand";
+    let said = g.narrated(why).await;
+    assert!(
+        said.contains(
+            &"Flee: cornered in Newhaven, Arena: no exit to flee by; breaking off".to_owned()
+        ),
+        "{said:?}"
+    );
+    g.output(&lunge(6)).await;
+    g.idle(Duration::from_secs(60)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "u", "break"]);
+    let b = bot(&seen);
+    assert_eq!(b.state, BotState::Stopped);
+    assert!(
+        seen.iter()
+            .any(|m| matches!(m, ToGateway::Warning { text, .. } if text == why)),
+        "a warning"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_line_is_checked_while_a_walk_is_in_flight() {
+    // Recover walks out of the room beyond the Arena (it spawns) to the Narrow Road: south,
+    // then up. The rat hits the character on the way: at 22% the walk stops after its move,
+    // and Flee takes the character up from the Arena.
+    let beyond = |hp| at_hp(&room(BEYOND_ARENA), hp);
+    let (mut g, run) = Game::start_with(SessionState::Realm, beyond(35)).await;
+    g.idle(Duration::from_secs(20)).await;
+    g.expect("st", status(20));
+    g.expect("look", beyond(20));
+    g.expect(
+        "s",
+        format!(
+            "{}{}",
+            line("The thin giant rat lunges at you!", 8),
+            arena(&["thin giant rat"], 8)
+        ),
+    );
+    g.expect("u", at_hp(&room(NARROW_ROAD), 8));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(8)));
+    g.bot(BotAction::Start).await;
+    let said = g.narrated("Safe in Newhaven, Narrow Road").await;
+    let walked = said
+        .iter()
+        .position(|n| n.starts_with("Recover: walking to"));
+    let stopped = said.iter().position(|n| n == "Stopped walking: fleeing");
+    let fled = said
+        .iter()
+        .position(|n| n == "Fleeing: HP 22%: up to Newhaven, Narrow Road");
+    assert!(
+        walked.is_some() && walked < stopped && stopped < fled,
+        "{said:?}"
+    );
+    g.bot(BotAction::Stop).await;
+    g.narrated("Stopped: asked to stop").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "s", "u", "rest"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn nothing_is_sent_while_paused_or_stopped() {
+    for action in [BotAction::Pause, BotAction::Stop] {
+        let (mut g, run) = fighting().await;
+        g.bot(action).await;
+        g.idle(Duration::from_secs(1)).await;
+        g.output(&lunge(8)).await;
+        g.output(&lunge(5)).await;
+        g.idle(Duration::from_secs(60)).await;
+        let (seen, played) = g.close(run).await;
+        assert_eq!(played, ["st", "look", "a rat"], "{action:?}");
+        assert!(
+            !notices(&seen).iter().any(|n| n.starts_with("Fleeing")),
+            "{action:?}"
+        );
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn logging_off_under_attack_flees_first_then_answers_ready_to_leave() {
+    let (mut g, run) = fighting().await;
+    g.expect("u", at_hp(&room(NARROW_ROAD), 18));
+    g.send(ToClient::LoggingOff { session: ID.into() }).await;
+    let said = g.narrated("Stopped: the gateway is logging off").await;
+    assert_eq!(
+        said,
+        [
+            "Logging off under attack: fleeing first",
+            "Logging off under attack: fleeing first: up to Newhaven, Narrow Road",
+            "Flee: in Newhaven, Narrow Road, watching for followers",
+            "Safe in Newhaven, Narrow Road",
+            "Stopped: the gateway is logging off",
+        ]
+    );
+    let ready = g
+        .until(|m| match m {
+            ToGateway::ReadyToLeave { session } => Some(session.clone()),
+            _ => None,
+        })
+        .await;
+    assert_eq!(ready, ID);
+    // The gateway's `x`, a re-sync asked for: nothing goes.
+    g.typed("x").await;
+    g.send(ToClient::Resync { session: ID.into() }).await;
+    g.idle(Duration::from_secs(60)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "u"]);
+    let ready = seen
+        .iter()
+        .position(|m| matches!(m, ToGateway::ReadyToLeave { .. }))
+        .unwrap();
+    let flee = seen
+        .iter()
+        .position(|m| matches!(m, ToGateway::InputLine { text, .. } if text == "u"))
+        .unwrap();
+    assert!(flee < ready);
+    let after: Vec<_> = seen[ready..]
+        .iter()
+        .filter(|m| matches!(m, ToGateway::InputLine { .. }))
+        .collect();
+    assert!(after.is_empty(), "{after:?}");
+    assert_eq!(bot(&seen).state, BotState::Stopped);
+}
+
+#[tokio::test(start_paused = true)]
+async fn logging_off_cornered_breaks_off_and_still_answers() {
+    let (mut g, run) = fighting().await;
+    g.expect(
+        "u",
+        line("You may not enter that room while in combat.", 18),
+    );
+    g.expect("break", prompt(18));
+    g.send(ToClient::LoggingOff { session: ID.into() }).await;
+    let ready = g
+        .until(|m| match m {
+            ToGateway::ReadyToLeave { session } => Some(session.clone()),
+            _ => None,
+        })
+        .await;
+    assert_eq!(ready, ID);
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "u", "break"]);
+    assert_eq!(bot(&seen).state, BotState::Stopped);
+}
+
+#[test]
+fn a_follow_text_is_read_as_one() {
+    // The rat's own follow text (from the pack), or the generic pattern.
+    let mut parser = Parser::new(world().registry.clone());
+    let mut events = parser.feed("The large giant rat creeps in after you!\r\n");
+    events.extend(parser.finish());
+    assert!(
+        events.iter().any(|e| e.name.starts_with("monster_follows")),
+        "{events:?}"
+    );
+}
+
+// `flee_exits`, on the world pack.
+
+fn exits(room: Key, doors: &HashMap<(Key, u8), LockState>) -> Vec<Candidate> {
+    policy::flee_exits(&atlas(), Some(room), true, &BTreeSet::new(), doors)
+}
+
+fn dirs(c: &[Candidate]) -> Vec<(u8, Key)> {
+    c.iter().map(|c| (c.dir, c.to)).collect()
+}
+
+const N: u8 = 0;
+const S: u8 = 1;
+const E: u8 = 2;
+const W: u8 = 3;
+const U: u8 = 8;
+
+#[test]
+fn from_the_arena_up_is_first_and_the_door_only_when_known_open() {
+    // The Arena's north door to the Dungeon is locked in the pack (a cold start): up alone.
+    let none = HashMap::new();
+    let up = exits(ARENA, &none);
+    assert_eq!(dirs(&up), [(U, NARROW_ROAD)]);
+    assert_eq!((up[0].door, up[0].quiet), (None, true));
+    // Seen open: after up, as a door to a room that spawns.
+    let open = HashMap::from([((ARENA, N), LockState::Open)]);
+    let both = exits(ARENA, &open);
+    assert_eq!(dirs(&both), [(U, NARROW_ROAD), (N, BEYOND_ARENA)]);
+    assert_eq!(
+        (both[1].door, both[1].quiet),
+        (Some(LockState::Open), false)
+    );
+    // Up refused this session: only the door, and only if open.
+    let blocked = BTreeSet::from([(ARENA, U)]);
+    let a = atlas();
+    assert!(policy::flee_exits(&a, Some(ARENA), true, &blocked, &none).is_empty());
+    assert_eq!(
+        dirs(&policy::flee_exits(&a, Some(ARENA), true, &blocked, &open)),
+        [(N, BEYOND_ARENA)]
+    );
+    let locked = HashMap::from([((ARENA, N), LockState::Locked)]);
+    assert!(policy::flee_exits(&a, Some(ARENA), true, &blocked, &locked).is_empty());
+}
+
+#[test]
+fn from_the_narrow_path_a_plain_exit_to_a_quiet_room_not_protected_first() {
+    // Every exit is plain and quiet; the Spell Shop and the General Store are protected rooms
+    // (refused while in combat), so the Village Entrance and the Narrow Road come first.
+    let c = exits(NARROW_PATH, &HashMap::new());
+    assert_eq!(
+        dirs(&c),
+        [
+            (E, VILLAGE_ENTRANCE),
+            (W, NARROW_ROAD),
+            (N, (1, 2144)),
+            (S, (1, 2145)),
+        ]
+    );
+    assert!(c.iter().all(|c| c.quiet && c.door.is_none()));
+}
+
+#[test]
+fn from_the_narrow_road_never_the_gated_healer() {
+    // West to the Healer is a level-gated exit: never a candidate. Down to the Arena spawns.
+    let c = exits(NARROW_ROAD, &HashMap::new());
+    assert_eq!(dirs(&c), [(E, NARROW_PATH), (N, (1, 2147)), (9, ARENA)]);
+    assert!(!c[2].quiet);
+}
+
+#[test]
+fn from_a_dead_end_its_one_exit_even_into_a_room_that_spawns() {
+    let c = exits(SMALL_CAVERN, &HashMap::new());
+    assert_eq!(dirs(&c), [(S, BEYOND_ARENA)]);
+    assert!(!c[0].quiet);
+    assert_eq!(
+        dirs(&exits(WEAPONS_SHOP, &HashMap::new())),
+        [(S, VILLAGE_ENTRANCE)]
+    );
+}
+
+#[test]
+fn not_sure_of_the_room_no_candidate() {
+    let a = atlas();
+    let none = HashMap::new();
+    assert!(policy::flee_exits(&a, Some(ARENA), false, &BTreeSet::new(), &none).is_empty());
+    assert!(policy::flee_exits(&a, None, true, &BTreeSet::new(), &none).is_empty());
+}

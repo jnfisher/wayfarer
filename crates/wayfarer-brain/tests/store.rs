@@ -327,3 +327,66 @@ async fn without_a_store_the_run_is_still_counted() {
     assert_eq!((runs[0].kills, runs[0].exp_gained), (1, 9));
     assert_eq!(samples, 0);
 }
+
+/// Fighting the rat in the Arena, at 20 of 35 HP (57%).
+async fn fighting_on(path: &Path) -> (Game, Run) {
+    let (mut g, run) = arena_brain(brain_on(path), &["large giant rat"]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    // Twice: the attack's answer may come after the first.
+    for _ in 0..2 {
+        g.round("The large giant rat lunges at you!", 20).await;
+    }
+    (g, run)
+}
+
+/// The flee events of the session's newest run: (HP per cent, attacker, room).
+fn flees(path: &Path) -> Vec<(i64, Option<String>, Option<Key>)> {
+    let store = store_at(path);
+    store
+        .events(store.runs(ID, 1).unwrap()[0].run.id)
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.kind == EventKind::Flee)
+        .map(|e| (e.value, e.detail, e.room))
+        .collect()
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_flee_is_counted_in_the_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let (mut g, run) = fighting_on(&path).await;
+    // 8 of 35 is 22%: up to the Narrow Road.
+    g.expect("u", at_hp(&room(NARROW_ROAD), 8));
+    g.output(&line("The large giant rat lunges at you!", 8))
+        .await;
+    g.narrated("Safe in Newhaven, Narrow Road").await;
+    let (runs, _) = g.stats().await;
+    assert_eq!(runs[0].flees, 1);
+    assert_eq!(as_ui_sees(&g.seen).run.map(|r| r.flees), Some(1));
+    g.close(run).await;
+    let rat = Some("large giant rat".to_owned());
+    assert_eq!(flees(&path), [(22, rat, Some(ARENA))]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_flee_before_a_log_off_is_counted_before_the_run_ends() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let (mut g, run) = fighting_on(&path).await;
+    g.expect("u", at_hp(&room(NARROW_ROAD), 20));
+    g.send(ToClient::LoggingOff { session: ID.into() }).await;
+    g.until(|m| matches!(m, ToGateway::ReadyToLeave { .. }).then_some(()))
+        .await;
+    g.close(run).await;
+    assert!(
+        store_at(&path).runs(ID, 1).unwrap()[0]
+            .run
+            .ended_at
+            .is_some()
+    );
+    let rat = Some("large giant rat".to_owned());
+    assert_eq!(flees(&path), [(57, rat, Some(ARENA))]);
+}

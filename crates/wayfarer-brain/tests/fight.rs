@@ -196,33 +196,6 @@ async fn a_monster_that_attacks_while_resting_wakes_fight() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn below_30_percent_the_bot_stops_itself() {
-    let (mut g, run) = in_arena(&["large giant rat"]).await;
-    start(&mut g, &["large giant rat"], 35).await;
-    g.expect("a rat", line(ENGAGED, 35));
-    g.narrated("Fight: large giant rat").await;
-    g.round("The large giant rat lunges at you!", 20).await;
-    // 8 of 35 is 22%.
-    g.output(&line("The large giant rat lunges at you!", 8))
-        .await;
-    g.narrated("Stopped at 22% HP: flee is not built yet; fight or run by hand")
-        .await;
-    // Nothing more: not even after the fight.
-    g.output(&kill(8)).await;
-    g.idle(Duration::from_secs(60)).await;
-    let (seen, played) = g.close(run).await;
-    assert_eq!(played, ["st", "look", "a rat"]);
-    let b = bot(&seen);
-    assert_eq!(b.state, BotState::Stopped);
-    assert!(
-        seen.iter()
-            .any(|m| matches!(m, ToGateway::Warning { text, .. }
-            if text.starts_with("Stopped at 22% HP"))),
-        "a warning"
-    );
-}
-
-#[tokio::test(start_paused = true)]
 async fn a_typed_line_pauses_after_the_action_in_flight_and_resume_resyncs() {
     let (mut g, run) = in_arena(&["large giant rat"]).await;
     start(&mut g, &["large giant rat"], 35).await;
@@ -405,40 +378,6 @@ fn every_attack_refusal_line_refuses_the_attack() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn below_30_percent_mid_walk_the_bot_stops_and_so_does_the_walk() {
-    // Recover walks out of the room beyond the Arena (it spawns) to the Narrow Road: south,
-    // then up. A monster hits the character on the way; at 22% the bot stops, and the walk
-    // with it, without waiting for the bot's next tick (which a walk holds back).
-    let beyond = |hp| at_hp(&room(BEYOND_ARENA), hp);
-    let (mut g, run) = Game::start_with(SessionState::Realm, beyond(35)).await;
-    g.idle(Duration::from_secs(20)).await;
-    g.expect("st", status(20));
-    g.expect("look", beyond(20));
-    g.expect(
-        "s",
-        format!(
-            "{}{}",
-            line("The thin giant rat lunges at you!", 8),
-            arena(&["thin giant rat"], 8)
-        ),
-    );
-    g.bot(BotAction::Start).await;
-    let said = g
-        .narrated("Stopped at 22% HP: flee is not built yet; fight or run by hand")
-        .await;
-    assert!(
-        said.iter().any(|n| n.starts_with("Recover: walking to")),
-        "{said:?}"
-    );
-    g.idle(Duration::from_secs(60)).await;
-    let (seen, played) = g.close(run).await;
-    assert_eq!(played, ["st", "look", "s"]);
-    let ui = as_ui_sees(&seen);
-    assert_eq!(ui.bot.unwrap().state, BotState::Stopped);
-    assert_eq!(ui.walking, None);
-}
-
-#[tokio::test(start_paused = true)]
 async fn walk_to_pauses_the_bot() {
     let (mut g, run) = in_arena(&[]).await;
     start(&mut g, &[], 35).await;
@@ -517,10 +456,10 @@ fn refused_in_combat(hp: i32) -> String {
 
 #[tokio::test(start_paused = true)]
 async fn logging_off_stops_the_bot_answers_ready_to_leave_and_sends_nothing_more() {
-    let (mut g, run) = in_arena(&["large giant rat"]).await;
-    start(&mut g, &["large giant rat"], 35).await;
-    g.expect("a rat", line(ENGAGED, 35));
-    g.narrated("Fight: large giant rat").await;
+    // Nothing attacking: no flee (`flee.rs` has the log-off under attack).
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 35).await;
+    g.narrated("Waiting here").await;
     g.send(ToClient::LoggingOff { session: ID.into() }).await;
     g.narrated("Stopped: the gateway is logging off").await;
     let ready = g
@@ -538,12 +477,13 @@ async fn logging_off_stops_the_bot_answers_ready_to_leave_and_sends_nothing_more
     ))
     .await;
     g.send(ToClient::Resync { session: ID.into() }).await;
+    // A monster comes in and attacks: still nothing goes.
     for _ in 0..5 {
         g.round("The large giant rat lunges at you!", 31).await;
     }
     g.idle(Duration::from_secs(60)).await;
     let (seen, played) = g.close(run).await;
-    assert_eq!(played, ["st", "look", "a rat"]);
+    assert_eq!(played, ["st", "look"]);
     assert_eq!(bot(&seen).state, BotState::Stopped);
     let ready = seen
         .iter()

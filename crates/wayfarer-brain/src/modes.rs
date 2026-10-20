@@ -1,19 +1,22 @@
 //! The bot (docs/brain.md "Fight here", docs/plan/03-engine.md sections 4 and 5): running,
-//! paused or stopped, and the mode stack, highest first: Recover, Fight, Idle. On every tick
+//! paused or stopped, and the mode stack, highest first: Flee, Recover, Fight, Idle. On every tick
 //! the highest mode that wants control gets it and says what to do next; the session sends its
 //! action through the executor (one in flight) or its walk through the walker, and hands the
 //! outcome back. Every change of what it is doing is narrated.
+
+use std::collections::HashMap;
 
 use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
 use wayfarer_proto::{BotMode, BotState};
 use wayfarer_store::BotRecord;
-use wayfarer_world::{Key, Traveller};
+use wayfarer_world::{Key, LockState, Traveller};
 
 use crate::brain::Atlas;
 use crate::executor::{Action, Outcome};
 use crate::fight::Fight;
-use crate::policy::{self, STOP_BELOW};
+use crate::flee::Flee;
+use crate::policy;
 use crate::recover::Recover;
 use crate::walker::Say;
 
@@ -128,6 +131,8 @@ pub(crate) struct View<'a> {
     pub room: Option<Key>,
     pub certain: bool,
     pub traveller: &'a Traveller,
+    /// The doors as the game showed them this session.
+    pub doors: &'a HashMap<(Key, u8), LockState>,
     pub presence: &'a Presence,
 }
 
@@ -218,8 +223,12 @@ pub(crate) struct Bot {
     mode: BotMode,
     narration: String,
     reason: Option<String>,
+    flee: Flee,
     fight: Fight,
     recover: Recover,
+    /// The gateway is logging the character off under attack: Flee alone runs, then the bot
+    /// stops.
+    leaving: bool,
     /// The mode whose action is in flight.
     acting: Option<BotMode>,
     /// Pause when the action in flight is done, and why.
@@ -228,6 +237,14 @@ pub(crate) struct Bot {
 }
 
 impl Bot {
+    /// A bot whose flee line is `flee_below` per cent (the live check's `--flee-below`).
+    pub fn new(flee_below: i32) -> Bot {
+        Bot {
+            flee: Flee::new(flee_below),
+            ..Bot::default()
+        }
+    }
+
     pub fn running(&self) -> bool {
         self.state == BotState::Running
     }
@@ -269,6 +286,8 @@ impl Bot {
         self.mode = BotMode::Idle;
         self.reason = None;
         self.pausing = None;
+        self.leaving = false;
+        self.flee.restart();
         self.fight = Fight::default();
         self.recover = Recover::new(home);
         self.task = None;
@@ -279,6 +298,8 @@ impl Bot {
     /// What the store keeps of the bot.
     pub fn record(&self) -> BotRecord {
         let state = match self.state {
+            // The run ends with the log-off; a brain restarted meanwhile does not resume it.
+            _ if self.leaving => wayfarer_store::BotState::Stopped,
             BotState::Stopped => wayfarer_store::BotState::Stopped,
             BotState::Running => wayfarer_store::BotState::Running,
             BotState::Paused => wayfarer_store::BotState::Paused,
@@ -317,6 +338,8 @@ impl Bot {
             .clone()
             .filter(|_| self.state == BotState::Paused);
         self.pausing = None;
+        self.leaving = false;
+        self.flee.restart();
         self.fight = Fight::default();
         self.recover = Recover::new(rec.home);
         self.task = task;
@@ -344,6 +367,35 @@ impl Bot {
             Say::Notice(self.narration.clone())
         });
         says
+    }
+
+    /// `logging_off` with the character attacked: Flee runs alone, whatever the HP and whether
+    /// the bot was running, paused or stopped, to a room where nothing attacks; then the bot
+    /// stops ("the gateway is logging off").
+    pub fn leave(&mut self) -> Vec<Say> {
+        let mut says = Vec::new();
+        self.state = BotState::Running;
+        self.mode = BotMode::Idle;
+        self.reason = None;
+        self.pausing = None;
+        self.leaving = true;
+        self.task = None;
+        self.flee.leave();
+        self.narrate(
+            "Logging off under attack: fleeing first".to_owned(),
+            &mut says,
+        );
+        says
+    }
+
+    /// Fleeing before the gateway logs the character off.
+    pub fn leaving(&self) -> bool {
+        self.leaving && self.running()
+    }
+
+    /// The HP a flee started at, once it has: for the run's statistics.
+    pub fn take_fled(&mut self) -> Option<i32> {
+        self.flee.take_started()
     }
 
     /// Pause after the action in flight (`busy`), or now.
@@ -381,6 +433,7 @@ impl Bot {
 
     /// An event from the game: the modes follow it whatever the state; a death stops the bot.
     pub fn event(&mut self, ev: &GameEvent, now: Instant) -> Vec<Say> {
+        self.flee.on_event(ev, now);
         self.fight.on_event(ev, now);
         self.recover.on_event(ev, now);
         match ev {
@@ -390,24 +443,25 @@ impl Bot {
     }
 
     /// An HP value, wherever it came from (pitfall 27: every one is checked, mid-walk and
-    /// mid-action too): below [`STOP_BELOW`] a running bot stops itself, with a warning.
-    pub fn hp(&mut self, hp: Option<i32>) -> Vec<Say> {
-        match hp {
-            Some(hp) if hp < STOP_BELOW && self.running() => {
-                let why = format!("at {hp}% HP: flee is not built yet; fight or run by hand");
-                self.stop(&why, true)
-            }
-            _ => Vec::new(),
-        }
+    /// mid-action too). Whether Flee takes control now: then what the bot has in flight gives
+    /// way (its walk stops after the move in flight; an action not sent yet is dropped).
+    pub fn hp(&mut self, hp: Option<i32>) -> bool {
+        self.flee.hp(hp);
+        self.active() && self.acting != Some(BotMode::Flee) && self.flee.urgent(hp)
     }
 
     /// The outcome of the bot's action: to the mode that asked for it. A pause asked for
     /// meanwhile takes effect now.
     pub fn outcome(&mut self, action: &Action, outcome: Outcome) -> Vec<Say> {
         match self.acting.take() {
+            Some(BotMode::Flee) => self.flee.outcome(action, outcome),
             Some(BotMode::Fight) => self.fight.outcome(action, outcome),
             Some(BotMode::Recover) => self.recover.outcome(action, outcome),
             _ => {}
+        }
+        // Flee broke off the fight it could not run from.
+        if let Some(why) = self.flee.take_give_up() {
+            return self.stop(&why, true);
         }
         self.settle()
     }
@@ -423,7 +477,11 @@ impl Bot {
 
     /// When a wait ends, for the clock to wake the bot.
     pub fn wake(&self) -> Option<Instant> {
-        self.recover.wake()
+        self.recover
+            .wake()
+            .into_iter()
+            .chain(self.flee.wake())
+            .min()
     }
 
     /// The bot's walk ended, or its action was dropped, with no outcome to hand on: the mode
@@ -438,18 +496,21 @@ impl Bot {
         if self.state != BotState::Running || self.pausing.is_some() {
             return (None, says);
         }
-        let stopped = self.hp(v.hp);
-        if !stopped.is_empty() {
-            return (None, stopped);
-        }
-        if let Some(home) = self.recover.find_home(v) {
+        if !self.leaving
+            && let Some(home) = self.recover.find_home(v)
+        {
             let name = v.room_name(Some(home));
             self.narrate(format!("Playing from {name}"), &mut says);
         }
-        // A mode that finishes in its step (rested, back home) hands over at once: the stack
-        // is asked again, once.
+        // A mode that finishes in its step (safe, rested, back home) hands over at once: the
+        // stack is asked again, once.
         for _ in 0..2 {
-            let (mode, reason) = if let Some(r) = self.recover.wants(v) {
+            let (mode, reason) = if let Some(r) = self.flee.wants(v) {
+                (BotMode::Flee, r)
+            } else if self.leaving {
+                says.extend(self.stop("the gateway is logging off", false));
+                return (None, says);
+            } else if let Some(r) = self.recover.wants(v) {
                 (BotMode::Recover, r)
             } else if let Some(r) = self.fight.wants(v) {
                 (BotMode::Fight, r)
@@ -461,6 +522,7 @@ impl Bot {
                 self.mode = mode;
             }
             let step = match mode {
+                BotMode::Flee => self.flee.step(v),
                 BotMode::Recover => self.recover.step(v),
                 BotMode::Fight => self.fight.step(v),
                 BotMode::Idle if self.recover.stranded(v) => {
@@ -468,11 +530,25 @@ impl Bot {
                 }
                 BotMode::Idle => Step::wait("Waiting here"),
             };
-            let finished = step.act.is_none() && mode == BotMode::Recover && !self.recover.busy();
+            let finished = step.act.is_none()
+                && match mode {
+                    BotMode::Flee => !self.flee.busy(),
+                    BotMode::Recover => !self.recover.busy(),
+                    _ => false,
+                };
             if step.act.is_some() {
                 self.acting = Some(mode);
             }
+            if finished && mode == BotMode::Flee && !self.leaving {
+                self.recover.after_flee();
+            }
             self.narrate_as(step.narration, step.warn, &mut says);
+            if step.act.is_none()
+                && let Some(why) = self.flee.take_give_up()
+            {
+                says.extend(self.stop(&why, true));
+                return (None, says);
+            }
             if !finished {
                 return (step.act, says);
             }

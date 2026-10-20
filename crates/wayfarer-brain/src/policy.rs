@@ -1,10 +1,10 @@
 //! The bot's policies (docs/plan/03-engine.md section 4): pure functions of the state, the
 //! world pack and the constants below, with no clock and nothing sent.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::time::Duration;
 
-use wayfarer_world::{Key, Monsters, Traveller, distances, huntable};
+use wayfarer_world::{ExitType, Gate, Key, LockState, Monsters, Traveller, distances, huntable};
 
 use crate::brain::Atlas;
 
@@ -15,8 +15,15 @@ use crate::brain::Atlas;
 pub const REST_BELOW: i32 = 80;
 /// Recover rests until this much HP.
 pub const REST_UNTIL: i32 = 95;
-/// Below this the bot stops itself, in place of the Flee mode that is not built yet.
-pub const STOP_BELOW: i32 = 30;
+/// Flee takes control below this much HP (per cent of the maximum). A plain percentage: the
+/// plan's "twice the hardest hit this fight" was dropped (John, 2026-10-19). `wayfarer brain
+/// --flee-below` overrides it for the live check only.
+pub const FLEE_BELOW: i32 = 30;
+/// Rooms Flee runs through while followed before it gives up (the prototype's three).
+pub const FLEE_HOPS: u32 = 3;
+/// How long Flee waits at the prompt after a hop for a monster to follow
+/// (`kb/navigation.md` "Leaving a room": a follower comes in straight after).
+pub const FLEE_WATCH: Duration = Duration::from_millis(1500);
 /// How far Recover walks to rest out of a room that spawns monsters.
 pub const QUIET_WITHIN: u32 = 5;
 /// `rest` sent this many times without a `(Resting)` prompt: wait before trying again.
@@ -108,6 +115,81 @@ pub fn rest_at(atlas: &Atlas, room: Option<Key>, certain: bool, t: &Traveller) -
     near.sort_unstable();
     near.first()
         .map_or(RestAt::HereAnyway, |&(_, k)| RestAt::Walk(k))
+}
+
+/// `room.flags`: a protected room (`RF_PROTECTED`, MAJORMUD.H:60). Entering one is refused
+/// while in combat ("You may not enter that room while in combat.", LJNUTIL.C:2575).
+const PROTECTED: i64 = 0x01;
+
+/// An exit Flee may leave by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Candidate {
+    pub dir: u8,
+    pub to: Key,
+    /// A door or gate, with its state as last known (open or closed, never locked).
+    pub door: Option<LockState>,
+    /// Nothing spawns in the room it leads to.
+    pub quiet: bool,
+}
+
+/// The exits to flee by from `room`, best first: plain exits to rooms that spawn nothing,
+/// then plain exits to rooms that spawn, then doors and gates (quiet first). Within each, a
+/// room that is not protected comes first (a protected one refuses a character in combat),
+/// then the direction's order. Never one in `blocked` (refused this session), a gated exit, a
+/// Text, Hidden, Action or other exit that needs more than a direction, or a door known (or,
+/// unseen, packed) locked: `doors` holds the states seen this session, over the pack's. Empty
+/// when the belief is not sure of the room.
+pub fn flee_exits(
+    atlas: &Atlas,
+    room: Option<Key>,
+    certain: bool,
+    blocked: &BTreeSet<(Key, u8)>,
+    doors: &HashMap<(Key, u8), LockState>,
+) -> Vec<Candidate> {
+    let Some(from) = room.filter(|_| certain) else {
+        return Vec::new();
+    };
+    let mut ranked: Vec<((u8, bool, u8), Candidate)> = atlas
+        .graph
+        .edges(from)
+        .iter()
+        .filter(|e| e.gate == Gate::None && !blocked.contains(&(from, e.dir)))
+        .filter_map(|e| {
+            let door = match e.kind {
+                ExitType::Normal
+                | ExitType::BlockGuard
+                | ExitType::MapChange
+                | ExitType::Ticket
+                | ExitType::UserCount
+                | ExitType::Delay => None,
+                ExitType::Door | ExitType::Gate => {
+                    match doors.get(&(from, e.dir)).copied().or(e.door) {
+                        Some(LockState::Locked) | None => return None,
+                        state => state,
+                    }
+                }
+                _ => return None,
+            };
+            let to = atlas.graph.node(e.to)?;
+            let quiet = !spawns_here(atlas, Some(e.to), true);
+            let tier = match (door.is_some(), quiet) {
+                (false, true) => 0,
+                (false, false) => 1,
+                (true, true) => 2,
+                (true, false) => 3,
+            };
+            let protected = to.room.flags & PROTECTED != 0;
+            let c = Candidate {
+                dir: e.dir,
+                to: e.to,
+                door,
+                quiet,
+            };
+            Some(((tier, protected, e.dir), c))
+        })
+        .collect();
+    ranked.sort_by_key(|(rank, _)| *rank);
+    ranked.into_iter().map(|(_, c)| c).collect()
 }
 
 #[cfg(test)]

@@ -1,12 +1,13 @@
 //! Where a character is: the position [`Belief`] over the room graph, fed by every room the
 //! game shows and every move sent (by the brain or the player), the [`Traveller`] its routes
-//! are planned for, with the exits the game refused this session, and the rooms visited.
+//! are planned for, with the exits the game refused this session, the doors it showed open,
+//! shut or locked, and the rooms visited.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use wayfarer_parse::typed::GameEvent;
 use wayfarer_proto::{CharacterState, ExitKind, MapExit, MapRoom, RoomKey, ToGateway};
-use wayfarer_world::{Belief, DirSet, Key, SegmentKind, Traveller, layout, mm};
+use wayfarer_world::{Belief, DirSet, Key, LockState, SegmentKind, Traveller, layout, mm};
 
 use crate::brain::Atlas;
 
@@ -36,8 +37,13 @@ pub(crate) struct Position {
     pub title: Option<String>,
     /// Rooms the character was certainly in since the brain started.
     pub visited: HashSet<Key>,
+    /// The doors and gates as the game showed them this session (an exits line, a move into a
+    /// shut door, `open`, `bash`), over the pack's states, which a cold start locks.
+    pub doors: HashMap<(Key, u8), LockState>,
     /// A move that went to the game and whose room has not come yet.
     moving: Option<String>,
+    /// The direction of an `open` or `bash` that went to the game, until its answer.
+    door_cmd: Option<u8>,
     /// A room title waiting for its exits.
     title_pending: Option<String>,
 }
@@ -58,6 +64,20 @@ impl Position {
     pub fn sent(&mut self, atlas: &Atlas, text: &str) {
         if self.is_move(atlas, text) {
             self.moving = Some(text.trim().to_owned());
+        }
+        let mut words = text.split_whitespace();
+        if let (Some(verb), Some(dir), None) = (words.next(), words.next(), words.next())
+            && ["open", "bash"].contains(&verb.to_ascii_lowercase().as_str())
+            && let Some(d) = mm::direction(dir)
+        {
+            self.door_cmd = Some(d as u8);
+        }
+    }
+
+    /// The door `dir` of the room the character is sure to be in is in `state`.
+    fn door(&mut self, dir: Option<u8>, state: LockState) {
+        if let (Some(dir), Some(k), true) = (dir, self.belief.best(), self.belief.certain()) {
+            self.doors.insert((k, dir), state);
         }
     }
 
@@ -85,8 +105,28 @@ impl Position {
                 exits: None,
                 dark: false,
             },
-            GameEvent::MoveRefused { .. } | GameEvent::DoorClosed { .. } => {
+            GameEvent::MoveRefused { .. } => {
                 self.moving = None;
+                return None;
+            }
+            GameEvent::DoorClosed { locked } => {
+                let dir = self.moving.take().and_then(|m| mm::direction(&m));
+                let state = if *locked {
+                    LockState::Locked
+                } else {
+                    LockState::Closed
+                };
+                self.door(dir.map(|d| d as u8), state);
+                return None;
+            }
+            GameEvent::DoorOpened | GameEvent::BashResult { ok: true } => {
+                let dir = self.door_cmd.take();
+                self.door(dir, LockState::Open);
+                return None;
+            }
+            GameEvent::OpenRefused => {
+                let dir = self.door_cmd.take();
+                self.door(dir, LockState::Locked);
                 return None;
             }
             _ => return None,
@@ -99,12 +139,38 @@ impl Position {
         if seen.title.is_some() {
             self.title.clone_from(&seen.title);
         }
+        if let GameEvent::RoomExits { exits } = ev {
+            self.doors_shown(exits);
+        }
         if self.belief.certain()
             && let Some(k) = self.belief.best()
         {
             self.visited.insert(k);
         }
         Some(seen)
+    }
+
+    /// The doors an exits line shows: open, or closed (locked or not: it does not say, so a
+    /// door seen open before goes back to what the pack says).
+    fn doors_shown(&mut self, exits: &[wayfarer_parse::helpers::Exit]) {
+        let (Some(k), true) = (self.belief.best(), self.belief.certain()) else {
+            return;
+        };
+        for e in exits {
+            let Some(d) = e.dir.as_deref().and_then(mm::direction) else {
+                continue;
+            };
+            let at = (k, d as u8);
+            match e.state.as_deref() {
+                Some("open") => {
+                    self.doors.insert(at, LockState::Open);
+                }
+                Some("closed") if self.doors.get(&at) == Some(&LockState::Open) => {
+                    self.doors.remove(&at);
+                }
+                _ => {}
+            }
+        }
     }
 
     /// The game refused `command` (anything but "no exit"): mark the exits it would have taken

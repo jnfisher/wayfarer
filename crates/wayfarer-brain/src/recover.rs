@@ -182,6 +182,12 @@ impl Mode for Recover {
 }
 
 impl Recover {
+    /// Flee is over: rest to [`REST_UNTIL`] where it got to and walk back home, whatever the
+    /// HP (a flee line above [`REST_BELOW`] leaves HP above it).
+    pub fn after_flee(&mut self) {
+        self.active = true;
+    }
+
     /// Still recovering (it has not finished since it took control).
     pub fn busy(&self) -> bool {
         self.active

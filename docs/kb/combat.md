@@ -209,6 +209,10 @@ LJNSPELL.C:48). Every timer runs 11 rounds.
   `*Combat Off*`. [C]
 - **A target that leaves.** A monster target that is gone or elsewhere ends the fight at the next
   energy round with `*Combat Off*` and no room notice (`validate_auto_combat`, LJNACMB.C:418-440).
+  The same when the character is the one who leaves: fleeing up the stairs out of the Newhaven
+  Arena mid-fight, the new room showed, then `*Combat Off*` after its prompt (silvermere,
+  wayfarer C-028 live check). So a bot that flees is out of combat within a round, without a
+  `break`. [C]
   A player target that leaves only sets `ST_TARGETGONE` and zeroes `pvpcnt`; auto-combat goes on
   until he returns or you break. [C]
 - **SMASH knock-down.** `str + level > monster level + magicres + 30` knocks the monster down

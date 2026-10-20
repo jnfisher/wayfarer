@@ -78,6 +78,10 @@ struct BrainArgs {
     /// each bot. Default: `store.sqlite` in the data directory.
     #[arg(long)]
     store: Option<PathBuf>,
+    /// Test only (the live check's flee scenario): the bots flee below this HP per cent
+    /// instead of 30, so the first blow sets a flee off.
+    #[arg(long, hide = true, value_parser = clap::value_parser!(i32).range(1..=100))]
+    flee_below: Option<i32>,
 }
 
 #[derive(Subcommand)]
@@ -261,6 +265,10 @@ fn run_brain(args: BrainArgs) -> Result<(), Box<dyn std::error::Error>> {
             let mut brain = Brain::new(world, Arc::new(SystemClock), token);
             if let Some(store) = open_store(&store_path) {
                 brain = brain.with_store(store);
+            }
+            if let Some(percent) = args.flee_below {
+                tracing::warn!(percent, "test knob: fleeing below {percent}% HP");
+                brain = brain.with_flee_below(percent);
             }
             tracing::info!(
                 build = wayfarer_brain::BUILD,
