@@ -25,10 +25,14 @@ pub struct Fixture {
     pub race: String,
     pub class: String,
     pub stats: Stats,
+    /// An account outside the pool, named with `--char` and found in the credentials file
+    /// (a gateway `credentials.toml`): logged on as it is, never signed up or created.
+    #[serde(skip)]
+    pub external: bool,
 }
 
 /// The stat totals to set in the editor, in the editor's order.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Stats {
     pub strength: u16,
@@ -54,11 +58,28 @@ impl Stats {
 }
 
 impl Fixture {
+    /// An account that is not in the pool (`--char NAME` with a password in the credentials
+    /// file): no family, race, class or stats, because the check never creates it.
+    pub fn external(account: &str) -> Fixture {
+        Fixture {
+            account: account.to_owned(),
+            family: String::new(),
+            race: String::new(),
+            class: String::new(),
+            stats: Stats::default(),
+            external: true,
+        }
+    }
+
     /// The full name the game will show: the given name upper-cases its first letter.
     pub fn name(&self) -> String {
         let mut given = self.account.clone();
         given[..1].make_ascii_uppercase();
-        format!("{given} {}", self.family)
+        if self.family.is_empty() {
+            given
+        } else {
+            format!("{given} {}", self.family)
+        }
     }
 }
 
@@ -120,11 +141,22 @@ impl Pool {
 }
 
 /// `.credentials.toml`: `[account.<user id>] password`. Written only by the live check.
+/// A gateway `credentials.toml` (`[character.<id>] user, password`) is read too, for `--char`
+/// with an account of one's own, and never written back.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Passwords {
     #[serde(default)]
     account: BTreeMap<String, Entry>,
+    #[serde(default, skip_serializing)]
+    character: BTreeMap<String, GatewayEntry>,
+}
+
+/// A gateway `credentials.toml` entry.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct GatewayEntry {
+    user: String,
+    password: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -144,7 +176,20 @@ impl Passwords {
     }
 
     pub fn get(&self, account: &str) -> Option<&str> {
-        self.account.get(account).map(|e| e.password.as_str())
+        self.account
+            .get(account)
+            .map(|e| e.password.as_str())
+            .or_else(|| {
+                self.character
+                    .values()
+                    .find(|e| e.user.eq_ignore_ascii_case(account))
+                    .map(|e| e.password.as_str())
+            })
+    }
+
+    /// A gateway `credentials.toml` (it has `[character.<id>]` tables): read, never written.
+    pub fn is_gateway_file(&self) -> bool {
+        !self.character.is_empty()
     }
 
     pub fn set(&mut self, account: &str, password: String) {
@@ -190,6 +235,28 @@ pub fn generate_password() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_gateway_credentials_file_is_read_by_user_and_never_written() {
+        let text = "[character.thorgrim]\nuser = \"Thorgrim\"\npassword = \"pw1\"\n\n[character.other]\nuser = \"Other\"\npassword = \"pw2\"\n";
+        let p: Passwords = toml::from_str(text).unwrap();
+        assert!(p.is_gateway_file());
+        assert_eq!(p.get("Thorgrim"), Some("pw1"));
+        assert_eq!(p.get("THORGRIM"), Some("pw1"));
+        assert_eq!(p.get("nobody"), None);
+        // Serialising drops the gateway tables: the live check's own file never gains them.
+        assert!(!toml::to_string(&p).unwrap().contains("character"));
+        let own: Passwords = toml::from_str("[account.waychecka]\npassword = \"x\"\n").unwrap();
+        assert!(!own.is_gateway_file());
+        assert_eq!(own.get("waychecka"), Some("x"));
+    }
+
+    #[test]
+    fn an_external_fixture_has_the_given_name_only() {
+        let f = Fixture::external("thorgrim");
+        assert!(f.external);
+        assert_eq!(f.name(), "Thorgrim");
+    }
 
     const ONE: &str = r#"
         [[character]]
