@@ -157,6 +157,20 @@ pub(crate) struct View<'a> {
 }
 
 impl View<'_> {
+    /// Recover takes control below this much HP (`health.rest_below_hp`, per cent).
+    pub fn rest_below(&self) -> i32 {
+        self.setting("health.rest_below_hp", crate::policy::REST_BELOW)
+    }
+
+    /// Recover rests until this much HP (`health.rest_until_hp`, per cent).
+    pub fn rest_until(&self) -> i32 {
+        self.setting("health.rest_until_hp", crate::policy::REST_UNTIL)
+    }
+
+    fn setting(&self, key: &str, default: i32) -> i32 {
+        i32::try_from(self.atlas.settings.int(key)).unwrap_or(default)
+    }
+
     pub fn room_name(&self, k: Option<Key>) -> String {
         k.and_then(|k| self.atlas.graph.room(k))
             .map_or_else(|| "this room".to_owned(), |r| r.name.clone())

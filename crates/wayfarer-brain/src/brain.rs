@@ -11,6 +11,7 @@ use wayfarer_parse::{GameTexts, Registry};
 use wayfarer_proto::{
     CharacterState, ClientKind, PROTOCOL, RoomKind, SessionInfo, ToClient, ToGateway, WorldPackInfo,
 };
+use wayfarer_settings::Settings;
 use wayfarer_store::Store;
 use wayfarer_world::{Finder, Key, MmLoop, Monsters, PathKnowledge, RoomGraph, WorldPack};
 
@@ -56,6 +57,9 @@ pub struct Atlas {
     pub knowledge: PathKnowledge,
     /// Rooms, places and monsters by name (`find`), and the boss lairs.
     pub finder: Finder,
+    /// The settings in force for every session (`Brain::with_settings`); the defaults until
+    /// then. Per-character layers come with the settings forms.
+    pub settings: Settings,
 }
 
 /// Room types (`kb/game-data.md` "Enumerations") and shop types (`kb/economy.md`).
@@ -116,6 +120,7 @@ impl Atlas {
             monsters,
             mm_loops,
             knowledge,
+            settings: Settings::default(),
         })
     }
 }
@@ -150,6 +155,16 @@ impl World {
             hash: format!("sha256:{hash}"),
         });
         Ok(world)
+    }
+
+    /// The settings in force, kept on the atlas every session reads. Call it on a world just
+    /// opened: an atlas already shared with another world keeps the settings it has.
+    pub fn with_settings(mut self, settings: Settings) -> Self {
+        match self.atlas.as_mut().and_then(Arc::get_mut) {
+            Some(atlas) => atlas.settings = settings,
+            None => tracing::warn!("settings not applied: the world's atlas is shared"),
+        }
+        self
     }
 
     /// An open pack: its game texts and its atlas (no `info`).
@@ -210,7 +225,7 @@ pub struct Brain {
     attaches: u64,
     store: Option<Arc<Mutex<Store>>>,
     /// The bots' flee line, per cent of the maximum HP.
-    flee_below: i32,
+    flee_below: Option<i32>,
     /// Monsters every bot flees from, as the player's rules (`--flee-from`).
     flee_from: Vec<String>,
 }
@@ -227,16 +242,32 @@ impl Brain {
             sessions: BTreeMap::new(),
             attaches: 0,
             store: None,
-            flee_below: FLEE_BELOW,
+            flee_below: None,
             flee_from: Vec::new(),
         }
     }
 
-    /// Flee below `percent` HP instead of [`FLEE_BELOW`]: a test knob for the live check
-    /// (`wayfarer brain --flee-below`), so the first blow sets a flee off. The settings give
-    /// the player the line in M4.
+    /// Flee below `percent` HP whatever the settings say: a test knob for the live check
+    /// (`wayfarer brain --flee-below`), so the first blow sets a flee off.
     pub fn with_flee_below(mut self, percent: i32) -> Self {
-        self.flee_below = percent;
+        self.flee_below = Some(percent);
+        self
+    }
+
+    /// The flee line a new session starts with: the knob's, else the setting
+    /// `health.flee_below_hp`, else [`FLEE_BELOW`] (no world pack, so no settings).
+    fn flee_below(&self) -> i32 {
+        self.flee_below
+            .or_else(|| {
+                let atlas = self.world.atlas.as_ref()?;
+                i32::try_from(atlas.settings.int("health.flee_below_hp")).ok()
+            })
+            .unwrap_or(FLEE_BELOW)
+    }
+
+    /// The settings in force: see [`World::with_settings`].
+    pub fn with_settings(mut self, settings: Settings) -> Self {
+        self.world = self.world.with_settings(settings);
         self
     }
 
@@ -342,7 +373,7 @@ impl Brain {
                         self.world.atlas.clone(),
                         self.store.clone(),
                         self.clock.clone(),
-                        self.flee_below,
+                        self.flee_below(),
                         &self.flee_from,
                         now,
                     );

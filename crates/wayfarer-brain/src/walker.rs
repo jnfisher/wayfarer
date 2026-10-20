@@ -25,7 +25,8 @@ use crate::position::Position;
 
 /// `bash` commands sent at one locked door before the walker gives up on it.
 pub const MAX_BASHES: u32 = 3;
-/// `search` commands for one hidden exit that find nothing before the walker blocks it for the
+/// The default of `movement.search_limit`: `search` commands for one hidden exit that find nothing
+/// before the walker blocks it for the
 /// session. A search is a dice roll (`max(3, perception - 15)` percent, `kb/navigation.md`
 /// "Hidden"), so a clumsy character needs many: at the 3% floor 300 empty searches in a row is
 /// a one in ten thousand chance, which means the belief is wrong, not the dice.
@@ -503,7 +504,9 @@ impl Walker {
             )),
             (Doing::Search, Outcome::Confirmed(Confirmed::Search { found: false })) => {
                 w.searches += 1;
-                if w.searches < MAX_SEARCHES {
+                let limit = u32::try_from(atlas.settings.int("movement.search_limit"))
+                    .unwrap_or(MAX_SEARCHES);
+                if w.searches < limit {
                     if w.searches % NARRATE_EVERY == 0 {
                         next.notice(format!(
                             "Still searching for the hidden exit {} ({} tries)",

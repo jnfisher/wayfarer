@@ -28,12 +28,14 @@ use crate::brain::Atlas;
 use crate::executor::{Action, Outcome};
 use crate::flee::dir_name;
 use crate::modes::{Mode, Step, View};
-use crate::policy::{REST_UNTIL, hostile};
+use crate::policy::hostile;
 use crate::walker::describe;
 
 /// How long a stop the bot passed by (a monster to keep away from last seen there, a leg that
 /// would not get there, a stalemate) is left alone before the loop tries it again.
 pub const PASSED_FOR: Duration = Duration::from_secs(5 * 60);
+/// The setting that overrides it, in minutes.
+const PASSED_BY_MINUTES: &str = "bot.passed_by_minutes";
 /// A stop where hostile monsters Fight will not attack are left (refused targets) is cleared
 /// once the character's own combat has been quiet this long there.
 pub const STOP_QUIET: Duration = Duration::from_secs(20);
@@ -46,9 +48,9 @@ pub const GIVE_UPS: u32 = 3;
 
 /// How long until a stop passed by at `passed_at` is tried again ([`PASSED_FOR`]); zero when
 /// it never was, or the time is up.
-pub fn passed_left(now: Instant, passed_at: Option<Instant>) -> Duration {
+pub fn passed_left(now: Instant, passed_at: Option<Instant>, passed_for: Duration) -> Duration {
     passed_at.map_or(Duration::ZERO, |at| {
-        (at + PASSED_FOR).saturating_duration_since(now)
+        (at + passed_for).saturating_duration_since(now)
     })
 }
 
@@ -174,6 +176,8 @@ pub(crate) struct Task {
     /// When the bot last passed each stop by, not getting there: [`PASSED_FOR`] runs from then,
     /// so the bot does not try again at once.
     passed: Vec<Option<Instant>>,
+    /// How long a stop passed by is left alone (`bot.passed_by_minutes`).
+    passed_for: Duration,
     /// Stops passed by in a row since it last reached a stop or killed something.
     give_ups: u32,
     /// Why the bot should stop itself, once [`GIVE_UPS`] stops are passed by in a row.
@@ -216,6 +220,8 @@ impl Task {
             id,
             name,
             passed: vec![None; n],
+            passed_for: u64::try_from(atlas.settings.int(PASSED_BY_MINUTES))
+                .map_or(PASSED_FOR, |m| Duration::from_secs(m * 60)),
             give_ups: 0,
             gave_up: None,
             index: first.min(n.saturating_sub(1)),
@@ -377,7 +383,7 @@ impl Task {
     }
 
     fn ready_in(&self, now: Instant, i: usize) -> Duration {
-        passed_left(now, self.passed[i])
+        passed_left(now, self.passed[i], self.passed_for)
     }
 
     /// "stop 3/9".
@@ -499,7 +505,7 @@ impl Task {
             // Why it waits, said once.
             self.notes.extend(notes);
         }
-        if entering && v.hp.is_some_and(|hp| hp < REST_UNTIL) {
+        if entering && v.hp.is_some_and(|hp| hp < v.rest_until()) {
             self.rest = true;
             return Step::wait("Waiting for respawns: resting first");
         }
@@ -676,12 +682,18 @@ mod tests {
         let t0 = Instant::now();
         let min = Duration::from_secs(60);
         // Never passed by: ready.
-        assert_eq!(passed_left(t0, None), Duration::ZERO);
+        assert_eq!(passed_left(t0, None, PASSED_FOR), Duration::ZERO);
         // Passed by now: five minutes.
-        assert_eq!(passed_left(t0, Some(t0)), 5 * min);
-        assert_eq!(passed_left(t0 + 2 * min, Some(t0)), 3 * min);
-        assert_eq!(passed_left(t0 + 5 * min, Some(t0)), Duration::ZERO);
-        assert_eq!(passed_left(t0 + 9 * min, Some(t0)), Duration::ZERO);
+        assert_eq!(passed_left(t0, Some(t0), PASSED_FOR), 5 * min);
+        assert_eq!(passed_left(t0 + 2 * min, Some(t0), PASSED_FOR), 3 * min);
+        assert_eq!(
+            passed_left(t0 + 5 * min, Some(t0), PASSED_FOR),
+            Duration::ZERO
+        );
+        assert_eq!(
+            passed_left(t0 + 9 * min, Some(t0), PASSED_FOR),
+            Duration::ZERO
+        );
     }
 
     #[test]
