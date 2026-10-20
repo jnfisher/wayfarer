@@ -1,0 +1,24 @@
+# wayfarer.service: a systemd user unit (docs/server.md).
+# Copy to ~/.config/systemd/user/wayfarer.service and replace the placeholders:
+#   /home/USER/wayfarer                the checkout (binary in target/release, UI in ui/dist)
+#   /home/USER/.local/share/wayfarer   the data directory (config, credentials, token, world)
+#   100.x.y.z                          this machine's Tailscale address (`tailscale ip -4`)
+[Unit]
+Description=wayfarer: MajorMUD client and bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/home/USER/wayfarer/target/release/wayfarer serve \
+  --config /home/USER/.local/share/wayfarer/wayfarer.toml \
+  --bind 100.x.y.z:7373 \
+  --ui-dir /home/USER/wayfarer/ui/dist \
+  --world /home/USER/.local/share/wayfarer/world.sqlite
+Restart=on-failure
+RestartSec=5
+# SIGTERM logs every character off cleanly; the gateway waits up to 120 s for that.
+KillSignal=SIGTERM
+TimeoutStopSec=150
+
+[Install]
+WantedBy=default.target
