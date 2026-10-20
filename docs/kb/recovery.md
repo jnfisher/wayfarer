@@ -203,6 +203,18 @@ Everything below is from `slow_update_character` (LJNBKGND.C:1555-1725), the med
   while waiting to exit!` and `BREAK` cancels the exit (LJNPEND.C:150-169). Only the exact
   word `x` is the quick exit at that stage; `quit` goes through the command table
   (LJNPEND.C:220, LJNCMDS.C:225). [C]
+- **An attack cancels the exit** (`stop_users_exit`, LJNUTIL.C:9917-9940): the waiting
+  character gets `Your meditation has been interrupted - you may not exit now!` and at once a
+  prompt; the exit and the command delay are cleared, so `x` can be typed again straight
+  away. It is called for **every** attack on the character, before the blow is rolled, so a
+  miss interrupts as surely as a hit: a monster's melee round (LJNCOMBT.C:3374), a monster's
+  spell (LJNMONST.C:3346), a player engaging or striking (LJNCOMBT.C:1793, :1805), a player's
+  spell (LJNSPELL.C:5166), and `BREAK` (LJNPEND.C:170). A monster that keeps attacking
+  therefore interrupts every six-tick meditation: the character can only leave once nothing
+  attacks it for six ticks (it got away, or the attacker died or left). `x` ends the
+  character's own auto-combat, so it does not kill the attacker meanwhile. [C] Seen on
+  silvermere (wayfarer C-027 live check, the Newhaven Arena): a giant rat interrupted each `x`
+  about 5 s after it was sent, every time. [C]
 
 ## Hanging up and the daily cleanup [C]
 

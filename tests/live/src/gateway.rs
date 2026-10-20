@@ -19,8 +19,8 @@ use crate::screen;
 
 /// How long the gateway may take to say where it listens.
 const START_TIMEOUT: Duration = Duration::from_secs(20);
-/// How long the gateway may take to stop: it waits up to two minutes for log-offs itself.
-const STOP_TIMEOUT: Duration = Duration::from_secs(150);
+/// How long the gateway may take to stop: it waits up to six minutes for log-offs itself.
+const STOP_TIMEOUT: Duration = Duration::from_secs(400);
 
 /// The session id the check's configs give the character.
 pub const SESSION: &str = "probe";
@@ -57,6 +57,8 @@ pub struct Gateway {
 pub struct Stopped {
     pub clean: bool,
     pub detail: String,
+    /// The gateway's log, every line.
+    pub log: Vec<String>,
 }
 
 impl Gateway {
@@ -382,6 +384,7 @@ impl Gateway {
                 (Ok(Err(e)), _) => format!("wait: {e}"),
                 (_, Err(why)) => why.to_owned(),
             },
+            log,
         }
     }
 }
@@ -432,6 +435,9 @@ pub(crate) fn terminate(pid: Option<u32>) {
 /// What the gateway's log says about the log-off at shutdown.
 pub fn logoff_verdict(log: &[String]) -> Result<&'static str, &'static str> {
     let has = |s: &str| log.iter().any(|l| l.contains(s));
+    if has("dropped in the realm") {
+        return Err("the gateway gave up and dropped the character in the realm");
+    }
     if has("log-off timed out") || has("log-off is taking too long") {
         return Err("the log-off timed out and the gateway hung up");
     }
@@ -513,5 +519,12 @@ mod tests {
         ]);
         assert!(logoff_verdict(&at_once).is_err());
         assert!(logoff_verdict(&log(&["INFO listening on 127.0.0.1:1"])).is_err());
+        let dropped = log(&[
+            "INFO wayfarer_gateway::session: logging off session=probe",
+            "WARN wayfarer_gateway::session: Probe dropped in the realm: the log-off was \
+             interrupted every time; the game punishes it at the next entry session=probe",
+            "INFO wayfarer_gateway::session: state session=probe state=Closed",
+        ]);
+        assert!(logoff_verdict(&dropped).is_err());
     }
 }

@@ -120,12 +120,14 @@ logs it off first: from the realm `x` (the character meditates for six ticks), `
 MajorMUD menu, `X` at the BBS menu and `Y` to confirm; from a menu, only the steps that are
 left.
 
-`x` works in a fight too (it ends auto-combat), but a blow during the meditation interrupts it:
-`Your meditation has been interrupted - you may not exit now!`. The gateway then sends `x`
-again at the next prompt, up to 20 times within four minutes, so it gets out as soon as a
-meditation passes without a blow landing (the attacker misses, or dies). Each retry is a line
-in the gateway's log (`log-off interrupted: "x" again (3 of 20)`) and goes to the brain as
-`sent` like any line.
+`x` works in a fight too (it ends auto-combat), but any attack during the meditation, a miss
+as much as a hit, interrupts it: `Your meditation has been interrupted - you may not exit
+now!` (`docs/kb/recovery.md`). The gateway then sends `x` again at the next prompt, up to 20
+times within four minutes, so it gets out as soon as a meditation passes with nothing
+attacking: the attacker left or died, or the character got away. A monster that keeps
+attacking interrupts every try (the bot fleeing first, C-028, is what gets the character
+out). Each retry is a line in the gateway's log (`log-off interrupted: "x" again (3 of 20)`)
+and goes to the brain as `sent` like any line.
 
 Stopping the gateway (Ctrl-C or SIGTERM) logs every character off at once. With a brain
 attached it first tells the brain (`logging_off`) for each character in the realm and waits up

@@ -41,8 +41,9 @@ retry = true
 
 [[logoff]]
 send = "x"
-# A blow during the six-tick meditation interrupts it (`kb/recovery.md` "Leaving the realm"):
-# `x` again at the next prompt, up to `retries` times. The timeout covers them all.
+# Any attack during the six-tick meditation, hit or miss, interrupts it (`kb/recovery.md`
+# "An attack cancels the exit"): `x` again at the next prompt, up to `retries` times. The
+# timeout covers them all.
 retry_on = ["meditation has been interrupted"]
 retries = 20
 timeout = 240

@@ -871,7 +871,7 @@ mod tests {
         LogoffAction::Send(line.to_owned())
     }
 
-    /// The game's answer to a blow during the meditation (`exit_interrupted`).
+    /// The game's answer to an attack during the meditation (`exit_interrupted`).
     const INTERRUPTED: &str = "\r\nThe kobold thief stabs you for 3 damage!\r\n...Your meditation has been interrupted - you may not exit now!\r\n";
 
     #[test]
