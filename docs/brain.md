@@ -146,8 +146,13 @@ progress (after the move in flight).
   sends `search <dir>` ("Searching for the hidden exit north") and waits for the answer: "You
   found an exit to the north!" and it moves; "You notice nothing different to the north." and
   it sends `look` (an exit found lately by someone else needs no search, so a search for it
-  finds nothing), moves if the exit shows, else searches once more; a second empty search
-  marks the exit refused for the session and plans again. A search needs light: in a room too dark to see the game answers
+  finds nothing), moves if the exit shows, else searches again. A search is a dice roll
+  (`max(3, perception - 15)` percent, perception being `(Int*5 + Will*2 + Cha)/8` plus race,
+  class and item bonuses), so it keeps searching until the exit is found: a `look` after the
+  first empty search and every fifth after, and "Still searching for the hidden exit north (10
+  tries)" every tenth. Only after `MAX_SEARCHES` (300) empty searches does it mark the exit
+  refused for the session and plan again. A fight, a flee or a stop ends the walk and so the
+  search; the next walk starts counting again. A search needs light: in a room too dark to see the game answers
   "The room is very dark - you can't see anything" and the walk stops ("too dark to search
   for the hidden exit north"; the bot does not light a torch yet). A found exit hides again after about five minutes (one step of 300
   fast ticks, `kb/navigation.md` "Hidden"), so the brain forgets it showing then and searches
@@ -249,12 +254,13 @@ can watch the route, and runs one ("Running a loop", below).
 - **What the paths know** (`PathKnowledge`, built once from the pack): for every step of a path
   whose walk reached its end, the room it is typed in and the exit it takes: a direction, with
   the actions written before it (`n[search n]`), or a phrase that takes a Text exit (`climb
-  tree`). The Hidden exits a loop's path goes through become ones the character knows are there
-  when that loop is walked or run (`Traveller::searchable`): routes may take them, and the walker
-  searches before each ("Walking"). A Text exit whose message has no text takes the phrase a
-  path types for it. Only the loop's own path counts: the way into the Bandit Keep (`Ftrehkep.mp`:
-  search north at the Hidden Keep, `climb tree` on the Keep Wall) is another path, so
-  `HKEPLOOP.mp` from outside the keep is "no way to any of its ticked stops" with the reason.
+  tree`). The Hidden exits of every verified path become ones the character knows are there
+  when a MegaMud loop is walked or run (`Traveller::searchable`, `all_hidden_exits`): routes may
+  take them, and the walker searches before each ("Walking"). A way into an area is usually
+  another path's: the Bandit Keep's (`Ftrehkep.mp`: search north at the Hidden Keep, `climb
+  tree` on the Keep Wall) is not `HKEPLOOP.mp`'s own, and `HKEPLOOP.mp` run from the Hidden
+  Keep searches north first. A Text exit whose message has no text takes the phrase a path
+  types for it.
 - Made once per anchor, radius, level, strength, picklocks and doors for the session, so asking
   again is cheap.
 

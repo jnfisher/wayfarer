@@ -459,31 +459,81 @@ async fn the_walker_searches_for_a_hidden_exit_that_has_hidden_again() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn two_empty_searches_block_the_hidden_exit() {
+async fn the_walker_searches_until_the_hidden_exit_is_found() {
+    use wayfarer_brain::{NARRATE_EVERY, RECHECK_EVERY};
+    // A clumsy character: the exit comes on the 23rd search. `look` after the first empty
+    // search and every fifth after it; a word every tenth.
+    const FOUND_ON: u32 = 23;
+    let (mut g, run) = Game::start(SessionState::Realm, HIDDEN_KEEP).await;
+    found_north(&mut g).await;
+    g.idle(wayfarer_brain::HIDDEN_FOR + Duration::from_secs(1))
+        .await;
+    let mut expected = Vec::new();
+    for n in 1..FOUND_ON {
+        g.expect(
+            "search n",
+            says("You notice nothing different to the north."),
+        );
+        expected.push("search n");
+        if n % RECHECK_EVERY == 1 {
+            g.expect("look", room(HIDDEN_KEEP));
+            expected.push("look");
+        }
+    }
+    g.expect("search n", says("You found an exit to the north!"));
+    g.expect("n", room(KEEP_WALL));
+    expected.extend(["search n", "n"]);
+    g.walk_to(KEEP_WALL).await;
+    let said = g.narrated("Arrived: Darkwood Forest, Keep Wall").await;
+    let still: Vec<String> = (1..FOUND_ON)
+        .filter(|n| n % NARRATE_EVERY == 0)
+        .map(|n| format!("Still searching for the hidden exit north ({n} tries)"))
+        .collect();
+    let mut want = vec![
+        "Walking to Darkwood Forest, Keep Wall: one step".to_owned(),
+        "Searching for the hidden exit north".to_owned(),
+    ];
+    want.extend(still);
+    want.push("Arrived: Darkwood Forest, Keep Wall".to_owned());
+    assert_eq!(said, want);
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, expected);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_hidden_exit_never_found_blocks_after_max_searches() {
     let (mut g, run) = Game::start(SessionState::Realm, HIDDEN_KEEP).await;
     // Str 50: the doors of the long way round are beyond it too.
     g.output(&strength(50)).await;
     found_north(&mut g).await;
     g.idle(wayfarer_brain::HIDDEN_FOR + Duration::from_secs(1))
         .await;
-    for n in 0..wayfarer_brain::MAX_SEARCHES {
-        if n > 0 {
-            g.expect("look", room(HIDDEN_KEEP));
-        }
+    let mut expected = Vec::new();
+    for n in 1..=wayfarer_brain::MAX_SEARCHES {
         g.expect(
             "search n",
             says("You notice nothing different to the north."),
         );
+        expected.push("search n");
+        if n % wayfarer_brain::RECHECK_EVERY == 1 && n < wayfarer_brain::MAX_SEARCHES {
+            g.expect("look", room(HIDDEN_KEEP));
+            expected.push("look");
+        }
     }
     g.walk_to(KEEP_WALL).await;
     g.narrated("Searching for the hidden exit north").await;
-    let stop = g.narration().await;
+    let stop = loop {
+        let n = g.narration().await;
+        if n.starts_with("Stopped walking") {
+            break n;
+        }
+    };
     assert!(
         stop.starts_with("Stopped walking: no hidden exit north found; no way to"),
         "{stop}"
     );
     let (_, played) = g.close(run).await;
-    assert_eq!(played, ["search n", "look", "search n"]);
+    assert_eq!(played, expected);
 }
 
 #[tokio::test(start_paused = true)]

@@ -309,24 +309,30 @@ async fn a_restarted_brain_resumes_a_megamud_loop_from_the_store() {
     assert!(!said.iter().any(|s| s.contains("no longer")), "{said:?}");
 }
 
-#[tokio::test(start_paused = true)]
-async fn a_loop_none_of_whose_stops_can_be_reached_says_why_for_the_nearest() {
+#[test]
+fn a_loop_inside_the_keep_is_reachable_by_another_paths_hidden_exit() {
     // The Bandit Keep loop runs inside the keep; from the Hidden Keep outside it the door east
-    // is locked past any bash (exitpar2 -250), and the way in by the hidden exit north is
-    // another path's (`Ftrehkep.mp`).
+    // is locked past any bash (exitpar2 -250). The way in is the hidden exit north, which
+    // another path (`Ftrehkep.mp`) searches for: the loop's traveller knows every verified
+    // path's hidden exits, so the walker searches for it first.
     let hidden_keep: Key = (9, 724);
-    let (mut g, run) = Game::start_with(
-        SessionState::Realm,
-        format!("{}{}", status(35), room(hidden_keep)),
-    )
-    .await;
-    g.run_mm("HKEPLOOP.mp", &[]).await;
-    assert_eq!(
-        g.narration().await,
-        "Not running loop Bandit Keep: no way to any of its ticked stops (the nearest, \
-         Courtyard, Entrance Door: the door east of Darkwood Forest, Hidden Keep cannot be \
-         opened)"
+    let stops = stops_of("HKEPLOOP.mp");
+    let g0 = &atlas().graph;
+    let own = Traveller {
+        searchable: atlas().knowledge.hidden_exits("HKEPLOOP.mp"),
+        strength: Some(60),
+        ..Traveller::default()
+    };
+    assert!(
+        stops
+            .iter()
+            .all(|&s| route(g0, hidden_keep, s, &own).is_none())
     );
-    let (_, played) = g.close(run).await;
-    assert!(played.is_empty(), "{played:?}");
+    let all = Traveller {
+        searchable: atlas().knowledge.all_hidden_exits(),
+        ..own
+    };
+    let leg = route(g0, hidden_keep, stops[0], &all).expect("a way in");
+    assert_eq!(leg[0].command, "n");
+    assert!(all.searchable.contains(&(leg[0].from, leg[0].dir)));
 }

@@ -49,5 +49,7 @@ pub use session::{
 };
 pub use stats::{SAMPLE_EVERY, STATS_RUNS};
 pub use task::{GIVE_UPS, LEG_TRIES, STOCK_REGEN, STOP_QUIET, ready_in, stop_ready};
-pub use walker::{MAX_BASHES, MAX_RELOCATIONS, MAX_REPLANS, MAX_SEARCHES};
+pub use walker::{
+    MAX_BASHES, MAX_RELOCATIONS, MAX_REPLANS, MAX_SEARCHES, NARRATE_EVERY, RECHECK_EVERY,
+};
 pub use wayfarer_store::Store;

@@ -10,7 +10,7 @@
 //!
 //! A locked door the character cannot open (its odds nil, [`Traveller::lock_odds`]) is given
 //! up at once, with no `bash`. A route through a Hidden exit not showing in the room's exits
-//! line searches for it first (`search <dir>`), up to [`MAX_SEARCHES`] times.
+//! line searches for it first (`search <dir>`) until it is found, up to [`MAX_SEARCHES`] times.
 //!
 //! [`Traveller::lock_odds`]: wayfarer_world::Traveller::lock_odds
 
@@ -26,8 +26,15 @@ use crate::position::Position;
 /// `bash` commands sent at one locked door before the walker gives up on it.
 pub const MAX_BASHES: u32 = 3;
 /// `search` commands for one hidden exit that find nothing before the walker blocks it for the
-/// session.
-pub const MAX_SEARCHES: u32 = 2;
+/// session. A search is a dice roll (`max(3, perception - 15)` percent, `kb/navigation.md`
+/// "Hidden"), so a clumsy character needs many: at the 3% floor 300 empty searches in a row is
+/// a one in ten thousand chance, which means the belief is wrong, not the dice.
+pub const MAX_SEARCHES: u32 = 300;
+/// After the first empty search, and after every this many more, the walker sends `look`: an
+/// exit found lately by someone else shows and finds nothing to search.
+pub const RECHECK_EVERY: u32 = 5;
+/// The walker says it is still searching after this many empty searches, and each this many.
+pub const NARRATE_EVERY: u32 = 10;
 /// "No exit" answers in one walk: the first relocates (look, then replan), the second stops.
 pub const MAX_RELOCATIONS: u32 = 2;
 /// Routes planned again in one walk before it gives up (the prototype's five attempts).
@@ -497,9 +504,20 @@ impl Walker {
             (Doing::Search, Outcome::Confirmed(Confirmed::Search { found: false })) => {
                 w.searches += 1;
                 if w.searches < MAX_SEARCHES {
-                    // An exit found lately (by anyone) needs no search and finds nothing:
-                    // `look` to see whether it shows.
-                    Ok(Doing::Recheck)
+                    if w.searches % NARRATE_EVERY == 0 {
+                        next.notice(format!(
+                            "Still searching for the hidden exit {} ({} tries)",
+                            dir_name(step.dir),
+                            w.searches
+                        ));
+                    }
+                    if w.searches % RECHECK_EVERY == 1 {
+                        // An exit found lately (by anyone) needs no search and finds nothing:
+                        // `look` to see whether it shows.
+                        Ok(Doing::Recheck)
+                    } else {
+                        Ok(Doing::Search)
+                    }
                 } else {
                     pos.block(step.from, step.dir);
                     let why = format!("no hidden exit {} found", dir_name(step.dir));
