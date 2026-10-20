@@ -58,6 +58,8 @@ pub(crate) struct Ledger {
     /// The run's numbers as last computed, for the snapshot.
     stats: Option<RunStats>,
     next_sample: Option<Instant>,
+    /// Bosses killed since the brain attached, by lower-case name (the store has the rest).
+    bosses: std::collections::BTreeMap<String, i64>,
 }
 
 impl Ledger {
@@ -71,6 +73,7 @@ impl Ledger {
             run: None,
             stats: None,
             next_sample: None,
+            bosses: std::collections::BTreeMap::new(),
         };
         ledger.saved = ledger.with(|s, id| s.bot(id)).flatten();
         ledger
@@ -101,6 +104,30 @@ impl Ledger {
 
     fn now(&self) -> i64 {
         unix(self.clock.now())
+    }
+
+    /// The time now, unix seconds.
+    pub fn unix_now(&self) -> i64 {
+        self.now()
+    }
+
+    /// The character killed the boss `name` just now (a run or not): kept for "should be up".
+    pub fn boss_killed(&mut self, name: &str) {
+        let at = self.now();
+        self.bosses.insert(name.to_lowercase(), at);
+        self.with(|s, id| s.boss_killed(id, name, at));
+    }
+
+    /// The bosses the character killed, by lower-case name, with when (unix seconds): the
+    /// store's, and those since the brain attached over them.
+    pub fn boss_kills(&self) -> Vec<(String, i64)> {
+        let mut kills: std::collections::BTreeMap<String, i64> = self
+            .with(|s, id| s.boss_kills(id))
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
+        kills.extend(self.bosses.clone());
+        kills.into_iter().collect()
     }
 
     /// A restarted brain takes up the stored bot: its run goes on (a new one if the store has

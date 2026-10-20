@@ -204,6 +204,7 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                             arena: true,
                             lair: false,
                             regen: 0,
+                            bosses: vec![],
                         },
                         LoopStop {
                             map: 1,
@@ -213,6 +214,7 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                             arena: false,
                             lair: true,
                             regen: 1,
+                            bosses: vec![],
                         },
                     ],
                     path: vec![
@@ -243,6 +245,7 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                             arena: true,
                             lair: false,
                             regen: 0,
+                            bosses: vec![],
                         },
                         LoopStop {
                             map: 1,
@@ -252,13 +255,14 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                             arena: false,
                             lair: true,
                             regen: 1,
+                            bosses: vec![],
                         },
                     ],
                     runnable: true,
                     reason: None,
                 }],
             },
-            r#"{"type":"loops","session":"kasimir","anchor":{"map":1,"room":2140},"radius":8,"doors":true,"generated":[{"id":"1:2140:8:doors:0","name":"Newhaven","stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1}],"path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"doors":1}],"megamud":[{"file":"NARNLOO2.mp","description":"Newhaven Arena","author":"Spork ZSpoon","path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"exact":2,"stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1}],"runnable":true}]}"#,
+            r#"{"type":"loops","session":"kasimir","anchor":{"map":1,"room":2140},"radius":8,"doors":true,"generated":[{"id":"1:2140:8:doors:0","name":"Newhaven","stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0,"bosses":[]},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1,"bosses":[]}],"path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"doors":1}],"megamud":[{"file":"NARNLOO2.mp","description":"Newhaven Arena","author":"Spork ZSpoon","path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"exact":2,"stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0,"bosses":[]},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1,"bosses":[]}],"runnable":true}]}"#,
         ),
         (
             ToGateway::Stats {

@@ -211,7 +211,8 @@ and works nothing out itself.
 - **Running a loop**: **run** beside a loop, generated or MegaMud's, makes the bot hunt round it
   ([brain.md](brain.md), "Running a loop"): it walks to the loop's nearest ticked stop, fights
   what is there, and goes on to the next, round and round with no respawn clock. Picking a loop lists its stops, each with a tick; hover a stop for the
-  monsters it spawns and how soon they come back after a kill. A MegaMud loop the brain says
+  monsters it spawns and how soon they come back after a kill; for a boss, whether it should be
+  up ("minotaur chieftain should be up in 1 h 20 m", from this character's own kills). A MegaMud loop the brain says
   cannot run for this character has its **run** greyed out and the reason beside it ("nothing
   to hunt on it", or the leg no route takes and why). An unticked stop is passed by
   (the Minotaur Chieftain's room is the case for it). While the bot runs the loop, the list

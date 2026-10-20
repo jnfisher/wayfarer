@@ -203,11 +203,27 @@ export function loopText(l: GeneratedLoop): string {
   return parts.join(", ");
 }
 
-/** A loop stop's tooltip: what spawns there, and how soon it is back after a kill. */
+/** Minutes as `1 h 20 m`, `2 h`, `45 m`. */
+export function minutesText(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m} m`;
+  return m === 0 ? `${h} h` : `${h} h ${m} m`;
+}
+
+/**
+ * A loop stop's tooltip: what spawns there, how soon it is back after a kill, and for a boss
+ * whether it should be up (the character's own kills; other players kill bosses too).
+ */
 export function stopTip(s: LoopStop): string {
   const what = s.monsters.length > 0 ? s.monsters.join(", ") : "nothing listed";
   const back = s.arena ? "arena: back at once" : `back ${s.regen > 0 ? s.regen : 5} m after a kill`;
-  return `${what}; ${s.lair ? "lair, " : ""}${back}`;
+  const bosses = (s.bosses ?? []).map((b) =>
+    b.up_in_minutes === undefined
+      ? `${b.name} should be up`
+      : `${b.name} should be up in ${minutesText(b.up_in_minutes)}`,
+  );
+  return `${what}; ${s.lair ? "lair, " : ""}${back}${bosses.length > 0 ? `; ${bosses.join("; ")}` : ""}`;
 }
 
 /** The route bar's line: the walker's commands still to type, `n, n, e, borrow skiff`. */

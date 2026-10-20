@@ -50,7 +50,7 @@ function mount(props: Partial<Parameters<typeof render<typeof MapPanel>>[1]> = {
 }
 
 const here = { position: { map: 1, room: 10, candidates: 1 } };
-const stop = (room: number, name: string) => ({ map: 1, room, name, monsters: ["giant rat"], arena: room === 11, lair: false, regen: 0 });
+const stop = (room: number, name: string) => ({ map: 1, room, name, monsters: ["giant rat"], arena: room === 11, lair: false, regen: 0, bosses: [] });
 const loops: Loops = {
   type: "loops",
   session: "aria",

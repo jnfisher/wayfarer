@@ -499,6 +499,24 @@ pub struct LoopStop {
     pub lair: bool,
     /// Minutes nothing spawns there after a kill (arenas exempt).
     pub regen: i64,
+    /// The bosses that spawn there and whether each should be up now, from the character's own
+    /// kills; empty when none does. Filled when the `loops` message is built, not cached.
+    #[serde(default)]
+    pub bosses: Vec<BossStatus>,
+}
+
+/// A boss of a stop, and whether it should be up: the character's last kill of it plus the
+/// hours it takes to come back. A guess, not a sight: other players kill it too.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct BossStatus {
+    pub name: String,
+    /// Hours it takes to come back after a kill.
+    pub regen_hours: u32,
+    /// Minutes until it should be up; absent when it should be up now (the character never
+    /// killed it, or its time has passed).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub up_in_minutes: Option<u32>,
 }
 
 /// A loop generated from the world data: a closed circuit through an area's hunt rooms.

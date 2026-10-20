@@ -263,6 +263,14 @@ can watch the route, and runs one ("Running a loop", below).
   types for it.
 - Made once per anchor, radius, level, strength, picklocks and doors for the session, so asking
   again is cheap.
+- **Boss status.** A stop that is a boss's lair (a unique monster, `maxalive` 1, back `regenhrs`
+  hours after its kill: the Minotaur Chieftain 24, Leo the Quick 2) lists the boss with whether
+  it should be up: `bosses: [{name, regen_hours, up_in_minutes?}]`, filled each time the list
+  is asked for (the loops themselves stay cached). The brain keeps each boss the character
+  kills, bot running or not (the `boss_kills` table, schema version 3), and the status is that
+  kill plus the hours; a boss it never saw die "should be up". It is a guess, since other
+  players kill bosses too, and information only: a loop does not wait for a boss or plan
+  around one, it walks through the room and fights what is there.
 
 `walk_loop {session, id}` walks a loop once (a generated loop's id, or a MegaMud loop's file):
 a `walk_to` to its stop nearest the
@@ -590,6 +598,7 @@ nothing after a restart).
 |---|---|
 | `bot_state` | Per session: the bot's state (`stopped`, `running`, `paused`), its home room, the loop it runs (`loop_id`, the stops as they were when it started, the stop it is at, the stops to skip; Task mode fills these), why it is paused, when it was saved |
 | `monster_rules` | Per session: the monster rules the session learned and the player set, each with its pattern, rule, source and when it was made (schema version 2) |
+| `boss_kills` | Per session and boss: when the character last killed it (schema version 3), for "should be up" |
 | `runs` | Per session: each run, from Start to Stop or a death, and its loop |
 | `events` | Per run: kills (the monster and the exp it gave), exp gained with no kill, deaths, flees, rests and level-ups, each with the time and the room |
 | `samples` | Per run: the character's exp and HP, once a minute |

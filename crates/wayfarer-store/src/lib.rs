@@ -76,12 +76,26 @@ const MIGRATIONS: &[&str] = &[
          at INTEGER NOT NULL,
          PRIMARY KEY (session, pattern, source)
      );",
+    // 3: when each boss was last killed (boss status, the "should be up" display).
+    "CREATE TABLE boss_kills (
+         session TEXT NOT NULL,
+         monster TEXT NOT NULL,
+         killed_at INTEGER NOT NULL,
+         PRIMARY KEY (session, monster)
+     );",
 ];
 
 /// The schema version this build writes.
 pub const SCHEMA_VERSION: u32 = MIGRATIONS.len() as u32;
 
-const TABLES: [&str; 5] = ["bot_state", "runs", "events", "samples", "monster_rules"];
+const TABLES: [&str; 6] = [
+    "bot_state",
+    "runs",
+    "events",
+    "samples",
+    "monster_rules",
+    "boss_kills",
+];
 
 #[derive(Debug)]
 pub enum Error {
@@ -479,6 +493,25 @@ impl Store {
                 at: r.get(3)?,
             })
         })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// A boss (by its lower-case name) the character killed at `at`, unix seconds: kept for the
+    /// session whether or not the bot was running, replacing an earlier kill of the same boss.
+    pub fn boss_killed(&self, session: &str, monster: &str, at: i64) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO boss_kills (session, monster, killed_at) VALUES (?1, ?2, ?3)",
+            params![session, monster.to_lowercase(), at],
+        )?;
+        Ok(())
+    }
+
+    /// The bosses the session killed, by lower-case name, with when (unix seconds).
+    pub fn boss_kills(&self, session: &str) -> Result<Vec<(String, i64)>> {
+        let mut q = self
+            .conn
+            .prepare("SELECT monster, killed_at FROM boss_kills WHERE session = ?1")?;
+        let rows = q.query_map(params![session], |r| Ok((r.get(0)?, r.get(1)?)))?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 

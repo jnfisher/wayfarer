@@ -20,6 +20,7 @@ use wayfarer_store::{BotRecord, BotState, EventKind, Store};
 use wayfarer_world::loops::{Area, circuits, hunt_rooms, megamud_through};
 use wayfarer_world::{self as world, HuntRoom, Key, MmLoop, PlaceKind, Reach, Traveller, route};
 
+use crate::boss::boss_status;
 use crate::brain::Atlas;
 use crate::character::{Character, merge_patch};
 use crate::clock::Clock;
@@ -114,6 +115,7 @@ fn loop_stop(h: &HuntRoom) -> LoopStop {
         arena: h.is_arena,
         lair: h.is_lair,
         regen: h.regen,
+        bosses: Vec::new(),
     }
 }
 
@@ -640,6 +642,13 @@ impl Session {
             };
             if !silent && self.atlas.is_some() {
                 self.count(&typed, dead.as_deref(), level);
+                // A boss kill is kept whether or not the bot is running: "should be up".
+                if let (Some(name), Some(atlas)) = (&dead, &self.atlas)
+                    && atlas.monsters.boss_named(name)
+                {
+                    let name = name.clone();
+                    self.ledger.boss_killed(&name);
+                }
             }
             if let Some(name) = &dead {
                 self.bot.killed(name, now);
@@ -1443,14 +1452,49 @@ impl Session {
                 }
             })
             .collect();
+        let mut generated = generated.as_ref().clone();
+        let mut megamud: Vec<MegaMudLoop> = megamud;
+        for stops in generated
+            .iter_mut()
+            .map(|l| &mut l.stops)
+            .chain(megamud.iter_mut().map(|l| &mut l.stops))
+        {
+            self.mark_bosses(&atlas, stops);
+        }
         out.push(ToGateway::Loops {
             session: self.id.clone(),
             anchor: room_key(anchor),
             radius,
             doors,
-            generated: generated.as_ref().clone(),
+            generated,
             megamud,
         });
+    }
+
+    /// The bosses that spawn at each stop and whether each should be up: the character's last
+    /// kill of it plus its `regenhrs`. A guess, other players kill bosses too.
+    fn mark_bosses(&self, atlas: &Atlas, stops: &mut [LoopStop]) {
+        let kills = self.ledger.boss_kills();
+        let now = self.ledger.unix_now();
+        for stop in stops {
+            let Some(bosses) = atlas
+                .finder
+                .boss_lair((stop.map, stop.room), &atlas.monsters)
+            else {
+                continue;
+            };
+            stop.bosses = bosses
+                .iter()
+                .filter_map(|m| {
+                    let hours = atlas.monsters.regen_hours(m.number)?;
+                    let killed = kills
+                        .iter()
+                        .find(|(n, _)| n.eq_ignore_ascii_case(&m.name))
+                        .map(|&(_, at)| at);
+                    Some(boss_status(&m.name, hours, killed, now))
+                })
+                .collect();
+        }
     }
 
     /// The traveller loops are made for: the character's, through doors or not.

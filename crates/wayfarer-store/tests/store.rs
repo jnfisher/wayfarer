@@ -273,3 +273,38 @@ fn a_version_1_store_keeps_its_bot_and_gains_the_monster_rules() {
     assert_eq!(bot.home, Some((1, 2150)));
     assert!(bot.monster_rules.is_empty());
 }
+
+#[test]
+fn boss_kills_are_kept_per_session_and_the_latest_wins() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let (store, _) = Store::open(&path).unwrap();
+    assert!(store.boss_kills("aldric").unwrap().is_empty());
+    store.boss_killed("aldric", "Leo the Quick", T0).unwrap();
+    store
+        .boss_killed("aldric", "minotaur chieftain", T0 + 5)
+        .unwrap();
+    store
+        .boss_killed("kasimir", "Leo the Quick", T0 + 9)
+        .unwrap();
+    // Killed again two hours later: the later kill replaces the earlier.
+    store
+        .boss_killed("aldric", "leo the quick", T0 + 7200)
+        .unwrap();
+    drop(store);
+    // Kept across a reopen; names are lower case.
+    let (store, _) = Store::open(&path).unwrap();
+    let mut kills = store.boss_kills("aldric").unwrap();
+    kills.sort();
+    assert_eq!(
+        kills,
+        [
+            ("leo the quick".to_owned(), T0 + 7200),
+            ("minotaur chieftain".to_owned(), T0 + 5)
+        ]
+    );
+    assert_eq!(
+        store.boss_kills("kasimir").unwrap(),
+        [("leo the quick".to_owned(), T0 + 9)]
+    );
+}
