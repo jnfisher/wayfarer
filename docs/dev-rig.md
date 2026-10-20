@@ -142,3 +142,37 @@ apart so that the brain restarts alone.
 
 After the laptop sleeps, the brain reattaches by itself (it retries with the web UI's
 backoff, half a second doubling to ten) and catches up from the gateway's history.
+
+## A timed run
+
+`scripts/live-check.sh --scenario soak` makes a character run a loop for a number of minutes
+and prints what happened: exp per hour, kills by monster, deaths, flees, rests, relocations,
+the unclassified-line rate, the longest gap without a prompt, brain restarts and the run's id
+in the store. It prints a line a minute while it goes, stops at once on a death or when the
+bot stops itself, and ends with a Stop, a walk back to the anchor and a clean log-off. The
+scenario is described in `tests/live/README.md`.
+
+The M3 acceptance command, for Thorgrim on the Wooden Passage (the Minotaur Chieftain's room is
+Large Wooden Room, 1:1865), run by John, never by a card:
+
+```sh
+# the Chieftain's room in
+scripts/live-check.sh --scenario soak --char Thorgrim --minutes 30 --anchor 1:1839 --radius 10 \
+    --credentials "$WAYFARER_DATA_DIR/credentials.toml"
+# the Chieftain's room out
+scripts/live-check.sh --scenario soak --char Thorgrim --minutes 30 --anchor 1:1839 --radius 10 \
+    --skip 1:1865 --credentials "$WAYFARER_DATA_DIR/credentials.toml"
+```
+
+Not yet working: `--char` takes only pool characters until a follow-up lets `--credentials`
+be a gateway `credentials.toml` (`[character.<id>] user, password`); the commands above are
+the target. The check logs the character on through its own gateway, so stop Thorgrim's tile on the rig
+first (the server refuses a second logon to an account). Put the anchor in a quiet room: the
+character is walked back to it at the end.
+
+A short smoke run on a pool character (three minutes in Newhaven, the Lairs unticked):
+
+```sh
+scripts/live-check.sh --scenario soak --char Waychecka --minutes 3 --anchor 1:2140 \
+    --skip 1:2152 --skip 1:2156
+```

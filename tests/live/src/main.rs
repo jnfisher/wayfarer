@@ -20,6 +20,7 @@ mod claim;
 mod fixtures;
 mod gateway;
 mod screen;
+mod soak;
 
 use std::net::ToSocketAddrs;
 use std::path::{Path, PathBuf};
@@ -48,6 +49,7 @@ struct Args {
     out: PathBuf,
     only: Option<String>,
     scenario: Scenario,
+    soak: soak::SoakArgs,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -80,13 +82,16 @@ enum Scenario {
     /// C-031: as "fight", then lines typed beside the bot while it fights: `st` shows the
     /// status screen with the bot still running, `u` pauses it and goes up the stairs.
     Typing,
+    /// C-033: the character runs a generated loop for N minutes and the numbers come out.
+    Soak,
 }
 
 fn usage() -> ! {
     eprintln!(
         "usage: wayfarer-live --wayfarer BIN --out DIR [--addr HOST:PORT] [--pool FILE] \
-         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart|flee|typing]\n(run it through \
-         scripts/live-check.sh)"
+         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart|flee|typing|soak]\n\
+         soak: --char NAME --minutes N [--anchor MAP:ROOM] [--radius R] [--skip MAP:ROOM ...] [--loop ID]\n\
+         (run it through scripts/live-check.sh)"
     );
     std::process::exit(2);
 }
@@ -101,6 +106,7 @@ fn args() -> Args {
         out: PathBuf::new(),
         only: None,
         scenario: Scenario::M0,
+        soak: soak::SoakArgs::default(),
     };
     let mut it = std::env::args().skip(1);
     while let Some(flag) = it.next() {
@@ -123,13 +129,27 @@ fn args() -> Args {
                     "restart" => Scenario::Restart,
                     "flee" => Scenario::Flee,
                     "typing" => Scenario::Typing,
+                    "soak" => Scenario::Soak,
                     _ => usage(),
                 }
             }
+            "--minutes" => a.soak.minutes = value().parse().unwrap_or_else(|_| usage()),
+            "--anchor" => {
+                a.soak.anchor = Some(soak::parse_room(&value()).unwrap_or_else(|| usage()))
+            }
+            "--radius" => a.soak.radius = value().parse().unwrap_or_else(|_| usage()),
+            "--skip" => a
+                .soak
+                .skip
+                .push(soak::parse_room(&value()).unwrap_or_else(|| usage())),
+            "--loop" => a.soak.loop_id = Some(value()),
             _ => usage(),
         }
     }
     if a.wayfarer.as_os_str().is_empty() || a.out.as_os_str().is_empty() {
+        usage();
+    }
+    if a.scenario == Scenario::Soak && (a.only.is_none() || a.soak.minutes == 0) {
         usage();
     }
     a
@@ -150,6 +170,8 @@ struct Ctx {
     /// Gateways started so far (each gets its own directory under `args.out`).
     runs: u32,
     steps: Vec<Step>,
+    /// The soak's summary table, once it has run.
+    soak: Option<String>,
 }
 
 impl Ctx {
@@ -514,6 +536,15 @@ async fn run(ctx: &mut Ctx, pool: &Pool) -> Result<String, String> {
             }
         };
         return if ok { Ok(who) } else { Err(who) };
+    }
+    if ctx.args.scenario == Scenario::Soak {
+        let soaked = soak::scenario(ctx, &mut gw).await;
+        let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
+        return if soaked && logged_off {
+            Ok(who)
+        } else {
+            Err(who)
+        };
     }
     if ctx.args.scenario == Scenario::Flee {
         let fled = flee_scenario(ctx, &mut gw).await;
@@ -1914,6 +1945,12 @@ async fn flee_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
 /// Let a fight end by itself (stopping the bot does not stop auto-combat), then walk to the
 /// Narrow Road, trying again if a fight stops the walk.
 async fn walk_out(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
+    walk_out_to(ctx, gw, WALK_TO).await
+}
+
+/// The same to any room (the soak's anchor): once the fight is over, `walk_to` it, tried three
+/// times since a fight stops a walk.
+async fn walk_out_to(ctx: &mut Ctx, gw: &mut Gateway, to: (i64, i64)) -> bool {
     let started = Instant::now();
     let mut out = Err("not tried".to_owned());
     for _ in 0..3 {
@@ -1929,20 +1966,16 @@ async fn walk_out(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
             })
             .await;
         let room = believed(&gw.character).map(|(k, _)| k);
-        if room == Some(WALK_TO) {
+        if room == Some(to) {
             out = Ok("already there".to_owned());
             break;
         }
-        out = walk(gw, WALK_TO).await;
+        out = walk(gw, to).await;
         if out.is_ok() {
             break;
         }
     }
-    ctx.record(
-        &format!("walk out to {}/{}", WALK_TO.0, WALK_TO.1),
-        started,
-        &out,
-    );
+    ctx.record(&format!("walk out to {}/{}", to.0, to.1), started, &out);
     out.is_ok()
 }
 
@@ -2043,6 +2076,15 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    // The pool is for the short scenarios: a long soak is for a character of one's own.
+    if args.scenario == Scenario::Soak && args.soak.minutes > soak::POOL_MAX_MINUTES {
+        eprintln!(
+            "live check: {} is a pool character, and the pool is for runs of {} minutes or less",
+            args.only.as_deref().unwrap_or("?"),
+            soak::POOL_MAX_MINUTES
+        );
+        return ExitCode::from(2);
+    }
     let out = args.out.clone();
     let mut ctx = Ctx {
         args,
@@ -2050,6 +2092,7 @@ fn main() -> ExitCode {
         port,
         runs: 0,
         steps: Vec::new(),
+        soak: None,
     };
     let started = Instant::now();
     let result = tokio::runtime::Runtime::new()
@@ -2103,6 +2146,10 @@ fn print_summary(
             },
             s.secs
         );
+    }
+    if let Some(table) = &ctx.soak {
+        println!();
+        print!("{table}");
     }
     println!();
     println!(

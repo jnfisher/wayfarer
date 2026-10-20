@@ -56,6 +56,21 @@ pub struct Gateway {
     pub stats: Option<ToClient>,
     /// The attacks on the character the brain's events showed.
     pub attacks: Vec<Attack>,
+    /// Every event the brain classified for the session, in order.
+    pub events: Vec<Seen>,
+    /// How long the session has gone between prompts (`[HP=`) so far.
+    pub gaps: crate::soak::PromptGaps,
+    /// Times the brain detached after it had attached.
+    pub brain_drops: u32,
+}
+
+/// An event from the brain, as the check kept it.
+#[derive(Debug, Clone)]
+pub struct Seen {
+    pub at: std::time::Instant,
+    pub name: String,
+    pub fields: serde_json::Map<String, serde_json::Value>,
+    pub line: String,
 }
 
 /// An attack on the character, as an `event` from the brain showed it.
@@ -169,6 +184,9 @@ impl Gateway {
             map_centers: Vec::new(),
             loops: None,
             stats: None,
+            events: Vec::new(),
+            gaps: crate::soak::PromptGaps::new(std::time::Instant::now()),
+            brain_drops: 0,
         };
         match gateway.next(Instant::now() + START_TIMEOUT).await {
             Some(ToClient::Welcome { sessions, .. }) => {
@@ -307,6 +325,9 @@ impl Gateway {
                 ToClient::Output { seq, text, .. } => {
                     self.output.insert(*seq, text.clone());
                     self.last_output = Instant::now();
+                    if text.contains("[HP=") {
+                        self.gaps.prompt(std::time::Instant::now());
+                    }
                 }
                 ToClient::History { chunks, .. } => {
                     for c in chunks {
@@ -314,7 +335,12 @@ impl Gateway {
                     }
                 }
                 ToClient::SessionState { state, .. } => self.state = *state,
-                ToClient::BrainState { attached } => self.brain_attached = Some(*attached),
+                ToClient::BrainState { attached } => {
+                    if !attached && self.brain_attached == Some(true) {
+                        self.brain_drops += 1;
+                    }
+                    self.brain_attached = Some(*attached);
+                }
                 ToClient::Character { session, state } if session == SESSION => {
                     self.character = serde_json::to_value(state).unwrap_or_default();
                 }
@@ -327,16 +353,24 @@ impl Gateway {
                     fields,
                     line,
                     ..
-                } if session == SESSION && ATTACK_EVENTS.contains(&name.as_str()) => {
-                    let who = ["mon", "who"]
-                        .iter()
-                        .find_map(|f| fields.get(*f)?.as_str())
-                        .unwrap_or("someone");
-                    self.attacks.push(Attack {
-                        at: Instant::now(),
-                        who: who.trim().to_owned(),
-                        line: line.trim().to_owned(),
+                } if session == SESSION => {
+                    self.events.push(Seen {
+                        at: std::time::Instant::now(),
+                        name: name.clone(),
+                        fields: fields.clone(),
+                        line: line.clone(),
                     });
+                    if ATTACK_EVENTS.contains(&name.as_str()) {
+                        let who = ["mon", "who"]
+                            .iter()
+                            .find_map(|f| fields.get(*f)?.as_str())
+                            .unwrap_or("someone");
+                        self.attacks.push(Attack {
+                            at: Instant::now(),
+                            who: who.trim().to_owned(),
+                            line: line.trim().to_owned(),
+                        });
+                    }
                 }
                 ToClient::Notice { session, text } if session.as_deref() == Some(SESSION) => {
                     self.notices.push(text.clone());
