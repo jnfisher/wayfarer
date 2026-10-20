@@ -148,6 +148,9 @@ pub struct Game {
     /// A move may go while another is in flight (Task's pipelined legs): one at most, and only
     /// a direction.
     pub pipelining: bool,
+    /// The game has stopped answering (see [`Game::freeze`]): lines the brain sends are kept in
+    /// `seen` and nothing more.
+    pub frozen: bool,
     /// The moves that went while another was in flight.
     pub ahead: Vec<String>,
 }
@@ -226,6 +229,7 @@ impl Game {
             state,
             played: Vec::new(),
             pipelining: false,
+            frozen: false,
             ahead: Vec::new(),
         };
         g.log.push(Chunk {
@@ -364,6 +368,9 @@ impl Game {
                     }
                     self.pending.push_back(m);
                 }
+                if self.frozen {
+                    return Some(msg.clone());
+                }
                 let answer = match self.script.front() {
                     Some((cmd, _)) if cmd == text => {
                         self.played.push(text.clone());
@@ -403,6 +410,13 @@ impl Game {
             _ => {}
         }
         Some(msg)
+    }
+
+    /// The loop never rests (no respawn clock), so a test that has seen what it came for stops
+    /// the game answering: what the brain sends from here on is only recorded in `seen`, not
+    /// in `played`, and its walks time out until the brain is closed.
+    pub fn freeze(&mut self) {
+        self.frozen = true;
     }
 
     pub async fn until<T>(&mut self, mut want: impl FnMut(&ToGateway) -> Option<T>) -> T {

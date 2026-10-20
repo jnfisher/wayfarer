@@ -205,21 +205,22 @@ scripts/live-check.sh --scenario soak --char Waychecka --minutes 3 --anchor 1:21
     --skip 1:2152 --skip 1:2156
 ```
 
-### Comparing two ways to run a loop (the Bandit Keep A/B)
 
-Two 30-minute soaks of the same character on `HKEPLOOP.mp`, from the same start (the Hidden
-Keep, anchor `9:750`), one after the other with the same HP at the start:
+### A 30-minute run on a MegaMud loop (the Bandit Keep)
 
 ```sh
-# default: only Lair stops wait out a respawn delay; the bot walks the loop in order
 scripts/live-check.sh --scenario soak --char Thorgrim --minutes 30 --loop HKEPLOOP.mp \
     --anchor 9:750 --credentials "$WAYFARER_DATA_DIR/credentials.toml"
-# gated: every stop waits out its respawn delay after it was cleared
-WAYFARER_GATED_STOPS=1 scripts/live-check.sh --scenario soak --char Thorgrim --minutes 30 \
-    --loop HKEPLOOP.mp --anchor 9:750 --credentials "$WAYFARER_DATA_DIR/credentials.toml"
 ```
 
-Result (2026-10-20, Thorgrim, level 20): gated 15,700 exp (31.4k/hr, 122 kills, 6 rests, 40
-waits for respawns, longest gap 51 s), default 15,800 exp (31.6k/hr, 124 kills, 0 rests, 0
-waits, longest gap 8.5 s). Supply of monsters limits exp per hour here, not the walk. One run of
-each is a sample, not a verdict: the first minutes of a run start with every room stocked.
+Anchor `9:750` is a Keep Wall Edge room inside the keep, on the loop's path (the area listing
+is built around the anchor, and from the Hidden Keep outside the keep it does not reach the
+loop). The bot searches north at the Hidden Keep until the hidden exit shows, then walks the
+loop; the way in is `Ftrehkep.mp`'s, not the loop's own.
+
+There is no respawn clock (see `brain.md`, "Running a loop"). Two soaks on 2026-10-20
+(Thorgrim, level 20), one with a five-minute clock on every stop and one without, came out the
+same: 15,700 exp (31.4k/hr, 122 kills, 6 rests, 40 waits for respawns, longest gap 51 s) with
+the clock, 15,800 exp (31.6k/hr, 124 kills, 0 rests, 0 waits, longest gap 8.5 s) without. What
+limits exp per hour on that loop is the supply of monsters, not the walk. One run of each is a
+sample, not a verdict: a run starts with every room stocked.

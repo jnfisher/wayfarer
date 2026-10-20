@@ -308,8 +308,9 @@ async fn a_restarted_brain_resumes_a_megamud_loop_from_the_store() {
     g.expect("n", room(DUNGEON_ENTRANCE));
     g.expect("s", arena(&[], 35));
     g.narrated("Stop 2/2 cleared: nothing there").await;
-    // Nothing cleared before the restart counts: on round to the Arena.
+    // On round to the Arena, and no clock keeps it from the Entrance again.
     g.narrated("Stop 1/2 cleared: nothing there").await;
+    g.freeze();
     let (seen, _) = g.close(run).await;
     let said = notices(&seen);
     assert!(

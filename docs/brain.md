@@ -454,28 +454,28 @@ stop it is at or walking to, and the stops it passes by.
   monsters Fight will not attack are left (refused targets) is cleared once the character's own
   combat has been quiet there for 20 s.
 - **On** to the next stop in loop order that is ticked and ready, passing by the others with a
-  word each: "Skipping Small Cavern (unticked)", "Stop 3/3 not ready (1 m)". **Ready**: an Arena
-  always is (monsters come back at once after a kill, `kb/progression.md`), and so is any stop
-  that is not a Lair (Normal rooms under an area spawner refill on no delay the bot can know:
-  it walks the loop in order and fights what it finds); a Lair once its `regendelay` minutes (0
-  means the stock 5) have passed since the bot cleared it, or if it never has.
-  (`task::no_respawn_wait`, `task::stop_ready`.) Two 30-minute Bandit Keep soaks (2026-10-20)
-  gave 31.4k exp/hr with every stop gated and 31.6k with only Lairs gated, so the default is
-  the simpler one; `WAYFARER_GATED_STOPS` set in the brain's environment gates every stop again
-  (until there are settings).
-- **None ready**: with HP under 95% it rests first ("Waiting for respawns: resting first":
-  Recover rests, in a quiet room if this one spawns, and walks back); then it waits where it is,
-  "Waiting for respawns: next in 1 m", and goes when the next stop is ready. An Arena the bot is
-  in is always ready: it waits there and Fight takes what comes. A loop of Normal rooms never
-  waits (only its Lairs, if it has any, do).
+  word each: "Skipping Small Cavern (unticked)", "Stop 3/3 not ready (1 m)". **Ready**: every
+  stop, except one the bot passed by in the last five minutes (below). There is no respawn
+  clock: the bot walks the loop in order and fights whatever it finds, in a stop or on the way.
+  A stop that spawns at once or on entering (an instant-spawn lair, an arena) gives its monster
+  when the character steps out and in again; a boss on a long timer costs a walk through its
+  room. Two 30-minute Bandit Keep soaks (2026-10-20, Normal rooms under an area spawner) gave
+  31.4k exp/hr with a five-minute clock on every stop and 31.6k without it, with no rests and
+  no idle waits in the second: what limits exp there is the supply of monsters, not the walk.
+  (`task::passed_left`, `PASSED_FOR`.)
+- **None ready** (every stop unticked, unreachable or passed by lately): with HP under 95% it
+  rests first ("Waiting for respawns: resting first": Recover rests, in a quiet room if this one
+  spawns, and walks back); then it waits where it is, "Waiting for respawns: next in 1 m", and
+  goes when the next stop is ready. A loop with a single stop, the character in it, waits there
+  and Fight takes what comes.
 - **On the way**: a monster Fight would attack in a room on the way, or one attacking, stops the
   leg after the moves in flight; Fight takes the character, and then Task walks on to the same
   stop from wherever it is. `*Combat Engaged*` stops it the same way. Flee and Recover work as in
   "fight here"; after a flee Recover rests and walks back to the stop. A leg that ends elsewhere
   three times with no fight between is given up: the stop is passed by this time round, with a
   warning-like notice ("Stop 2/3 Dungeon, Entrance: could not get there; passing it by this time
-  round"). A stop passed by waits its respawn delay before the bot tries it again, an arena's
-  too (no delay after a kill, but its `regendelay` or the stock five minutes after a pass-by). Three stops passed by in a row, with no stop reached and nothing
+  round"). A stop passed by (a leg that would not get there, a monster to keep away from, a
+  stalemate) is left alone for five minutes (`PASSED_FOR`) before the bot tries it again. Three stops passed by in a row, with no stop reached and nothing
   killed between, and the bot stops itself with a warning ("Stopped: loop Newhaven: could not
   get to a stop 3 times in a row").
 - **Stops it cannot reach**: a ticked stop no route reaches from where the character is (behind
