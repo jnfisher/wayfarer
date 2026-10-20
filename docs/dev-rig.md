@@ -51,8 +51,9 @@ cards never start, stop, rebuild or reset it.**
 scripts/dev/gateway.sh
 ```
 
-builds `wayfarer` in release mode and runs `wayfarer gateway` with the config from your data
-directory, `~/Library/Application Support/wayfarer/` (override with `WAYFARER_DATA_DIR`). The
+builds `wayfarer` in release mode, rebuilds the web UI (`npm ci` and `npm run build` in
+`ui/`, so the page always matches the checkout), and runs `wayfarer gateway` with the config
+from your data directory, `~/Library/Application Support/wayfarer/` (override with `WAYFARER_DATA_DIR`). The
 first run copies [`examples/dev.toml`](../examples/dev.toml) there as `wayfarer.toml`; after
 that the script never overwrites it. Edit the copy: change the placeholder characters to your
 test characters, and put their accounts in `credentials.toml` beside it

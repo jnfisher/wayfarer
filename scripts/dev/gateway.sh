@@ -17,6 +17,12 @@ fi
 
 cd "$root"
 cargo build --release -p wayfarer
+# The gateway serves ui/dist as it is; rebuild it so the page matches the checkout.
+if command -v npm >/dev/null 2>&1; then
+  (cd ui && npm ci --silent && npm run build --silent) || { echo "gateway.sh: the UI build failed" >&2; exit 1; }
+else
+  echo "gateway.sh: npm not found; serving ui/dist as it is" >&2
+fi
 # The world pack is the brain's (and `wayfarer serve`'s); build it here too so either script may go first.
 if [ ! -f "$data/world.sqlite" ]; then
   echo "gateway.sh: building the world pack into $data/world.sqlite" >&2
