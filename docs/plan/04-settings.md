@@ -75,7 +75,7 @@ HP  0 ──[Flee 30]────[Heal in combat 40]────[Rest below 80]�
 |---|---|---|---|
 | Rest below HP % | 80 | 90 | Between fights, rest when below this; never in a room that spawns. MegaMud's 90 is cautious: resting already dominates time in hard areas (`kb/recovery.md`) |
 | Rest until HP % | 95 | 99 | A little under 100, so it doesn't wait a whole regen tick for a few HP |
-| Flee below HP % | 30 melee, 50 casters | 30 | Also flees at twice the hardest hit taken this fight, if that is higher (a checkbox, on) |
+| Flee below HP % | 30 melee, 50 casters | 30 | The percentage alone; the "twice the hardest hit this fight" addition was dropped (John, 2026-10-19) |
 | Mana: rest below / until % | 30 / 95 | 20 / 100 | Casters only |
 
 **Combat**
