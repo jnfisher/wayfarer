@@ -237,6 +237,41 @@ async fn low_hp_rests_in_a_quiet_room_then_walks_back() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn started_where_the_position_is_unknown_home_is_where_the_resync_finds_it() {
+    // Seen on the rig: a brain just attached, its history showing no room. Start re-syncs
+    // and its `look` shows the Arena; home is the Arena, so after the rest up the stairs the
+    // bot walks back down and fights there again.
+    let (mut g, run) = Game::start_lost(SessionState::Realm, prompt(35)).await;
+    g.idle(Duration::from_secs(20)).await;
+    g.expect("st", status(20));
+    g.expect("look", arena(&[], 20));
+    g.bot(BotAction::Start).await;
+    g.narrated("Starting in an unknown room: re-syncing").await;
+    g.narrated("Playing from Newhaven, Arena").await;
+    g.expect("u", at_hp(&room(NARROW_ROAD), 20));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
+    g.narrated("Recover: resting to 95% in Newhaven, Narrow Road")
+        .await;
+    for hp in [24, 28, 31] {
+        g.output(&resting(hp)).await;
+        g.idle(Duration::from_secs(20)).await;
+    }
+    g.expect("d", arena(&["large giant rat"], 34));
+    g.expect("a rat", line(ENGAGED, 34));
+    g.output(&resting(34)).await;
+    g.narrated("Recover: rested; walking back to Newhaven, Arena")
+        .await;
+    g.narrated("Fight: large giant rat").await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u", "rest", "d", "a rat"]);
+    let said = notices(&seen);
+    assert!(!said.contains(&"Waiting here".to_owned()), "{said:?}");
+    for arrived in ["Arrived: Newhaven, Narrow Road", "Arrived: Newhaven, Arena"] {
+        assert!(said.contains(&arrived.to_owned()), "{said:?}");
+    }
+}
+
+#[tokio::test(start_paused = true)]
 async fn rest_is_sent_again_when_the_prompt_lacks_resting() {
     let (mut g, run) = in_arena(&[]).await;
     start(&mut g, &[], 20).await;
@@ -541,6 +576,32 @@ async fn walk_to_pauses_the_bot() {
         (b.state, b.reason.as_deref()),
         (BotState::Paused, Some("you took over"))
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn walk_to_while_the_bots_look_is_in_flight_walks_once_it_is_answered() {
+    // Seen live: the player asked for a walk while the bot's `look` after a kill was out. The
+    // walk's first step waits for that answer (one action at a time), then goes.
+    let (mut g, run) = in_arena(&["large giant rat"]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    g.after_cmd = Some((
+        "look".into(),
+        ToClient::WalkTo {
+            session: ID.into(),
+            map: NARROW_ROAD.0,
+            room: NARROW_ROAD.1,
+        },
+    ));
+    g.expect("look", arena(&[], 35));
+    g.expect("u", room(NARROW_ROAD));
+    g.output(&kill(35)).await;
+    g.narrated("Arrived: Newhaven, Narrow Road").await;
+    g.idle(Duration::from_secs(30)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "look", "u"]);
+    assert_eq!(bot(&seen).state, BotState::Paused);
 }
 
 #[tokio::test(start_paused = true)]
