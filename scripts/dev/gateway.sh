@@ -24,8 +24,16 @@ else
   echo "gateway.sh: npm not found; serving ui/dist as it is" >&2
 fi
 # The world pack is the brain's (and `wayfarer serve`'s); build it here too so either script may go first.
+# With MegaMud's path set (Winterhawk's paths) when the zip is at hand: $WAYFARER_MEGAMUD, else
+# mmud-exploration's reference copy beside this checkout; docs/dev-rig.md "The world pack".
+megamud="${WAYFARER_MEGAMUD:-$root/../mmud-exploration/reference/megamud/MegaMUD_v2.0_Alpha_-_With_Paths.zip}"
 if [ ! -f "$data/world.sqlite" ]; then
   echo "gateway.sh: building the world pack into $data/world.sqlite" >&2
-  ./target/release/wayfarer import-world --export tests/fixtures/world --out "$data/world.sqlite"
+  if [ -f "$megamud" ]; then
+    ./target/release/wayfarer import-world --export tests/fixtures/world --megamud "$megamud" --out "$data/world.sqlite"
+  else
+    echo "gateway.sh: no MegaMud zip at $megamud; the pack has no MegaMud loops" >&2
+    ./target/release/wayfarer import-world --export tests/fixtures/world --out "$data/world.sqlite"
+  fi
 fi
 exec ./target/release/wayfarer gateway --config "$data/wayfarer.toml" --ui-dir "$root/ui/dist" "$@"
