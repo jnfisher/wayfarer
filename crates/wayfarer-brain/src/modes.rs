@@ -321,6 +321,10 @@ impl Bot {
         if !stopped.is_empty() {
             return (None, stopped);
         }
+        if let Some(home) = self.recover.find_home(v) {
+            let name = v.room_name(Some(home));
+            self.narrate(format!("Playing from {name}"), &mut says);
+        }
         // A mode that finishes in its step (rested, back home) hands over at once: the stack
         // is asked again, once.
         for _ in 0..2 {

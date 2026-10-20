@@ -150,6 +150,14 @@ impl Game {
 
     /// A brain attached to a session whose history is `history` (ending in a prompt).
     pub async fn start_with(state: SessionState, history: String) -> (Game, Run) {
+        let (mut g, run) = Game::start_lost(state, history).await;
+        g.until(|m| matches!(m, ToGateway::MapView { .. }).then_some(()))
+            .await;
+        (g, run)
+    }
+
+    /// The same, for a history that need not show a room: no map view is waited for.
+    pub async fn start_lost(state: SessionState, history: String) -> (Game, Run) {
         let (to_gateway, rx) = mpsc::channel(4096);
         let (tx, from_gateway) = mpsc::channel(4096);
         let clock = FixedClock(UNIX_EPOCH + Duration::from_secs(1_792_411_200));
@@ -183,10 +191,8 @@ impl Game {
             sessions: vec![info(state, 1)],
         })
         .await;
-        // The catch-up's whole snapshot, and its map view.
+        // The catch-up's whole snapshot.
         g.until(|m| matches!(m, ToGateway::Character { .. }).then_some(()))
-            .await;
-        g.until(|m| matches!(m, ToGateway::MapView { .. }).then_some(()))
             .await;
         (g, run)
     }

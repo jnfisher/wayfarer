@@ -17,7 +17,8 @@ const WALKS: u32 = 2;
 
 #[derive(Debug, Default)]
 pub(crate) struct Recover {
-    /// Where the bot was started: Fight happens there.
+    /// Where the bot was started: Fight happens there. Unknown at `start` when the position
+    /// was (a brain just attached): the first room the bot then believes it is in.
     home: Option<Key>,
     /// Took control, and has not finished: rested to [`REST_UNTIL`] and back home.
     active: bool,
@@ -35,6 +36,16 @@ impl Recover {
             home,
             ..Recover::default()
         }
+    }
+
+    /// Home, if it was not known at `start` and is now: the believed room, unless a walk
+    /// out to rest may have left it. Without a home Recover would never walk back.
+    pub fn find_home(&mut self, v: &View) -> Option<Key> {
+        if self.home.is_some() || v.room.is_none() || (self.active && self.walks_out > 0) {
+            return None;
+        }
+        self.home = v.room;
+        self.home
     }
 
     fn away(&self, v: &View) -> bool {

@@ -233,6 +233,8 @@ pub(crate) struct Session {
     presence: Presence,
     /// The walk in progress is the bot's.
     bot_walk: bool,
+    /// A walk asked for while the bot's action was in flight: it starts once that is answered.
+    walk_after: Option<Key>,
     /// The generated loops of the areas asked for, made once each.
     loops: HashMap<LoopsKey, Arc<Vec<GeneratedLoop>>>,
     /// The loop being walked once.
@@ -276,6 +278,7 @@ impl Session {
             bot: Bot::default(),
             presence: Presence::default(),
             bot_walk: false,
+            walk_after: None,
             loops: HashMap::new(),
             loop_walk: None,
             last_combat: now,
@@ -625,11 +628,22 @@ impl Session {
             self.cancel(out);
         }
         self.position.refresh(&atlas, &self.character.snapshot());
-        let busy = self.executor.in_flight().is_some();
-        let next = self.walker.start(&mut self.position, &atlas, to, busy);
-        self.apply(next, out);
+        self.start_walk(&atlas, to, out);
         self.drive(now, out);
         self.flush_views(out);
+    }
+
+    /// Start the player's walk (or loop walk) to `to`: after the walker's move in flight, or
+    /// once the bot's action in flight is answered (one action at a time).
+    fn start_walk(&mut self, atlas: &Atlas, to: Key, out: &mut Vec<ToGateway>) {
+        let busy = self.executor.in_flight().is_some();
+        if busy && self.owner == Some(Owner::Bot) {
+            self.walk_after = Some(to);
+            return;
+        }
+        self.walk_after = None;
+        let next = self.walker.start(&mut self.position, atlas, to, busy);
+        self.apply(next, out);
     }
 
     /// `loops_request`: the loops of the area around `anchor` (the believed room by default).
@@ -819,9 +833,7 @@ impl Session {
             stops: order,
             next: 0,
         });
-        let busy = self.executor.in_flight().is_some();
-        let next = self.walker.start(&mut self.position, &atlas, start, busy);
-        self.apply(next, out);
+        self.start_walk(&atlas, start, out);
         self.drive(now, out);
         self.flush_views(out);
     }
@@ -934,6 +946,7 @@ impl Session {
     fn cancel(&mut self, out: &mut Vec<ToGateway>) {
         self.executor.cancel();
         if self.owner.take() == Some(Owner::Bot) {
+            self.walk_after = None;
             self.bot.forget();
             let says = self.bot.settle();
             self.say(says, out);
@@ -1081,6 +1094,10 @@ impl Session {
                 Some(Owner::Bot) => {
                     let says = self.bot.outcome(&action, outcome);
                     self.say(says, out);
+                    if let Some(to) = self.walk_after.take() {
+                        self.position.refresh(&atlas, &self.character.snapshot());
+                        self.start_walk(&atlas, to, out);
+                    }
                 }
                 _ => {
                     self.position.refresh(&atlas, &self.character.snapshot());
