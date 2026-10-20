@@ -253,3 +253,46 @@ async fn an_attack_typed_while_the_bots_attack_is_in_flight_is_held_once_that_en
     assert_eq!(played, ["st", "look", "a rat"]);
     assert_eq!(bot(&seen).state, BotState::Paused);
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_line_waiting_when_logging_off_starts_is_dropped_and_nothing_typed_goes_out() {
+    let (mut g, run) = in_arena(&["large giant rat"]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    g.round("The large giant rat lunges at you!", 20).await;
+    // The rat's line with no prompt after it: talk waits for one.
+    g.output("The large giant rat lunges at you!\r\n").await;
+    g.user_input("gossip hi", false).await;
+    // Under attack: the log-off flees first, up to the Narrow Road.
+    g.expect("u", at_hp(&room(NARROW_ROAD), 18));
+    g.send(ToClient::LoggingOff { session: ID.into() }).await;
+    // A line typed mid-flee is refused as well.
+    g.user_input("gossip bye", false).await;
+    g.output(&prompt(20)).await;
+    g.until(|m| matches!(m, ToGateway::ReadyToLeave { .. }).then_some(()))
+        .await;
+    // The gateway logs off: out of the realm, into the menus.
+    g.set_state(SessionState::Menu).await;
+    g.idle(Duration::from_secs(10)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "u"]);
+    // Nothing typed went, and nothing at all after the flee's move.
+    let sent = lines(&seen);
+    assert!(!sent.iter().any(|l| l.starts_with("gossip")), "{sent:?}");
+    assert_eq!(sent.last().map(String::as_str), Some("u"));
+    let warned: Vec<_> = seen
+        .iter()
+        .filter_map(|m| match m {
+            ToGateway::Warning { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        warned,
+        [
+            "Not sent: gossip hi (the gateway is logging off)",
+            "Not sent: gossip bye (the gateway is logging off)",
+        ]
+    );
+}

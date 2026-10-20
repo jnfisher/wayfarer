@@ -407,13 +407,18 @@ impl Session {
         let was = self.state;
         self.state = state;
         if state != SessionState::Realm {
+            // Out of the realm the player's lines go as they would without the bot, unless
+            // the gateway is logging off: then into the log-off menus they would go.
+            if self.leaving || self.flee_out {
+                self.drop_typed(out);
+            } else {
+                for line in std::mem::take(&mut self.typed) {
+                    self.send_straight(line.text, out);
+                }
+            }
             self.synced = false;
             self.leaving = false;
             self.down = false;
-            // Out of the realm the player's lines go as they would without the bot.
-            for line in std::mem::take(&mut self.typed) {
-                self.send_straight(line.text, out);
-            }
             // Nothing in flight will be answered now.
             self.cancel(out);
             let says = self.bot.stop("the session left the realm", true);
@@ -768,13 +773,17 @@ impl Session {
         }
     }
 
-    /// `logging_off`: the gateway is about to log the character off. If it is attacked or
-    /// fighting, the bot flees first (an attack cancels the exit, `kb/recovery.md`), whatever
-    /// it was doing, and `false` is returned: the session answers `ready_to_leave` itself
-    /// once the flee is over. Otherwise, at once: the bot stops, a walk stops after the move
-    /// in flight, an action not sent yet is dropped, and nothing more goes to the game (a
-    /// re-sync included) while the session is in the realm; the caller answers.
+    /// `logging_off`: the gateway is about to log the character off. A line the player typed
+    /// that has not gone yet is dropped with a warning, as one typed from now on is. If the
+    /// character is attacked or fighting, the bot flees first (an attack cancels the exit,
+    /// `kb/recovery.md`), whatever it was doing, and `false` is returned: the session answers
+    /// `ready_to_leave` itself once the flee is over. Otherwise, at once: the bot stops, a
+    /// walk stops after the move in flight, an action not sent yet is dropped, and nothing
+    /// more goes to the game (a re-sync included) while the session is in the realm; the
+    /// caller answers.
     pub fn logging_off(&mut self, now: Instant, out: &mut Vec<ToGateway>) -> bool {
+        // A typed line still waiting would go mid-flee or into the log-off menus.
+        self.drop_typed(out);
         if self.attacked(now) {
             if self.walker.walking() {
                 self.stop_walk("the gateway is logging off", out);
@@ -799,6 +808,17 @@ impl Session {
         }
         self.leave_now(out);
         true
+    }
+
+    /// Drop the player's typed lines still waiting, each with a warning (`logging_off`).
+    fn drop_typed(&mut self, out: &mut Vec<ToGateway>) {
+        for line in std::mem::take(&mut self.typed) {
+            out.push(self.not_sent(&line.text));
+        }
+    }
+
+    fn not_sent(&self, text: &str) -> ToGateway {
+        self.warning(&format!("Not sent: {text} (the gateway is logging off)"))
     }
 
     /// Whether the character is under attack as far as the brain can tell: a monster or a
@@ -886,7 +906,7 @@ impl Session {
         out: &mut Vec<ToGateway>,
     ) {
         if self.leaving || self.flee_out {
-            out.push(self.warning(&format!("Not sent: {text} (the gateway is logging off)")));
+            out.push(self.not_sent(&text));
             return;
         }
         if !self.wants_arbitration() || self.state != SessionState::Realm {
@@ -978,6 +998,7 @@ impl Session {
         if self.state != SessionState::Realm
             || !self.live()
             || self.leaving
+            || self.flee_out
             || !prompt
             || self.executor.in_flight().is_some()
             || matches!(self.resync, Resync::Waiting { .. })
