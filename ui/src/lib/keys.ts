@@ -36,7 +36,8 @@ export const KEY_ROWS: KeyRow[] = [
   {
     group: "Map",
     keys: "loops, under the map",
-    does: "The loops around the character: hover or pick one to draw it in yellow, walk once walks it",
+    does:
+      "The loops around the character: hover or pick one to draw it in yellow, walk once walks it, run hunts round it (untick a stop to pass it by)",
   },
   {
     group: "Bot",

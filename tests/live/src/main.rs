@@ -1067,7 +1067,10 @@ async fn newhaven_loops(gw: &mut Gateway) -> Result<(String, String), String> {
 /// The loop scenario, with the gateway in the realm: a brain; to the Village Entrance; the
 /// loops listed; `walk_loop` on the Newhaven loop, stopped as its first walk starts, so the
 /// character stops a step or two short of the Arena and never fights; back to the Village
-/// Entrance; the brain stopped. Whether all of it went.
+/// Entrance; then `run_loop` on it for [`LOOP_RUN`], the Small Cavern's cave bears unticked
+/// (the run: kills at the Arena, the stops narrated, the Dungeon Entrance's respawn minute
+/// honoured, no death); Stop, out of the Arena, rest by hand if low; the brain stopped.
+/// Whether all of it went.
 async fn loop_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
     // 1. The brain attaches and re-syncs.
     let Some((running, start)) = placed_brain(ctx, gw, "loop", &[]).await else {
@@ -1112,11 +1115,153 @@ async fn loop_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
         let back = walk(gw, VILLAGE_ENTRANCE).await;
         ctx.record("walk back to the Village Entrance", started, &back);
         ok &= back.is_ok();
+        // 6. Run it.
+        if ok {
+            ok = run_the_loop(ctx, gw, &id).await;
+        }
     } else {
         ok = false;
     }
-    // 6. Stop the brain; the character stays in the realm.
+    // 7. Stop the brain; the character stays in the realm.
     stop_brain(ctx, running).await && ok
+}
+
+/// How long the loop scenario runs the loop.
+const LOOP_RUN: Duration = Duration::from_secs(300);
+/// The Newhaven loop's Lair of cave bears, north of the Dungeon Entrance: too much for a
+/// level-1 character, so the run passes it by.
+const SMALL_CAVERN: (i64, i64) = (1, 2156);
+/// The Dungeon Entrance's respawn delay (`regendelay` 1 in the stock world), less a little for
+/// the time a notice takes to come.
+const DUNGEON_ENTRANCE_REGEN: Duration = Duration::from_secs(58);
+
+/// `run_loop` on the Newhaven loop for [`LOOP_RUN`], then Stop, out of the Arena, and rest by
+/// hand if low. Whether the run held: no death, the bot never stopping itself, at least one
+/// kill at the Arena, every stop narrated, the Small Cavern never walked to, and no walk back
+/// to the Dungeon Entrance within its respawn minute of clearing it.
+async fn run_the_loop(ctx: &mut Ctx, gw: &mut Gateway, id: &str) -> bool {
+    use wayfarer_proto::BotAction;
+
+    let started = Instant::now();
+    let from = gw.notices.len();
+    let warned = gw.warnings.len();
+    let ran = match gw.run_loop(id, &[SMALL_CAVERN]).await {
+        Ok(()) => {
+            // Until the run's time is up, or the bot stops (a death, or stopping itself).
+            let end = Instant::now() + LOOP_RUN;
+            let _ = gw
+                .wait_for(LOOP_RUN, "the run's end", |g| {
+                    (Instant::now() >= end || bot_field(&g.character, "state") == Some("stopped"))
+                        .then_some(())
+                })
+                .await;
+            judge_the_run(gw, from, warned)
+        }
+        Err(e) => Err(e),
+    };
+    ctx.record(
+        &format!("run_loop for {} minutes", LOOP_RUN.as_secs() / 60),
+        started,
+        &ran,
+    );
+
+    // Whatever happened: the bot stopped, out of the Arena, HP back before logging off.
+    let started = Instant::now();
+    let stopped = match gw.bot(BotAction::Stop).await {
+        Ok(()) => {
+            gw.wait_for(Duration::from_secs(10), "the bot stopped", |g| {
+                (bot_field(&g.character, "state") == Some("stopped")).then(|| {
+                    bot_field(&g.character, "narration")
+                        .unwrap_or("")
+                        .to_owned()
+                })
+            })
+            .await
+        }
+        Err(e) => Err(e),
+    };
+    ctx.record("stop the bot", started, &stopped);
+    let out = walk_out(ctx, gw).await;
+    let rested = rest_by_hand(ctx, gw).await;
+    ran.is_ok() && stopped.is_ok() && out && rested
+}
+
+/// The run's verdict from the notices and warnings since `from` and `warned`: a summary, or
+/// what went wrong.
+fn judge_the_run(gw: &Gateway, from: usize, warned: usize) -> Result<String, String> {
+    let said: Vec<(&str, Instant)> = gw.notices[from..]
+        .iter()
+        .map(String::as_str)
+        .zip(gw.notice_at[from..].iter().copied())
+        .collect();
+    let warnings = &gw.warnings[warned..];
+    let state = bot_field(&gw.character, "state").unwrap_or("?");
+    if state != "running" {
+        let why = bot_field(&gw.character, "narration").unwrap_or("");
+        return Err(format!("the bot is {state}: {why}; warnings {warnings:?}"));
+    }
+    if let Some(w) = warnings.iter().find(|w| w.contains("killed")) {
+        return Err(w.clone());
+    }
+    let count = |prefix: &str| said.iter().filter(|(s, _)| s.starts_with(prefix)).count();
+    let arena_kills = said
+        .iter()
+        .filter(|(s, _)| s.starts_with("Stop 1/3 cleared: ") && !s.ends_with("nothing there"))
+        .count();
+    if arena_kills == 0 {
+        return Err(format!("no kill at the Arena; said {:?}", tail_of(&said)));
+    }
+    if said
+        .iter()
+        .any(|(s, _)| s.starts_with("Loop Newhaven: to stop 3/3"))
+    {
+        return Err("walked to the unticked Small Cavern".to_owned());
+    }
+    for stop in ["1/3", "2/3"] {
+        if count(&format!("Stop {stop} cleared")) == 0 {
+            return Err(format!(
+                "stop {stop} never cleared; said {:?}",
+                tail_of(&said)
+            ));
+        }
+    }
+    // Each walk to the Dungeon Entrance after the first: its minute since it was cleared.
+    let mut cleared: Option<Instant> = None;
+    let mut revisits = Vec::new();
+    for &(s, at) in &said {
+        if s.starts_with("Stop 2/3 cleared") {
+            cleared = Some(at);
+        } else if s.starts_with("Loop Newhaven: to stop 2/3")
+            && let Some(c) = cleared
+        {
+            let after = at.duration_since(c);
+            if after < DUNGEON_ENTRANCE_REGEN {
+                return Err(format!(
+                    "back to the Dungeon Entrance {} s after clearing it",
+                    after.as_secs()
+                ));
+            }
+            revisits.push(after.as_secs());
+        }
+    }
+    let run = &gw.character["run"];
+    Ok(format!(
+        "{} kills ({} exp/h), {} flees, {} rests; Arena cleared {} times with kills, {} legs,          {} waits for respawns, {} passings-by of the Small Cavern; back to the Dungeon          Entrance after {:?} s",
+        run["kills"],
+        run["exp_per_hour"],
+        run["flees"],
+        run["rests"],
+        arena_kills,
+        count("Loop Newhaven: to stop"),
+        count("Waiting for respawns"),
+        count("Skipping Small Cavern"),
+        revisits
+    ))
+}
+
+/// The last few notices, for an error.
+fn tail_of<'a>(said: &[(&'a str, Instant)]) -> Vec<&'a str> {
+    said.iter().rev().take(8).rev().map(|(s, _)| *s).collect()
 }
 
 /// `walk_loop`, then `walk_stop` as soon as the brain narrates the loop's first walk; the

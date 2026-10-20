@@ -98,7 +98,7 @@ and `■` but no pause sign, so pause is `[║]`.
 | `Alt+M`, or the `map` button | Open the drawer on the map of the focused character's surroundings, or close it (on a Mac, `Option`) |
 | Click a room on the map | Walk the character there; `stop` under the map ends the walk |
 | Mouse wheel, drag on the map | Zoom (three sizes), pan; `centre` goes back to the character |
-| `loops`, under the map | The loops around the character: hover or pick one to draw it in yellow, `walk once` walks it |
+| `loops`, under the map | The loops around the character: hover or pick one to draw it in yellow, `walk once` walks it, `run` hunts round it (untick a stop to pass it by) |
 | `F10`, or `[►]` and `[■]` in the tile's header | Start the focused character's bot where it stands (fight what comes, rest when low), or stop it |
 | `F9`, or `[║]` and `[►]` in the tile's header | Pause or resume the focused character's bot; a line you type pauses it too |
 | `Alt+S`, or the `stats` button | Open the drawer on the stats of the focused character's runs: exp per hour, kills, deaths and flees, now and for the last runs; or close it (on a Mac, `Option`) |
@@ -188,6 +188,17 @@ and works nothing out itself.
   **here** asks again around the room the character is in now. MegaMud's loops are listed,
   not walked. Picking a loop shows the floor of its first stop: the Newhaven loop is down the
   stairs from the Narrow Road, the Arena and the two Lairs north of it.
+- **Running a loop**: **run** beside a generated loop makes the bot hunt round it
+  ([brain.md](brain.md), "Running a loop"): it walks to the loop's nearest ticked stop, fights
+  what is there, and goes on to the next, waiting for a stop's respawn delay to pass before
+  coming back to it. Picking a loop lists its stops, each with a tick; hover a stop for the
+  monsters it spawns and how soon they come back after a kill. An unticked stop is passed by
+  (the Minotaur Chieftain's room is the case for it). While the bot runs the loop, the list
+  says `running: stop 2/3` in place of **run**, the stop it is at or walking to is lit, and the
+  ticks are the bot's: a tick changed then goes to the bot at once. Pause and resume (`F9`),
+  and stop (`F10`), work as for "fight here"; the tile's narration says what it is doing
+  ("Loop Newhaven: to stop 2/3 Dungeon, Entrance (one step, one door)", "Stop 1/3 cleared: 1
+  large giant rat", "Waiting for respawns: next in 1 m").
 
   ![The loops list under the map, the Newhaven loop picked: the Arena and two Lairs, numbered, on level -1](images/web-ui-map-loops.png)
 - **Without a brain** the panel says so and draws nothing; with a brain but no known position
