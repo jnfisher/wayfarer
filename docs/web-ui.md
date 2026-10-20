@@ -210,8 +210,7 @@ and works nothing out itself.
   stairs from the Narrow Road, the Arena and the two Lairs north of it.
 - **Running a loop**: **run** beside a loop, generated or MegaMud's, makes the bot hunt round it
   ([brain.md](brain.md), "Running a loop"): it walks to the loop's nearest ticked stop, fights
-  what is there, and goes on to the next, waiting for a stop's respawn delay to pass before
-  coming back to it. Picking a loop lists its stops, each with a tick; hover a stop for the
+  what is there, and goes on to the next, round and round with no respawn clock. Picking a loop lists its stops, each with a tick; hover a stop for the
   monsters it spawns and how soon they come back after a kill. A MegaMud loop the brain says
   cannot run for this character has its **run** greyed out and the reason beside it ("nothing
   to hunt on it", or the leg no route takes and why). An unticked stop is passed by
@@ -220,7 +219,7 @@ and works nothing out itself.
   ticks are the bot's: a tick changed then goes to the bot at once. Pause and resume (`F9`),
   and stop (`F10`), work as for "fight here"; the tile's narration says what it is doing
   ("Loop Newhaven: to stop 2/3 Dungeon, Entrance (one step, one door)", "Stop 1/3 cleared: 1
-  large giant rat", "Waiting for respawns: next in 1 m").
+  large giant rat").
 
   ![The loops list under the map, the Newhaven loop picked: the Arena and two Lairs, numbered, on level -1](images/web-ui-map-loops.png)
 - **Without a brain** the panel says so and draws nothing; with a brain but no known position

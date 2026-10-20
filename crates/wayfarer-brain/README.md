@@ -74,10 +74,10 @@ brain.run(&mut link).await?;                             // Ok when the gateway 
   80%, until 95%, flee below 30% and at most three rooms, a 1.5 s watch for a follower, a quiet
   room within 5 steps, 12 s of quiet ends a fight) and pure functions over them and the pack
   (`target`, `hostile`, `spawns_here`, `rest_at`, `flee_exits`, `hp_percent`).
-- **`task.rs`**: Task mode: the loop, the stop cursor, when each stop was cleared, the skip set;
-  it asks the walker for each leg and hands the stop to Fight and Recover as home.
-  `stop_ready(now, cleared_at, regen, is_arena)` and `ready_in` are the respawn rule
-  (`STOCK_REGEN`, `STOP_QUIET`, `LEG_TRIES`). Stops no route reaches are passed by each round
+- **`task.rs`**: Task mode: the loop, the stop cursor, when each stop was passed by, the skip
+  set; it asks the walker for each leg and hands the stop to Fight and Recover as home. There
+  is no respawn clock: `passed_left` is how long a stop passed by is left alone (`PASSED_FOR`,
+  `STOP_QUIET`, `LEG_TRIES`). Stops no route reaches are passed by each round
   without a leg and do not count towards `GIVE_UPS`; none reachable stops the bot. `TaskLoop`
   is what the store keeps of it.
 - **`Atlas`** (`brain.rs`): the `RoomGraph`, room kinds, class and race numbers, the

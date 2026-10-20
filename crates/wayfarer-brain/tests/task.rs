@@ -2,7 +2,7 @@
 //! fixture world (the Arena, the Dungeon Entrance behind its door, the Small Cavern north of
 //! that), against the fake gateway of `game/mod.rs`, whose game answers each command from the
 //! test's script with texts cut from the `room-walk` and `fight-arena` captures. On a paused
-//! clock: the respawn delays (a minute at the Dungeon Entrance) take no time.
+//! clock: waits (the five minutes a stop passed by is left alone) take no time.
 
 mod game;
 
@@ -67,8 +67,8 @@ fn sent(seen: &[ToGateway]) -> Vec<String> {
 
 /// From the Village Entrance: to the Arena (three steps, the second and third pipelined), a
 /// rat fought there, on to the Dungeon Entrance (its locked door bashed), the Small Cavern
-/// passed by (unticked), back to the Arena, the Dungeon Entrance not ready: a wait, then on to
-/// it once its minute is up.
+/// passed by (unticked), back to the Arena, then the Dungeon Entrance and the Arena again: no
+/// stop waits for a respawn clock.
 async fn round_the_loop() -> (Vec<ToGateway>, Vec<String>, Vec<String>) {
     let (mut g, run) = ready_at(VILLAGE_ENTRANCE).await;
     g.expect("w", room(NARROW_PATH));
@@ -99,19 +99,16 @@ async fn round_the_loop() -> (Vec<ToGateway>, Vec<String>, Vec<String>) {
     g.narrated("Loop Newhaven: to stop 1/3 Newhaven, Arena (one step)")
         .await;
     g.narrated("Stop 1/3 cleared: nothing there").await;
-    // The Dungeon Entrance's minute: nothing is sent meanwhile; then on to it.
+    // No respawn clock: on to the Dungeon Entrance at once, and the round goes on.
     g.expect("n", dungeon_entrance());
     g.expect("s", arena(&[], 35));
-    let waiting = tokio::time::Instant::now();
-    g.narrated("Waiting for respawns: next in 1 m").await;
     g.narrated("Loop Newhaven: to stop 2/3 Dungeon, Entrance (one step, one door)")
         .await;
-    let waited = waiting.elapsed();
-    assert!(waited >= Duration::from_secs(55), "{waited:?}");
     g.narrated("Stop 2/3 cleared: nothing there").await;
     g.narrated("Loop Newhaven: to stop 1/3 Newhaven, Arena (one step)")
         .await;
-    g.narrated("Waiting for respawns: next in 1 m").await;
+    g.narrated("Stop 1/3 cleared: nothing there").await;
+    g.freeze();
     let (seen, played) = g.close(run).await;
     let said = notices(&seen);
     (seen, played, said)
@@ -139,7 +136,7 @@ async fn run_walks_to_the_nearest_stop_fights_moves_on_skips_and_waits() {
     let task = b.task.expect("the loop on the snapshot");
     assert_eq!(
         (task.loop_id.as_str(), task.loop_name.as_str(), task.stop),
-        (NEWHAVEN_LOOP, "Newhaven", 0)
+        (NEWHAVEN_LOOP, "Newhaven", 1)
     );
     assert_eq!(task.stops, [ARENA, BEYOND_ARENA, SMALL_CAVERN].map(key));
     assert_eq!(task.skip, [key(SMALL_CAVERN)]);
@@ -169,7 +166,8 @@ async fn moves_along_a_known_route_are_pipelined_two_at_a_time() {
     // A door on the way: nothing goes ahead of it.
     assert_eq!(g.ahead, ["w", "d"]);
     g.expect("s", arena(&[], 35));
-    g.narrated("Waiting for respawns: next in 1 m").await;
+    g.narrated("Stop 1/3 cleared: nothing there").await;
+    g.freeze();
     g.close(run).await;
 }
 
@@ -192,7 +190,8 @@ async fn two_rooms_in_one_chunk_confirm_both_pipelined_moves() {
     g.expect("bash n", says("You bashed the door open."));
     g.expect("n", dungeon_entrance());
     g.expect("s", arena(&[], 35));
-    g.narrated("Waiting for respawns: next in 1 m").await;
+    g.narrated("Stop 1/3 cleared: nothing there").await;
+    g.freeze();
     g.close(run).await;
 }
 
@@ -217,7 +216,8 @@ async fn a_room_that_disagrees_voids_the_move_ahead_and_the_walk_replans() {
     g.expect("bash n", says("You bashed the door open."));
     g.expect("n", dungeon_entrance());
     g.expect("s", arena(&[], 35));
-    g.narrated("Waiting for respawns: next in 1 m").await;
+    g.narrated("Stop 1/3 cleared: nothing there").await;
+    g.freeze();
     let (_, played) = g.close(run).await;
     assert_eq!(&played[..5], ["st", "look", "w", "w", "d"]);
 }
@@ -261,7 +261,8 @@ async fn a_hostile_monster_on_the_way_stops_the_leg_and_the_loop_goes_on_after_t
     g.expect("s", arena(&[], 35));
     g.narrated("Loop Newhaven: to stop 1/3 Newhaven, Arena (one step)")
         .await;
-    g.idle(Duration::from_secs(1)).await;
+    g.narrated("Stop 1/3 cleared: nothing there").await;
+    g.freeze();
     g.close(run).await;
 }
 
@@ -290,7 +291,8 @@ async fn pause_on_the_way_and_resume_goes_on_to_the_same_stop() {
     g.expect("bash n", says("You bashed the door open."));
     g.expect("n", dungeon_entrance());
     g.expect("s", arena(&[], 35));
-    g.narrated("Waiting for respawns: next in 1 m").await;
+    g.narrated("Stop 1/3 cleared: nothing there").await;
+    g.freeze();
     let (seen, _) = g.close(run).await;
     assert_eq!(bot(&seen).state, BotState::Running);
 }
@@ -374,7 +376,8 @@ async fn a_restarted_brain_goes_on_with_the_loop_at_the_same_stop() {
     g.narrated("Loop Newhaven: to stop 2/3 Dungeon, Entrance (one step, one door)")
         .await;
     g.narrated("Stop 2/3 cleared: nothing there").await;
-    g.narrated("Waiting for respawns: next in 1 m").await;
+    g.narrated("Stop 1/3 cleared: nothing there").await;
+    g.freeze();
     let (seen, played) = g.close(run).await;
     assert!(
         notices(&seen)
@@ -384,45 +387,6 @@ async fn a_restarted_brain_goes_on_with_the_loop_at_the_same_stop() {
         notices(&seen)
     );
     assert_eq!(played, ["n", "s"]);
-}
-
-#[tokio::test(start_paused = true)]
-async fn a_stop_not_ready_is_passed_by_for_the_next_ready_one() {
-    // Every stop ticked, from the Dungeon Entrance: it, the Small Cavern, the Arena; a wait
-    // for the Dungeon Entrance's minute; it again; then the Small Cavern (two minutes) is not
-    // ready, and the Arena is.
-    let (mut g, run) = ready_at(BEYOND_ARENA).await;
-    g.expect("n", room(SMALL_CAVERN));
-    g.expect("s", dungeon_entrance());
-    g.expect("s", arena(&[], 35));
-    g.run_loop(&[]).await;
-    g.narrated("Stop 2/3 cleared: nothing there").await;
-    g.narrated("Loop Newhaven: to stop 3/3 Small Cavern (one step)")
-        .await;
-    g.narrated("Stop 3/3 cleared: nothing there").await;
-    g.narrated("Loop Newhaven: to stop 1/3 Newhaven, Arena (2 steps)")
-        .await;
-    g.narrated("Stop 1/3 cleared: nothing there").await;
-    let said = g.narrated("Waiting for respawns: next in 1 m").await;
-    assert_eq!(
-        said,
-        [
-            "Stop 2/3 not ready (1 m)",
-            "Stop 3/3 not ready (2 m)",
-            "Waiting for respawns: next in 1 m",
-        ]
-    );
-    g.expect("n", dungeon_entrance());
-    g.expect("s", arena(&[], 35));
-    g.narrated("Loop Newhaven: to stop 2/3 Dungeon, Entrance (one step, one door)")
-        .await;
-    g.narrated("Stop 2/3 cleared: nothing there").await;
-    g.narrated("Stop 3/3 not ready (1 m)").await;
-    g.narrated("Loop Newhaven: to stop 1/3 Newhaven, Arena (one step)")
-        .await;
-    g.narrated("Waiting for respawns: next in 1 m").await;
-    let (_, played) = g.close(run).await;
-    assert_eq!(played, ["st", "look", "n", "s", "s", "n", "s"]);
 }
 
 #[tokio::test(start_paused = true)]

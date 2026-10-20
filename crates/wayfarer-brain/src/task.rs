@@ -1,10 +1,12 @@
 //! Task (docs/brain.md "Running a loop", docs/plan/03-engine.md section 4): the bot runs a loop
 //! the player chose. It walks to the loop's stop nearest the character, then on to each next
-//! stop in loop order, passing by the stops the player unticked and those whose respawn delay
-//! has not passed since it last cleared them. At a stop the stop is home, so Fight and Recover
-//! work there as in "fight here"; once nothing Fight would attack is left (or what is left has
-//! been quiet for [`STOP_QUIET`]) the stop is cleared and Task moves on. With every stop
-//! waiting on its delay it rests if it must, else waits where it is.
+//! stop in loop order, passing by the stops the player unticked and those it passed by lately
+//! (a monster to keep away from, a leg that would not get there). There is no respawn clock:
+//! every other stop is always ready, and the bot fights whatever it finds, in the room or on the
+//! way (instant-spawn lairs come back when the character steps out and in again). At a stop the
+//! stop is home, so Fight and Recover work there as in "fight here"; once nothing Fight would
+//! attack is left (or what is left has been quiet for [`STOP_QUIET`]) the stop is cleared and
+//! Task moves on. With every stop passed by it rests if it must, else waits where it is.
 //!
 //! Task is below Flee, Recover and Fight: it has control only when none of them wants it. It
 //! asks the walker for each leg ([`Step::walk`]); a fight on the way stops the leg (the
@@ -29,34 +31,25 @@ use crate::modes::{Mode, Step, View};
 use crate::policy::{REST_UNTIL, hostile};
 use crate::walker::describe;
 
-/// The stock respawn delay, minutes: a room whose `regendelay` is 0 waits this long
-/// (`regenmins`, `kb/progression.md`).
-pub const STOCK_REGEN: i64 = 5;
+/// How long a stop the bot passed by (a monster to keep away from last seen there, a leg that
+/// would not get there, a stalemate) is left alone before the loop tries it again.
+pub const PASSED_FOR: Duration = Duration::from_secs(5 * 60);
 /// A stop where hostile monsters Fight will not attack are left (refused targets) is cleared
 /// once the character's own combat has been quiet this long there.
 pub const STOP_QUIET: Duration = Duration::from_secs(20);
 /// Legs to one stop that end elsewhere, with no fight on the way, before the stop is passed by
-/// this time round (its delay then runs as if it were cleared, an arena's too).
+/// this time round ([`PASSED_FOR`] then runs).
 pub const LEG_TRIES: u32 = 3;
 /// Stops passed by in a row, with no stop reached and nothing killed between, before the bot
 /// stops itself: the loop cannot go round.
 pub const GIVE_UPS: u32 = 3;
 
-/// Whether a stop has respawned: an arena always has (no delay after a kill); any other once
-/// `regen` minutes (0: [`STOCK_REGEN`]) have passed since the bot cleared it, or if it never
-/// has.
-pub fn stop_ready(now: Instant, cleared_at: Option<Instant>, regen: i64, is_arena: bool) -> bool {
-    ready_in(now, cleared_at, regen, is_arena).is_zero()
-}
-
-/// How long until a stop has respawned ([`stop_ready`]); zero when it has.
-pub fn ready_in(now: Instant, cleared_at: Option<Instant>, regen: i64, is_arena: bool) -> Duration {
-    let Some(cleared) = cleared_at.filter(|_| !is_arena) else {
-        return Duration::ZERO;
-    };
-    let minutes = if regen > 0 { regen } else { STOCK_REGEN };
-    let delay = Duration::from_secs(u64::try_from(minutes).unwrap_or(0) * 60);
-    (cleared + delay).saturating_duration_since(now)
+/// How long until a stop passed by at `passed_at` is tried again ([`PASSED_FOR`]); zero when
+/// it never was, or the time is up.
+pub fn passed_left(now: Instant, passed_at: Option<Instant>) -> Duration {
+    passed_at.map_or(Duration::ZERO, |at| {
+        (at + PASSED_FOR).saturating_duration_since(now)
+    })
 }
 
 /// Why no route reaches `to` from `from`: the first exit the traveller `t` may not take on
@@ -153,9 +146,6 @@ pub(crate) struct TaskLoop {
 struct Stop {
     key: Key,
     name: String,
-    /// `regendelay`, minutes (0: the stock delay).
-    regen: i64,
-    arena: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -179,10 +169,8 @@ pub(crate) struct Task {
     /// The stop it is at or walking to.
     index: usize,
     skip: BTreeSet<usize>,
-    /// When the bot last cleared each stop.
-    cleared: Vec<Option<Instant>>,
-    /// When the bot last passed each stop by, not getting there: its delay runs from then
-    /// whether or not it is an arena, so the bot does not try again at once.
+    /// When the bot last passed each stop by, not getting there: [`PASSED_FOR`] runs from then,
+    /// so the bot does not try again at once.
     passed: Vec<Option<Instant>>,
     /// Stops passed by in a row since it last reached a stop or killed something.
     give_ups: u32,
@@ -201,7 +189,7 @@ pub(crate) struct Task {
 
 impl Task {
     /// The loop `id` named `name` with these stops, going first to stop `first`, passing by
-    /// the stops `skip`. The stops' respawn delays and arenas come from the world pack.
+    /// the stops `skip`. The stops' names come from the world pack.
     pub fn new(
         atlas: &Atlas,
         id: String,
@@ -217,8 +205,6 @@ impl Task {
                 Stop {
                     key,
                     name: room.map_or_else(|| format!("{}/{}", key.0, key.1), |r| r.name.clone()),
-                    regen: room.map_or(0, |r| r.regen_delay),
-                    arena: room.is_some_and(|r| r.room_type == 2),
                 }
             })
             .collect();
@@ -226,7 +212,6 @@ impl Task {
         Task {
             id,
             name,
-            cleared: vec![None; n],
             passed: vec![None; n],
             give_ups: 0,
             gave_up: None,
@@ -389,14 +374,7 @@ impl Task {
     }
 
     fn ready_in(&self, now: Instant, i: usize) -> Duration {
-        let s = &self.stops[i];
-        // Passed by: the delay runs from then, an arena's too.
-        ready_in(now, self.cleared[i], s.regen, s.arena).max(ready_in(
-            now,
-            self.passed[i],
-            s.regen,
-            false,
-        ))
+        passed_left(now, self.passed[i])
     }
 
     /// "stop 3/9".
@@ -623,7 +601,6 @@ impl Mode for Task {
                 ));
             }
             let text = self.cleared_text(kills);
-            self.cleared[self.index] = Some(v.now);
             self.notes.push(text);
         }
         self.next_leg(v)
@@ -656,27 +633,16 @@ mod tests {
     use super::*;
 
     #[tokio::test(start_paused = true)]
-    async fn a_stop_is_ready_once_its_delay_has_passed() {
+    async fn a_stop_passed_by_is_left_alone_for_five_minutes() {
         let t0 = Instant::now();
         let min = Duration::from_secs(60);
-        // Never cleared: ready.
-        assert!(stop_ready(t0, None, 3, false));
-        // Cleared now: three minutes to wait.
-        assert!(!stop_ready(t0, Some(t0), 3, false));
-        assert_eq!(ready_in(t0, Some(t0), 3, false), 3 * min);
-        assert!(!stop_ready(
-            t0 + 3 * min - Duration::from_secs(1),
-            Some(t0),
-            3,
-            false
-        ));
-        assert!(stop_ready(t0 + 3 * min, Some(t0), 3, false));
-        // 0 is the stock five minutes.
-        assert_eq!(ready_in(t0, Some(t0), 0, false), 5 * min);
-        assert!(stop_ready(t0 + 5 * min, Some(t0), 0, false));
-        // An arena: always.
-        assert!(stop_ready(t0, Some(t0), 3, true));
-        assert_eq!(ready_in(t0, Some(t0), 0, true), Duration::ZERO);
+        // Never passed by: ready.
+        assert_eq!(passed_left(t0, None), Duration::ZERO);
+        // Passed by now: five minutes.
+        assert_eq!(passed_left(t0, Some(t0)), 5 * min);
+        assert_eq!(passed_left(t0 + 2 * min, Some(t0)), 3 * min);
+        assert_eq!(passed_left(t0 + 5 * min, Some(t0)), Duration::ZERO);
+        assert_eq!(passed_left(t0 + 9 * min, Some(t0)), Duration::ZERO);
     }
 
     #[test]
