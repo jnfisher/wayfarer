@@ -94,8 +94,13 @@ hardest hit this fight" addition (2026-10-19), so that checkbox never exists.
   say which room in the PR), with the flee line raised for the run (a `--flee-below 95` test
   knob on `wayfarer brain`, hidden, documented as test-only): Start, the first blow drops HP
   under the knob, the character leaves to the quiet room, rests, walks back, and the log
-  shows no punishment and no death. Then the shutdown case: with the character attacked,
-  stop the gateway: `logging_off` makes it flee first, the log-off succeeds. Summary in the PR.
+  shows no punishment and no death. Then the shutdown case, which is C-027's
+  `--scenario under-attack` (it fails until this card: every attack, hit or miss, cancels the
+  exit, `docs/kb/recovery.md` "An attack cancels the exit"): with the character attacked,
+  stop the gateway; `logging_off` makes it flee to a quiet room first, `ready_to_leave`
+  follows, the log-off succeeds, and the next logon shows no punishment. The summary must
+  show the attack happened (an attacker named, HP taken) so the run proves the flee, not
+  luck. Fold the scenario into `fight` if it is stable. Summary in the PR.
 - `docs/brain.md` "Flee"; `04-settings.md` updated.
 
 ## Tests
