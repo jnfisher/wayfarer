@@ -188,7 +188,9 @@ narration, reason?}`, and every change of what the bot is doing is a `notice` (i
 It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
 
 - **Start** re-syncs first (`st` for the HP maximum, `look` for who is here), remembers the room
-  as *home*, then decides at every prompt with nothing in flight.
+  as *home*, then decides at every prompt with nothing in flight. If the room is not known at
+  Start (a brain just attached, its history showing none), home is the first room the bot
+  believes it is in after that, narrated "Playing from <room>".
 - **The modes**, highest first; the first that wants control has it:
 
   | Mode | Wants control when | Does |
