@@ -5,10 +5,13 @@
     DEFAULT_ZOOM,
     describeRoom,
     drawMap,
+    keyOf,
+    loopText,
     roomAt,
     walkText,
     zoomAt,
     ZOOMS,
+    type Loops,
     type MapView,
     type ViewState,
   } from "./lib/map";
@@ -24,9 +27,15 @@
     attached: boolean | null;
     onwalk: (session: string, map: number, room: number) => void;
     onstop: (session: string) => void;
+    /** The brain's last `loops` for it. */
+    loops?: Loops;
+    /** Ask for the loops around the character, through doors or not. */
+    onloops?: (session: string, doors: boolean) => void;
+    /** Walk a generated loop once. */
+    onwalkloop?: (session: string, id: string) => void;
   }
 
-  let { session, view, character, attached, onwalk, onstop }: Props = $props();
+  let { session, view, character, attached, onwalk, onstop, loops, onloops, onwalkloop }: Props = $props();
 
   let canvas = $state<HTMLCanvasElement>();
   let width = $state(0);
@@ -43,7 +52,50 @@
   const position = $derived(character?.position);
   const known = $derived(position?.room !== undefined);
   const walking = $derived(character?.walking);
-  const vs = $derived<ViewState>({ width, height, zoom, panX, panY, level, hover });
+  // The loops list: open or not, through doors or not, the loop hovered and the one picked
+  // (a generated loop's id, or `mm:` and a MegaMud file).
+  let loopsOpen = $state(false);
+  let doors = $state(true);
+  let hoverLoop = $state<string | null>(null);
+  let pickedLoop = $state<string | null>(null);
+
+  /** A listed loop as the map draws it: its path and its stops. */
+  function loopShape(id: string | null) {
+    if (!id || !loops) return null;
+    const g = loops.generated.find((l) => l.id === id);
+    if (g) return { path: g.path, stops: g.stops.map((s) => ({ map: s.map, room: s.room })) };
+    const m = loops.megamud.find((l) => `mm:${l.file}` === id);
+    return m ? { path: m.path, stops: [] } : null;
+  }
+  const drawnLoop = $derived(loopShape(hoverLoop ?? pickedLoop));
+  const loopsAround = $derived.by(() => {
+    if (!loops) return "";
+    const a = loops.anchor;
+    const r = view?.rooms.find((x) => keyOf(x) === keyOf(a));
+    return `${loops.radius} steps around ${r?.name || `${a.map}:${a.room}`}`;
+  });
+
+  function askLoops() {
+    if (session) onloops?.(session.id, doors);
+  }
+
+  function toggleLoops() {
+    loopsOpen = !loopsOpen;
+    if (loopsOpen && (!loops || loops.session !== session?.id)) askLoops();
+  }
+
+  /** Pick a loop to keep it drawn (again to let it go), showing the floor of its first stop. */
+  function pickLoop(id: string) {
+    pickedLoop = pickedLoop === id ? null : id;
+    const first = loopShape(pickedLoop)?.path[0];
+    const r = first && view?.rooms.find((x) => keyOf(x) === keyOf(first) && !x.collides);
+    if (r && r.level !== level) {
+      level = r.level;
+      moved = true;
+    }
+  }
+
+  const vs = $derived<ViewState>({ width, height, zoom, panX, panY, level, hover, loop: drawnLoop });
   const levels = $derived(view ? [...new Set(view.rooms.map((r) => r.level))].sort((a, b) => a - b) : []);
 
   function recentre() {
@@ -210,6 +262,61 @@
         <p class="msg">Waiting for the map from the brain…</p>
       {/if}
     </div>
+    <div class="loops" aria-label="Loops">
+      <div class="head">
+        <button class="toggle" aria-expanded={loopsOpen} onclick={toggleLoops}>{loopsOpen ? "▾" : "▸"} loops</button>
+        {#if loopsOpen}
+          <label><input type="checkbox" bind:checked={doors} onchange={askLoops} /> doors</label>
+          <button onclick={askLoops} title="The loops around the character's room now">here</button>
+          <span class="dim">{loopsAround}</span>
+        {/if}
+      </div>
+      {#if loopsOpen}
+        {#if !loops}
+          <p class="dim">Asking the brain…</p>
+        {:else}
+          <ul aria-label="Generated loops">
+            {#each loops.generated as l (l.id)}
+              <li class:on={pickedLoop === l.id}>
+                <button
+                  class="pick"
+                  aria-pressed={pickedLoop === l.id}
+                  title={l.stops.map((s, i) => `${i + 1}. ${s.name}${s.arena ? " (arena)" : s.lair ? " (lair)" : ""}`).join("\n")}
+                  onclick={() => pickLoop(l.id)}
+                  onpointerenter={() => (hoverLoop = l.id)}
+                  onpointerleave={() => (hoverLoop = null)}
+                  onfocus={() => (hoverLoop = l.id)}
+                  onblur={() => (hoverLoop = null)}>{l.name}</button
+                >
+                <span class="dim">{loopText(l)}</span>
+                <button class="walk" onclick={() => session && onwalkloop?.(session.id, l.id)}>walk once</button>
+              </li>
+            {:else}
+              <li class="dim">No hunt rooms in reach.</li>
+            {/each}
+          </ul>
+          {#if loops.megamud.length > 0}
+            <div class="dim">MegaMud, verified</div>
+            <ul aria-label="MegaMud loops">
+              {#each loops.megamud as m (m.file)}
+                <li class:on={pickedLoop === `mm:${m.file}`}>
+                  <button
+                    class="pick"
+                    aria-pressed={pickedLoop === `mm:${m.file}`}
+                    onclick={() => pickLoop(`mm:${m.file}`)}
+                    onpointerenter={() => (hoverLoop = `mm:${m.file}`)}
+                    onpointerleave={() => (hoverLoop = null)}
+                    onfocus={() => (hoverLoop = `mm:${m.file}`)}
+                    onblur={() => (hoverLoop = null)}>{m.file}</button
+                  >
+                  <span class="dim">{m.description}, {m.steps} steps</span>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        {/if}
+      {/if}
+    </div>
     <div class="bar" aria-label="Walk">
       {#if walking}
         <span class="to">→ {walking.name}</span>
@@ -242,8 +349,53 @@
     gap: 1ch;
     padding: 2px 1ch;
   }
-  .bar {
+  .bar,
+  .loops {
     border-top: 1px solid var(--frame);
+  }
+  .loops {
+    padding: 2px 1ch;
+    max-height: 40%;
+    overflow-y: auto;
+  }
+  .loops .head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1ch;
+  }
+  .loops ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .loops li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1ch;
+  }
+  .loops p {
+    margin: 0;
+  }
+  .loops .toggle,
+  .loops .pick {
+    color: var(--vga-yellow);
+    background: none;
+    padding: 0;
+  }
+  .loops li.on .pick {
+    color: #000;
+    background: var(--vga-yellow);
+    padding: 0 1ch;
+  }
+  .loops .toggle {
+    color: var(--vga-lightgray);
+  }
+  label {
+    display: flex;
+    align-items: center;
+    gap: 0.5ch;
   }
   .canvas {
     position: relative;

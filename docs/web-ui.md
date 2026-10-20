@@ -93,6 +93,7 @@ and `■` but no pause sign, so pause is `[║]`.
 | `Alt+M`, or the `map` button | Open the drawer on the map of the focused character's surroundings, or close it (on a Mac, `Option`) |
 | Click a room on the map | Walk the character there; `stop` under the map ends the walk |
 | Mouse wheel, drag on the map | Zoom (three sizes), pan; `centre` goes back to the character |
+| `loops`, under the map | The loops around the character: hover or pick one to draw it in yellow, `walk once` walks it |
 | `F10`, or `[►]` and `[■]` in the tile's header | Start the focused character's bot where it stands (fight what comes, rest when low), or stop it |
 | `F9`, or `[║]` and `[►]` in the tile's header | Pause or resume the focused character's bot; a line you type pauses it too |
 | `Alt+D`, or the `dev` button | Open the drawer on the dev panel: the focused character's events, unclassified lines and the brain; or close it (on a Mac, `Option`) |
@@ -168,6 +169,20 @@ and works nothing out itself.
   closed, so that is not listed ahead. **stop** stops the walk
   after the move in flight. Clicking another room while walking replaces the walk. Two
   characters can walk at once; the panel shows the focused one.
+- **Loops**: `▸ loops` under the map opens the list of loops around the character
+  ([brain.md](brain.md), "Loops"): those generated over the hunt rooms within 8 steps of
+  the room it is in, each with its stops, steps and doors (hover the name for the stops,
+  arena and lair marked), and, when the world pack has MegaMud's paths, MegaMud's verified
+  loops through those rooms. Hovering a loop draws it on the map in yellow with each stop's
+  number; clicking its name keeps it drawn (click again to let it go). **walk once** walks a
+  generated loop: to its nearest stop, round the others and back, a walk per stop, with the
+  route and **stop** in the bar as for any walk; the dev panel has the stops as they come
+  (`Loop stop 2/3: Dungeon, Entrance`). **doors** off leaves out what is behind a door;
+  **here** asks again around the room the character is in now. MegaMud's loops are listed,
+  not walked. Picking a loop shows the floor of its first stop: the Newhaven loop is down the
+  stairs from the Narrow Road, the Arena and the two Lairs north of it.
+
+  ![The loops list under the map, the Newhaven loop picked: the Arena and two Lairs, numbered, on level -1](images/web-ui-map-loops.png)
 - **Without a brain** the panel says so and draws nothing; with a brain but no known position
   (no world pack, or the room did not match) it says `position unknown: re-sync or look`.
 

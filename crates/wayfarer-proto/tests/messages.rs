@@ -3,9 +3,9 @@
 
 use wayfarer_proto::{
     Bot, BotAction, BotMode, BotState, CharacterState, Chunk, ClientKind, CoinCount, Coins,
-    DecodeError, Encumbrance, ExitKind, Family, MapExit, MapRoom, PROTOCOL, ParseCounts, Position,
-    RoomKey, RoomKind, SessionInfo, SessionState, Stats, ToClient, ToGateway, Walking,
-    WorldPackInfo, protocol_mismatch,
+    DecodeError, Encumbrance, ExitKind, Family, GeneratedLoop, LoopStop, MapExit, MapRoom,
+    MegaMudLoop, PROTOCOL, ParseCounts, Position, RoomKey, RoomKind, SessionInfo, SessionState,
+    Stats, ToClient, ToGateway, Walking, WorldPackInfo, protocol_mismatch,
 };
 
 fn kasimir(state: SessionState, last_seq: u64) -> SessionInfo {
@@ -178,6 +178,58 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
             },
             r#"{"type":"map_view","session":"kasimir","center":{"map":1,"room":2140},"level":0,"rooms":[{"map":1,"room":2140,"name":"Newhaven, Village Entrance","x":0,"y":0,"level":0,"spawns":false,"visited":true,"candidate":true,"collides":false},{"map":1,"room":2141,"name":"Newhaven, Weapons Shop","x":0,"y":-1,"level":0,"spawns":false,"kind":"shop","visited":false,"candidate":false,"collides":false}],"exits":[{"from":{"map":1,"room":2140},"to":{"map":1,"room":2141},"dir":"n","kind":"plain","one_way":false}],"route":[{"map":1,"room":2140},{"map":1,"room":2141}]}"#,
         ),
+        (
+            ToGateway::Loops {
+                session: "kasimir".into(),
+                anchor: RoomKey { map: 1, room: 2140 },
+                radius: 8,
+                doors: true,
+                generated: vec![GeneratedLoop {
+                    id: "1:2140:8:doors:0".into(),
+                    name: "Newhaven".into(),
+                    stops: vec![
+                        LoopStop {
+                            map: 1,
+                            room: 2150,
+                            name: "Newhaven, Arena".into(),
+                            monsters: vec!["giant rat".into()],
+                            arena: true,
+                            lair: false,
+                            regen: 0,
+                        },
+                        LoopStop {
+                            map: 1,
+                            room: 2152,
+                            name: "Dungeon, Entrance".into(),
+                            monsters: vec!["giant rat".into()],
+                            arena: false,
+                            lair: true,
+                            regen: 1,
+                        },
+                    ],
+                    path: vec![
+                        RoomKey { map: 1, room: 2150 },
+                        RoomKey { map: 1, room: 2152 },
+                        RoomKey { map: 1, room: 2150 },
+                    ],
+                    steps: 2,
+                    doors: 1,
+                }],
+                megamud: vec![MegaMudLoop {
+                    file: "EXAMPLE.mp".into(),
+                    description: "Arena loop".into(),
+                    author: "someone".into(),
+                    path: vec![
+                        RoomKey { map: 1, room: 2150 },
+                        RoomKey { map: 1, room: 2146 },
+                        RoomKey { map: 1, room: 2150 },
+                    ],
+                    steps: 2,
+                    exact: 2,
+                }],
+            },
+            r#"{"type":"loops","session":"kasimir","anchor":{"map":1,"room":2140},"radius":8,"doors":true,"generated":[{"id":"1:2140:8:doors:0","name":"Newhaven","stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1}],"path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"doors":1}],"megamud":[{"file":"EXAMPLE.mp","description":"Arena loop","author":"someone","path":[{"map":1,"room":2150},{"map":1,"room":2146},{"map":1,"room":2150}],"steps":2,"exact":2}]}"#,
+        ),
     ]
 }
 
@@ -223,6 +275,22 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
                 action: BotAction::Start,
             },
             r#"{"type":"bot_control","session":"kasimir","action":"start"}"#,
+        ),
+        (
+            ToGateway::LoopsRequest {
+                session: "kasimir".into(),
+                anchor: None,
+                radius: 8,
+                doors: None,
+            },
+            r#"{"type":"loops_request","session":"kasimir","radius":8}"#,
+        ),
+        (
+            ToGateway::WalkLoop {
+                session: "kasimir".into(),
+                id: "1:2140:8:doors:0".into(),
+            },
+            r#"{"type":"walk_loop","session":"kasimir","id":"1:2140:8:doors:0"}"#,
         ),
     ]
 }
@@ -542,9 +610,9 @@ fn families_say_who_may_send_what() {
         let family = msg.family();
         let want = match msg.type_name() {
             "resync" | "state_request" | "walk_to" | "walk_stop" | "map_request"
-            | "bot_control" => Family::Control,
+            | "bot_control" | "loops_request" | "walk_loop" => Family::Control,
             "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
-            | "map_view" => Family::Brain,
+            | "map_view" | "loops" => Family::Brain,
             _ => Family::Gateway,
         };
         assert_eq!(family, want, "{}", msg.type_name());

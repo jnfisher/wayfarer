@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import MapPanel from "../src/MapPanel.svelte";
-import type { MapView } from "../src/lib/map";
+import type { Loops, MapView } from "../src/lib/map";
 
 const session = { id: "aria", name: "Aria", server: "silvermere", state: "realm", last_seq: 0 } as const;
 const view: MapView = {
@@ -29,9 +29,58 @@ afterEach(cleanup);
 function mount(props: Partial<Parameters<typeof render<typeof MapPanel>>[1]> = {}) {
   const onwalk = vi.fn();
   const onstop = vi.fn();
-  render(MapPanel, { session, view, character: {}, attached: true, onwalk, onstop, ...props } as never);
-  return { onwalk, onstop };
+  const onloops = vi.fn();
+  const onwalkloop = vi.fn();
+  render(MapPanel, {
+    session,
+    view,
+    character: {},
+    attached: true,
+    onwalk,
+    onstop,
+    onloops,
+    onwalkloop,
+    ...props,
+  } as never);
+  return { onwalk, onstop, onloops, onwalkloop };
 }
+
+const here = { position: { map: 1, room: 10, candidates: 1 } };
+const stop = (room: number, name: string) => ({ map: 1, room, name, monsters: ["giant rat"], arena: room === 11, lair: false, regen: 0 });
+const loops: Loops = {
+  type: "loops",
+  session: "aria",
+  anchor: { map: 1, room: 10 },
+  radius: 8,
+  doors: true,
+  generated: [
+    {
+      id: "1:10:8:doors:0",
+      name: "Gate",
+      stops: [stop(11, "Road"), stop(12, "Lair")],
+      path: [
+        { map: 1, room: 11 },
+        { map: 1, room: 12 },
+        { map: 1, room: 11 },
+      ],
+      steps: 2,
+      doors: 1,
+    },
+  ],
+  megamud: [
+    {
+      file: "ROADLOOP.mp",
+      description: "Road loop",
+      author: "someone",
+      path: [
+        { map: 1, room: 11 },
+        { map: 1, room: 11 },
+      ],
+      steps: 6,
+      exact: 6,
+    },
+  ],
+};
 
 describe("the map panel", () => {
   it("says so without a brain", () => {
@@ -56,6 +105,48 @@ describe("the map panel", () => {
     expect(screen.getByText("n")).toBeTruthy();
     await fireEvent.click(screen.getByRole("button", { name: "stop" }));
     expect(onstop).toHaveBeenCalledWith("aria");
+  });
+
+  it("opens the loops list, asking the brain for them", async () => {
+    const { onloops } = mount({ character: here });
+    expect(screen.queryByText("walk once")).toBeNull();
+    await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
+    expect(onloops).toHaveBeenCalledWith("aria", true);
+    expect(screen.getByText("Asking the brain…")).toBeTruthy();
+    // Without doors, and again here.
+    await fireEvent.click(screen.getByRole("checkbox", { name: "doors" }));
+    expect(onloops).toHaveBeenLastCalledWith("aria", false);
+    await fireEvent.click(screen.getByRole("button", { name: "here" }));
+    expect(onloops).toHaveBeenCalledTimes(3);
+  });
+
+  it("lists the generated and MegaMud loops; walk once walks a generated one", async () => {
+    const { onloops, onwalkloop } = mount({ character: here, loops });
+    await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
+    // The loops it has are for this session: not asked again.
+    expect(onloops).not.toHaveBeenCalled();
+    expect(screen.getByText("8 steps around Gate")).toBeTruthy();
+    expect(screen.getByText("2 stops, 2 steps, 1 door")).toBeTruthy();
+    const gate = screen.getByRole("button", { name: "Gate" });
+    expect(gate.getAttribute("title")).toBe("1. Road (arena)\n2. Lair");
+    expect(screen.getByText("ROADLOOP.mp")).toBeTruthy();
+    expect(screen.getByText("Road loop, 6 steps")).toBeTruthy();
+    // One walk once: MegaMud's loops are listed, not walked.
+    const walks = screen.getAllByRole("button", { name: "walk once" });
+    expect(walks).toHaveLength(1);
+    await fireEvent.click(walks[0]);
+    expect(onwalkloop).toHaveBeenCalledWith("aria", "1:10:8:doors:0");
+    // Picking a loop keeps it drawn; picking it again lets it go.
+    await fireEvent.click(gate);
+    expect(gate.getAttribute("aria-pressed")).toBe("true");
+    await fireEvent.click(gate);
+    expect(gate.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("says when there is nothing to hunt in reach", async () => {
+    mount({ character: here, loops: { ...loops, generated: [], megamud: [] } });
+    await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
+    expect(screen.getByText("No hunt rooms in reach.")).toBeTruthy();
   });
 
   it("shows the candidates while the belief has several", () => {

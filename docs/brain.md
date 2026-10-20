@@ -140,6 +140,44 @@ break them: no attack command (`a`, `bash rat`, `bs`, ...) unless the character 
 out of combat (engaged, or not known either way, refuses it), and never `train stats`
 (`docs/plan/01-goals.md` "Rules").
 
+## Loops
+
+The first of the three loop sources (`docs/plan/03-engine.md` section 4): loops generated from
+the world data, beside MegaMud's verified loops. Nothing runs them yet (the Task mode, M3,
+will); a UI lists them and walks one once so the player can watch the route.
+
+`loops_request {session, anchor?, radius, doors?}` answers with `loops` (`docs/protocol.md`):
+
+- **The area**: the rooms within `radius` steps (at most 30) of `anchor`, the believed room
+  by default, by exits the character may take: a gated exit outside its level, class or race
+  leaves what is behind it out, and with `doors: false` so does every door.
+- **Hunt rooms**: the area's rooms whose spawn pool (`genmonster`, or the room's `mongroup`
+  within its `minlevel`..`maxlevel`, plus its `specmon`; only Normal, Arena and Lair rooms
+  spawn) holds a monster worth hunting (evil, not an NPC, worth exp). A shop whose pool is its
+  shopkeeper is none. Each stop says its huntable monsters, whether it is an Arena (monsters
+  back at once after a kill) or a Lair, and its `regendelay`.
+- **Generated loops**: a closed circuit through the hunt rooms, nearest neighbour from the stop
+  nearest the anchor, then 2-opt; each leg the character's cheapest route between two stops
+  inside the area. One loop over every hunt room; when the area splits (stops that can't
+  reach each other inside it: the river off Newhaven is one-way above level 3) one more per
+  part of two or more stops, and the loop over all of them may leave the area between parts,
+  or is left out when it can't close. Named after the anchor's place ("Newhaven"; a part adds
+  its first stop: "Newhaven: The Silver River, Silvermere Docks"). Within 8 steps of Newhaven,
+  Village Entrance: the Arena, the Dungeon Entrance behind its locked door and the Small Cavern
+  north of that, 4 steps; without doors, the Arena alone.
+- **MegaMud's loops** through the area: those whose verification walk passes one of its rooms,
+  only ever ones that walked to the end and closed in their start room. None unless the world
+  pack was built with MegaMud's paths.
+- Made once per anchor, radius, level and doors for the session, so asking again is cheap.
+
+`walk_loop {session, id}` walks a generated loop once: a `walk_to` to its stop nearest the
+character, then to each stop in turn, and back to that first one. Narrated: "Walking loop
+Newhaven: 3 stops, 4 steps, from Newhaven, Arena", the walker's own lines for each leg, "Loop
+stop 2/3: Dungeon, Entrance" at each stop, and "Loop Newhaven done: back at Newhaven, Arena".
+Whatever stops a walk stops the loop ("Loop Newhaven stopped: combat started"), and a
+`walk_to` replaces it. The `id` says the area and the loop, so a restarted brain walks the same
+one. MegaMud's loops are listed, not walked, until the Task mode runs them.
+
 ## Fight here
 
 The first slice of the bot (`docs/plan/03-engine.md` sections 4 and 5). With the character
@@ -215,4 +253,5 @@ hold.
 No modes beyond Fight, Recover and Idle (no Flee, Maintain or Task); no input arbitration
 (every client's input still goes straight to the game, `docs/protocol.md`; a typed line stops
 a walk and pauses the bot); moves are not pipelined along a known route (one in flight); the
-refused exits are forgotten when the brain restarts.
+refused exits are forgotten when the brain restarts; MegaMud's loops and player-recorded ones
+are not walked (only generated loops are, once).

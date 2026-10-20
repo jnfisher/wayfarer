@@ -48,6 +48,8 @@ pub struct Gateway {
     pub warnings: Vec<String>,
     /// The center of each `map_view` for the session, (map, room).
     pub map_centers: Vec<(i64, i64)>,
+    /// The last `loops` for the session.
+    pub loops: Option<ToClient>,
 }
 
 /// How a stop went: whether the character logged off, and the gateway's own account.
@@ -132,6 +134,7 @@ impl Gateway {
             notices: Vec::new(),
             warnings: Vec::new(),
             map_centers: Vec::new(),
+            loops: None,
         };
         match gateway.next(Instant::now() + START_TIMEOUT).await {
             Some(ToClient::Welcome { sessions, .. }) => {
@@ -159,6 +162,38 @@ impl Gateway {
             session: SESSION.into(),
             map,
             room,
+        })
+        .await
+    }
+
+    /// `loops_request` around `anchor`.
+    pub async fn loops_request(&mut self, anchor: (i64, i64), radius: u32) -> Result<(), String> {
+        self.loops = None;
+        self.send(ToGateway::LoopsRequest {
+            session: SESSION.into(),
+            anchor: Some(wayfarer_proto::RoomKey {
+                map: anchor.0,
+                room: anchor.1,
+            }),
+            radius,
+            doors: None,
+        })
+        .await
+    }
+
+    /// `walk_loop` that loop.
+    pub async fn walk_loop(&mut self, id: &str) -> Result<(), String> {
+        self.send(ToGateway::WalkLoop {
+            session: SESSION.into(),
+            id: id.into(),
+        })
+        .await
+    }
+
+    /// `walk_stop`.
+    pub async fn walk_stop(&mut self) -> Result<(), String> {
+        self.send(ToGateway::WalkStop {
+            session: SESSION.into(),
         })
         .await
     }
@@ -238,6 +273,9 @@ impl Gateway {
                 ToClient::MapView {
                     session, center, ..
                 } if session == SESSION => self.map_centers.push((center.map, center.room)),
+                ToClient::Loops { session, .. } if session == SESSION => {
+                    self.loops = Some(msg.clone());
+                }
                 ToClient::SessionList { sessions } | ToClient::Welcome { sessions, .. } => {
                     if let Some(s) = sessions.iter().find(|s| s.id == SESSION) {
                         self.state = s.state;

@@ -36,6 +36,8 @@ pub struct Traveller {
     pub found: BTreeSet<(Key, u8)>,
     /// Exit categories allowed beyond the default.
     pub allow: BTreeSet<Category>,
+    /// Doors, gates and key doors are not taken (a loop generated without doors).
+    pub no_doors: bool,
     pub costs: Costs,
 }
 
@@ -65,7 +67,7 @@ impl Traveller {
 
     /// Whether this traveller may take the exit.
     pub fn can_take(&self, e: &Edge) -> bool {
-        if self.blocked.contains(&(e.from, e.dir)) {
+        if self.blocked.contains(&(e.from, e.dir)) || (self.no_doors && e.door.is_some()) {
             return false;
         }
         let in_range = |v: Option<i64>, lo: i64, hi: i64| {
@@ -117,6 +119,17 @@ pub type Route = Vec<Step>;
 /// entering a room that spawns monsters (the destination exempt) and `costs.door` per door.
 /// `None` when there is no way; an empty route when `from` is `to`.
 pub fn route(graph: &RoomGraph, from: Key, to: Key, t: &Traveller) -> Option<Route> {
+    route_within(graph, from, to, t, |_| true)
+}
+
+/// [`route`] through the rooms `within` accepts only (`from` and `to` need not be).
+pub fn route_within(
+    graph: &RoomGraph,
+    from: Key,
+    to: Key,
+    t: &Traveller,
+    within: impl Fn(Key) -> bool,
+) -> Option<Route> {
     let (src, dst) = (graph.ix(from)?, graph.ix(to)?);
     let mut best: HashMap<u32, u32> = HashMap::from([(src, 0)]);
     let mut prev: HashMap<u32, &Edge> = HashMap::new();
@@ -129,7 +142,7 @@ pub fn route(graph: &RoomGraph, from: Key, to: Key, t: &Traveller) -> Option<Rou
             continue;
         }
         for e in graph.edges_at(cur) {
-            if !t.can_take(e) {
+            if !t.can_take(e) || (e.to_ix != dst && !within(e.to)) {
                 continue;
             }
             let mut c = cost + 1;

@@ -57,12 +57,15 @@ enum Scenario {
     /// M2's "fight here": in the Newhaven Arena, the bot fights, then is stopped; the
     /// character walks out and logs off.
     Fight,
+    /// M2's generated loops: the Newhaven loop is listed, and `walk_loop` starts on it and is
+    /// stopped before the Arena (its monsters would start a fight).
+    Loop,
 }
 
 fn usage() -> ! {
     eprintln!(
         "usage: wayfarer-live --wayfarer BIN --out DIR [--addr HOST:PORT] [--pool FILE] \
-         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight]\n(run it through \
+         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop]\n(run it through \
          scripts/live-check.sh)"
     );
     std::process::exit(2);
@@ -95,6 +98,7 @@ fn args() -> Args {
                     "brain" => Scenario::Brain,
                     "walk" => Scenario::Walk,
                     "fight" => Scenario::Fight,
+                    "loop" => Scenario::Loop,
                     _ => usage(),
                 }
             }
@@ -480,6 +484,15 @@ async fn run(ctx: &mut Ctx, pool: &Pool) -> Result<String, String> {
             Err(who)
         };
     }
+    if ctx.args.scenario == Scenario::Loop {
+        let looped = loop_scenario(ctx, &mut gw).await;
+        let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
+        return if looped && logged_off {
+            Ok(who)
+        } else {
+            Err(who)
+        };
+    }
     if ctx.args.scenario == Scenario::Walk {
         let walked = walk_scenario(ctx, &mut gw).await;
         let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
@@ -828,6 +841,153 @@ async fn walk_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
 
     // 4. Stop the brain; the character stays in the realm.
     stop_brain(ctx, running).await && ok
+}
+
+/// Newhaven, Village Entrance: the loop scenario's anchor and where it starts.
+const VILLAGE_ENTRANCE: (i64, i64) = (1, 2140);
+
+/// The `loops` around the Village Entrance: the generated Newhaven loop's id, and what was
+/// listed; an error when the list is not what the stock world gives.
+async fn newhaven_loops(gw: &mut Gateway) -> Result<(String, String), String> {
+    gw.loops_request(VILLAGE_ENTRANCE, 8).await?;
+    let warnings = gw.warnings.len();
+    gw.wait_for(Duration::from_secs(10), "the loops", |g| {
+        if let Some(w) = g.warnings[warnings..].first() {
+            return Some(Err(w.clone()));
+        }
+        let Some(wayfarer_proto::ToClient::Loops {
+            generated, megamud, ..
+        }) = &g.loops
+        else {
+            return None;
+        };
+        let check = || {
+            let l = generated
+                .iter()
+                .find(|l| l.name == "Newhaven")
+                .ok_or_else(|| format!("no loop \"Newhaven\" in {generated:?}"))?;
+            let stops: Vec<(i64, i64)> = l.stops.iter().map(|s| (s.map, s.room)).collect();
+            if stops != [ARENA, (1, 2152), (1, 2156)] || !l.stops[0].arena || l.steps >= 40 {
+                return Err(format!("the Newhaven loop is {l:?}"));
+            }
+            Ok((
+                l.id.clone(),
+                format!(
+                    "{}: {} ({} steps), {} MegaMud",
+                    l.name,
+                    l.stops
+                        .iter()
+                        .map(|s| s.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    l.steps,
+                    megamud.len()
+                ),
+            ))
+        };
+        Some(check())
+    })
+    .await?
+}
+
+/// The loop scenario, with the gateway in the realm: a brain; to the Village Entrance; the
+/// loops listed; `walk_loop` on the Newhaven loop, stopped as its first walk starts, so the
+/// character stops a step or two short of the Arena and never fights; back to the Village
+/// Entrance; the brain stopped. Whether all of it went.
+async fn loop_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
+    // 1. The brain attaches and re-syncs.
+    let Some((running, start)) = placed_brain(ctx, gw, "loop").await else {
+        return false;
+    };
+    let mut ok = true;
+    // 2. To the Village Entrance, through rooms nothing spawns in.
+    if start != VILLAGE_ENTRANCE {
+        let started = Instant::now();
+        let there = walk(gw, VILLAGE_ENTRANCE).await;
+        ctx.record("walk to the Village Entrance", started, &there);
+        ok = there.is_ok();
+    }
+    // 3. The loops around it.
+    let mut id = None;
+    if ok {
+        let started = Instant::now();
+        let listed = newhaven_loops(gw).await;
+        ctx.record(
+            "loops_request: the Newhaven loop",
+            started,
+            &listed
+                .as_ref()
+                .map(|(_, s)| s.clone())
+                .map_err(Clone::clone),
+        );
+        id = listed.ok().map(|(id, _)| id);
+    }
+    // 4. Walk it, and stop as the walk to its first stop (the Arena) starts.
+    if let Some(id) = id {
+        let started = Instant::now();
+        let out = walk_loop_and_stop(gw, &id).await;
+        ctx.record("walk_loop, stopped before the Arena", started, &out);
+        ok = out.is_ok();
+        if believed(&gw.character).map(|(k, _)| k) == Some(ARENA) {
+            // Too late: out of the Arena before anything else.
+            walk_out(ctx, gw).await;
+            ok = false;
+        }
+        // 5. Back to the start.
+        let started = Instant::now();
+        let back = walk(gw, VILLAGE_ENTRANCE).await;
+        ctx.record("walk back to the Village Entrance", started, &back);
+        ok &= back.is_ok();
+    } else {
+        ok = false;
+    }
+    // 6. Stop the brain; the character stays in the realm.
+    stop_brain(ctx, running).await && ok
+}
+
+/// `walk_loop`, then `walk_stop` as soon as the brain narrates the loop's first walk; the
+/// stop narrated and the walk ended short of the Arena.
+async fn walk_loop_and_stop(gw: &mut Gateway, id: &str) -> Result<String, String> {
+    let (notices, warnings) = (gw.notices.len(), gw.warnings.len());
+    gw.walk_loop(id).await?;
+    gw.wait_for(
+        Duration::from_secs(10),
+        "\"Walking to Newhaven, Arena\"",
+        |g| {
+            if let Some(w) = g.warnings[warnings..].first() {
+                return Some(Err(w.clone()));
+            }
+            g.notices[notices..]
+                .iter()
+                .any(|n| n.starts_with("Walking to Newhaven, Arena"))
+                .then_some(Ok(()))
+        },
+    )
+    .await??;
+    gw.walk_stop().await?;
+    let said = gw
+        .wait_for(WALK_TIMEOUT, "\"Loop Newhaven stopped\"", |g| {
+            let new = &g.notices[notices..];
+            (new.iter()
+                .any(|n| n == "Loop Newhaven stopped: asked to stop")
+                && new.iter().any(|n| n.starts_with("Stopped walking")))
+            .then(|| new.join("; "))
+        })
+        .await?;
+    // The snapshot's patch (the walk gone, the room it stopped in) follows the notices.
+    let _ = gw
+        .wait_for(Duration::from_secs(5), "the walk to end", |g| {
+            g.character
+                .get("walking")
+                .is_none_or(serde_json::Value::is_null)
+                .then_some(())
+        })
+        .await;
+    let at = believed(&gw.character);
+    match at {
+        Some((k, title)) if k != ARENA => Ok(format!("{said}; stopped in {title}")),
+        other => Err(format!("{said}; but the position is {other:?}")),
+    }
 }
 
 /// The fight scenario's room: the Newhaven Arena (1/2150), for level 3 or below (the pool's

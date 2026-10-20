@@ -4,7 +4,8 @@ The brain (`docs/brain.md`): attaches to the gateway as its brain client, parses
 session's output, keeps a character model per session, sends the UIs events and snapshots,
 re-syncs a character (`st`, `exp`, `i`, `look`) at an idle prompt, and with a world pack keeps
 each character's position, serves the map panel (`map_view`), walks a character to a room
-(`walk_to`) and plays it where it stands (`bot_control`: "fight here"). Depends on
+(`walk_to`), lists the loops of an area and walks one once (`loops_request`, `walk_loop`), and
+plays it where it stands (`bot_control`: "fight here"). Depends on
 `wayfarer-proto`, `wayfarer-parse` and `wayfarer-world`, not on the gateway.
 
 ```rust
@@ -31,14 +32,17 @@ brain.run(&mut link).await?;                             // Ok when the gateway 
 - **`position.rs`**: the `Belief` fed by every room seen and every move sent, the `Traveller`
   with the exits refused this session, the rooms visited, and the `map_view`.
 - **`walker.rs`**: the route and the per-step policy (doors, refusals, relocation, stops).
+- **Loops** (`session.rs`): `loops_request` makes an area's loops with `wayfarer_world::loops`
+  (cached per anchor, radius, level and doors); `walk_loop` is a `walk_to` per stop, on to the
+  next when the walker says it arrived.
 - **The bot** (`modes.rs`): running, paused or stopped, `Presence` (who is in the room), and the
   mode stack, each mode `wants`, `step`, `on_event` and `outcome`: `recover.rs`, `fight.rs`,
   then Idle. A step asks for an action (through the executor) or a walk (through the walker),
   and narrates. **`policy`**: the constants (rest below 80%, until 95%, stop below 30%, a quiet
   room within 5 steps, 12 s of quiet ends a fight) and pure functions over them and the pack
   (`target`, `hostile`, `spawns_here`, `rest_at`, `hp_percent`).
-- **`Atlas`** (`brain.rs`): the `RoomGraph`, room kinds, class and race numbers and the
-  `Monsters`, loaded once
+- **`Atlas`** (`brain.rs`): the `RoomGraph`, room kinds, class and race numbers, the
+  `Monsters` and MegaMud's verified loops, loaded once
   per brain and shared by its sessions; `World` keeps the `WorldPack` open beside it.
 - `BUILD`: the version and commit (`build.rs`), for `brain_info`.
 
@@ -51,5 +55,6 @@ refusals, "no exit", the stops, the map view. `tests/fight.rs` starts the bot in
 against the same fake game (texts from the `fight-arena` capture): one attack per target,
 nothing while engaged, the look after a kill, an arrival, resting in a quiet room and walking
 back, the stop below 30%, pause, take-over and resume, determinism, and the policies on the
-pack. The live scenarios: `scripts/live-check.sh --scenario brain`, `--scenario walk` and
-`--scenario fight`.
+pack. `tests/loops.rs`: the Newhaven loops, `walk_loop` round the stops and back, from the
+nearest stop, and its stops. The live scenarios: `scripts/live-check.sh --scenario brain`,
+`--scenario walk`, `--scenario fight` and `--scenario loop`.

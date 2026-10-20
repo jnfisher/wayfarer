@@ -11,7 +11,7 @@ use wayfarer_parse::{GameTexts, Registry};
 use wayfarer_proto::{
     CharacterState, ClientKind, PROTOCOL, RoomKind, SessionInfo, ToClient, ToGateway, WorldPackInfo,
 };
-use wayfarer_world::{Key, Monsters, RoomGraph, WorldPack};
+use wayfarer_world::{Key, MmLoop, Monsters, RoomGraph, WorldPack};
 
 use crate::clock::{Clock, rfc3339};
 use crate::link::Link;
@@ -46,6 +46,9 @@ pub struct Atlas {
     pub races: HashMap<String, i64>,
     /// Every monster, for the bot: who is worth fighting, what a room spawns.
     pub monsters: Monsters,
+    /// MegaMud's verified loops, with the rooms each walk passed (none when the pack was built
+    /// without MegaMud's paths).
+    pub mm_loops: Vec<MmLoop>,
 }
 
 /// Room types (`kb/game-data.md` "Enumerations") and shop types (`kb/economy.md`).
@@ -98,6 +101,7 @@ impl Atlas {
             classes: by_name(pack.classes()?),
             races: by_name(pack.races()?),
             monsters: Monsters::load(pack)?,
+            mm_loops: wayfarer_world::loops::megamud_loops(pack)?,
         })
     }
 }
@@ -348,6 +352,24 @@ impl Brain {
             ToClient::MapRequest { session, radius } => match self.sessions.get_mut(&session) {
                 Some(s) => s.map_request(radius, out),
                 None => out.push(no_session("map_request", &session)),
+            },
+            ToClient::LoopsRequest {
+                session,
+                anchor,
+                radius,
+                doors,
+            } => match self.sessions.get_mut(&session) {
+                Some(s) => s.loops_request(
+                    anchor.map(|k| (k.map, k.room)),
+                    radius,
+                    doors.unwrap_or(true),
+                    out,
+                ),
+                None => out.push(no_session("loops_request", &session)),
+            },
+            ToClient::WalkLoop { session, id } => match self.sessions.get_mut(&session) {
+                Some(s) => s.walk_loop(&id, now, out),
+                None => out.push(no_session("walk_loop", &session)),
             },
             ToClient::Resync { session } => match self.sessions.get_mut(&session) {
                 Some(s) => {

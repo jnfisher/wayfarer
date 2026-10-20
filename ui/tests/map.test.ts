@@ -5,6 +5,7 @@ import {
   COLOURS,
   describeRoom,
   drawMap,
+  loopText,
   MAP_RADIUS,
   MAX_MAP_RADIUS,
   metrics,
@@ -210,6 +211,25 @@ describe("drawing a map_view", () => {
     ]);
     expect(c.calls.filter((x) => x.op === "text" && x.style === COLOURS.lightgreen).map((x) => x.text)).toEqual(["1", "2"]);
   });
+
+  it("draws a loop in yellow with its stops numbered, under the route", () => {
+    const c = new FakeCtx();
+    const loop = { path: [k(11), k(12), k(11)], stops: [k(11), k(12)] };
+    drawMap(c, { ...VIEW, route: [k(10), k(11)] }, vs({ loop }), "VGA");
+    const lines = c.calls.filter((x) => x.op === "line" && x.style === COLOURS.yellow);
+    expect(lines.map((x) => x.args)).toEqual([
+      [240, 150, 280, 150],
+      [280, 150, 240, 150],
+    ]);
+    const first = c.calls.findIndex((x) => x.op === "line" && x.style === COLOURS.yellow);
+    const route = c.calls.findIndex((x) => x.op === "line" && x.style === COLOURS.lightgreen);
+    expect(first).toBeLessThan(route);
+    // 11 is the route's step 1, so it keeps that number; 12 shows its stop.
+    const digits = (style: string) =>
+      c.calls.filter((x) => x.op === "text" && x.style === style && /^\d+$/.test(x.text ?? "")).map((x) => x.text);
+    expect(digits(COLOURS.lightgreen)).toEqual(["1"]);
+    expect(digits(COLOURS.yellow)).toEqual(["2"]);
+  });
 });
 
 describe("hover and zoom", () => {
@@ -258,6 +278,15 @@ describe("hover and zoom", () => {
     const pan = carryPan(VIEW, next, v);
     expect(roomCentre(next.rooms[2], { ...v, ...pan })).toEqual(roomCentre(VIEW.rooms[2], v));
     expect(carryPan(VIEW, { ...next, rooms: [] }, v)).toEqual({ panX: 15, panY: -5 });
+  });
+});
+
+describe("the loops list", () => {
+  it("says a loop's size", () => {
+    const stop = { map: 1, room: 11, name: "Arena", monsters: [], arena: true, lair: false, regen: 0 };
+    const l = { id: "1:10:8:doors:0", name: "Town", stops: [stop], path: [k(11)], steps: 0, doors: 0 };
+    expect(loopText(l)).toBe("1 stop, 0 steps");
+    expect(loopText({ ...l, stops: [stop, stop, stop], steps: 4, doors: 1 })).toBe("3 stops, 4 steps, 1 door");
   });
 });
 

@@ -4,12 +4,14 @@
 //!
 //! [`build`] makes a pack from the stock-world export (`wayfarer import-world`);
 //! [`WorldPack`] reads one. [`RoomGraph`] holds its rooms and exits in memory for [`route`],
-//! the position [`Belief`] and the map [`layout`]; [`Monsters`] says what rooms spawn.
+//! the position [`Belief`] and the map [`layout`]; [`Monsters`] says what rooms spawn, and
+//! [`loops`] makes circuits over an area's hunt rooms.
 
 pub mod belief;
 pub mod build;
 pub mod cp437;
 pub mod layout;
+pub mod loops;
 pub mod mm;
 pub mod monsters;
 pub mod nav;
@@ -23,10 +25,11 @@ use std::path::PathBuf;
 pub use belief::Belief;
 pub use build::{BuildReport, MegaMudReport, build};
 pub use layout::{Layout, Placed, Segment, SegmentKind, layout};
+pub use loops::{Area, HuntRoom, Loop, MmLoop, generate, hunt_rooms};
 pub use monsters::{Monsters, huntable};
 pub use nav::{Category, DirSet, Edge, ExitType, Gate, Key, LockState, RoomGraph};
 pub use pack::WorldPack;
-pub use route::{Costs, Route, Step, Traveller, distances, route};
+pub use route::{Costs, Route, Step, Traveller, distances, route, route_within};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

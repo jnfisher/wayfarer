@@ -8,7 +8,8 @@
 //! M0 has the hello, session, terminal and input families; M1 adds the brain's: events, state
 //! and dev (brain → UIs), control (UI → brain) and `sent` (gateway → brain); M2 adds walking
 //! and the map (`walk_to`, `walk_stop`, `map_request`, `map_view`, and the character's
-//! `position` and `walking`), and the bot's first slice (`bot_control`, the character's `bot`). [`Family`] says who may send what. Adding a variant later bumps nothing; removing or changing one bumps
+//! `position` and `walking`), the bot's first slice (`bot_control`, the character's `bot`), and loops (`loops_request`,
+//! `loops`, `walk_loop`). [`Family`] says who may send what. Adding a variant later bumps nothing; removing or changing one bumps
 //! [`PROTOCOL`].
 
 use std::path::Path;
@@ -302,6 +303,51 @@ pub struct MapExit {
     pub one_way: bool,
 }
 
+/// A stop of a generated loop: a room that spawns monsters worth hunting.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct LoopStop {
+    pub map: i64,
+    pub room: i64,
+    pub name: String,
+    /// The huntable monsters it spawns, by name.
+    pub monsters: Vec<String>,
+    /// An Arena: monsters come back with no wait after a kill.
+    pub arena: bool,
+    pub lair: bool,
+    /// Minutes nothing spawns there after a kill (arenas exempt).
+    pub regen: i64,
+}
+
+/// A loop generated from the world data: a closed circuit through an area's hunt rooms.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct GeneratedLoop {
+    /// What `walk_loop` names it by.
+    pub id: String,
+    pub name: String,
+    /// The stops in walking order; the loop goes back to the first after the last.
+    pub stops: Vec<LoopStop>,
+    /// Every room it passes, from the first stop back to it.
+    pub path: Vec<RoomKey>,
+    pub steps: u32,
+    /// Doors on the way (each opened, or bashed when locked).
+    pub doors: u32,
+}
+
+/// One of MegaMud's loops through the area, only ever one whose verification walk reached the
+/// end and closed in its start room.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct MegaMudLoop {
+    /// The `.mp` file.
+    pub file: String,
+    pub description: String,
+    pub author: String,
+    /// The rooms its walk passed, from its start back to it.
+    pub path: Vec<RoomKey>,
+    /// Steps the walk checked, and of those how many matched MegaMud's room id exactly.
+    pub steps: u32,
+    pub exact: u32,
+}
+
 /// A character's coins.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(optional_fields)]
@@ -491,6 +537,14 @@ pub enum ToClient {
         #[ts(optional)]
         route: Option<Vec<RoomKey>>,
     },
+    Loops {
+        session: SessionId,
+        anchor: RoomKey,
+        radius: u32,
+        doors: bool,
+        generated: Vec<GeneratedLoop>,
+        megamud: Vec<MegaMudLoop>,
+    },
 
     // From a UI, relayed to the brain.
     Resync {
@@ -518,6 +572,20 @@ pub enum ToClient {
     BotControl {
         session: SessionId,
         action: BotAction,
+    },
+    LoopsRequest {
+        session: SessionId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        anchor: Option<RoomKey>,
+        radius: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        doors: Option<bool>,
+    },
+    WalkLoop {
+        session: SessionId,
+        id: String,
     },
 
     /// To the brain only: a line went to the game, typed by a client or sent by a logon or
@@ -610,6 +678,21 @@ pub enum ToGateway {
         session: SessionId,
         action: BotAction,
     },
+    /// UI → brain: send the `loops` of the area within `radius` steps of `anchor` (the believed
+    /// room when left out), through doors unless `doors` is false.
+    LoopsRequest {
+        session: SessionId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        anchor: Option<RoomKey>,
+        radius: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        doors: Option<bool>,
+    },
+    /// UI → brain: walk a generated loop once, from its stop nearest the character round to
+    /// that stop again; `walk_stop` stops it, and `walk_to` replaces it.
+    WalkLoop { session: SessionId, id: String },
 
     /// Brain → UIs: one parsed event, as `wayfarer-parse` produced it, with the output `seq`
     /// its line came from. The gateway never reads `fields`.
@@ -672,6 +755,16 @@ pub enum ToGateway {
         #[ts(optional)]
         route: Option<Vec<RoomKey>>,
     },
+    /// Brain → UIs: the answer to a `loops_request`: the loops generated over the area's hunt
+    /// rooms, and MegaMud's verified loops through it.
+    Loops {
+        session: SessionId,
+        anchor: RoomKey,
+        radius: u32,
+        doors: bool,
+        generated: Vec<GeneratedLoop>,
+        megamud: Vec<MegaMudLoop>,
+    },
 }
 
 /// Why a received message could not be decoded. The receiver reports it (an `error` reply)
@@ -709,12 +802,15 @@ impl ToClient {
         "notice",
         "warning",
         "map_view",
+        "loops",
         "resync",
         "state_request",
         "walk_to",
         "walk_stop",
         "map_request",
         "bot_control",
+        "loops_request",
+        "walk_loop",
         "sent",
         "brain_state",
         "brain_lagged",
@@ -738,12 +834,15 @@ impl ToClient {
             Self::Notice { .. } => "notice",
             Self::Warning { .. } => "warning",
             Self::MapView { .. } => "map_view",
+            Self::Loops { .. } => "loops",
             Self::Resync { .. } => "resync",
             Self::StateRequest { .. } => "state_request",
             Self::WalkTo { .. } => "walk_to",
             Self::WalkStop { .. } => "walk_stop",
             Self::MapRequest { .. } => "map_request",
             Self::BotControl { .. } => "bot_control",
+            Self::LoopsRequest { .. } => "loops_request",
+            Self::WalkLoop { .. } => "walk_loop",
             Self::Sent { .. } => "sent",
             Self::BrainState { .. } => "brain_state",
             Self::BrainLagged { .. } => "brain_lagged",
@@ -761,11 +860,14 @@ impl ToClient {
             | Self::Character { session, .. }
             | Self::CharacterPatch { session, .. }
             | Self::MapView { session, .. }
+            | Self::Loops { session, .. }
             | Self::Resync { session }
             | Self::WalkTo { session, .. }
             | Self::WalkStop { session }
             | Self::MapRequest { session, .. }
             | Self::BotControl { session, .. }
+            | Self::LoopsRequest { session, .. }
+            | Self::WalkLoop { session, .. }
             | Self::Sent { session, .. } => Some(session),
             Self::Notice { session, .. }
             | Self::Warning { session, .. }
@@ -803,6 +905,8 @@ impl ToGateway {
         "walk_stop",
         "map_request",
         "bot_control",
+        "loops_request",
+        "walk_loop",
         "event",
         "character",
         "character_patch",
@@ -810,6 +914,7 @@ impl ToGateway {
         "notice",
         "warning",
         "map_view",
+        "loops",
     ];
 
     /// This message's `type`.
@@ -826,6 +931,8 @@ impl ToGateway {
             Self::WalkStop { .. } => "walk_stop",
             Self::MapRequest { .. } => "map_request",
             Self::BotControl { .. } => "bot_control",
+            Self::LoopsRequest { .. } => "loops_request",
+            Self::WalkLoop { .. } => "walk_loop",
             Self::Event { .. } => "event",
             Self::Character { .. } => "character",
             Self::CharacterPatch { .. } => "character_patch",
@@ -833,6 +940,7 @@ impl ToGateway {
             Self::Notice { .. } => "notice",
             Self::Warning { .. } => "warning",
             Self::MapView { .. } => "map_view",
+            Self::Loops { .. } => "loops",
         }
     }
 
@@ -849,14 +957,17 @@ impl ToGateway {
             | Self::WalkTo { .. }
             | Self::WalkStop { .. }
             | Self::MapRequest { .. }
-            | Self::BotControl { .. } => Family::Control,
+            | Self::BotControl { .. }
+            | Self::LoopsRequest { .. }
+            | Self::WalkLoop { .. } => Family::Control,
             Self::Event { .. }
             | Self::Character { .. }
             | Self::CharacterPatch { .. }
             | Self::BrainInfo { .. }
             | Self::Notice { .. }
             | Self::Warning { .. }
-            | Self::MapView { .. } => Family::Brain,
+            | Self::MapView { .. }
+            | Self::Loops { .. } => Family::Brain,
         }
     }
 
@@ -870,6 +981,18 @@ impl ToGateway {
             Self::WalkStop { session } => ToClient::WalkStop { session },
             Self::MapRequest { session, radius } => ToClient::MapRequest { session, radius },
             Self::BotControl { session, action } => ToClient::BotControl { session, action },
+            Self::LoopsRequest {
+                session,
+                anchor,
+                radius,
+                doors,
+            } => ToClient::LoopsRequest {
+                session,
+                anchor,
+                radius,
+                doors,
+            },
+            Self::WalkLoop { session, id } => ToClient::WalkLoop { session, id },
             Self::Event {
                 session,
                 seq,
@@ -914,6 +1037,21 @@ impl ToGateway {
                 rooms,
                 exits,
                 route,
+            },
+            Self::Loops {
+                session,
+                anchor,
+                radius,
+                doors,
+                generated,
+                megamud,
+            } => ToClient::Loops {
+                session,
+                anchor,
+                radius,
+                doors,
+                generated,
+                megamud,
             },
             Self::Hello { .. }
             | Self::InputLine { .. }

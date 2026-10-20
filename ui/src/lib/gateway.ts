@@ -8,7 +8,7 @@
 
 import { PROTOCOL } from "../proto";
 import type { BotAction, CharacterState, Chunk, SessionInfo, SessionState, ToClient, ToGateway } from "../proto";
-import { clampRadius, type MapView } from "./map";
+import { clampRadius, LOOP_RADIUS, type Loops, type MapView } from "./map";
 
 /** The part of the browser's `WebSocket` the client uses. */
 export interface SocketLike {
@@ -68,6 +68,8 @@ export interface GatewayEvents {
   brainLagged?(missed: number): void;
   /** The rooms around a character, for the map panel. */
   mapView?(view: MapView): void;
+  /** The loops of the area around a character, for the map panel. */
+  loops?(loops: Loops): void;
 }
 
 export interface GatewayOptions {
@@ -182,6 +184,17 @@ export class GatewayClient {
   /** Ask for a `map_view` now, of the rooms within `radius` steps (clamped to 1-30). */
   requestMap(session: string, radius?: number): boolean {
     return this.send({ type: "map_request", session, radius: clampRadius(radius) });
+  }
+
+  /** Ask for the loops within `radius` steps of the character (clamped to 1-30), through doors
+   * unless `doors` is false. */
+  requestLoops(session: string, radius = LOOP_RADIUS, doors = true): boolean {
+    return this.send({ type: "loops_request", session, radius: clampRadius(radius), doors });
+  }
+
+  /** Walk a generated loop once; false when not connected. */
+  walkLoop(session: string, id: string): boolean {
+    return this.send({ type: "walk_loop", session, id });
   }
 
   private send(message: ToGateway): boolean {
@@ -305,6 +318,9 @@ export class GatewayClient {
         break;
       case "map_view":
         this.opts.events.mapView?.(message);
+        break;
+      case "loops":
+        this.opts.events.loops?.(message);
         break;
     }
   }
