@@ -49,6 +49,20 @@ pub fn stop_ready(now: Instant, cleared_at: Option<Instant>, regen: i64, is_aren
     ready_in(now, cleared_at, regen, is_arena).is_zero()
 }
 
+/// Test knob for comparing runs (the soak's A/B on the Bandit Keep): when set in the brain's
+/// environment, only Lair stops wait out a respawn delay; every other stop is always ready, as
+/// an arena is, and the bot fights whatever it finds there while it walks the loop in order.
+pub const UNGATED_ENV: &str = "WAYFARER_UNGATED_STOPS";
+
+/// Room types: 2 arena, 3 lair.
+const LAIR: i64 = 3;
+
+/// Whether a stop of room type `room_type` is always ready: an arena, and with `ungated` any
+/// room that is not a Lair.
+pub fn no_respawn_wait(room_type: i64, ungated: bool) -> bool {
+    room_type == 2 || (ungated && room_type != LAIR)
+}
+
 /// How long until a stop has respawned ([`stop_ready`]); zero when it has.
 pub fn ready_in(now: Instant, cleared_at: Option<Instant>, regen: i64, is_arena: bool) -> Duration {
     let Some(cleared) = cleared_at.filter(|_| !is_arena) else {
@@ -210,6 +224,7 @@ impl Task {
         first: usize,
         skip: BTreeSet<usize>,
     ) -> Task {
+        let ungated = std::env::var_os(UNGATED_ENV).is_some();
         let stops: Vec<Stop> = stops
             .iter()
             .map(|&key| {
@@ -218,7 +233,7 @@ impl Task {
                     key,
                     name: room.map_or_else(|| format!("{}/{}", key.0, key.1), |r| r.name.clone()),
                     regen: room.map_or(0, |r| r.regen_delay),
-                    arena: room.is_some_and(|r| r.room_type == 2),
+                    arena: room.is_some_and(|r| no_respawn_wait(r.room_type, ungated)),
                 }
             })
             .collect();
@@ -654,6 +669,15 @@ impl Mode for Task {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ungated_runs_wait_out_respawns_at_lairs_only() {
+        // Normal 0, shop 1, arena 2, lair 3.
+        assert!(no_respawn_wait(2, false) && no_respawn_wait(2, true));
+        assert!(!no_respawn_wait(0, false) && !no_respawn_wait(3, false));
+        assert!(no_respawn_wait(0, true) && no_respawn_wait(1, true));
+        assert!(!no_respawn_wait(3, true));
+    }
 
     #[tokio::test(start_paused = true)]
     async fn a_stop_is_ready_once_its_delay_has_passed() {

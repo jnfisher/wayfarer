@@ -204,3 +204,20 @@ A short smoke run on a pool character (three minutes in Newhaven, the Lairs unti
 scripts/live-check.sh --scenario soak --char Waychecka --minutes 3 --anchor 1:2140 \
     --skip 1:2152 --skip 1:2156
 ```
+
+### Comparing two ways to run a loop (the Bandit Keep A/B)
+
+Two 30-minute soaks of the same character on `HKEPLOOP.mp`, from the same start (the Hidden
+Keep, anchor `9:750`), one after the other with the same HP at the start:
+
+```sh
+# A: as is (every stop waits out its respawn delay after it was cleared)
+scripts/live-check.sh --scenario soak --char Thorgrim --minutes 30 --loop HKEPLOOP.mp \
+    --anchor 9:750 --credentials "$WAYFARER_DATA_DIR/credentials.toml"
+# B: only Lair stops wait; the bot walks the loop in order and fights what it finds
+WAYFARER_UNGATED_STOPS=1 scripts/live-check.sh --scenario soak --char Thorgrim --minutes 30 \
+    --loop HKEPLOOP.mp --anchor 9:750 --credentials "$WAYFARER_DATA_DIR/credentials.toml"
+```
+
+Compare exp per hour, kills, flees, and the longest wait ("Waiting for respawns"). One run of
+each is a sample, not a verdict: the first minutes of a run start with every room stocked.

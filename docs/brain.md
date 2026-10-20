@@ -461,7 +461,10 @@ stop it is at or walking to, and the stops it passes by.
 - **None ready**: with HP under 95% it rests first ("Waiting for respawns: resting first":
   Recover rests, in a quiet room if this one spawns, and walks back); then it waits where it is,
   "Waiting for respawns: next in 1 m", and goes when the next stop is ready. An Arena the bot is
-  in is always ready: it waits there and Fight takes what comes.
+  in is always ready: it waits there and Fight takes what comes. (Test knob: with
+  `WAYFARER_UNGATED_STOPS` set in the brain's environment only Lair stops wait out a respawn
+  delay and every other stop is always ready, so the bot walks the loop in order and fights
+  whatever it finds; the Bandit Keep A/B in `docs/dev-rig.md` compares the two.)
 - **On the way**: a monster Fight would attack in a room on the way, or one attacking, stops the
   leg after the moves in flight; Fight takes the character, and then Task walks on to the same
   stop from wherever it is. `*Combat Engaged*` stops it the same way. Flee and Recover work as in
