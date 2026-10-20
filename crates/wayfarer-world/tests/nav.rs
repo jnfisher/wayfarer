@@ -128,12 +128,14 @@ fn routes() {
     assert_eq!(commands(&around), ["s", "w", "n"]);
     assert_eq!(around.last().unwrap().to, (1, 33));
 
-    // The spawn cost steers around a spawning room when a way without one is one step longer:
+    // By default the route is the shortest (spawn cost 0). A spawn cost steers around a
+    // spawning room when a way without one is one step longer:
     // from the river south of the Silvermere Docks to Newhaven, Docks, the river (1:2342,
     // which spawns) is one step shorter than the docks and the skiff. No Lair in the stock data
     // has a detour of one step, so this is a spawning Normal room.
-    let free = Traveller {
-        costs: wayfarer_world::Costs { spawn: 0, door: 2 },
+    let free = level1.clone();
+    let cautious = Traveller {
+        costs: wayfarer_world::Costs { spawn: 40, door: 1 },
         ..level1.clone()
     };
     let river = (1, 2342);
@@ -141,7 +143,7 @@ fn routes() {
     let short = route(&g, (1, 1813), NEWHAVEN_DOCKS, &free).unwrap();
     assert_eq!(short.len(), 4);
     assert!(short.iter().any(|s| s.to == river));
-    let safe = route(&g, (1, 1813), NEWHAVEN_DOCKS, &level1).unwrap();
+    let safe = route(&g, (1, 1813), NEWHAVEN_DOCKS, &cautious).unwrap();
     assert_eq!(safe.len(), 5);
     assert!(
         safe.iter()

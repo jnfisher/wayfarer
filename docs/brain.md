@@ -113,8 +113,8 @@ route starts, changes or ends, and on `map_request` (`docs/protocol.md`).
 progress (after the move in flight).
 
 - **The route**: the cheapest from the believed room for the character's level, class and race
-  (as the model knows them), avoiding rooms that spawn monsters where a way round is a few
-  steps longer, and the exits the game refused this session. Narrated: "Walking to Newhaven,
+  (as the model knows them): the shortest route, through rooms that spawn monsters as readily
+  as any other (a setting later), avoiding only the exits the game refused this session. Narrated: "Walking to Newhaven,
   Arena: 3 steps" (", one door" when there are doors). No route, or an unknown position: a
   warning, and nothing is sent.
 - **One step at a time**: each move goes at a prompt, in the realm, and only once the room the
