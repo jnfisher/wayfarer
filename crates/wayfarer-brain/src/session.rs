@@ -277,6 +277,8 @@ pub(crate) struct Session {
     arbitrating: bool,
     /// The bot's state and the run, in the store.
     ledger: Ledger,
+    /// The brain's clock: every timer's `now`.
+    clock: Arc<dyn Clock>,
     /// The bot as a brain before this one left it, running or paused: put back once the
     /// catch-up is done.
     restore: Option<BotRecord>,
@@ -307,13 +309,14 @@ impl Session {
         flee_below: i32,
         now: Instant,
     ) -> Self {
-        let ledger = Ledger::new(store, clock, &info.id);
+        let ledger = Ledger::new(store, clock.clone(), &info.id);
         let restore = ledger
             .stored()
             .filter(|b| b.state != BotState::Stopped)
             .cloned();
         Self {
             ledger,
+            clock,
             restore,
             atlas,
             position: Position::default(),
@@ -526,7 +529,7 @@ impl Session {
     fn feed(&mut self, chunk: Chunk, out: &mut Vec<ToGateway>) {
         let silent = chunk.seq <= self.silent_until;
         let events = self.parser.feed_at(chunk.seq, &chunk.text);
-        let now = Instant::now();
+        let now = self.clock.instant();
         let mut changed = false;
         let mut combat = false;
         for ev in &events {
@@ -699,7 +702,7 @@ impl Session {
         };
         let says = self.bot.restore(&rec, task, narration);
         self.say(says, out);
-        self.ledger.adopt(rec, Instant::now());
+        self.ledger.adopt(rec, self.clock.instant());
         if self.resync == Resync::Off {
             self.request_resync();
         }
@@ -740,7 +743,7 @@ impl Session {
         if self.atlas.is_none() || self.restore.is_some() {
             return;
         }
-        if self.ledger.save(self.bot.record(), Instant::now()) {
+        if self.ledger.save(self.bot.record(), self.clock.instant()) {
             self.publish_patch(out);
         }
     }
@@ -1103,7 +1106,7 @@ impl Session {
     /// belief sure of the room, the character known to be out of combat, and no line the
     /// player typed waiting.
     fn pipeline(&mut self, action: Action) {
-        let now = Instant::now();
+        let now = self.clock.instant();
         let in_combat = self.combat(now);
         if self.owner == Some(Owner::Walker)
             && self.position.belief.certain()
@@ -1714,7 +1717,7 @@ impl Session {
         self.map_dirty |= next.route_changed;
         let ahead = next.ahead;
         if let Some(action) = next.action {
-            let in_combat = self.combat(Instant::now());
+            let in_combat = self.combat(self.clock.instant());
             match self.executor.submit(action, in_combat) {
                 Ok(()) => self.owner = Some(Owner::Walker),
                 Err(guard) => {
@@ -1890,7 +1893,7 @@ impl Session {
         };
         // The bot decides again when the game has been quiet long enough for a fight to have
         // lapsed, or when a wait of Recover's ends.
-        let now = Instant::now();
+        let now = self.clock.instant();
         let lapse = (!self.down).then_some(self.last_combat + COMBAT_QUIET);
         let bot = [lapse, self.bot.wake(now)]
             .into_iter()

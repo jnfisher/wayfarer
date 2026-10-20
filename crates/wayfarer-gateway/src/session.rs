@@ -4,11 +4,13 @@
 //! follows the text to know where the character is, logs it off cleanly when closed, and
 //! reconnects with backoff after a lost connection.
 
+use std::collections::VecDeque;
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
+use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::{broadcast, mpsc, oneshot};
@@ -18,7 +20,7 @@ use wayfarer_proto::{Chunk, SessionId, SessionInfo, SessionState};
 use wayfarer_telnet::{Capture, Telnet};
 
 use crate::config::Login;
-use crate::log::OutputLog;
+use crate::log::{LineLog, OutputLog, now_ms};
 use crate::logon::{self, Action, Logoff, LogoffAction, Place, Runner, Script, Tracker};
 
 /// What `sent.bin` records instead of a password.
@@ -37,6 +39,35 @@ pub struct StateChange {
 pub struct Sent {
     pub session: SessionId,
     pub seq: u64,
+    pub text: String,
+}
+
+/// Who sent a line: `sent.log`'s `origin`. `ui` is a UI's line that went straight to the game;
+/// a line the brain lets through for the player (input arbitration) is the brain's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Origin {
+    Ui,
+    Brain,
+    /// A logon or log-off step.
+    Script,
+}
+
+/// One line of `sent.log`.
+#[derive(Serialize)]
+struct SentRecord<'a> {
+    seq: u64,
+    ts: u64,
+    origin: Origin,
+    text: &'a str,
+}
+
+/// A line a replay's recording sent (`replay.rs`): the session publishes it as `sent` once it
+/// has read `after` bytes of the replayed output, so it lands between the chunks it went
+/// between live.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Recorded {
+    pub after: u64,
     pub text: String,
 }
 
@@ -59,6 +90,14 @@ pub type Connecting<'a> = Pin<Box<dyn Future<Output = io::Result<Box<dyn Stream>
 /// How sessions reach their servers: [`Tcp`] for real ones, an in-memory pipe in tests.
 pub trait Connect: Send + Sync + 'static {
     fn connect<'a>(&'a self, host: &'a str, port: u16) -> Connecting<'a>;
+
+    /// A replay's recorded lines (`replay.rs`), taken once per connection, just after
+    /// [`Connect::connect`]. With them the session publishes these as `sent` instead of the
+    /// lines it writes (which the replay drops), but for the brain's, and a close disconnects
+    /// without logging off. `None`, the default, for a game server.
+    fn recorded(&self) -> Option<mpsc::UnboundedReceiver<Recorded>> {
+        None
+    }
 }
 
 /// Plain TCP, Nagle off (a line goes out as one packet).
@@ -75,7 +114,7 @@ impl Connect for Tcp {
 }
 
 pub(crate) enum Command {
-    Line(String),
+    Line(String, Origin),
     Keys(Vec<u8>),
     /// Log off cleanly, then close.
     Close(oneshot::Sender<()>),
@@ -90,6 +129,10 @@ pub(crate) struct Slot {
     pub host: String,
     pub port: u16,
     pub log: OutputLog,
+    /// Every line written to the game, with who sent it.
+    pub sent_log: LineLog,
+    /// What reached the brain about this session besides output and `sent` (`replay.rs`).
+    pub brain_log: LineLog,
     pub output: broadcast::Sender<Output>,
     /// The character's account: the logon script's `{user}` and `{password}`, and a line that
     /// is exactly the password is masked in `sent.bin`.
@@ -123,6 +166,8 @@ pub(crate) struct SlotParts {
     pub host: String,
     pub port: u16,
     pub log: OutputLog,
+    pub sent_log: LineLog,
+    pub brain_log: LineLog,
     pub login: Option<Login>,
     pub script: Option<Arc<Script>>,
     pub read_buffer: usize,
@@ -140,6 +185,8 @@ impl Slot {
             host: p.host,
             port: p.port,
             log: p.log,
+            sent_log: p.sent_log,
+            brain_log: p.brain_log,
             output: broadcast::channel(p.subscriber_capacity.max(1)).0,
             login: p.login,
             script: p.script,
@@ -171,9 +218,23 @@ impl Slot {
         }
     }
 
+    /// `text` went to the game: into `sent.log`, and to the subscribers. A replay publishes the
+    /// recording's lines instead, but the brain's own: a replay's brain hears what it sent.
+    fn sent_line(&self, text: String, origin: Origin, replay: bool) {
+        self.sent_log.append(&SentRecord {
+            seq: self.log.last_seq(),
+            ts: now_ms(),
+            origin,
+            text: &text,
+        });
+        if !replay || origin == Origin::Brain {
+            self.publish_sent(text);
+        }
+    }
+
     /// Tell the subscribers that `text` went to the game. Only the session task publishes, so
     /// this lands between the chunks it went between.
-    fn sent_line(&self, text: String) {
+    fn publish_sent(&self, text: String) {
         let _ = self.output.send(Output::Sent(Sent {
             session: self.id.clone(),
             seq: self.log.last_seq(),
@@ -301,6 +362,11 @@ async fn connection(
     };
     tracing::info!(session = %slot.id, "connected to {address}");
     slot.set_reason(None);
+    // A replay's lines, each held until the output it followed has been read.
+    let mut recorded = slot.connector.recorded();
+    let replay = recorded.is_some();
+    let mut held: VecDeque<Recorded> = VecDeque::new();
+    let mut read: u64 = 0;
 
     let mut tracker = slot.script.clone().map(Tracker::new);
     let mut runner = match (&slot.script, &slot.login) {
@@ -340,6 +406,7 @@ async fn connection(
                     Err(e) => return End::Lost(format!("read: {e}")),
                 };
                 let bytes = &buf[..n];
+                read += n as u64;
                 if let Err(e) = capture.record_received(bytes) {
                     tracing::warn!(session = %slot.id, "raw capture: {e}");
                 }
@@ -356,6 +423,7 @@ async fn connection(
                 let chunk = slot.log.append(received.text);
                 // No subscribers is fine; a slow one lags without holding anyone up.
                 let _ = slot.output.send(Output::Chunk(chunk.clone()));
+                release(slot, &mut held, read);
                 let text = chunk.text.as_str();
 
                 // Where the character is now, whoever got it there.
@@ -372,7 +440,7 @@ async fn connection(
                             if let Err(e) = write(slot, &mut writer, capture, &bytes, &record).await {
                                 return End::Lost(e);
                             }
-                            slot.sent_line(shown);
+                            slot.sent_line(shown, Origin::Script, replay);
                             // The next step's timeout runs from here.
                             deadline = runner.as_ref().map(|r| Instant::now() + r.timeout());
                         }
@@ -415,18 +483,26 @@ async fn connection(
                         if let Err(e) = write(slot, &mut writer, capture, &bytes, &bytes).await {
                             return End::Lost(e);
                         }
-                        slot.sent_line(line);
+                        slot.sent_line(line, Origin::Script, replay);
                     }
                 }
             }
+            item = next_recorded(&mut recorded), if recorded.is_some() => match item {
+                Some(line) => {
+                    held.push_back(line);
+                    release(slot, &mut held, read);
+                }
+                // The recording is all fed, its lines with it.
+                None => recorded = None,
+            },
             cmd = commands.recv() => {
                 // The bytes, what `sent.bin` records, and the line for `sent` (keys are none).
                 let (bytes, record, line) = match cmd {
-                    Some(Command::Line(text)) => {
+                    Some(Command::Line(text, origin)) => {
                         let bytes = telnet.encode_line(&text);
                         let is_password = slot.login.as_ref().is_some_and(|l| l.password == text);
                         let shown = if is_password { MASK.to_owned() } else { text };
-                        (bytes, telnet.encode_line(&shown), Some(shown))
+                        (bytes, telnet.encode_line(&shown), Some((shown, origin)))
                     }
                     Some(Command::Keys(keys)) => {
                         let bytes = telnet.encode_bytes(&keys);
@@ -436,6 +512,11 @@ async fn connection(
                         acks.push(ack);
                         if logoff.is_some() {
                             continue;
+                        }
+                        if replay {
+                            // Nobody to log off: stopping a replay just stops it.
+                            let _ = writer.shutdown().await;
+                            return End::closed(acks);
                         }
                         let start = slot.script.as_ref().zip(tracker.as_ref().and_then(Tracker::place));
                         let Some((l, first)) = start.and_then(|(s, place)| Logoff::start(Arc::clone(s), place)) else {
@@ -448,7 +529,7 @@ async fn connection(
                         deadline = Some(Instant::now() + l.timeout());
                         logoff = Some(l);
                         let bytes = telnet.encode_line(&first);
-                        (bytes.clone(), bytes, Some(first))
+                        (bytes.clone(), bytes, Some((first, Origin::Script)))
                     }
                     Some(Command::Hangup(ack)) => {
                         acks.push(ack);
@@ -463,8 +544,8 @@ async fn connection(
                 if let Err(e) = write(slot, &mut writer, capture, &bytes, &record).await {
                     return End::Lost(e);
                 }
-                if let Some(line) = line {
-                    slot.sent_line(line);
+                if let Some((line, origin)) = line {
+                    slot.sent_line(line, origin, replay);
                 }
             }
             () = tokio::time::sleep_until(deadline.unwrap_or_else(Instant::now)), if deadline.is_some() => {
@@ -506,6 +587,23 @@ async fn write(
         .map_err(|e| format!("write: {e}"))?;
     record_sent(slot, capture, record);
     Ok(())
+}
+
+/// Publish the held recorded lines whose output has all been read (`read` bytes).
+fn release(slot: &Slot, held: &mut VecDeque<Recorded>, read: u64) {
+    while held.front().is_some_and(|r| r.after <= read) {
+        let line = held.pop_front().expect("not empty");
+        slot.publish_sent(line.text);
+    }
+}
+
+async fn next_recorded(
+    recorded: &mut Option<mpsc::UnboundedReceiver<Recorded>>,
+) -> Option<Recorded> {
+    match recorded {
+        Some(rx) => rx.recv().await,
+        None => std::future::pending().await,
+    }
 }
 
 /// While not connected only a close is acted on. The gateway refuses input then, so nothing

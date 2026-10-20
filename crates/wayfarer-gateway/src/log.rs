@@ -214,10 +214,56 @@ impl OutputLog {
     }
 }
 
-fn now_ms() -> u64 {
+pub(crate) fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as u64)
+}
+
+/// An append-only file of JSON lines beside `output.log` (`sent.log`, `brain.log`), made on the
+/// first record. A failed write is reported once until one works again, and never stops the
+/// session.
+pub(crate) struct LineLog {
+    path: PathBuf,
+    file: Mutex<(Option<File>, bool)>,
+}
+
+impl LineLog {
+    pub fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            file: Mutex::new((None, false)),
+        }
+    }
+
+    pub fn append(&self, record: &impl Serialize) {
+        let mut line = serde_json::to_vec(record).expect("a record always serializes");
+        line.push(b'\n');
+        let mut guard = self.file.lock().unwrap_or_else(|e| e.into_inner());
+        let (file, failing) = &mut *guard;
+        if file.is_none() {
+            *file = OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(&self.path)
+                .inspect_err(|e| {
+                    if !*failing {
+                        tracing::warn!("{}: cannot open: {e}", self.path.display());
+                    }
+                })
+                .ok();
+        }
+        match file.as_mut().map(|f| f.write_all(&line)) {
+            Some(Ok(())) => *failing = false,
+            Some(Err(e)) => {
+                if !*failing {
+                    tracing::warn!("{}: write failed: {e}", self.path.display());
+                }
+                *failing = true;
+            }
+            None => *failing = true,
+        }
+    }
 }
 
 /// The last record's `seq` (0 for an empty file), cutting off a partial last line.

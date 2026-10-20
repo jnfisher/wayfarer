@@ -149,6 +149,14 @@ in the realm: ...".
   sequence number and time (the format is in `crates/wayfarer-gateway/README.md`).
 - `raw.bin`: every byte received, exactly as it came.
 - `sent.bin`: every byte sent; a password is recorded as `********`.
+- `sent.log`: every line sent, one JSON line each: the output `seq` it followed, its time,
+  who sent it (`origin`: `ui`, `brain` or `script` for logon and log-off steps) and the text,
+  a password masked as in `sent.bin`.
+- `brain.log`: when a brain attached and went, and every message that reached it about this
+  character other than its output (a browser's walk, bot and loop controls, typed lines the
+  brain arbitrates, `logging_off`), one JSON line each.
+
+Together they are a recording that `wayfarer replay` plays back ([replay.md](replay.md)).
 
 Sequence numbers never restart: a restarted gateway carries on from the last one in
 `output.log`, so a browser that reconnects asks for everything since the last number it saw

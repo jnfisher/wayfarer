@@ -1,0 +1,7 @@
+{"seq":11,"ts":1792480172366,"attached":true}
+{"seq":21,"ts":1792480174377,"msg":{"type":"walk_to","session":"probe","map":1,"room":2146}}
+{"seq":27,"ts":1792480175869,"msg":{"type":"walk_to","session":"probe","map":1,"room":2150}}
+{"seq":30,"ts":1792480176871,"msg":{"type":"bot_control","session":"probe","action":"start"}}
+{"seq":51,"ts":1792480218863,"msg":{"type":"bot_control","session":"probe","action":"stop"}}
+{"seq":53,"ts":1792480218870,"msg":{"type":"walk_to","session":"probe","map":1,"room":2146}}
+{"seq":54,"ts":1792480219877,"attached":false}

@@ -274,6 +274,7 @@ impl Brain {
 
         loop {
             let deadline = self.sessions.values().filter_map(Session::deadline).min();
+            let clock = self.clock.clone();
             tokio::select! {
                 msg = link.recv() => match msg {
                     None => {
@@ -282,7 +283,7 @@ impl Brain {
                     }
                     Some(msg) => self.handle(msg, &mut out),
                 },
-                () = sleep_until(deadline) => {}
+                () = sleep_until(&*clock, deadline) => {}
             }
             self.step(&mut out);
             self.flush(link, &mut out);
@@ -306,7 +307,7 @@ impl Brain {
     /// The gateway's list of sessions: new ones are caught up from their history; on an
     /// attach, every one is.
     fn sessions_seen(&mut self, infos: &[SessionInfo], attach: bool, out: &mut Vec<ToGateway>) {
-        let now = Instant::now();
+        let now = self.clock.instant();
         for info in infos {
             match self.sessions.get_mut(&info.id) {
                 Some(s) if attach => s.attach(info, now, out),
@@ -329,7 +330,7 @@ impl Brain {
     }
 
     fn handle(&mut self, msg: ToClient, out: &mut Vec<ToGateway>) {
-        let now = Instant::now();
+        let now = self.clock.instant();
         match msg {
             ToClient::Output { session, seq, text } => {
                 if let Some(s) = self.sessions.get_mut(&session) {
@@ -459,7 +460,7 @@ impl Brain {
     }
 
     fn step(&mut self, out: &mut Vec<ToGateway>) {
-        let now = Instant::now();
+        let now = self.clock.instant();
         for s in self.sessions.values_mut() {
             if s.step(now, out) == Progress::Done {
                 s.character.set_synced_at(rfc3339(self.clock.now()));
@@ -485,9 +486,9 @@ fn no_session(what: &str, session: &str) -> ToGateway {
     }
 }
 
-async fn sleep_until(deadline: Option<Instant>) {
+async fn sleep_until(clock: &dyn Clock, deadline: Option<Instant>) {
     match deadline {
-        Some(at) => tokio::time::sleep_until(at).await,
+        Some(at) => clock.sleep_until(at).await,
         None => std::future::pending().await,
     }
 }

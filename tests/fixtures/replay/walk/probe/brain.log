@@ -1,0 +1,4 @@
+{"seq":10,"ts":1792480133861,"attached":true}
+{"seq":20,"ts":1792480135875,"msg":{"type":"walk_to","session":"probe","map":1,"room":2146}}
+{"seq":26,"ts":1792480137871,"msg":{"type":"walk_to","session":"probe","map":1,"room":2140}}
+{"seq":33,"ts":1792480140877,"attached":false}
