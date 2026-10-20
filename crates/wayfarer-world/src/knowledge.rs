@@ -99,6 +99,18 @@ impl PathKnowledge {
             .collect()
     }
 
+    /// The Hidden exits any verified path goes through: (room, direction). A way into an area
+    /// is usually another path's (the Bandit Keep's is `Ftrehkep.mp`'s), and the exits are as
+    /// real for a loop that does not take them.
+    pub fn all_hidden_exits(&self) -> BTreeSet<(Key, u8)> {
+        self.by_file
+            .values()
+            .flatten()
+            .filter(|e| e.kind == ExitType::Hidden)
+            .map(|e| (e.from, e.dir))
+            .collect()
+    }
+
     /// The phrases paths type for the Text exit `dir` of `from`.
     pub fn phrases(&self, from: Key, dir: u8) -> &[String] {
         self.phrases.get(&(from, dir)).map_or(&[], Vec::as_slice)

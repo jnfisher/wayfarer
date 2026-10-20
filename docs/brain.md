@@ -254,12 +254,13 @@ can watch the route, and runs one ("Running a loop", below).
 - **What the paths know** (`PathKnowledge`, built once from the pack): for every step of a path
   whose walk reached its end, the room it is typed in and the exit it takes: a direction, with
   the actions written before it (`n[search n]`), or a phrase that takes a Text exit (`climb
-  tree`). The Hidden exits a loop's path goes through become ones the character knows are there
-  when that loop is walked or run (`Traveller::searchable`): routes may take them, and the walker
-  searches before each ("Walking"). A Text exit whose message has no text takes the phrase a
-  path types for it. Only the loop's own path counts: the way into the Bandit Keep (`Ftrehkep.mp`:
-  search north at the Hidden Keep, `climb tree` on the Keep Wall) is another path, so
-  `HKEPLOOP.mp` from outside the keep is "no way to any of its ticked stops" with the reason.
+  tree`). The Hidden exits of every verified path become ones the character knows are there
+  when a MegaMud loop is walked or run (`Traveller::searchable`, `all_hidden_exits`): routes may
+  take them, and the walker searches before each ("Walking"). A way into an area is usually
+  another path's: the Bandit Keep's (`Ftrehkep.mp`: search north at the Hidden Keep, `climb
+  tree` on the Keep Wall) is not `HKEPLOOP.mp`'s own, and `HKEPLOOP.mp` run from the Hidden
+  Keep searches north first. A Text exit whose message has no text takes the phrase a path
+  types for it.
 - Made once per anchor, radius, level, strength, picklocks and doors for the session, so asking
   again is cheap.
 

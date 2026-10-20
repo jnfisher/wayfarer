@@ -866,7 +866,7 @@ impl Session {
         self.position
             .refresh(atlas, &self.character.snapshot(), self.clock.instant());
         if let Some(l) = mm_loop(atlas, &t.id) {
-            self.learn_path(atlas, l);
+            self.learn_path(atlas);
             if l.stops() == t.stops {
                 return l.name().to_owned();
             }
@@ -1461,13 +1461,13 @@ impl Session {
         }
     }
 
-    /// The hidden exits a MegaMud loop's path goes through are known to be there: routes may
+    /// The hidden exits the verified MegaMud paths go through are known to be there: routes may
     /// take them, and the walker searches for them (`Traveller::searchable`).
-    fn learn_path(&mut self, atlas: &Atlas, l: &MmLoop) {
+    fn learn_path(&mut self, atlas: &Atlas) {
         self.position
             .traveller
             .searchable
-            .extend(atlas.knowledge.hidden_exits(&l.path.file));
+            .extend(atlas.knowledge.all_hidden_exits());
     }
 
     /// Why a MegaMud loop cannot be run for this character, if it cannot: nothing on it to
@@ -1478,8 +1478,7 @@ impl Session {
             return Some(why.to_owned());
         }
         let mut t = self.position.traveller.clone();
-        t.searchable
-            .extend(atlas.knowledge.hidden_exits(&l.path.file));
+        t.searchable.extend(atlas.knowledge.all_hidden_exits());
         let stops = l.stops();
         let g = &atlas.graph;
         let name = |k: Key| g.room(k).map_or("", |r| r.name.as_str()).to_owned();
@@ -1622,7 +1621,7 @@ impl Session {
         self.position
             .refresh(atlas, &self.character.snapshot(), self.clock.instant());
         if let Some(l) = mm_loop(atlas, id) {
-            self.learn_path(atlas, l);
+            self.learn_path(atlas);
             return Some(mm_as_loop(l));
         }
         parse_loop_id(id, &self.position.traveller)
