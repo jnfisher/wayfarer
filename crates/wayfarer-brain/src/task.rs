@@ -22,7 +22,7 @@ use std::time::Duration;
 
 use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
-use wayfarer_world::{Key, RoomGraph, Traveller, distances, route};
+use wayfarer_world::{ExitType, Key, RoomGraph, Traveller, distances, route};
 
 use crate::brain::Atlas;
 use crate::executor::{Action, Outcome};
@@ -146,6 +146,8 @@ pub(crate) struct TaskLoop {
 struct Stop {
     key: Key,
     name: String,
+    /// An arena: its monsters come back at once, with no need to step out and in.
+    arena: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -205,6 +207,7 @@ impl Task {
                 Stop {
                     key,
                     name: room.map_or_else(|| format!("{}/{}", key.0, key.1), |r| r.name.clone()),
+                    arena: room.is_some_and(|r| r.room_type == 2),
                 }
             })
             .collect();
@@ -475,8 +478,16 @@ impl Task {
                 continue;
             }
             if Some(s.key) == v.room {
-                // Ready, and here (an arena, or the loop's only stop ready): wait here.
+                // Ready, and here: the loop's only stop ready, or an arena. Step out and back
+                // in to bring the monster of an instant-spawn lair; an arena, or a stop with no
+                // way out, waits here.
                 self.index = j;
+                if !self.stops[j].arena
+                    && let Some(step) = self.step_out(v)
+                {
+                    self.notes.extend(notes);
+                    return step;
+                }
                 break;
             }
             self.notes.extend(notes);
@@ -507,6 +518,34 @@ impl Task {
                 self.stops[self.index].name
             )),
         }
+    }
+
+    /// The only ready stop is the one the character stands in, cleared: step out to a room
+    /// beside it and back in, which brings an instant-spawn lair's monster (it spawns when a
+    /// player enters). An arena needs none of this. The room out is a plain exit, no door, not
+    /// a boss lair; a room that is not a Lair is preferred, so the monsters met on the way out
+    /// are the fewest. `None` when no exit qualifies: the bot waits here, as it would.
+    fn step_out(&mut self, v: &View) -> Option<Step> {
+        let g = &v.atlas.graph;
+        let from = self.stops[self.index].key;
+        let out = g
+            .edges(from)
+            .iter()
+            .filter(|e| e.kind == ExitType::Normal && e.door.is_none() && e.to != from)
+            .filter(|e| !v.atlas.finder.is_boss_lair(e.to))
+            .filter(|e| route(g, from, e.to, v.traveller).is_some_and(|r| r.len() == 1))
+            .filter_map(|e| g.room(e.to).map(|r| (e.to, r.room_type == 3)))
+            .min_by_key(|&(_, lair)| lair)?
+            .0;
+        self.phase = Phase::Going;
+        self.tries = 0;
+        Some(Step::walk(
+            out,
+            format!(
+                "Loop {}: stepping out of {} and back in",
+                self.name, self.stops[self.index].name
+            ),
+        ))
     }
 
     /// "Stop 3/9 cleared: 2 minotaurs".

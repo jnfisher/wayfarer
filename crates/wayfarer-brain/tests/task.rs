@@ -532,3 +532,37 @@ async fn the_bot_stops_at_once_when_no_stop_can_be_reached() {
     let b = bot(&seen);
     assert_eq!((b.state, b.task), (BotState::Stopped, None));
 }
+
+#[tokio::test(start_paused = true)]
+async fn the_only_stop_ready_is_stepped_out_of_and_back_into() {
+    // The Arena and the Small Cavern unticked: the Dungeon Entrance, a Lair, is the loop's one
+    // stop. Cleared, it steps out (to the Arena, which is no Lair) and back in, so a lair that
+    // spawns when a player enters brings its monster, instead of waiting in the room.
+    let (mut g, run) = ready_at(BEYOND_ARENA).await;
+    g.expect("s", arena(&[], 35));
+    g.expect("n", dungeon_entrance());
+    g.run_loop(&[ARENA, SMALL_CAVERN]).await;
+    g.narrated("Stop 2/3 cleared: nothing there").await;
+    g.narrated("Loop Newhaven: stepping out of Dungeon, Entrance and back in")
+        .await;
+    g.narrated("Loop Newhaven: to stop 2/3 Dungeon, Entrance (one step, one door)")
+        .await;
+    g.narrated("Stop 2/3 cleared: nothing there").await;
+    g.freeze();
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played[2..], ["s", "n"]);
+    assert_eq!(bot(&seen).state, BotState::Running);
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_arena_is_waited_in_not_stepped_out_of() {
+    // The Arena is the one stop ticked: monsters come back there at once.
+    let (mut g, run) = ready_with(arena(&[], 35)).await;
+    g.expect("look", arena(&[], 35));
+    g.run_loop(&[BEYOND_ARENA, SMALL_CAVERN]).await;
+    g.narrated("Stop 1/3 cleared: nothing there").await;
+    g.narrated("Waiting for respawns in Newhaven, Arena").await;
+    g.idle(Duration::from_secs(60)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look"]);
+}
