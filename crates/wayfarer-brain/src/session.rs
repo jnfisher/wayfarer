@@ -554,7 +554,8 @@ impl Session {
             if let Some(atlas) = &self.atlas
                 && self.position.event(atlas, &typed).is_some()
             {
-                self.executor.room_seen();
+                self.executor
+                    .room_seen_in(Some(self.position.belief.clone()));
             }
             self.executor.event(&typed);
             combat |= typed == GameEvent::CombatEngaged;
@@ -606,10 +607,6 @@ impl Session {
             self.character.set_updated_seq(chunk.seq);
         }
         if combat && self.walker.walking() {
-            // A move pipelined ahead that has not gone yet is dropped.
-            if self.executor.drop_ahead() {
-                self.walker.ahead_dropped();
-            }
             self.stop_walk("combat started", out);
         }
         self.bot_held(out);
@@ -1514,10 +1511,14 @@ impl Session {
         self.flush_views(out);
     }
 
-    /// Stop walking after the action in flight; at once if none has gone. A loop walk ends.
+    /// Stop walking after the action in flight (and a move pipelined ahead of it that has gone);
+    /// at once if none has gone. A loop walk ends.
     fn stop_walk(&mut self, why: &str, out: &mut Vec<ToGateway>) {
         if let Some(l) = self.loop_walk.take() {
             out.push(self.notice(&format!("Loop {} stopped: {why}", l.name)));
+        }
+        if self.owner == Some(Owner::Walker) && self.executor.drop_ahead() {
+            self.walker.ahead_dropped();
         }
         if self.executor.in_flight().is_none() && self.owner == Some(Owner::Walker) {
             self.executor.cancel();
@@ -1752,9 +1753,14 @@ impl Session {
                         self.owner = Some(Owner::Walker);
                     }
                     self.position.refresh(&atlas, &self.character.snapshot());
-                    let next = self
-                        .walker
-                        .outcome(&mut self.position, &atlas, &action, outcome);
+                    let seen = self.executor.take_belief();
+                    let next = self.walker.outcome(
+                        &mut self.position,
+                        &atlas,
+                        &action,
+                        outcome,
+                        seen.as_ref(),
+                    );
                     self.apply(next, out);
                     // A leg of Task's stops where Fight would take the character.
                     if self.bot_walk

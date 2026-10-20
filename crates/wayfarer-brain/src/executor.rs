@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use tokio::time::Instant;
 use wayfarer_parse::typed::{GameEvent, Refusal};
+use wayfarer_world::Belief;
 
 use crate::commands;
 
@@ -160,6 +161,9 @@ struct Flight {
     action: Action,
     deadline: Instant,
     answer: Option<Outcome>,
+    /// The position belief as the room that answered it left it: with a move ahead, the
+    /// belief may have moved on with that move's room before this one is handed on.
+    belief: Option<Belief>,
 }
 
 impl Flight {
@@ -168,6 +172,7 @@ impl Flight {
             deadline: now + action.timeout,
             action,
             answer: None,
+            belief: None,
         }
     }
 }
@@ -184,6 +189,8 @@ enum Ahead {
 pub struct Executor {
     state: State,
     ahead: Option<Ahead>,
+    /// The belief the last finished action's room left ([`Executor::take_belief`]).
+    finished_belief: Option<Belief>,
 }
 
 impl Default for Executor {
@@ -191,6 +198,7 @@ impl Default for Executor {
         Executor {
             state: State::Idle,
             ahead: None,
+            finished_belief: None,
         }
     }
 }
@@ -320,11 +328,23 @@ impl Executor {
 
     /// A room was shown.
     pub fn room_seen(&mut self) {
+        self.room_seen_in(None);
+    }
+
+    /// A room was shown, and `belief` is the position belief it left.
+    pub fn room_seen_in(&mut self, belief: Option<Belief>) {
         if let Some(f) = self.answering()
             && f.action.expect == Expect::RoomSeen
         {
             f.answer = Some(Outcome::Confirmed(Confirmed::Room));
+            f.belief = belief;
         }
+    }
+
+    /// The belief the room of the action [`Executor::finished`] last handed on left, if one
+    /// was given ([`Executor::room_seen_in`]).
+    pub fn take_belief(&mut self) -> Option<Belief> {
+        self.finished_belief.take()
     }
 
     /// The action in flight is done: answered, and the prompt after the answer came; or its
@@ -341,6 +361,7 @@ impl Executor {
             _ => return None,
         };
         let action = f.action.clone();
+        self.finished_belief = f.belief.clone();
         self.state = match self.ahead.take() {
             Some(Ahead::InFlight(f)) => State::InFlight(f),
             Some(Ahead::Queued(a)) => State::Queued(a),

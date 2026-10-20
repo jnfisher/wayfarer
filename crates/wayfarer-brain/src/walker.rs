@@ -10,7 +10,7 @@
 
 use wayfarer_parse::typed::Refusal;
 use wayfarer_proto::{RoomKey, Walking};
-use wayfarer_world::{Key, Route, mm, route};
+use wayfarer_world::{Belief, Key, Route, mm, route};
 
 use crate::brain::Atlas;
 use crate::executor::{Action, Confirmed, Expect, Outcome, Refused};
@@ -273,13 +273,16 @@ impl Walker {
         next.route_changed = true;
     }
 
-    /// The walk's action is done. The position has already read the room it brought, if any.
+    /// The walk's action is done. The position has already read the room it brought, if any;
+    /// `seen` is the belief as that room left it (with a move ahead, the position may have
+    /// read that move's room too since).
     pub fn outcome(
         &mut self,
         pos: &mut Position,
         atlas: &Atlas,
         action: &Action,
         outcome: Outcome,
+        seen: Option<&Belief>,
     ) -> Next {
         let mut next = Next::default();
         let Some(w) = &mut self.walk else {
@@ -301,7 +304,7 @@ impl Walker {
         let result = match (doing, outcome) {
             (_, Outcome::TimedOut) => Err(format!("no answer to `{}`", action.command)),
             (Doing::Move, Outcome::Confirmed(Confirmed::Room)) => {
-                if pos.belief.contains(step.to) {
+                if seen.unwrap_or(&pos.belief).contains(step.to) {
                     w.next += 1;
                     w.confirmed += 1;
                     w.bashes = 0;

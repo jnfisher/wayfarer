@@ -30,6 +30,8 @@ pub use wayfarer_world::{Key, WorldPack};
 pub const ID: &str = "aldric";
 /// The wall clock's start in the tests: 2026-10-19T12:00:00Z.
 pub const T0: u64 = 1_792_411_200;
+/// A script answer that sends no output: the command's answer came with an earlier one.
+pub const NOTHING: &str = "\0";
 pub const PROMPT: &str = "\x1b[79D\x1b[K\x1b[0;37m[HP=35\x1b[0;37m]:";
 
 pub const VILLAGE_ENTRANCE: Key = (1, 2140);
@@ -386,7 +388,11 @@ impl Game {
                         )
                     }
                 };
-                self.output(&format!("{text}\r\n{answer}")).await;
+                // `NOTHING`: its answer came with the one before (as two pipelined moves'
+                // rooms can, in one chunk).
+                if answer != NOTHING {
+                    self.output(&format!("{text}\r\n{answer}")).await;
+                }
             }
             _ => {}
         }

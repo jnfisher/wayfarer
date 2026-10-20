@@ -174,6 +174,26 @@ async fn moves_along_a_known_route_are_pipelined_two_at_a_time() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn two_rooms_in_one_chunk_confirm_both_pipelined_moves() {
+    // Seen live: the game answered both `w`s before the brain read either, and both rooms came
+    // in one chunk. Each move is confirmed by its own room, not by where the belief ended up.
+    let (mut g, run) = ready_at(VILLAGE_ENTRANCE).await;
+    g.expect("w", format!("{}w\r\n{}", room(NARROW_PATH), room(NARROW_ROAD)));
+    g.expect("w", NOTHING);
+    g.expect("d", arena(&[], 35));
+    g.run_loop(&[SMALL_CAVERN]).await;
+    let said = g.narrated("Stop 1/3 cleared: nothing there").await;
+    assert!(!said.iter().any(|s| s.starts_with("Replanned")), "{said:?}");
+    assert_eq!(g.ahead, ["w", "d"]);
+    g.expect("n", says("The door is closed!"));
+    g.expect("bash n", says("You bashed the door open."));
+    g.expect("n", dungeon_entrance());
+    g.expect("s", arena(&[], 35));
+    g.narrated("Waiting for respawns: next in 1 m").await;
+    g.close(run).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_room_that_disagrees_voids_the_move_ahead_and_the_walk_replans() {
     // The brain believes it is at the Village Entrance; the first `w` shows the Narrow Road
     // (it was on the Narrow Path). The second `w`, already gone, is refused there.

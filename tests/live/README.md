@@ -202,7 +202,7 @@ Steps 1 to 3 of "fight" (to the Arena, Start), then, from the check's own WebSoc
 
 The brain's log is `NN-typing/brain.log`.
 
-## Scenario "loop" (M2, generated loops)
+## Scenario "loop" (M2, generated loops; C-030, running one)
 
 ```sh
 scripts/live-check.sh --scenario loop
@@ -221,8 +221,17 @@ It claims and logs on a character, then:
    loop spawns monsters, and a fight stops a walk, so the check never walks one round; the
    in-process tests (`crates/wayfarer-brain/tests/loops.rs`) walk the whole loop and back.
    If the character did reach the Arena, it walks out as in "fight" and the step fails.
-5. **A walk back** to the Village Entrance, then **stopping the brain**, and the gateway logs
-   off as in M0.
+5. **A walk back** to the Village Entrance.
+6. **`run_loop`** on it for five minutes, the Small Cavern unticked (its cave bears are too
+   much for a level-1 character): the bot walks to the Arena, fights there, goes on through
+   the Arena's door to the Dungeon Entrance, back to the Arena, and waits for respawns when no
+   stop is ready. The step passes when, after the five minutes, the bot is still running (no
+   death, never stopped itself), the Arena was cleared with at least one kill, both ticked
+   stops were cleared, the Small Cavern was never walked to, and no walk back to the Dungeon
+   Entrance started within a minute (its `regendelay`) of clearing it. Its note has the run's
+   numbers: kills, exp per hour, flees, rests, legs, waits.
+7. **Stop**, **walk out** to the Narrow Road, **rest by hand** if HP is low, **stopping the
+   brain**, and the gateway logs off as in M0.
 
 The brain's log is `NN-loop/brain.log`.
 

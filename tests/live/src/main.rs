@@ -1145,20 +1145,7 @@ async fn run_the_loop(ctx: &mut Ctx, gw: &mut Gateway, id: &str) -> bool {
     let started = Instant::now();
     let from = gw.notices.len();
     let warned = gw.warnings.len();
-    let ran = match gw.run_loop(id, &[SMALL_CAVERN]).await {
-        Ok(()) => {
-            // Until the run's time is up, or the bot stops (a death, or stopping itself).
-            let end = Instant::now() + LOOP_RUN;
-            let _ = gw
-                .wait_for(LOOP_RUN, "the run's end", |g| {
-                    (Instant::now() >= end || bot_field(&g.character, "state") == Some("stopped"))
-                        .then_some(())
-                })
-                .await;
-            judge_the_run(gw, from, warned)
-        }
-        Err(e) => Err(e),
-    };
+    let ran = run_for(gw, id, from, warned).await;
     ctx.record(
         &format!("run_loop for {} minutes", LOOP_RUN.as_secs() / 60),
         started,
@@ -1184,6 +1171,24 @@ async fn run_the_loop(ctx: &mut Ctx, gw: &mut Gateway, id: &str) -> bool {
     let out = walk_out(ctx, gw).await;
     let rested = rest_by_hand(ctx, gw).await;
     ran.is_ok() && stopped.is_ok() && out && rested
+}
+
+/// `run_loop`, the bot running, then followed until [`LOOP_RUN`] is up or it stops (a death,
+/// or stopping itself); the verdict.
+async fn run_for(gw: &mut Gateway, id: &str, from: usize, warned: usize) -> Result<String, String> {
+    gw.run_loop(id, &[SMALL_CAVERN]).await?;
+    gw.wait_for(Duration::from_secs(10), "the bot running", |g| {
+        (bot_field(&g.character, "state") == Some("running")).then_some(())
+    })
+    .await?;
+    let end = Instant::now() + LOOP_RUN;
+    let _ = gw
+        .wait_for(LOOP_RUN, "the run's end", |g| {
+            (Instant::now() >= end || bot_field(&g.character, "state") == Some("stopped"))
+                .then_some(())
+        })
+        .await;
+    judge_the_run(gw, from, warned)
 }
 
 /// The run's verdict from the notices and warnings since `from` and `warned`: a summary, or
