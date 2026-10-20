@@ -73,6 +73,27 @@ send = "{password}"
 timeout = 10                # seconds (30 if not given)
 ```
 
+The log-off steps are `[[logoff]]` tables (`[[server.logon.logoff]]` in a server's own
+script): the first is sent at the realm, each later one when its `at` text shows, and
+`timeout` (20 s if not given) is how long to wait for the next step's `at`, from the step's
+first send. A step can name texts that mean "not yet":
+
+```toml
+[[logoff]]
+send = "x"
+retry_on = ["meditation has been interrupted"]  # substrings, or 're:...'
+retries = 20                # sends after the first (20 if not given)
+timeout = 240               # covers every retry
+
+[[logoff]]
+at = "[MAJORMUD]:"
+send = "X"
+```
+
+On a `retry_on` text the step is sent again when its place shows again (the realm prompt, for
+the first step), up to `retries` times and within its `timeout`. Both presets retry the realm
+step this way.
+
 A session's state shows where it is: `connecting`, `logon` while the script runs, `menu` at
 the BBS or MajorMUD menu, `realm` at the realm prompt. After that the gateway follows the text,
 so a player who leaves the realm by hand is shown at the `menu`. You can type into the session
@@ -95,10 +116,30 @@ reconnects after 5 s, then 10 s, 30 s, and every 60 s after that, until a logon 
 attempt is a line in the gateway's log. A session you close is never reconnected.
 
 Dropping a character in the realm is punished the next time it enters, so closing a session
-logs it off first: from the realm `x` (the character meditates, which can take a while), `X` at
-the MajorMUD menu, `X` at the BBS menu and `Y` to confirm; from a menu, only the steps that are
-left. Stopping the gateway (Ctrl-C or SIGTERM) logs every character off at once, waits up to
-two minutes for them, then disconnects whatever is left. A second Ctrl-C disconnects at once.
+logs it off first: from the realm `x` (the character meditates for six ticks), `X` at the
+MajorMUD menu, `X` at the BBS menu and `Y` to confirm; from a menu, only the steps that are
+left.
+
+`x` works in a fight too (it ends auto-combat), but any attack during the meditation, a miss
+as much as a hit, interrupts it: `Your meditation has been interrupted - you may not exit
+now!` (`docs/kb/recovery.md`). The gateway then sends `x` again at the next prompt, up to 20
+times within four minutes, so it gets out as soon as a meditation passes with nothing
+attacking: the attacker left or died, or the character got away. A monster that keeps
+attacking interrupts every try (the bot fleeing first, C-028, is what gets the character
+out). Each retry is a line in the gateway's log (`log-off interrupted: "x" again (3 of 20)`)
+and goes to the brain as `sent` like any line.
+
+Stopping the gateway (Ctrl-C or SIGTERM) logs every character off at once. With a brain
+attached it first tells the brain (`logging_off`) for each character in the realm and waits up
+to 30 s for its `ready_to_leave` (the brain stops that character's bot; from C-028 it flees a
+fight first), or for the brain to go. The brain's connection, and the UIs', stay open until
+every log-off has finished; then the gateway closes them and exits. It waits up to six minutes
+in all, then disconnects whatever is left. A second Ctrl-C disconnects at once.
+
+When a character has to be left in the realm (every retry interrupted, the step's timeout or
+the six minutes run out, or a second Ctrl-C), the gateway logs a warning naming it, "dropped in
+the realm ... the game punishes it at the next entry", and the session's reason says "dropped
+in the realm: ...".
 
 ## Logs
 

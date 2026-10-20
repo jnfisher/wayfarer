@@ -8,7 +8,8 @@
 //! the pull request. `--scenario brain` (M1) instead attaches `wayfarer brain` to that gateway
 //! and checks its snapshot, its re-sync and that stopping it logs nobody off. `--scenario
 //! walk` (M2) has that brain walk the character to a room a few steps away and back, and
-//! `--scenario fight` walks it to the Newhaven Arena and starts the bot there.
+//! `--scenario fight` walks it to the Newhaven Arena and starts the bot there;
+//! `--scenario under-attack` then stops the gateway while a monster is attacking.
 
 mod brain;
 mod claim;
@@ -57,6 +58,11 @@ enum Scenario {
     /// M2's "fight here": in the Newhaven Arena, the bot fights, then is stopped; the
     /// character walks out and logs off.
     Fight,
+    /// C-027: as "fight", but the gateway is stopped while a monster attacks, the brain still
+    /// attached; then the next logon is checked and the character walks out of the Arena by
+    /// hand. Until the brain flees before leaving (C-028), the monster interrupts every `x`
+    /// and the character is dropped in the realm (`docs/kb/recovery.md`).
+    UnderAttack,
     /// M2's generated loops: the Newhaven loop is listed, and `walk_loop` starts on it and is
     /// stopped before the Arena (its monsters would start a fight).
     Loop,
@@ -65,7 +71,7 @@ enum Scenario {
 fn usage() -> ! {
     eprintln!(
         "usage: wayfarer-live --wayfarer BIN --out DIR [--addr HOST:PORT] [--pool FILE] \
-         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop]\n(run it through \
+         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack]\n(run it through \
          scripts/live-check.sh)"
     );
     std::process::exit(2);
@@ -99,6 +105,7 @@ fn args() -> Args {
                     "walk" => Scenario::Walk,
                     "fight" => Scenario::Fight,
                     "loop" => Scenario::Loop,
+                    "under-attack" => Scenario::UnderAttack,
                     _ => usage(),
                 }
             }
@@ -475,14 +482,21 @@ async fn run(ctx: &mut Ctx, pool: &Pool) -> Result<String, String> {
         stop(ctx, "stop the gateway: log off", gw).await;
         return Err(who);
     }
-    if ctx.args.scenario == Scenario::Fight {
-        let fought = fight_scenario(ctx, &mut gw).await;
-        let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
-        return if fought && logged_off {
-            Ok(who)
-        } else {
-            Err(who)
+    if matches!(ctx.args.scenario, Scenario::Fight | Scenario::UnderAttack) {
+        let under_attack = ctx.args.scenario == Scenario::UnderAttack;
+        let ok = match fight_scenario(ctx, &mut gw, under_attack).await {
+            Fought::UnderAttack(running) => {
+                let left = logoff_under_attack(ctx, gw).await;
+                let brain = stop_brain(ctx, running).await;
+                let again = log_on_again(ctx, fixture, true).await;
+                left && brain && again
+            }
+            Fought::Out(fought) => {
+                let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
+                fought && logged_off
+            }
         };
+        return if ok { Ok(who) } else { Err(who) };
     }
     if ctx.args.scenario == Scenario::Loop {
         let looped = loop_scenario(ctx, &mut gw).await;
@@ -523,15 +537,34 @@ async fn run(ctx: &mut Ctx, pool: &Pool) -> Result<String, String> {
     }
 
     // 4. The next logon is not punished.
+    log_on_again(ctx, fixture, false).await;
+    Ok(who)
+}
+
+/// Log on again and check nothing says the character was punished; out of the Arena first
+/// (`u`, the stairs up to the Narrow Road) when `leave_arena` and it is there; then log off.
+/// Whether every step passed.
+async fn log_on_again(ctx: &mut Ctx, fixture: &Fixture, leave_arena: bool) -> bool {
     let started = Instant::now();
-    let password = Passwords::load(&ctx.args.credentials)?
-        .get(&fixture.account)
-        .map(str::to_owned)
-        .ok_or("the password went missing from .credentials.toml")?;
-    let mut gw = ctx.start("relogon", fixture, &password, false).await?;
+    let password = Passwords::load(&ctx.args.credentials)
+        .ok()
+        .and_then(|p| p.get(&fixture.account).map(str::to_owned));
+    let Some(password) = password else {
+        let e = "the password went missing from .credentials.toml".to_owned();
+        ctx.record("log on again: not punished", started, &Err(e));
+        return false;
+    };
+    let mut gw = match ctx.start("relogon", fixture, &password, false).await {
+        Ok(gw) => gw,
+        Err(e) => {
+            ctx.record("log on again: not punished", started, &Err(e));
+            return false;
+        }
+    };
+    // The state can come before the output that shows the realm: wait for its prompt too.
     let again = gw
         .wait_for(LOGON_TIMEOUT, "the realm prompt", |g| {
-            (g.state == SessionState::Realm).then_some(())
+            (g.state == SessionState::Realm && g.transcript().contains("[HP=")).then_some(())
         })
         .await
         .and_then(|()| {
@@ -542,8 +575,68 @@ async fn run(ctx: &mut Ctx, pool: &Pool) -> Result<String, String> {
             }
         });
     ctx.record("log on again: not punished", started, &again);
-    stop(ctx, "stop the gateway: log off", gw).await;
-    Ok(who)
+    let mut out = true;
+    // Punished or not, a character left in the Arena is walked out before it logs off.
+    let in_arena = gw.transcript().contains("Arena");
+    if leave_arena && in_arena {
+        let started = Instant::now();
+        let left = leave_the_arena(&mut gw).await;
+        out = left.is_ok();
+        ctx.record("out of the Arena by hand", started, &left);
+    }
+    let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
+    again.is_ok() && out && logged_off
+}
+
+/// `u` up the stairs to the Narrow Road, again if a move is refused (a monster's attack).
+async fn leave_the_arena(gw: &mut Gateway) -> Result<String, String> {
+    let mut last = Err("not tried".to_owned());
+    for _ in 0..3 {
+        let seq = gw.last_seq();
+        gw.send_line("u").await?;
+        last = gw
+            .wait_for(Duration::from_secs(15), "the Narrow Road", |g| {
+                screen::plain(&g.text_after(seq))
+                    .contains("Narrow Road")
+                    .then(|| "up the stairs to the Narrow Road".to_owned())
+            })
+            .await;
+        if last.is_ok() {
+            break;
+        }
+    }
+    last
+}
+
+/// Stop the gateway (SIGTERM) with the brain attached and a monster attacking: the brain is
+/// asked first, and the log-off keeps sending `x` until the character is out. Whether it
+/// logged off cleanly.
+async fn logoff_under_attack(ctx: &mut Ctx, gw: Gateway) -> bool {
+    let started = Instant::now();
+    let stopped = gw.stop().await;
+    let lines = |s: &str| stopped.log.iter().filter(|l| l.contains(s)).count();
+    let retries = lines("log-off interrupted");
+    let result = if !stopped.clean {
+        Err(format!(
+            "{} (`x` sent again {retries} times)",
+            stopped.detail
+        ))
+    } else if lines("the brain is ready") == 0 {
+        Err("the brain did not answer logging_off".to_owned())
+    } else if retries == 0 {
+        Ok(format!(
+            "{}; the brain answered ready_to_leave; nothing attacked during the meditation, \
+             so no retry was needed",
+            stopped.detail
+        ))
+    } else {
+        Ok(format!(
+            "{}; `x` sent again {retries} times; the brain answered ready_to_leave",
+            stopped.detail
+        ))
+    };
+    ctx.record("stop the gateway under attack: log off", started, &result);
+    result.is_ok()
 }
 
 /// The brain scenario, with the gateway in the realm; whether it got as far as stopping the
@@ -1001,6 +1094,9 @@ const FIGHT_TIMEOUT: Duration = Duration::from_secs(180);
 const SETTLE_TIMEOUT: Duration = Duration::from_secs(180);
 /// How long it waits for a fight to end by itself before walking out anyway.
 const FIGHT_END: Duration = Duration::from_secs(60);
+/// How long, after the first kill, for the bot to be fighting again with HP to spare (it may
+/// walk out to rest and come back first).
+const UNDER_ATTACK_TIMEOUT: Duration = Duration::from_secs(600);
 
 fn bot_field<'a>(c: &'a serde_json::Value, field: &str) -> Option<&'a str> {
     c.get("bot")?.get(field)?.as_str()
@@ -1010,18 +1106,51 @@ fn hp(c: &serde_json::Value) -> Option<(i64, i64)> {
     Some((c.get("hp")?.as_i64()?, c.get("hp_max")?.as_i64()?))
 }
 
+/// How the fight scenario ended.
+enum Fought {
+    /// Fighting in the Arena with HP to spare, the brain still attached: stop the gateway now.
+    UnderAttack(brain::Brain),
+    /// Out of the Arena, the brain stopped; whether all of it went.
+    Out(bool),
+}
+
 /// The fight scenario, with the gateway in the realm: a brain; a walk to the Arena; Start;
-/// `*Combat Engaged*` within a minute and then a kill or the bot stopping itself, HP tracked;
-/// Stop; the fight left to end; a walk out to the Narrow Road; rest by hand if HP is low; the
-/// brain stopped. Whether all of it went.
-async fn fight_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
+/// `*Combat Engaged*` within a minute and then a kill or the bot stopping itself, HP tracked.
+/// With `under_attack`, then the bot fighting again with HP to spare (it rests first if it
+/// must), for the gateway to be stopped under attack. Otherwise, or if that never comes: Stop;
+/// the fight left to end; a walk out to the Narrow Road; rest by hand if HP is low; the brain
+/// stopped.
+async fn fight_scenario(ctx: &mut Ctx, gw: &mut Gateway, under_attack: bool) -> Fought {
     use wayfarer_proto::BotAction;
 
     // 1. The brain attaches and re-syncs.
     let Some((running, start)) = placed_brain(ctx, gw, "fight").await else {
-        return false;
+        return Fought::Out(false);
     };
     let ok = fight_in_the_arena(ctx, gw, start).await;
+
+    // 5. A monster attacking, the bot fighting it, HP to spare.
+    if ok && under_attack {
+        let started = Instant::now();
+        let ready = gw
+            .wait_for(UNDER_ATTACK_TIMEOUT, "a fight with HP to spare", |g| {
+                let c = &g.character;
+                if bot_field(c, "state") == Some("stopped") {
+                    let why = bot_field(c, "narration").unwrap_or("");
+                    return Some(Err(format!("the bot stopped: {why}")));
+                }
+                let (now, max) = hp(c)?;
+                let engaged = c.get("in_combat").and_then(serde_json::Value::as_bool);
+                (engaged == Some(true) && now * 10 >= max * 6)
+                    .then(|| Ok(format!("engaged at {now}/{max} HP")))
+            })
+            .await
+            .and_then(|r| r);
+        ctx.record("a monster attacking, HP 60% or more", started, &ready);
+        if ready.is_ok() {
+            return Fought::UnderAttack(running);
+        }
+    }
 
     // Whatever happened: the bot stopped, out of the Arena, HP back before logging off.
     let started = Instant::now();
@@ -1041,7 +1170,9 @@ async fn fight_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
     ctx.record("stop the bot", started, &stopped);
     let out = walk_out(ctx, gw).await;
     let rested = rest_by_hand(ctx, gw).await;
-    stop_brain(ctx, running).await && ok && stopped.is_ok() && out && rested
+    let brain = stop_brain(ctx, running).await;
+    // With `under_attack`, its step was not reached: the scenario fails whatever else went.
+    Fought::Out(brain && ok && stopped.is_ok() && out && rested && !under_attack)
 }
 
 /// Steps 2 to 4 of the fight scenario: the walk there, Start, the fight.

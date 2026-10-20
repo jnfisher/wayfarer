@@ -19,7 +19,7 @@ use wayfarer_telnet::{Capture, Telnet};
 
 use crate::config::Login;
 use crate::log::OutputLog;
-use crate::logon::{self, Action, Logoff, Place, Runner, Script, Tracker};
+use crate::logon::{self, Action, Logoff, LogoffAction, Place, Runner, Script, Tracker};
 
 /// What `sent.bin` records instead of a password.
 pub(crate) const MASK: &str = "********";
@@ -205,6 +205,17 @@ impl Slot {
     pub fn running(&self) -> std::sync::MutexGuard<'_, Option<Running>> {
         self.running.lock().unwrap_or_else(|e| e.into_inner())
     }
+
+    /// Say loudly that the character is being left in the realm, which the game punishes at
+    /// the next entry (`kb/connection.md`); the session's reason says so too.
+    fn dropped(&self, why: &str) -> Option<String> {
+        tracing::warn!(
+            session = %self.id,
+            "{} dropped in the realm: {why}; the game punishes it at the next entry",
+            self.name
+        );
+        Some(format!("dropped in the realm: {why}"))
+    }
 }
 
 /// The session task: connect and pump until a `Close` (`closed`, after a clean log-off) or a
@@ -383,13 +394,28 @@ async fn connection(
                     }
                 }
                 if let Some(l) = logoff.as_mut() {
-                    for line in l.feed(text) {
+                    for action in l.feed(text) {
+                        let line = match action {
+                            LogoffAction::Send(line) => {
+                                // The next step's timeout runs from here.
+                                deadline = Some(Instant::now() + l.timeout());
+                                line
+                            }
+                            LogoffAction::Retry { send, retry, of } => {
+                                tracing::info!(session = %slot.id, "log-off interrupted: {send:?} again ({retry} of {of})");
+                                send
+                            }
+                            LogoffAction::GiveUp => {
+                                let reason = slot.dropped("the log-off was interrupted every time");
+                                let _ = writer.shutdown().await;
+                                return End::Closed { acks, reason };
+                            }
+                        };
                         let bytes = telnet.encode_line(&line);
                         if let Err(e) = write(slot, &mut writer, capture, &bytes, &bytes).await {
                             return End::Lost(e);
                         }
                         slot.sent_line(line);
-                        deadline = Some(Instant::now() + l.timeout());
                     }
                 }
             }
@@ -426,8 +452,10 @@ async fn connection(
                     }
                     Some(Command::Hangup(ack)) => {
                         acks.push(ack);
+                        let in_realm = tracker.as_ref().and_then(Tracker::place) == Some(Place::Realm);
+                        let reason = if in_realm { slot.dropped("closed at once") } else { None };
                         let _ = writer.shutdown().await;
-                        return End::closed(acks);
+                        return End::Closed { acks, reason };
                     }
                     // The gateway is gone.
                     None => return End::closed(acks),
@@ -441,10 +469,11 @@ async fn connection(
             }
             () = tokio::time::sleep_until(deadline.unwrap_or_else(Instant::now)), if deadline.is_some() => {
                 deadline = None;
-                if logoff.is_some() {
+                if let Some(l) = &logoff {
                     tracing::warn!(session = %slot.id, "log-off timed out; closing");
+                    let reason = if l.in_realm() { slot.dropped("the log-off timed out") } else { None };
                     let _ = writer.shutdown().await;
-                    return End::closed(acks);
+                    return End::Closed { acks, reason };
                 }
                 match &runner {
                     Some(r) if r.waiting_for_realm() => {

@@ -5,7 +5,9 @@ session's output, keeps a character model per session, sends the UIs events and 
 re-syncs a character (`st`, `exp`, `i`, `look`) at an idle prompt, and with a world pack keeps
 each character's position, serves the map panel (`map_view`), walks a character to a room
 (`walk_to`), lists the loops of an area and walks one once (`loops_request`, `walk_loop`), and
-plays it where it stands (`bot_control`: "fight here"). Depends on
+plays it where it stands (`bot_control`: "fight here"). When the gateway is about to log a
+character off (`logging_off`) it stops that character's bot, sends it nothing more and answers
+`ready_to_leave`. Depends on
 `wayfarer-proto`, `wayfarer-parse` and `wayfarer-world`, not on the gateway.
 
 ```rust
@@ -54,7 +56,8 @@ capture and the pack built from `tests/fixtures/world`): confirmed steps, doors,
 refusals, "no exit", the stops, the map view. `tests/fight.rs` starts the bot in the Arena
 against the same fake game (texts from the `fight-arena` capture): one attack per target,
 nothing while engaged, the look after a kill, an arrival, resting in a quiet room and walking
-back, the stop below 30%, pause, take-over and resume, determinism, and the policies on the
-pack. `tests/loops.rs`: the Newhaven loops, `walk_loop` round the stops and back, from the
+back, the stop below 30%, pause, take-over and resume, determinism, `logging_off`, Recover's
+two fallbacks narrated, knocked down not counting as quiet, players not taken for attackers,
+`in_combat` going false when a fight lapses, and the policies on the pack. `tests/loops.rs`: the Newhaven loops, `walk_loop` round the stops and back, from the
 nearest stop, and its stops. The live scenarios: `scripts/live-check.sh --scenario brain`,
 `--scenario walk`, `--scenario fight` and `--scenario loop`.

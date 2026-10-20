@@ -19,7 +19,8 @@ gw.shutdown_on_signal().await?;                     // Ctrl-C/SIGTERM: everyone 
 - **`Gateway`** is an `Arc` handle (clone it freely). `sessions()` lists every character with
   its state and `last_seq`; `state_changes()` streams `StateChange`s. Dropping the last clone
   aborts every session at once, logged off or not (which the game punishes): `shutdown()`
-  logs them all off in parallel, giving up after `Options::logoff_patience` (120 s);
+  logs them all off in parallel, giving up after `Options::logoff_patience` (360 s);
+  `shutdown_after(ready)` first waits for `ready(id)` for each session in the realm;
   `shutdown_now()` and `close_now(id)` disconnect at once; `shutdown_unless(now)` is `shutdown()`
   until `now` completes. `shutdown_on_signal()` (for a program without the server) and `serve`
   share `stop_signals()`: the first SIGINT or SIGTERM shuts down cleanly, a second one at once.
@@ -31,7 +32,11 @@ gw.shutdown_on_signal().await?;                     // Ctrl-C/SIGTERM: everyone 
   `Runner` answers the server's prompts (steps `{expect, send, optional, timeout}`, then the
   `realm` prompt) and reports failures (`Invalid Credentials`: close; "already logged in":
   retry); a `Tracker` follows every chunk to the latest place shown (the realm prompt or a
-  log-off step's prompt); a `Logoff` sends the log-off steps from that place. Matching is on a
+  log-off step's prompt); a `Logoff` sends the log-off steps from that place, and a step
+  answered by one of its `retry_on` texts again at its place's next prompt, up to `retries`
+  times (`LogoffAction::Retry`, then `GiveUp`). Leaving a character in the realm (given up,
+  timed out, or hung up on) logs a warning, "dropped in the realm", and sets the session's
+  reason. Matching is on a
   rolling window of recent text with ANSI escapes removed, consumed to the end of each match.
   The presets (`src/presets/*.toml`) are compiled in; `Server::script()` lays a server's
   `[server.logon]` table over its preset.
@@ -123,11 +128,13 @@ refuses to start until `wayfarer gateway --new-token` has written `gateway-token
 beside `wayfarer.toml`) and printed it once; every client must then send it, and a missing or
 wrong one gets `refused`. Running `--new-token` again replaces the token.
 
-**Stopping.** SIGINT or SIGTERM stops accepting, ends the connections (`Hub::stop`, channel
-ones included) and logs every
-character off (`Gateway::shutdown`: in parallel, up to 120 s) before the process exits. A
-second signal during the log-off closes what is left at once (`shutdown_now`), which the game
-punishes. `serve` takes the stops as a stream (`stop_signals()` in the binary), so tests drive
+**Stopping.** SIGINT or SIGTERM stops accepting and logs every character off
+(`Hub::shutdown_unless`, over `Gateway::shutdown_after`: in parallel, up to 360 s). For each
+session in the realm the brain gets `logging_off` first, and the log-off waits for its
+`ready_to_leave` (`LEAVE_PATIENCE`, 30 s) or for the brain to go. Only once every log-off has
+finished or given up are the connections ended (`Hub::stop`, channel ones included), so the
+brain hears the log-off. A second signal during the log-off closes what is left at once
+(`shutdown_now`), which the game punishes. `serve` takes the stops as a stream (`stop_signals()` in the binary), so tests drive
 it with a channel.
 
 ## Files

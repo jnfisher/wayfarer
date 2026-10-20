@@ -101,6 +101,36 @@ It claims and logs on a character (level 3 or below: the pool's are level 1), th
 
 The brain's log is `NN-fight/brain.log`.
 
+## Scenario "under-attack" (C-027, log-off under attack)
+
+```sh
+scripts/live-check.sh --scenario under-attack
+```
+
+Steps 1 to 4 of "fight", then:
+
+5. **A monster attacking, HP to spare**: within ten minutes the bot is engaged again (the
+   Arena's monsters come back at once) with HP at 60% or more; it rests first if it must.
+6. **Stop the gateway under attack**: SIGTERM with the brain still attached and the fight
+   going on. It passes when the gateway's log shows the brain answering `logging_off` and the
+   log-off finishing (`x` sent again after each `Your meditation has been interrupted`,
+   counted in the summary) with the session `Closed`; a time-out, a hang-up or "dropped in the
+   realm" fails it.
+7. **Stopping the brain**.
+8. **Log on again: not punished**, as in M0; then **out of the Arena by hand** (`u` to the
+   Narrow Road, so the next check starts somewhere quiet; done punished or not) and the
+   gateway logs off.
+
+**It fails at step 6 until the brain flees before answering `ready_to_leave` (C-028).** Every
+attack on a character waiting to exit cancels the exit, a miss as much as a hit
+(`docs/kb/recovery.md`, "An attack cancels the exit"), and `x` ends the character's own
+auto-combat, so an Arena monster interrupts every try: after twenty the gateway drops the
+character, says so, and step 8 shows the punishment. Run it on purpose, with a pool
+character, not as a routine check.
+
+If step 5 never comes (the bot stopped itself, say), it fails there and tidies up as "fight"
+does.
+
 ## Scenario "loop" (M2, generated loops)
 
 ```sh

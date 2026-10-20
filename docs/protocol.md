@@ -126,12 +126,19 @@ typed line always comes after its `sent`. UIs never get `sent`.
 | `sent {session, seq, text}` | gateway → brain | A line went to the game: typed by any client (`input_line`; not `input_keys`), or sent by a logon or log-off step, after it was written to the socket. `seq` is the session's latest output `seq` at that moment. A password, or a typed line equal to it, is `********` |
 | `brain_state {attached}` | gateway → UIs | Whether a brain is attached: right after `welcome`, then whenever one attaches or leaves |
 | `brain_lagged {missed}` | gateway → UI | The UI read too slowly and `missed` relayed brain messages were dropped for it. Recover with `state_request` |
+| `logging_off {session}` | gateway → brain | The gateway is stopping and is about to log this session off (sent only for a session in the realm). The brain stops playing the character and answers `ready_to_leave` |
+| `ready_to_leave {session}` | brain → gateway | The brain sends the session nothing more: the log-off may start. The gateway waits for it up to 30 s after `logging_off`, or until the brain goes; never relayed, and refused from a UI |
 
 ```json
 {"type":"sent","session":"kasimir","seq":42,"text":"********"}
 {"type":"brain_state","attached":true}
 {"type":"brain_lagged","missed":17}
+{"type":"logging_off","session":"kasimir"}
+{"type":"ready_to_leave","session":"kasimir"}
 ```
+
+When the gateway stops, the brain's connection (and every UI's) stays open until every
+log-off has finished or given up; only then does the gateway close it.
 
 ### Events, state and dev (brain → UIs)
 

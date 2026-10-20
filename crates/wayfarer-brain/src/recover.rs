@@ -28,6 +28,8 @@ pub(crate) struct Recover {
     rests: u32,
     /// Don't send `rest` before this (too sick, or it would not take).
     wait_until: Option<Instant>,
+    /// Resting in a room that spawns after the walks out were stopped has been warned of.
+    warned: bool,
 }
 
 impl Recover {
@@ -110,6 +112,14 @@ impl Mode for Recover {
             self.rests = 0;
             return Step::wait(format!("Recover: resting to {REST_UNTIL}% in {here}"));
         }
+        // Every walk out was stopped on the way (a fight) and a quiet room is still near:
+        // resting here goes against the quiet-room rule (`kb/pitfalls.md` 20, 24). Said once.
+        let against_the_rule = self.walks_out >= WALKS
+            && !self.warned
+            && matches!(
+                rest_at(v.atlas, v.room, v.certain, v.traveller),
+                RestAt::Walk(_)
+            );
         if self.walks_out < WALKS {
             match rest_at(v.atlas, v.room, v.certain, v.traveller) {
                 RestAt::Walk(quiet) => {
@@ -138,10 +148,19 @@ impl Mode for Recover {
             return Step::wait(format!("Recover: can't rest in {here}; waiting"));
         }
         self.rests += 1;
-        Step::send(
-            Action::new("rest", Expect::Prompt),
-            format!("Recover: resting to {REST_UNTIL}% in {here}"),
-        )
+        let rest = Action::new("rest", Expect::Prompt);
+        if against_the_rule {
+            self.warned = true;
+            return Step::send(
+                rest,
+                format!(
+                    "Recover: resting in {here} though it spawns: {WALKS} walks to a quiet \
+                     room were stopped"
+                ),
+            )
+            .warning();
+        }
+        Step::send(rest, format!("Recover: resting to {REST_UNTIL}% in {here}"))
     }
 
     fn on_event(&mut self, ev: &GameEvent, now: Instant) {
@@ -166,6 +185,12 @@ impl Recover {
     /// Still recovering (it has not finished since it took control).
     pub fn busy(&self) -> bool {
         self.active
+    }
+
+    /// Rested, but away from home after [`WALKS`] walks back that did not get there: it
+    /// waits where it is.
+    pub fn stranded(&self, v: &View) -> bool {
+        self.active && Self::rested(v) && self.away(v) && self.walks_back >= WALKS
     }
 
     /// When a wait ends, for the clock to wake the bot.

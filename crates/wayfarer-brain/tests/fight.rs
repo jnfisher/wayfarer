@@ -624,6 +624,230 @@ async fn the_bot_needs_the_realm() {
     assert_eq!(bot(&seen).state, BotState::Stopped);
 }
 
+// Log-off under attack (C-027) and the wave 3 follow-ups.
+
+/// A move refused for combat (`exit_combat`): the walk ends where it is.
+fn refused_in_combat(hp: i32) -> String {
+    line("You may not enter that room while in combat.", hp)
+}
+
+#[tokio::test(start_paused = true)]
+async fn logging_off_stops_the_bot_answers_ready_to_leave_and_sends_nothing_more() {
+    let (mut g, run) = in_arena(&["large giant rat"]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    g.send(ToClient::LoggingOff { session: ID.into() }).await;
+    g.narrated("Stopped: the gateway is logging off").await;
+    let ready = g
+        .until(|m| match m {
+            ToGateway::ReadyToLeave { session } => Some(session.clone()),
+            _ => None,
+        })
+        .await;
+    assert_eq!(ready, ID);
+    // The gateway's `x`, interrupted; a re-sync asked for; the fight going on: nothing goes.
+    g.typed("x").await;
+    g.output(&line(
+        "Your meditation has been interrupted - you may not exit now!",
+        33,
+    ))
+    .await;
+    g.send(ToClient::Resync { session: ID.into() }).await;
+    for _ in 0..5 {
+        g.round("The large giant rat lunges at you!", 31).await;
+    }
+    g.idle(Duration::from_secs(60)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat"]);
+    assert_eq!(bot(&seen).state, BotState::Stopped);
+    let ready = seen
+        .iter()
+        .position(|m| matches!(m, ToGateway::ReadyToLeave { .. }))
+        .unwrap();
+    let after: Vec<_> = seen[ready..]
+        .iter()
+        .filter(|m| matches!(m, ToGateway::InputLine { .. }))
+        .collect();
+    assert!(after.is_empty(), "{after:?}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn logging_off_is_answered_with_no_bot_and_for_an_unknown_session() {
+    let (mut g, run) = in_arena(&[]).await;
+    for session in [ID, "nobody"] {
+        g.send(ToClient::LoggingOff {
+            session: session.into(),
+        })
+        .await;
+        let ready = g
+            .until(|m| match m {
+                ToGateway::ReadyToLeave { session } => Some(session.clone()),
+                _ => None,
+            })
+            .await;
+        assert_eq!(ready, session);
+    }
+    let (_, played) = g.close(run).await;
+    assert!(played.is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn after_two_failed_walks_home_it_says_it_could_not_walk_home() {
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 20).await;
+    g.expect("u", at_hp(&room(NARROW_ROAD), 20));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
+    g.narrated("Recover: resting to 95% in Newhaven, Narrow Road")
+        .await;
+    g.idle(Duration::from_secs(20)).await;
+    g.expect("d", refused_in_combat(34));
+    g.expect("d", refused_in_combat(34));
+    g.output(&resting(34)).await;
+    let said = g
+        .narrated("Rested; could not walk home, waiting here")
+        .await;
+    assert_eq!(
+        said.iter()
+            .filter(|n| *n == "Walking to Newhaven, Arena: one step")
+            .count(),
+        2,
+        "{said:?}"
+    );
+    // Bounded: no third walk.
+    g.idle(Duration::from_secs(60)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u", "rest", "d", "d"]);
+    let b = bot(&seen);
+    assert_eq!(b.narration, "Rested; could not walk home, waiting here");
+    assert!(
+        seen.iter()
+            .any(|m| matches!(m, ToGateway::Notice { text, .. }
+            if text == "Rested; could not walk home, waiting here")),
+        "a notice"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn after_two_interrupted_walks_out_it_warns_that_it_rests_in_a_spawning_room() {
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 20).await;
+    g.expect("u", refused_in_combat(20));
+    g.expect("u", refused_in_combat(20));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
+    let warning = "Recover: resting in Newhaven, Arena though it spawns: 2 walks to a quiet room \
+                   were stopped";
+    g.narrated(warning).await;
+    g.narrated("Recover: resting to 95% in Newhaven, Arena")
+        .await;
+    g.idle(Duration::from_secs(30)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u", "u", "rest"]);
+    let warned: Vec<_> = seen
+        .iter()
+        .filter_map(|m| match m {
+            ToGateway::Warning { text, .. } if text.starts_with("Recover") => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(warned, [warning], "once, as a warning");
+}
+
+#[tokio::test(start_paused = true)]
+async fn knocked_down_is_not_quiet_time_and_the_quiet_clock_starts_again_when_it_rises() {
+    let (mut g, run) = in_arena(&["large giant rat"]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    g.round("You whap large giant rat for 6 damage!", 35).await;
+    // Down: no blows of its own for 16 s, only the rat's. Not a lapse: no second attack.
+    g.output(&line("You are smashed to the ground!", 33)).await;
+    for _ in 0..4 {
+        g.round("The large giant rat lunges at you!", 33).await;
+    }
+    g.output(&line("Slightly dazed you get back onto your feet.", 33))
+        .await;
+    let up = tokio::time::Instant::now();
+    // Quiet from here: 12 s later the fight has lapsed, and it attacks again.
+    g.expect("a rat", line(ENGAGED, 33));
+    g.idle(Duration::from_secs(11)).await;
+    assert_eq!(g.played, ["st", "look", "a rat"], "not yet");
+    g.idle(Duration::from_secs(2)).await;
+    assert_eq!(g.played, ["st", "look", "a rat", "a rat"]);
+    let attacked = g
+        .seen
+        .iter()
+        .filter(|m| matches!(m, ToGateway::InputLine { text, .. } if text == "a rat"))
+        .count();
+    assert_eq!(attacked, 2);
+    assert!(up.elapsed() >= Duration::from_secs(12));
+    g.close(run).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_player_is_no_attacker_without_a_pvp_line_and_does_not_keep_recover_from_resting() {
+    // Bob stands in the Arena. Lines of his read like a monster's blows (`mon_dodge_you`, and
+    // `mon_miss_builtin`, which takes the verb into the name: `Bob swings`), and HP is low
+    // now: Recover rests, out of the Arena as usual.
+    let (mut g, run) = in_arena(&["Bob"]).await;
+    start(&mut g, &["Bob"], 35).await;
+    g.narrated("Waiting here").await;
+    g.expect("u", at_hp(&room(NARROW_ROAD), 20));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
+    let blows = [
+        "Bob lunges at you, but you dodge out of the way!",
+        "Bob swings at you with club.",
+    ];
+    g.output(&blows.map(|b| line(b, 20)).concat()).await;
+    g.narrated("Recover: walking to Newhaven, Narrow Road to rest (Newhaven, Arena spawns)")
+        .await;
+    g.narrated("Recover: resting to 95% in Newhaven, Narrow Road")
+        .await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u", "rest"]);
+
+    // A PvP line makes Bob an attacker: Recover waits for that fight to be over.
+    let (mut g, run) = in_arena(&["Bob"]).await;
+    start(&mut g, &["Bob"], 35).await;
+    g.narrated("Waiting here").await;
+    let blows = [
+        "Bob moves to attack you!",
+        "Bob lunges at you, but you dodge out of the way!",
+    ];
+    g.output(&blows.map(|b| line(b, 20)).concat()).await;
+    g.idle(Duration::from_secs(5)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn in_combat_goes_false_in_the_snapshot_when_the_fight_lapses() {
+    let blow = "You whap large giant rat for 6 damage!";
+    let history = format!(
+        "{}{}{}",
+        arena(&["large giant rat"], 35),
+        line(ENGAGED, 35),
+        line(blow, 35)
+    );
+    let (mut g, run) = Game::start_with(SessionState::Realm, history).await;
+    // The re-sync, then the fight goes on for a while.
+    g.idle(Duration::from_secs(10)).await;
+    for _ in 0..3 {
+        g.round(blow, 34).await;
+    }
+    assert_eq!(as_ui_sees(&g.seen).in_combat, Some(true));
+    // Then silence, no `*Combat Off*`: the last blow was 4 s ago.
+    g.idle(Duration::from_secs(7)).await;
+    assert_eq!(as_ui_sees(&g.seen).in_combat, Some(true), "not yet");
+    g.idle(Duration::from_secs(2)).await;
+    assert_eq!(as_ui_sees(&g.seen).in_combat, Some(false));
+    // A new fight sets it again.
+    g.output(&line(ENGAGED, 34)).await;
+    g.idle(Duration::from_secs(1)).await;
+    assert_eq!(as_ui_sees(&g.seen).in_combat, Some(true));
+    g.close(run).await;
+}
+
 // The policies, on the world pack.
 
 #[test]

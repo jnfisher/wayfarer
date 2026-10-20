@@ -16,4 +16,4 @@ export type ToGateway = { "type": "hello", protocol: number, client: ClientKind,
 /**
  * The center's level: the floor the panel shows first.
  */
-level: number, rooms: Array<MapRoom>, exits: Array<MapExit>, route?: Array<RoomKey>, } | { "type": "loops", session: string, anchor: RoomKey, radius: number, doors: boolean, generated: Array<GeneratedLoop>, megamud: Array<MegaMudLoop>, };
+level: number, rooms: Array<MapRoom>, exits: Array<MapExit>, route?: Array<RoomKey>, } | { "type": "loops", session: string, anchor: RoomKey, radius: number, doors: boolean, generated: Array<GeneratedLoop>, megamud: Array<MegaMudLoop>, } | { "type": "ready_to_leave", session: string, };

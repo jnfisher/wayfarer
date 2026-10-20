@@ -16,9 +16,10 @@ ExecStart=/home/USER/wayfarer/target/release/wayfarer serve \
   --world /home/USER/.local/share/wayfarer/world.sqlite
 Restart=on-failure
 RestartSec=5
-# SIGTERM logs every character off cleanly; the gateway waits up to 120 s for that.
+# SIGTERM logs every character off cleanly; the gateway waits up to 360 s for that (a
+# character under attack may need many tries).
 KillSignal=SIGTERM
-TimeoutStopSec=150
+TimeoutStopSec=390
 
 [Install]
 WantedBy=default.target
