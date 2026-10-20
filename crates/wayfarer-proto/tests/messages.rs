@@ -3,10 +3,10 @@
 
 use wayfarer_proto::{
     Bot, BotAction, BotMode, BotState, CharacterState, Chunk, ClientKind, CoinCount, Coins,
-    DecodeError, Encumbrance, ExitKind, ExpSample, Family, GeneratedLoop, LoopStop, MapExit,
-    MapRoom, MegaMudLoop, PROTOCOL, ParseCounts, Position, RoomKey, RoomKind, RunSummary,
-    SessionInfo, SessionState, Stats, ToClient, ToGateway, Walking, WorldPackInfo,
-    protocol_mismatch,
+    DecodeError, Encumbrance, ExitKind, ExpSample, Family, Found, FoundKind, FoundRoom,
+    GeneratedLoop, LoopStop, MapExit, MapRoom, MegaMudLoop, PROTOCOL, ParseCounts, Position,
+    RoomKey, RoomKind, RunSummary, SessionInfo, SessionState, Stats, ToClient, ToGateway, Walking,
+    WorldPackInfo, protocol_mismatch,
 };
 
 fn kasimir(state: SessionState, last_seq: u64) -> SessionInfo {
@@ -88,6 +88,7 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                         steps_left: 3,
                         step: 1,
                         commands: vec!["w".into(), "w".into(), "d".into()],
+                        short_of: None,
                     }),
                     bot: Some(Bot {
                         state: BotState::Running,
@@ -263,6 +264,27 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
             },
             r#"{"type":"input_held","session":"kasimir","text":"a rat","reason":"no attack command while combat is engaged"}"#,
         ),
+        (
+            ToGateway::Found {
+                session: "kasimir".into(),
+                query: "chief".into(),
+                results: vec![Found {
+                    kind: FoundKind::Monster,
+                    name: "minotaur chieftain".into(),
+                    rooms: vec![FoundRoom {
+                        map: 1,
+                        room: 1865,
+                        name: "Large Wooden Room".into(),
+                        steps: Some(46),
+                        no_route: false,
+                        boss: true,
+                    }],
+                    count: 1,
+                    monsters: Some(vec!["minotaur chieftain".into()]),
+                }],
+            },
+            r#"{"type":"found","session":"kasimir","query":"chief","results":[{"kind":"monster","name":"minotaur chieftain","rooms":[{"map":1,"room":1865,"name":"Large Wooden Room","steps":46,"boss":true}],"count":1,"monsters":["minotaur chieftain"]}]}"#,
+        ),
     ]
 }
 
@@ -286,6 +308,7 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
                 session: "kasimir".into(),
                 map: 1,
                 room: 2150,
+                stop_short: None,
             },
             r#"{"type":"walk_to","session":"kasimir","map":1,"room":2150}"#,
         ),
@@ -338,6 +361,13 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
                 session: "kasimir".into(),
             },
             r#"{"type":"stats_request","session":"kasimir"}"#,
+        ),
+        (
+            ToGateway::Find {
+                session: "kasimir".into(),
+                query: "chief".into(),
+            },
+            r#"{"type":"find","session":"kasimir","query":"chief"}"#,
         ),
     ]
 }
@@ -532,6 +562,20 @@ fn to_gateway() -> Vec<(ToGateway, &'static str)> {
 }
 
 #[test]
+fn walk_to_may_say_whether_to_stop_short() {
+    let msg = ToGateway::WalkTo {
+        session: "kasimir".into(),
+        map: 1,
+        room: 1865,
+        stop_short: Some(false),
+    };
+    let json = r#"{"type":"walk_to","session":"kasimir","map":1,"room":1865,"stop_short":false}"#;
+    assert_eq!(msg.to_json(), json);
+    assert_eq!(ToGateway::from_json(json).unwrap(), msg);
+    assert!(include_str!("../../../docs/protocol.md").contains(json));
+}
+
+#[test]
 fn to_client_fixed_json_and_round_trip() {
     let cases = to_client();
     let types: Vec<_> = cases.iter().map(|(msg, _)| msg.type_name()).collect();
@@ -709,11 +753,10 @@ fn families_say_who_may_send_what() {
         let family = msg.family();
         let want = match msg.type_name() {
             "resync" | "state_request" | "walk_to" | "walk_stop" | "map_request"
-            | "bot_control" | "loops_request" | "walk_loop" | "run_loop" | "stats_request" => {
-                Family::Control
-            }
+            | "bot_control" | "loops_request" | "walk_loop" | "run_loop" | "stats_request"
+            | "find" => Family::Control,
             "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
-            | "map_view" | "loops" | "stats" | "input_held" => Family::Brain,
+            | "map_view" | "loops" | "stats" | "input_held" | "found" => Family::Brain,
             "ready_to_leave" | "arbitrate" => Family::BrainToGateway,
             _ => Family::Gateway,
         };

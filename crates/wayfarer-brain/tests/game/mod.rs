@@ -281,10 +281,16 @@ impl Game {
     }
 
     pub async fn walk_to(&self, to: Key) {
+        self.walk_to_short(to, None).await;
+    }
+
+    /// `walk_to` with its `stop_short`.
+    pub async fn walk_to_short(&self, to: Key, stop_short: Option<bool>) {
         self.send(ToClient::WalkTo {
             session: ID.into(),
             map: to.0,
             room: to.1,
+            stop_short,
         })
         .await;
     }

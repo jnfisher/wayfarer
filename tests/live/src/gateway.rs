@@ -52,6 +52,8 @@ pub struct Gateway {
     pub map_centers: Vec<(i64, i64)>,
     /// The last `loops` for the session.
     pub loops: Option<ToClient>,
+    /// The last `found` for the session.
+    pub found: Option<ToClient>,
     /// The last `stats` for the session.
     pub stats: Option<ToClient>,
     /// The attacks on the character the brain's events showed.
@@ -184,6 +186,7 @@ impl Gateway {
             map_centers: Vec::new(),
             loops: None,
             stats: None,
+            found: None,
             events: Vec::new(),
             gaps: crate::soak::PromptGaps::new(std::time::Instant::now()),
             brain_drops: 0,
@@ -214,6 +217,25 @@ impl Gateway {
             session: SESSION.into(),
             map,
             room,
+            stop_short: None,
+        })
+        .await
+    }
+
+    /// `find` that name, and wait for the brain's `found`: its results.
+    pub async fn find(&mut self, query: &str) -> Result<Vec<wayfarer_proto::Found>, String> {
+        self.found = None;
+        self.send(ToGateway::Find {
+            session: SESSION.into(),
+            query: query.into(),
+        })
+        .await?;
+        let query = query.to_owned();
+        self.wait_for(Duration::from_secs(10), "the found", |g| match &g.found {
+            Some(ToClient::Found {
+                query: q, results, ..
+            }) if *q == query => Some(results.clone()),
+            _ => None,
         })
         .await
     }
@@ -384,6 +406,9 @@ impl Gateway {
                 } if session == SESSION => self.map_centers.push((center.map, center.room)),
                 ToClient::Loops { session, .. } if session == SESSION => {
                     self.loops = Some(msg.clone());
+                }
+                ToClient::Found { session, .. } if session == SESSION => {
+                    self.found = Some(msg.clone());
                 }
                 ToClient::Stats { session, .. } if session == SESSION => {
                     self.stats = Some(msg.clone());

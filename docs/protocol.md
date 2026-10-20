@@ -170,6 +170,7 @@ to every UI. It relays by message type and never reads `fields` or `patch`.
 | `loops {session, anchor, radius, doors, generated, megamud}` | The answer to a `loops_request`: the loops of the area (below) |
 | `stats {session, runs, samples}` | The answer to a `stats_request`: the character's last ten runs, newest first, and the newest run's samples (below) |
 | `input_held {session, text, reason}` | A line the player typed was not sent: it would break a rule while the bot plays (an attack while combat is engaged). The UI shows it with a `send anyway`, which sends `user_input` with `force` |
+| `found {session, query, results}` | The answer to a `find`: rooms, well-known places and monsters by name, best first (below) |
 
 ```json
 {"type":"event","session":"kasimir","seq":43,"line_no":88,"name":"you_hit","cat":"combat","fields":{"dmg":"1","target":"fat giant rat","verb":"punch"},"line":"You punch fat giant rat for 1 damage!"}
@@ -182,6 +183,7 @@ to every UI. It relays by message type and never reads `fields` or `patch`.
 {"type":"loops","session":"kasimir","anchor":{"map":1,"room":2140},"radius":8,"doors":true,"generated":[{"id":"1:2140:8:doors:0","name":"Newhaven","stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1}],"path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"doors":1}],"megamud":[{"file":"EXAMPLE.mp","description":"Arena loop","author":"someone","path":[{"map":1,"room":2150},{"map":1,"room":2146},{"map":1,"room":2150}],"steps":2,"exact":2}]}
 {"type":"stats","session":"kasimir","runs":[{"started_at":"2026-10-19T12:00:00Z","minutes":2,"exp_per_hour":540,"kills":2,"deaths":0,"flees":0,"rests":1,"exp_gained":18}],"samples":[{"at":"2026-10-19T12:01:00Z","exp":355,"hp":30}]}
 {"type":"input_held","session":"kasimir","text":"a rat","reason":"no attack command while combat is engaged"}
+{"type":"found","session":"kasimir","query":"chief","results":[{"kind":"monster","name":"minotaur chieftain","rooms":[{"map":1,"room":1865,"name":"Large Wooden Room","steps":46,"boss":true}],"count":1,"monsters":["minotaur chieftain"]}]}
 ```
 
 The character snapshot: every field is optional and left out until the brain knows it.
@@ -207,7 +209,7 @@ The character snapshot: every field is optional and left out until the brain kno
 | `position` | `{map?, room?, candidates, title?}`: the room the brain believes the character is in (the lowest key among the candidates; absent when unknown), how many rooms fit what was seen (1 is certain), and the last room title seen. Absent without a world pack |
 | `bot` | `{state, mode, narration, reason?, task?}`, with a world pack: `state` is `stopped` (the default), `running` or `paused`; `mode` is `idle`, `fight`, `recover`, `flee` or `task`; `task`, while it runs a loop (`run_loop`), is `{loop_id, loop_name, stop, stops, skip}`: `stop` the index into `stops` (`[{map, room}]`, in loop order) of the stop it is at or walking to, `skip` the stops it passes by; `narration` is what it is doing ("Fight: large giant rat", "Recover: resting to 95% in Newhaven, Narrow Road", "Paused: you took over"); `reason` why it stopped or paused, when it did so itself or for the player ([brain.md](brain.md) "Fight here") |
 | `run` | `{run_started_at, exp_per_hour, kills, deaths, flees, rests, exp_gained}` while the bot has a run (from Start to Stop or a death; [brain.md](brain.md) "Statistics"): when it started (RFC 3339), exp gained over the wall time since then (a minute at least), and what the run has counted. Absent when there is none |
-| `walking` | `{to, name, steps_left, step, commands}` while a walk is in progress: the destination (`{map, room}`) and its name, the steps not yet confirmed, the step in progress from 1 (counted over the whole walk, replans included), and what the walker will type for each step left, the one in progress first (`n`, or a text exit's phrase such as `borrow skiff`; a closed door adds an `open` not listed). Absent when not walking |
+| `walking` | `{to, name, steps_left, step, commands, short_of?}` while a walk is in progress: the destination (`{map, room}`) and its name, the steps not yet confirmed, the step in progress from 1 (counted over the whole walk, replans included), and what the walker will type for each step left, the one in progress first (`n`, or a text exit's phrase such as `borrow skiff`; a closed door adds an `open` not listed). `short_of`, when the walk stops one room short of a boss lair (`walk_to`'s `stop_short`): `{map, room, name, bosses}`, the lair, with `to` the room before it. Absent when not walking |
 
 `hp` follows the prompt. Between prompts the brain also applies `You took 3 damage.` (lowered),
 a healer's `all your wounds are healed` (to `hp_max`) and the character's own `drops to the
@@ -235,6 +237,18 @@ steps of `anchor` by exits the character may take (through doors unless `doors` 
 | `generated` | `[{id, name, stops, path, steps, doors}]`: closed circuits through the area's hunt rooms. `id` is what `walk_loop` takes. `stops` in walking order, each `{map, room, name, monsters, arena, lair, regen}` (the huntable monsters it spawns by name; `regen`: minutes nothing spawns after a kill, arenas exempt). `path`: every room passed, from the first stop back to it; `steps` and `doors` along it |
 | `megamud` | `[{file, description, author, path, steps, exact}]`: MegaMud's loops whose verification walk passes a room of the area, only those that walked to the end and closed in their start room. `path`: the rooms the walk passed; `steps` it checked, `exact` of them matching MegaMud's room id exactly. Empty unless the world pack was built with MegaMud's paths |
 
+What a `find` found ([brain.md](brain.md) "Go to"): at most 30 results, those with no way there
+last, then the better match of the name (the whole name, its start, the start of a word,
+anywhere), then the nearer, then places before monsters before room names.
+
+| Field | What |
+|---|---|
+| `kind` | `rooms` (every room with this exact name), `shop`, `bank`, `trainer` (a shop room by its name, or a MegaMud waypoint), `boss` or `place` (another MegaMud waypoint), or `monster` (with the rooms it spawns in) |
+| `name` | The room name, the place's name or the monster's |
+| `rooms` | `[{map, room, name, steps?, no_route?, boss}]`, the nearest 20 first: `steps` the route length from the character's room when within 200 steps, `no_route` when there is no way there; neither: farther, or the character's room is unknown. `boss`: a boss lair, which `walk_to` stops one room short of by default |
+| `count` | How many rooms it names in all |
+| `monsters` | The bosses of its boss lairs (for a monster, itself if it is one), by name; absent when none |
+
 The statistics of a character ([brain.md](brain.md) "Statistics"), from the brain's store:
 
 | Field | What |
@@ -250,7 +264,7 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 |---|---|
 | `resync {session}` | Re-sync that character (`st`, `exp`, `i`, look) |
 | `state_request {session?}` | Send a fresh `character` snapshot (of one session, or of all when `session` is left out) and a `brain_info` |
-| `walk_to {session, map, room}` | Walk the character to that room, confirming each step ([brain.md](brain.md) "Walking"); replaces a walk in progress |
+| `walk_to {session, map, room, stop_short?}` | Walk the character to that room, confirming each step ([brain.md](brain.md) "Walking"); replaces a walk in progress. `stop_short`: stop in the room before it when it is a boss lair ([brain.md](brain.md) "Go to"); left out, on for a boss lair; it changes nothing for another room |
 | `walk_stop {session}` | Stop walking after the move in flight |
 | `map_request {session, radius?}` | Send a `map_view` now, of the rooms within `radius` steps (15 when left out); later views use the same radius |
 | `bot_control {session, action}` | The bot ([brain.md](brain.md) "Fight here"): `start` (fight here: re-sync, then fight what comes and rest when low), `stop`, `pause` (after the action in flight) or `resume` (re-sync, then carry on) |
@@ -258,6 +272,7 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 | `walk_loop {session, id}` | Walk a generated loop once ([brain.md](brain.md) "Loops"): to its stop nearest the character, round every other stop and back to that one, each leg a `walk_to`; `walk_stop` stops it and a `walk_to` replaces it |
 | `run_loop {session, id, skip?}` | Run a generated loop ([brain.md](brain.md) "Running a loop"), replacing a running "fight here": the bot re-syncs, walks to the loop's ticked stop nearest the character, then round its stops in loop order, fighting at each, passing by the stops in `skip` (`[{map, room}]`) and those whose respawn delay has not passed. Sent again for the loop the bot already runs, it only changes `skip` (left out: none). `bot_control` `stop`, `pause` and `resume` apply |
 | `stats_request {session}` | Send a `stats` message: the character's last runs and the newest run's samples |
+| `find {session, query}` | Send a `found` message: the rooms, well-known places and monsters whose name holds `query` (two characters or more, any case) |
 
 ```json
 {"type":"resync","session":"kasimir"}
@@ -270,6 +285,8 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 {"type":"walk_loop","session":"kasimir","id":"1:2140:8:doors:0"}
 {"type":"run_loop","session":"kasimir","id":"1:2140:8:doors:0","skip":[{"map":1,"room":2156}]}
 {"type":"stats_request","session":"kasimir"}
+{"type":"find","session":"kasimir","query":"chief"}
+{"type":"walk_to","session":"kasimir","map":1,"room":1865,"stop_short":false}
 ```
 
 A UI that sends a brain message (`event`, `character`, ...), or a brain that sends a control

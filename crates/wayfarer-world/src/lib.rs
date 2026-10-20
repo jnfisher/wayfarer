@@ -5,11 +5,13 @@
 //! [`build`] makes a pack from the stock-world export (`wayfarer import-world`);
 //! [`WorldPack`] reads one. [`RoomGraph`] holds its rooms and exits in memory for [`route`],
 //! the position [`Belief`] and the map [`layout`]; [`Monsters`] says what rooms spawn, and
-//! [`loops`] makes circuits over an area's hunt rooms.
+//! [`loops`] makes circuits over an area's hunt rooms; [`Finder`] finds rooms, places and
+//! monsters by name for "go to", and knows the boss lairs.
 
 pub mod belief;
 pub mod build;
 pub mod cp437;
+pub mod find;
 pub mod layout;
 pub mod loops;
 pub mod mm;
@@ -24,6 +26,7 @@ use std::path::PathBuf;
 
 pub use belief::Belief;
 pub use build::{BuildReport, MegaMudReport, build};
+pub use find::{Finder, Found, FoundKind, FoundRoom, PlaceKind, Reach};
 pub use layout::{Layout, Placed, Segment, SegmentKind, layout};
 pub use loops::{Area, HuntRoom, Loop, MmLoop, generate, hunt_rooms};
 pub use monsters::{Monsters, huntable};

@@ -124,7 +124,7 @@ Also `rooms_by_name`, `room_raw`, `item`, `spell`, `shop` (with stock), `message
 `text_block`, `waypoints`, `paths`, `path_steps` and `meta`. The pack is opened read only and
 nothing is loaded up front.
 
-## Rooms in memory: graph, routes, belief, layout, monsters, loops
+## Rooms in memory: graph, routes, belief, layout, monsters, go to, loops
 
 Pure data and functions over `&RoomGraph` and plain values; no I/O beyond loading from the pack,
 no clock. The brain advances the belief and asks for routes; the map panel asks for a layout.
@@ -174,7 +174,19 @@ let monsters = Monsters::load(&pack)?;
   pass makes: `genmonster` alone, else the group within `minlevel..maxlevel`, only in Normal,
   Arena and Lair rooms, only when `maxmonsters` > 0 and never with `maxlevel` 0) and `spawn_pool(room)` (that plus the room's
   `specmon`); `huntable` is evil, not an NPC (`montype` 2) and worth exp; `hunt_room` is a pool
-  with a huntable monster (`kb/progression.md`, `kb/combat.md`).
+  with a huntable monster (`kb/progression.md`, `kb/combat.md`). `is_boss` is a monster that
+  spawns one at a time and comes back hours after its kill (`maxalive` 1, `regenhrs` set), not
+  an NPC and worth exp; `boss_lair(room)` the bosses of a room's pool, if any.
+- **`Finder`** (`find.rs`, "go to"): built once from the graph, the monsters, the pack's
+  MegaMud waypoints and shop types. `find(graph, monsters, query, from, traveller)` matches
+  two characters or more anywhere in a room name (one result per exact name), a place (a
+  shop, bank or trainer room by its name, a waypoint) or a monster (with the rooms it spawns
+  in; "thin giant rat" finds the giant rats); at most 30, those `from` has no way to last,
+  then the better match, then the nearer (one breadth-first pass; `Reach::Steps` within 200,
+  `Far` beyond, `NoRoute`), then places, monsters, room names. Each result lists its nearest
+  20 rooms and its `count`. `boss_lair(key)` adds the waypoints flagged boss to
+  `Monsters::boss_lair`: on the stock pack the Chieftain's Large Wooden Room (1:1865) and the
+  champion's cavern (1:2124) are lairs, the Newhaven Arena and the Dungeon Entrance not.
 - **`loops`** (`loops.rs`): an `Area` is the rooms within a radius of an anchor by exits the
   traveller may take; `hunt_rooms` are those whose pool has a huntable monster (with the
   monsters, arena, lair and `regendelay`). `generate` makes a closed circuit through them

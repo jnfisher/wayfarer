@@ -32,6 +32,19 @@ export const KEY_ROWS: KeyRow[] = [
     does: "Open the drawer on the map of the focused character's surroundings, or close it (on a Mac, Option)",
   },
   { group: "Map", keys: "Click a room on the map", does: "Walk the character there; stop under the map ends the walk" },
+  {
+    group: "Map",
+    keys: "Alt+G, or the go button",
+    does:
+      "Open the go box above the map: type part of the name of a room, a shop, bank or trainer, or a monster (two letters or more) and the list fills as you type (on a Mac, Option)",
+  },
+  {
+    group: "Map",
+    keys: "Up, Down, Enter in the go box",
+    does:
+      "Choose a row (the map centres on its room when in view) and walk there; a boss lair's row has a ticked stop short box: the walk stops one room before it",
+  },
+  { group: "Map", keys: "Esc in the go box", does: "Clear it; Esc again closes it" },
   { group: "Map", keys: "Mouse wheel, drag on the map", does: "Zoom (three sizes), pan; centre goes back to the character" },
   {
     group: "Map",
@@ -85,6 +98,7 @@ export const FOCUS_TILE_CODE = /^Digit[1-6]$/;
 export const RESET_LAYOUT_CODE = "Digit0";
 export const DEV_PANEL_CODE = "KeyD";
 export const MAP_PANEL_CODE = "KeyM";
+export const GO_CODE = "KeyG";
 export const STATS_PANEL_CODE = "KeyS";
 export const ZOOM_IN_KEYS = ["+", "="];
 export const ZOOM_OUT_KEYS = ["-"];

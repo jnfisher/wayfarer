@@ -9,6 +9,7 @@
 import { PROTOCOL } from "../proto";
 import type { BotAction, CharacterState, Chunk, RoomKey, SessionInfo, SessionState, ToClient, ToGateway } from "../proto";
 import { clampRadius, LOOP_RADIUS, type Loops, type MapView } from "./map";
+import { MIN_QUERY, type FoundMessage } from "./goto";
 import type { Stats } from "./stats";
 
 /** The part of the browser's `WebSocket` the client uses. */
@@ -75,6 +76,8 @@ export interface GatewayEvents {
   stats?(stats: Stats): void;
   /** A line the player typed was held by the brain (an attack while combat is engaged). */
   inputHeld?(session: string, text: string, reason: string): void;
+  /** What a `find` found, for the map panel's go box. */
+  found?(found: FoundMessage): void;
 }
 
 export interface GatewayOptions {
@@ -176,9 +179,19 @@ export class GatewayClient {
     return this.send({ type: "resync", session });
   }
 
-  /** Walk a character to a room (replacing a walk in progress); false when not connected. */
-  walkTo(session: string, map: number, room: number): boolean {
-    return this.send({ type: "walk_to", session, map, room });
+  /** Walk a character to a room (replacing a walk in progress); `stopShort` false walks into a
+   * boss lair (left out, the walk stops one room short of one). False when not connected. */
+  walkTo(session: string, map: number, room: number, stopShort?: boolean): boolean {
+    const msg: Extract<ToGateway, { type: "walk_to" }> = { type: "walk_to", session, map, room };
+    if (stopShort !== undefined) msg.stop_short = stopShort;
+    return this.send(msg);
+  }
+
+  /** Find rooms, places and monsters by part of a name (a `found` answers); false when not
+   * connected or the query is too short. */
+  find(session: string, query: string): boolean {
+    const q = query.trim();
+    return q.length >= MIN_QUERY && this.send({ type: "find", session, query: q });
   }
 
   /** Stop a character's walk after the move in flight; false when not connected. */
@@ -348,6 +361,9 @@ export class GatewayClient {
         break;
       case "input_held":
         this.opts.events.inputHeld?.(message.session, message.text, message.reason);
+        break;
+      case "found":
+        this.opts.events.found?.(message);
         break;
     }
   }

@@ -136,6 +136,43 @@ progress (after the move in flight).
   within 5 s stop the walk after the move in flight (the walker never fights); leaving the realm
   or the brain re-attaching stop it at once. Narrated: "Stopped walking: combat started".
 - **Arrival**: "Arrived: Newhaven, Arena"; `walking` leaves the snapshot.
+- **A boss lair** is walked to one room short unless `walk_to` says `stop_short: false`
+  ("Go to", below).
+
+## Go to
+
+`find {session, query}` answers with `found`: the rooms, well-known places and monsters whose
+name holds the query (two characters or more, any case, anywhere in the name), at most 30,
+for the map panel's go box (`docs/web-ui.md`, "The map").
+
+- **What it finds**: room names, one result per exact name with how many rooms have it and
+  the nearest 20 ("Wooden Passage, 63 rooms, nearest 43 steps"); shops, banks and trainers
+  by their room name, and MegaMud's named rooms (waypoints) when the world pack has them;
+  monsters by name, with the rooms they spawn in. A query that names no monster but ends in
+  one ("thin giant rat") finds it as the parser does, leading words stripped.
+- **Best first**: results the character has no way to come last; then the better match (the
+  whole name, its start, the start of a word, anywhere); then the nearer; then places before
+  monsters before room names. Route lengths come from one breadth-first pass from the
+  believed room by the exits the character may take (some milliseconds over the whole
+  world); a room beyond 200 steps is "far", one not reached at all "no route". With the
+  position unknown, nothing has steps.
+- **Boss lairs**: a room whose spawn pool (its `genmonster`, its group's monsters, or its
+  `specmon`) holds a boss, or that a MegaMud waypoint flags boss. A boss is a monster that
+  spawns one at a time and comes back hours after its kill (`maxalive` 1, `regenhrs` set,
+  `kb/progression.md`), is not an NPC and is worth experience: the Minotaur Chieftain's Large
+  Wooden Room (1/1865) and the champion's cavern (1/2124) are lairs; a Wooden Passage room of
+  plain minotaurs, the Newhaven Arena and the Dungeon Entrance (a Lair room, not a boss's)
+  are not, and neither is the healer's room. Only boss lairs, not every Lair room (John,
+  2026-10-20).
+- **Stopping short**: `walk_to` a boss lair stops in the room before it, as MegaMud's "Stop
+  Before Entering Room" does (`kb/megamud-manual.md`), so the player can look first;
+  `stop_short: false` walks in, and it changes nothing for any other room. It is a route cut,
+  not a mode: the walk goes to the second-last room of the route, plans again around the lair
+  if it has to, and says so: "Walking to Large Wooden Room: 5 steps, stopping one room short",
+  then "Stopped one room short of Large Wooden Room (boss: minotaur chieftain)". `walking`
+  carries `short_of` (the lair and its bosses) meanwhile. Already next to the lair, it stops
+  at once with the same narration. Looking into a dead boss's room brings it back
+  (`kb/pitfalls.md` 51): stopping short does not look in.
 
 **The guards** live in the executor every action goes through, so nothing the bot ever does can
 break them: no attack command (`a`, `bash rat`, `bs`, ...) unless the character is known to be

@@ -195,6 +195,41 @@ describe("handshake", () => {
     ]);
   });
 
+  it("finds by name and walks with or without stopping short", () => {
+    const r = rig();
+    r.last().open();
+    r.last().receive(welcome(session("kasimir", 0)));
+    expect(r.client.find("kasimir", " c ")).toBe(false);
+    expect(r.client.find("kasimir", " chief ")).toBe(true);
+    expect(r.client.walkTo("kasimir", 1, 1865)).toBe(true);
+    expect(r.client.walkTo("kasimir", 1, 1865, false)).toBe(true);
+    expect(r.last().sent.slice(-3)).toEqual([
+      { type: "find", session: "kasimir", query: "chief" },
+      { type: "walk_to", session: "kasimir", map: 1, room: 1865 },
+      { type: "walk_to", session: "kasimir", map: 1, room: 1865, stop_short: false },
+    ]);
+  });
+
+  it("hands a found to its handler", () => {
+    const seen: unknown[] = [];
+    const sockets: FakeSocket[] = [];
+    const client = new GatewayClient({
+      url: "ws://gateway.test/ws",
+      socket: (url) => {
+        const s = new FakeSocket(url);
+        sockets.push(s);
+        return s;
+      },
+      events: { found: (f) => seen.push(f) },
+    });
+    client.connect();
+    sockets[0].open();
+    sockets[0].receive(welcome(session("kasimir", 0)));
+    const found: ToClient = { type: "found", session: "kasimir", query: "chief", results: [] };
+    sockets[0].receive(found);
+    expect(seen).toEqual([found]);
+  });
+
   it("asks for the token when refused for it, keeps it and tries again", () => {
     const tokens = new MemoryStore();
     const askToken = vi.fn(() => " SECRET ");

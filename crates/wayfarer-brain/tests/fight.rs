@@ -415,6 +415,7 @@ async fn walk_to_while_the_bots_look_is_in_flight_walks_once_it_is_answered() {
             session: ID.into(),
             map: NARROW_ROAD.0,
             room: NARROW_ROAD.1,
+            stop_short: None,
         },
     ));
     g.expect("look", arena(&[], 35));

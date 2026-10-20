@@ -12,7 +12,7 @@ use wayfarer_proto::{
     CharacterState, ClientKind, PROTOCOL, RoomKind, SessionInfo, ToClient, ToGateway, WorldPackInfo,
 };
 use wayfarer_store::Store;
-use wayfarer_world::{Key, MmLoop, Monsters, RoomGraph, WorldPack};
+use wayfarer_world::{Finder, Key, MmLoop, Monsters, RoomGraph, WorldPack};
 
 use crate::clock::{Clock, rfc3339};
 use crate::link::Link;
@@ -51,6 +51,8 @@ pub struct Atlas {
     /// MegaMud's verified loops, with the rooms each walk passed (none when the pack was built
     /// without MegaMud's paths).
     pub mm_loops: Vec<MmLoop>,
+    /// Rooms, places and monsters by name (`find`), and the boss lairs.
+    pub finder: Finder,
 }
 
 /// Room types (`kb/game-data.md` "Enumerations") and shop types (`kb/economy.md`).
@@ -97,12 +99,14 @@ impl Atlas {
             }
         }
         let by_name = |v: Vec<(i64, String)>| v.into_iter().map(|(n, s)| (s, n)).collect();
+        let monsters = Monsters::load(pack)?;
         Ok(Atlas {
+            finder: Finder::load(pack, &graph, &monsters)?,
             graph,
             kinds,
             classes: by_name(pack.classes()?),
             races: by_name(pack.races()?),
-            monsters: Monsters::load(pack)?,
+            monsters,
             mm_loops: wayfarer_world::loops::megamud_loops(pack)?,
         })
     }
@@ -382,9 +386,18 @@ impl Brain {
                     s.keys_sent(out);
                 }
             }
-            ToClient::WalkTo { session, map, room } => match self.sessions.get_mut(&session) {
-                Some(s) => s.walk_to((map, room), now, out),
+            ToClient::WalkTo {
+                session,
+                map,
+                room,
+                stop_short,
+            } => match self.sessions.get_mut(&session) {
+                Some(s) => s.walk_to((map, room), stop_short, now, out),
                 None => out.push(no_session("walk_to", &session)),
+            },
+            ToClient::Find { session, query } => match self.sessions.get(&session) {
+                Some(s) => s.find(&query, out),
+                None => out.push(no_session("find", &session)),
             },
             ToClient::WalkStop { session } => match self.sessions.get_mut(&session) {
                 Some(s) => s.walk_stop(out),

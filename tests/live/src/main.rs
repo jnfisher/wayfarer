@@ -84,12 +84,15 @@ enum Scenario {
     Typing,
     /// C-033: the character runs a generated loop for N minutes and the numbers come out.
     Soak,
+    /// C-034: go to: `find` the Arena from the Village Entrance and walk to it; `find` the
+    /// Dungeon Entrance and say whether it is a boss lair.
+    Goto,
 }
 
 fn usage() -> ! {
     eprintln!(
         "usage: wayfarer-live --wayfarer BIN --out DIR [--addr HOST:PORT] [--pool FILE] \
-         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart|flee|typing|soak]\n\
+         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart|flee|typing|soak|goto]\n\
          soak: --char NAME --minutes N [--anchor MAP:ROOM] [--radius R] [--skip MAP:ROOM ...] [--loop ID]\n\
          (run it through scripts/live-check.sh)"
     );
@@ -130,6 +133,7 @@ fn args() -> Args {
                     "flee" => Scenario::Flee,
                     "typing" => Scenario::Typing,
                     "soak" => Scenario::Soak,
+                    "goto" => Scenario::Goto,
                     _ => usage(),
                 }
             }
@@ -594,6 +598,15 @@ async fn run(ctx: &mut Ctx, pool: &Pool) -> Result<String, String> {
         let looped = loop_scenario(ctx, &mut gw).await;
         let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
         return if looped && logged_off {
+            Ok(who)
+        } else {
+            Err(who)
+        };
+    }
+    if ctx.args.scenario == Scenario::Goto {
+        let went = goto_scenario(ctx, &mut gw).await;
+        let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
+        return if went && logged_off {
             Ok(who)
         } else {
             Err(who)
@@ -1070,6 +1083,82 @@ async fn walk_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
 
 /// Newhaven, Village Entrance: the loop scenario's anchor and where it starts.
 const VILLAGE_ENTRANCE: (i64, i64) = (1, 2140);
+
+/// The go-to scenario, with the gateway in the realm: a brain; to the Village Entrance;
+/// `find` "arena" lists Newhaven's Arena with its steps, and a `walk_to` its nearest room
+/// arrives; out to the Narrow Road; `find` "dungeon" lists the Dungeon Entrance, and whether it
+/// is a boss lair decides the stop-short step (the stock pack does not mark it one, so the step
+/// is skipped and the summary says so); the brain stopped. Whether all of it went.
+async fn goto_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
+    let Some((running, start)) = placed_brain(ctx, gw, "goto", &[]).await else {
+        return false;
+    };
+    let mut ok = true;
+    if start != VILLAGE_ENTRANCE {
+        let started = Instant::now();
+        let there = walk(gw, VILLAGE_ENTRANCE).await;
+        ctx.record("walk to the Village Entrance", started, &there);
+        ok = there.is_ok();
+    }
+
+    // `find` "arena": Newhaven's Arena, a few steps away.
+    let mut arena = None;
+    if ok {
+        let started = Instant::now();
+        let found = gw.find("arena").await.and_then(|results| {
+            let r = results
+                .iter()
+                .find(|f| f.name == "Newhaven, Arena")
+                .ok_or_else(|| format!("no \"Newhaven, Arena\" in {} results", results.len()))?;
+            let room = r.rooms.first().ok_or("no rooms")?;
+            let steps = room.steps.ok_or_else(|| format!("no steps to {room:?}"))?;
+            arena = Some((room.map, room.room));
+            Ok(format!(
+                "{} results; Newhaven, Arena: {} rooms, nearest {}/{} at {steps} steps",
+                results.len(),
+                r.count,
+                room.map,
+                room.room
+            ))
+        });
+        ctx.record("find \"arena\" from the Village Entrance", started, &found);
+        ok = found.is_ok();
+    }
+    if let Some(to) = arena {
+        let started = Instant::now();
+        let went = walk(gw, to).await;
+        ctx.record(
+            &format!("walk_to the result ({}/{})", to.0, to.1),
+            started,
+            &went,
+        );
+        // Its monsters may come at the character: out to the Narrow Road either way.
+        let out = walk_out(ctx, gw).await;
+        ok = went.is_ok() && out;
+    }
+
+    // `find` "dungeon": the stop-short step runs only if the Dungeon Entrance is a boss lair.
+    let started = Instant::now();
+    let found = gw.find("dungeon").await.and_then(|results| {
+        let r = results
+            .iter()
+            .find(|f| f.name == "Dungeon, Entrance")
+            .ok_or_else(|| format!("no \"Dungeon, Entrance\" in {} results", results.len()))?;
+        let boss = r.rooms.iter().any(|room| room.boss);
+        Ok(if boss {
+            "the Dungeon Entrance is a boss lair (unexpected: the stop-short step is not written)"
+                .to_owned()
+        } else {
+            "the Dungeon Entrance is not a boss lair: the stop-short live step is skipped \
+             (crates/wayfarer-brain/tests/goto.rs covers it)"
+                .to_owned()
+        })
+    });
+    ctx.record("find \"dungeon\"", started, &found);
+    ok &= found.is_ok();
+
+    stop_brain(ctx, running).await && ok
+}
 
 /// The `loops` around the Village Entrance: the generated Newhaven loop's id, and what was
 /// listed; an error when the list is not what the stock world gives.
