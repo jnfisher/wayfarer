@@ -455,16 +455,19 @@ stop it is at or walking to, and the stops it passes by.
   combat has been quiet there for 20 s.
 - **On** to the next stop in loop order that is ticked and ready, passing by the others with a
   word each: "Skipping Small Cavern (unticked)", "Stop 3/3 not ready (1 m)". **Ready**: an Arena
-  always is (monsters come back at once after a kill, `kb/progression.md`); any other stop once
-  its `regendelay` minutes (0 means the stock 5) have passed since the bot cleared it, or if it
-  never has. (`task::stop_ready`.)
+  always is (monsters come back at once after a kill, `kb/progression.md`), and so is any stop
+  that is not a Lair (Normal rooms under an area spawner refill on no delay the bot can know:
+  it walks the loop in order and fights what it finds); a Lair once its `regendelay` minutes (0
+  means the stock 5) have passed since the bot cleared it, or if it never has.
+  (`task::no_respawn_wait`, `task::stop_ready`.) Two 30-minute Bandit Keep soaks (2026-10-20)
+  gave 31.4k exp/hr with every stop gated and 31.6k with only Lairs gated, so the default is
+  the simpler one; `WAYFARER_GATED_STOPS` set in the brain's environment gates every stop again
+  (until there are settings).
 - **None ready**: with HP under 95% it rests first ("Waiting for respawns: resting first":
   Recover rests, in a quiet room if this one spawns, and walks back); then it waits where it is,
   "Waiting for respawns: next in 1 m", and goes when the next stop is ready. An Arena the bot is
-  in is always ready: it waits there and Fight takes what comes. (Test knob: with
-  `WAYFARER_UNGATED_STOPS` set in the brain's environment only Lair stops wait out a respawn
-  delay and every other stop is always ready, so the bot walks the loop in order and fights
-  whatever it finds; the Bandit Keep A/B in `docs/dev-rig.md` compares the two.)
+  in is always ready: it waits there and Fight takes what comes. A loop of Normal rooms never
+  waits (only its Lairs, if it has any, do).
 - **On the way**: a monster Fight would attack in a room on the way, or one attacking, stops the
   leg after the moves in flight; Fight takes the character, and then Task walks on to the same
   stop from wherever it is. `*Combat Engaged*` stops it the same way. Flee and Recover work as in

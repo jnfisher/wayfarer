@@ -90,11 +90,22 @@ async fn the_wooden_passages_loop_goes_to_its_nearest_stop_and_round_once() {
         let (a, b) = (stops[(first + k - 1) % n], stops[(first + k) % n]);
         expect_leg(&mut g, a, b);
     }
+    // The passages are Normal rooms, always ready: round two starts at once, from the nearest
+    // stop again, its leg left unanswered.
+    let last = stops[(first + n - 1) % n];
+    for s in route(&atlas().graph, last, stops[first], &Traveller::default())
+        .unwrap()
+        .iter()
+        .take(1)
+    {
+        g.expect(&s.command, PROMPT);
+    }
     g.run_mm("Mwodloop.mp", &[]).await;
     g.narrated("Running loop Wooden Passages: re-syncing").await;
-    g.narrated(&format!("Stop {n}/{n} cleared: nothing there"))
+    let end = (first + n - 1) % n + 1;
+    g.narrated(&format!("Stop {end}/{n} cleared: nothing there"))
         .await;
-    g.narrated("Waiting for respawns: next in 5 m").await;
+    while !g.narration().await.starts_with("Walking to") {}
     let (seen, played) = g.close(run).await;
     let said = notices(&seen);
     // Every stop cleared once, in loop order from the nearest.

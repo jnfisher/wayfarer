@@ -211,13 +211,15 @@ Two 30-minute soaks of the same character on `HKEPLOOP.mp`, from the same start 
 Keep, anchor `9:750`), one after the other with the same HP at the start:
 
 ```sh
-# A: as is (every stop waits out its respawn delay after it was cleared)
+# default: only Lair stops wait out a respawn delay; the bot walks the loop in order
 scripts/live-check.sh --scenario soak --char Thorgrim --minutes 30 --loop HKEPLOOP.mp \
     --anchor 9:750 --credentials "$WAYFARER_DATA_DIR/credentials.toml"
-# B: only Lair stops wait; the bot walks the loop in order and fights what it finds
-WAYFARER_UNGATED_STOPS=1 scripts/live-check.sh --scenario soak --char Thorgrim --minutes 30 \
+# gated: every stop waits out its respawn delay after it was cleared
+WAYFARER_GATED_STOPS=1 scripts/live-check.sh --scenario soak --char Thorgrim --minutes 30 \
     --loop HKEPLOOP.mp --anchor 9:750 --credentials "$WAYFARER_DATA_DIR/credentials.toml"
 ```
 
-Compare exp per hour, kills, flees, and the longest wait ("Waiting for respawns"). One run of
+Result (2026-10-20, Thorgrim, level 20): gated 15,700 exp (31.4k/hr, 122 kills, 6 rests, 40
+waits for respawns, longest gap 51 s), default 15,800 exp (31.6k/hr, 124 kills, 0 rests, 0
+waits, longest gap 8.5 s). Supply of monsters limits exp per hour here, not the walk. One run of
 each is a sample, not a verdict: the first minutes of a run start with every room stocked.
