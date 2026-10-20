@@ -271,6 +271,15 @@ steps 40, item 15, author 11, desc 7, next 2, cost 1 (paths edited after indexin
   hash, and count `FFFFFFFF` steps as wildcards. Then:
   - 1,781 paths walk to the end, 62 break, 114 have no start room (111 point-to-point, 3 loops);
   - **all 183 loops that walk to the end close** in their start room;
+  - **no loop step waits or attacks** (wayfarer C-036, 2026-10-20) [C]: of the 183 loops' 19,535
+    steps, 45 carry `[actions]` (32 searches, `sea x` or `search x`, for a Hidden exit; 10 `pull
+    lever`; one each of `say gazmuldduhaz`, `push eye`, `show signet ring`) and 412 are not a
+    direction (`go path` 29, `give ... to dhelvanen` 15, `pull lever` 10, `climb strand` 8, `go
+    crack` 8, `climb tree` 4, `buy harm`/`sell harm` 3 each, `stat` 3, `rest` once, ...). No
+    command waits or attacks, and the step flags have no confirmed meaning beyond darkness, so a
+    loop pauses only where its rooms spawn: a task's stops are its hunt rooms. 7 loops pass no
+    room that spawns anything worth hunting (Bosploop, LCDELOOP, Lcbaloop, SGFGLOOP, SGFSLOOP,
+    SPWMLOOP, WFDPLOOP);
   - 44,076 of 44,264 title-matched steps (99.6%) equal the full id; 120 steps match not even the
     title hash; the walks visit 14,969 distinct rooms;
   - the 62 breaks: 41 have no exit in the direction taken (version drift); 21 have a

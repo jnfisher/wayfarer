@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
-use wayfarer_world::{Category, Key, Traveller, distances, route};
+use wayfarer_world::{Key, RoomGraph, Traveller, distances, route};
 
 use crate::brain::Atlas;
 use crate::executor::{Action, Outcome};
@@ -59,18 +59,21 @@ pub fn ready_in(now: Instant, cleared_at: Option<Instant>, regen: i64, is_arena:
     (cleared + delay).saturating_duration_since(now)
 }
 
-/// Why no route reaches `to` from `from`: the first exit the traveller may not take on the way
-/// a traveller with no strength, no refusals and every hidden exit would go.
-fn why_unreachable(v: &View, from: Key, to: Key) -> String {
-    let g = &v.atlas.graph;
-    let t = v.traveller;
+/// Why no route reaches `to` from `from`: the first exit the traveller `t` may not take on
+/// the way a traveller with no strength, no refusals, no gate checked and every hidden exit
+/// would go.
+pub(crate) fn why_unreachable(g: &RoomGraph, t: &Traveller, from: Key, to: Key) -> String {
     let mut open = Traveller {
+        level: None,
+        class: None,
+        race: None,
+        evil: None,
         strength: None,
         picklocks: None,
         blocked: BTreeSet::new(),
         ..t.clone()
     };
-    open.allow.insert(Category::Hidden);
+    open.allow.extend(Traveller::anyone().allow);
     let room = |k: Key| {
         g.room(k)
             .map_or_else(|| format!("{}/{}", k.0, k.1), |r| r.name.clone())
@@ -101,9 +104,31 @@ fn why_unreachable(v: &View, from: Key, to: Key) -> String {
         format!("the exit {dir} of {at} was refused")
     } else if e.hidden() {
         format!("the hidden exit {dir} of {at} is not known")
+    } else if let Some(need) = gate_need(&e) {
+        format!("the exit {dir} of {at} {need}")
     } else {
         "no route known".to_owned()
     }
+}
+
+/// What a gated exit asks that the traveller does not have: "is for level 10 only".
+fn gate_need(e: &wayfarer_world::Edge) -> Option<String> {
+    use wayfarer_world::{ExitType, Gate};
+    Some(match e.gate {
+        Gate::Level { min, max } if min == max => format!("is for level {min} only"),
+        Gate::Level { min, max } => format!("is for levels {min} to {max}"),
+        Gate::Class { .. } => "is for another class".to_owned(),
+        Gate::Race { .. } => "is for another race".to_owned(),
+        Gate::Alignment { .. } => "is for another alignment".to_owned(),
+        Gate::Item { .. } => "needs an item".to_owned(),
+        Gate::Toll { crowns } => format!("takes a toll of {crowns}"),
+        Gate::Spell | Gate::Cast { .. } => "needs a spell".to_owned(),
+        Gate::Key => "needs a key".to_owned(),
+        Gate::Ability { .. } => "needs an ability".to_owned(),
+        Gate::None if e.kind == ExitType::RemoteAction => "is opened from elsewhere".to_owned(),
+        Gate::None if e.kind == ExitType::Text => "takes a phrase not known".to_owned(),
+        Gate::None => return None,
+    })
 }
 
 /// Whole minutes, rounded up: "3 m".
@@ -420,7 +445,7 @@ impl Task {
             1 => "one stop".to_owned(),
             n => format!("{n} stops"),
         };
-        let why = why_unreachable(v, from, self.stops[first].key);
+        let why = why_unreachable(&v.atlas.graph, v.traveller, from, self.stops[first].key);
         let text = format!("Skipping {stops} it cannot reach this round: {why}");
         if self.unreachable_said.as_ref() != Some(&text) {
             self.notes.push(text.clone());

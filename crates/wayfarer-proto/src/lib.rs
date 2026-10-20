@@ -517,8 +517,9 @@ pub struct GeneratedLoop {
 }
 
 /// One of MegaMud's loops through the area, only ever one whose verification walk reached the
-/// end and closed in its start room.
+/// end and closed in its start room. `walk_loop` and `run_loop` name it by its file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(optional_fields)]
 pub struct MegaMudLoop {
     /// The `.mp` file.
     pub file: String,
@@ -529,6 +530,13 @@ pub struct MegaMudLoop {
     /// Steps the walk checked, and of those how many matched MegaMud's room id exactly.
     pub steps: u32,
     pub exact: u32,
+    /// The hunt rooms on its path, in path order, each once: what a task stops at.
+    pub stops: Vec<LoopStop>,
+    /// Whether `run_loop` runs it for this character; `reason` says why not ("nothing to hunt
+    /// on it", or a leg between two stops no route takes).
+    pub runnable: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 /// A character's coins.
@@ -949,10 +957,11 @@ pub enum ToGateway {
         #[ts(optional)]
         doors: Option<bool>,
     },
-    /// UI → brain: walk a generated loop once, from its stop nearest the character round to
+    /// UI → brain: walk a loop once (a generated loop's id, or a MegaMud loop's file), from its stop nearest the character round to
     /// that stop again; `walk_stop` stops it, and `walk_to` replaces it.
     WalkLoop { session: SessionId, id: String },
-    /// UI → brain: run a generated loop (Task mode): walk to its nearest stop, then round its
+    /// UI → brain: run a loop (Task mode; `id` is a generated loop's id or a MegaMud loop's
+    /// file, `Mwodloop.mp`): walk to its nearest stop, then round its
     /// stops in order, fighting at each, passing by those in `skip` and those whose respawn
     /// delay has not passed; it replaces a running "fight here". Sent again for the loop
     /// already running, it only changes `skip` (left out: none). `bot_control` stops, pauses

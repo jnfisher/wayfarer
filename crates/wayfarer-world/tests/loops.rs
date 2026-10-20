@@ -1,7 +1,7 @@
 //! Generated loops and the MegaMud loop filter, against the pack built from
-//! `tests/fixtures/world` (`common::pack_path`). The fixture pack has no MegaMud data, so the
-//! filter is checked on made-up loops here and on the real path set in `pack.rs`'s ignored
-//! `megamud_paths_verify`.
+//! `tests/fixtures/world` (`common::pack_path`). The filter is checked on made-up loops here,
+//! on the fixture's eight paths in `megamud.rs` and on the real path set in `pack.rs`'s
+//! ignored `megamud_paths_verify`.
 
 mod common;
 
@@ -200,6 +200,7 @@ fn mm_loop(file: &str, walked: bool, closes: bool, rooms: &[Key]) -> MmLoop {
             },
         },
         rooms: rooms.to_vec(),
+        hunt: Vec::new(),
     }
 }
 

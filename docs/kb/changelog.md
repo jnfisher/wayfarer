@@ -165,3 +165,7 @@
   `search` needs light, another player's light counts (a second character with a torch got a
   stuck one out), and `light torch` with no torch carried is taken as speech [C, silvermere;
   live].
+- **2026-10-20** (wayfarer C-036): `megamud-formats.md`: what the 183 verified loops' steps do:
+  45 carry actions (32 searches for a Hidden exit, 10 `pull lever`, three others), 412 are not
+  a direction, none waits or attacks; 7 loops pass no room worth hunting [C, the reference zip
+  walked through the stock world by the world pack's builder].

@@ -321,6 +321,29 @@ pub struct MmLoop {
     pub path: MmPath,
     /// The rooms the walk passed, in order, from its start back to it.
     pub rooms: Vec<Key>,
+    /// The hunt rooms among them, in path order, each once: the loop's stops.
+    pub hunt: Vec<HuntRoom>,
+}
+
+impl MmLoop {
+    /// The stops a task runs it by: the walk's hunt rooms, in path order, without repeats.
+    /// No step of the format waits or attacks, so no other room is a stop.
+    pub fn stops(&self) -> Vec<Key> {
+        self.hunt.iter().map(|h| h.key).collect()
+    }
+
+    /// Why it cannot be run as a task, if it cannot: nothing on it to hunt.
+    pub fn not_runnable(&self) -> Option<&'static str> {
+        self.hunt.is_empty().then_some("nothing to hunt on it")
+    }
+
+    /// What a task calls it: its description, or its file name when that is blank.
+    pub fn name(&self) -> &str {
+        match self.path.description.trim() {
+            "" => &self.path.file,
+            d => d,
+        }
+    }
 }
 
 /// Whether a MegaMud loop may be listed or run: its verification walk reached the end and
@@ -330,8 +353,13 @@ pub fn verified(p: &MmPath) -> bool {
     p.is_loop && v.walked && v.closes && v.start.is_some()
 }
 
-/// MegaMud's verified loops in the pack, by file name, with the rooms each walk passed.
-pub fn megamud_loops(pack: &WorldPack) -> Result<Vec<MmLoop>, Error> {
+/// MegaMud's verified loops in the pack, by file name, with the rooms each walk passed and
+/// the hunt rooms among them.
+pub fn megamud_loops(
+    pack: &WorldPack,
+    graph: &RoomGraph,
+    monsters: &Monsters,
+) -> Result<Vec<MmLoop>, Error> {
     let mut out = Vec::new();
     for path in pack.loops()?.into_iter().filter(verified) {
         let mut rooms: Vec<Key> = Vec::new();
@@ -344,7 +372,15 @@ pub fn megamud_loops(pack: &WorldPack) -> Result<Vec<MmLoop>, Error> {
                 rooms.push(k);
             }
         }
-        out.push(MmLoop { path, rooms });
+        // Each room once, numbered by where the walk first passed it.
+        let mut order: HashMap<Key, u32> = HashMap::new();
+        for &k in &rooms {
+            let n = order.len() as u32;
+            order.entry(k).or_insert(n);
+        }
+        let mut hunt = hunt_rooms_in(graph, monsters, &order);
+        hunt.sort_by_key(|h| order[&h.key]);
+        out.push(MmLoop { path, rooms, hunt });
     }
     Ok(out)
 }

@@ -60,8 +60,12 @@ brain.run(&mut link).await?;                             // Ok when the gateway 
   (`wayfarer_world::Finder`, built once per brain), from the believed room with the
   character's `Traveller`.
 - **Loops** (`session.rs`): `loops_request` makes an area's loops with `wayfarer_world::loops`
-  (cached per anchor, radius, level, strength, picklocks and doors); `walk_loop` is a `walk_to` per stop, on to the
-  next when the walker says it arrived.
+  (cached per anchor, radius, level, strength, picklocks and doors), and lists MegaMud's
+  through it with their stops and whether each runs (`mm_not_runnable`: nothing to hunt, or a
+  leg no route takes); `walk_loop` is a `walk_to` per stop, on to the next when the walker says
+  it arrived. `find_loop` resolves both kinds of id: a MegaMud loop's file (any case) first,
+  its path's hidden exits added to the traveller's `searchable`, else a generated loop's
+  `map:room:radius:doors:index`.
 - **The bot** (`modes.rs`): running, paused or stopped, `Presence` (who is in the room), and the
   mode stack, each mode `wants`, `step`, `on_event` and `outcome`: `flee.rs`, `recover.rs`,
   `fight.rs`, `task.rs`, then Idle. A step asks for an action (through the executor) or a walk (through
@@ -77,7 +81,8 @@ brain.run(&mut link).await?;                             // Ok when the gateway 
   without a leg and do not count towards `GIVE_UPS`; none reachable stops the bot. `TaskLoop`
   is what the store keeps of it.
 - **`Atlas`** (`brain.rs`): the `RoomGraph`, room kinds, class and race numbers, the
-  `Monsters` and MegaMud's verified loops, loaded once
+  `Monsters`, MegaMud's verified loops and what its paths know (`PathKnowledge`; the graph
+  learns the phrases of Text exits with a blank message from it), loaded once
   per brain and shared by its sessions; `World` keeps the `WorldPack` open beside it.
 - **`stats.rs`**: the `Ledger` per session: the bot's state saved when it changes (the brain
   calls `Session::persist` after every message and timer), the run from Start to Stop with its
@@ -106,7 +111,12 @@ a wrong room voiding the move ahead, combat and a hostile monster on the way, pa
 resume at the same stop, unticking the stop it walks to, stops behind a door that would not
 bash open passed by each round, the bot stopping when none can be reached, stop, a brain restart going on to
 the same stop, determinism, and never an attack while engaged. `tests/loops.rs`: the Newhaven loops, `walk_loop` round the stops and back, from the
-nearest stop, and its stops. `tests/store.rs`: a second brain on the same store resumes the bot
+nearest stop, and its stops. `tests/megamud.rs`: `run_loop` on the fixture's MegaMud paths: the
+Wooden Passages from the Chieftain's room to the nearest stop and round all of them once, a
+stop unticked, an unknown file and a loop with nothing to hunt refused, the loops through
+Newhaven with their stops, a level-gated leg listed not runnable with its reason, the search
+before a hidden exit the loop's path knows, the reason none of the Bandit Keep's stops can be
+reached from outside, and a restarted brain resuming a MegaMud loop. `tests/store.rs`: a second brain on the same store resumes the bot
 paused with its home and the same run, a running bot resumes and fights, a stored loop's fields
 survive and its stops win, nothing is resumed outside the realm or when stopped, a run's kills,
 death, samples and exp per hour, flees (a log-off's too), and the run counted without a store. The live scenarios: `scripts/live-check.sh --scenario brain`,

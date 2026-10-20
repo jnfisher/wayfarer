@@ -18,7 +18,7 @@ use wayfarer_proto::{
 };
 use wayfarer_store::{BotRecord, BotState, EventKind, Store};
 use wayfarer_world::loops::{Area, circuits, hunt_rooms, megamud_through};
-use wayfarer_world::{self as world, Key, PlaceKind, Reach, Traveller, route};
+use wayfarer_world::{self as world, HuntRoom, Key, MmLoop, PlaceKind, Reach, Traveller, route};
 
 use crate::brain::Atlas;
 use crate::character::{Character, merge_patch};
@@ -30,7 +30,7 @@ use crate::policy::{COMBAT_QUIET, hp_percent};
 use crate::position::Position;
 use crate::rules::{self, RuleBook, Sightings};
 use crate::stats::{Ledger, unix};
-use crate::task::{Task, TaskLoop};
+use crate::task::{Task, TaskLoop, why_unreachable};
 use crate::walker::{Next, Say, Walker};
 
 /// The rooms a `map_view` holds unless a `map_request` asks for another radius: those within
@@ -102,6 +102,39 @@ fn parse_loop_id(id: &str, t: &Traveller) -> Option<(LoopsKey, usize)> {
         doors,
     };
     Some((key, index))
+}
+
+/// A hunt room as a loop's stop on the wire.
+fn loop_stop(h: &HuntRoom) -> LoopStop {
+    LoopStop {
+        map: h.key.0,
+        room: h.key.1,
+        name: h.name.clone(),
+        monsters: h.monsters.iter().map(|(_, n)| n.clone()).collect(),
+        arena: h.is_arena,
+        lair: h.is_lair,
+        regen: h.regen,
+    }
+}
+
+/// The MegaMud loop an id names: its file name, in any case.
+fn mm_loop<'a>(atlas: &'a Atlas, id: &str) -> Option<&'a MmLoop> {
+    atlas
+        .mm_loops
+        .iter()
+        .find(|l| l.path.file.eq_ignore_ascii_case(id))
+}
+
+/// A MegaMud loop as `find_loop` gives a loop: its file the id, its hunt rooms the stops.
+fn mm_as_loop(l: &MmLoop) -> GeneratedLoop {
+    GeneratedLoop {
+        id: l.path.file.clone(),
+        name: l.name().to_owned(),
+        stops: l.hunt.iter().map(loop_stop).collect(),
+        path: l.rooms.iter().copied().map(room_key).collect(),
+        steps: u32::try_from(l.path.verification.steps_checked).unwrap_or(0),
+        doors: 0,
+    }
 }
 
 fn room_key(k: Key) -> RoomKey {
@@ -832,6 +865,19 @@ impl Session {
     fn loop_name(&mut self, atlas: &Atlas, t: &TaskLoop, out: &mut Vec<ToGateway>) -> String {
         self.position
             .refresh(atlas, &self.character.snapshot(), self.clock.instant());
+        if let Some(l) = mm_loop(atlas, &t.id) {
+            self.learn_path(atlas, l);
+            if l.stops() == t.stops {
+                return l.name().to_owned();
+            }
+            tracing::warn!(session = %self.id, id = %t.id, "the stored loop's file no longer has its stops");
+            out.push(self.warning(&format!(
+                "Loop {} no longer has the stored stops (another world pack?): keeping the \
+                 stored stops",
+                t.id
+            )));
+            return t.id.clone();
+        }
         let found = parse_loop_id(&t.id, &self.position.traveller)
             .filter(|(k, _)| atlas.graph.contains(k.anchor))
             .and_then(|(k, i)| self.generated(atlas, k).get(i).cloned());
@@ -1382,13 +1428,19 @@ impl Session {
         let area = Area { anchor, radius }.rooms(&atlas.graph, &self.loop_traveller(doors));
         let megamud = megamud_through(&atlas.mm_loops, &area)
             .into_iter()
-            .map(|l| MegaMudLoop {
-                file: l.path.file.clone(),
-                description: l.path.description.clone(),
-                author: l.path.author.clone(),
-                path: l.rooms.iter().copied().map(room_key).collect(),
-                steps: u32::try_from(l.path.verification.steps_checked).unwrap_or(0),
-                exact: u32::try_from(l.path.verification.steps_exact).unwrap_or(0),
+            .map(|l| {
+                let reason = self.mm_not_runnable(&atlas, l);
+                MegaMudLoop {
+                    file: l.path.file.clone(),
+                    description: l.path.description.clone(),
+                    author: l.path.author.clone(),
+                    path: l.rooms.iter().copied().map(room_key).collect(),
+                    steps: u32::try_from(l.path.verification.steps_checked).unwrap_or(0),
+                    exact: u32::try_from(l.path.verification.steps_exact).unwrap_or(0),
+                    stops: l.hunt.iter().map(loop_stop).collect(),
+                    runnable: reason.is_none(),
+                    reason,
+                }
             })
             .collect();
         out.push(ToGateway::Loops {
@@ -1407,6 +1459,41 @@ impl Session {
             no_doors: !doors,
             ..self.position.traveller.clone()
         }
+    }
+
+    /// The hidden exits a MegaMud loop's path goes through are known to be there: routes may
+    /// take them, and the walker searches for them (`Traveller::searchable`).
+    fn learn_path(&mut self, atlas: &Atlas, l: &MmLoop) {
+        self.position
+            .traveller
+            .searchable
+            .extend(atlas.knowledge.hidden_exits(&l.path.file));
+    }
+
+    /// Why a MegaMud loop cannot be run for this character, if it cannot: nothing on it to
+    /// hunt, or a leg between two of its stops (in loop order, the last back to the first)
+    /// that no route takes, its path's hidden exits known.
+    fn mm_not_runnable(&self, atlas: &Atlas, l: &MmLoop) -> Option<String> {
+        if let Some(why) = l.not_runnable() {
+            return Some(why.to_owned());
+        }
+        let mut t = self.position.traveller.clone();
+        t.searchable
+            .extend(atlas.knowledge.hidden_exits(&l.path.file));
+        let stops = l.stops();
+        let g = &atlas.graph;
+        let name = |k: Key| g.room(k).map_or("", |r| r.name.as_str()).to_owned();
+        (0..stops.len()).find_map(|i| {
+            let (a, b) = (stops[i], stops[(i + 1) % stops.len()]);
+            route(g, a, b, &t).is_none().then(|| {
+                format!(
+                    "no way from {} to {}: {}",
+                    name(a),
+                    name(b),
+                    why_unreachable(g, &t, a, b)
+                )
+            })
+        })
     }
 
     /// The generated loops of an area, made the first time they are asked for.
@@ -1437,15 +1524,7 @@ impl Session {
                     .rooms
                     .iter()
                     .filter_map(|k| hunt.iter().find(|h| h.key == *k))
-                    .map(|h| LoopStop {
-                        map: h.key.0,
-                        room: h.key.1,
-                        name: h.name.clone(),
-                        monsters: h.monsters.iter().map(|(_, n)| n.clone()).collect(),
-                        arena: h.is_arena,
-                        lair: h.is_lair,
-                        regen: h.regen,
-                    })
+                    .map(loop_stop)
                     .collect(),
                 path: std::iter::once(l.rooms[0])
                     .chain(l.steps.iter().map(|s| s.to))
@@ -1537,10 +1616,15 @@ impl Session {
         self.flush_views(out);
     }
 
-    /// The generated loop `id` names, at the character's level now.
+    /// The loop `id` names: a MegaMud loop by its file (its path's hidden exits become ones
+    /// the character searches for), else a generated loop at the character's level now.
     fn find_loop(&mut self, atlas: &Atlas, id: &str) -> Option<GeneratedLoop> {
         self.position
             .refresh(atlas, &self.character.snapshot(), self.clock.instant());
+        if let Some(l) = mm_loop(atlas, id) {
+            self.learn_path(atlas, l);
+            return Some(mm_as_loop(l));
+        }
         parse_loop_id(id, &self.position.traveller)
             .filter(|(k, _)| atlas.graph.contains(k.anchor))
             .and_then(|(k, i)| self.generated(atlas, k).get(i).cloned())
@@ -1578,6 +1662,10 @@ impl Session {
             out.push(self.warning(&format!("run_loop: no loop {id:?}")));
             return;
         };
+        if let Some(why) = mm_loop(&atlas, id).and_then(|m| self.mm_not_runnable(&atlas, m)) {
+            out.push(self.warning(&format!("Not running loop {}: {why}", l.name)));
+            return;
+        }
         let stops: Vec<Key> = l.stops.iter().map(|s| (s.map, s.room)).collect();
         let skipped: BTreeSet<usize> = (0..stops.len())
             .filter(|&i| skip.contains(&stops[i]))
@@ -1599,8 +1687,23 @@ impl Session {
             })
             .min();
         let Some((_, first)) = nearest else {
+            // The ticked stop nearest by any way at all, and what bars it.
+            let open = Traveller::anyone();
+            let near = stops
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| !skipped.contains(i))
+                .filter_map(|(_, &k)| route(&atlas.graph, from, k, &open).map(|r| (r.len(), k)))
+                .min();
+            let why = near.map_or_else(String::new, |(_, k)| {
+                let name = atlas.graph.room(k).map_or("", |r| r.name.as_str());
+                format!(
+                    " (the nearest, {name}: {})",
+                    why_unreachable(&atlas.graph, &self.position.traveller, from, k)
+                )
+            });
             out.push(self.warning(&format!(
-                "Not running loop {}: no way to any of its ticked stops",
+                "Not running loop {}: no way to any of its ticked stops{why}",
                 l.name
             )));
             return;

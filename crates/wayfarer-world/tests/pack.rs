@@ -247,13 +247,14 @@ fn megamud_paths_verify() {
 
     // The loops wayfarer may list or run: the 183 that walk to the end, all closing; those
     // through Newhaven (radius 8) among them.
-    let mm = wayfarer_world::loops::megamud_loops(&pack).unwrap();
+    let graph = wayfarer_world::RoomGraph::load(&pack).unwrap();
+    let monsters = wayfarer_world::Monsters::load(&pack).unwrap();
+    let mm = wayfarer_world::loops::megamud_loops(&pack, &graph, &monsters).unwrap();
     assert_eq!(mm.len(), 183);
     assert!(mm.iter().all(|l| wayfarer_world::loops::verified(&l.path)));
     let slmb = mm.iter().find(|l| l.path.file == "SLMBLOOP.mp").unwrap();
     assert_eq!(slmb.rooms.first(), Some(&(1, 1224)));
     assert_eq!(slmb.rooms.last(), Some(&(1, 1224)));
-    let graph = wayfarer_world::RoomGraph::load(&pack).unwrap();
     let area = wayfarer_world::Area {
         anchor: (1, 2140),
         radius: 8,
@@ -265,4 +266,43 @@ fn megamud_paths_verify() {
         through.iter().map(|l| &l.path.file).collect::<Vec<_>>()
     );
     assert!(through.iter().all(|l| l.path.verification.closes));
+
+    // As tasks: seven loops have nothing on them to hunt (the Oasis, the Lost City, the
+    // Storm Giant Fortress, the Small Pyramid, the White Forest); the rest have stops.
+    let idle: Vec<&str> = mm
+        .iter()
+        .filter(|l| l.not_runnable().is_some())
+        .map(|l| l.path.file.as_str())
+        .collect();
+    assert_eq!(idle.len(), 7, "{idle:?}");
+    let wooden = mm.iter().find(|l| l.path.file == "Mwodloop.mp").unwrap();
+    assert!(!wooden.stops().contains(&(1, 1865)));
+    // What the paths know: the hidden exit into the keep, and of the 183 loops' legs between
+    // stops, those no route takes for a strong, high-level character (an Item, Cast or Level
+    // exit, a door no bash opens): printed, for the record.
+    let knowledge = wayfarer_world::PathKnowledge::load(&pack, &graph).unwrap();
+    assert!(
+        knowledge
+            .hidden_exits("Ftrehkep.mp")
+            .contains(&((9, 724), 0))
+    );
+    let strong = wayfarer_world::Traveller {
+        level: Some(60),
+        strength: Some(100),
+        picklocks: Some(100),
+        ..wayfarer_world::Traveller::default()
+    };
+    let unroutable: Vec<&str> = mm
+        .iter()
+        .filter(|l| {
+            let mut t = strong.clone();
+            t.searchable = knowledge.hidden_exits(&l.path.file);
+            let s = l.stops();
+            (0..s.len())
+                .any(|i| wayfarer_world::route(&graph, s[i], s[(i + 1) % s.len()], &t).is_none())
+        })
+        .map(|l| l.path.file.as_str())
+        .collect();
+    eprintln!("MegaMud loops with a leg no route takes: {unroutable:?}");
+    assert!(unroutable.len() < 20, "{unroutable:?}");
 }
