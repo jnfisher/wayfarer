@@ -45,3 +45,12 @@ the map panel (C-023); generated loops (C-024); the M1 follow-ups first (C-020).
 forward at John's request: the first slice of M3, "fight here" (C-025: Fight and Recover in
 the current room, start/stop/pause, no flee), and a page for running wayfarer on a server
 over Tailscale (C-026), ahead of M6's installers.
+
+## Fourth wave (M3), written 2026-10-19
+
+After John accepted M2: the gateway's log-off under attack and the M2 follow-ups (C-027),
+Flee with a plain HP line (C-028; the "twice the hardest hit" rule dropped by John), the store
+for resumable bot state and measured statistics (C-029), Task mode running a loop (C-030),
+typing beside the bot with the game's command table (C-031), replay (C-032), and the timed
+run that is M3's acceptance (C-033): Thorgrim, a seeded level 20 Dwarf Paladin, on a Wooden
+Passage loop for thirty minutes.

@@ -70,7 +70,8 @@ Cards don't repeat these:
 | 1 | M0: gateway and a live terminal | Now (this index) |
 | 2 | M1: parser, events, status; brain process | C-010 and C-011 early (they needed nothing from M0); C-012 to C-019 on 2026-10-19, after John tried M0 and said go |
 | 3 | M2: world and navigation, plus "fight here" pulled forward from M3 and the server-run page | 2026-10-19, after John tried M1 and said go |
-| 4+ | M3 onward | When the wave before is merged and John has played with it |
+| 4 | M3: the solo bot: Flee, the store, Task mode running a loop, typing beside the bot, replay, the timed run | 2026-10-19, after John accepted M2 |
+| 5+ | M4 onward | When the wave before is merged and John has played with it |
 
 ## Index (wave 1, M0)
 
@@ -113,6 +114,18 @@ Cards don't repeat these:
 | [C-025](C-025-fight-here.md) | Fight here: the Fight and Recover modes in the current room, start/stop/pause, typed lines pause the bot | B | L | C-022, C-023 | review |
 | [C-026](C-026-server-run.md) | Running wayfarer on a server: build, data directory, token, systemd unit, Tailscale | C | S | C-019 | |
 
+## Index (wave 4, M3)
+
+| Id | Title | Tier | Size | Depends | Review |
+|---|---|---|---|---|---|
+| [C-027](C-027-logoff-under-attack.md) | Log-off under attack, and the M2 brain follow-ups | B | M | C-025 | |
+| [C-028](C-028-flee.md) | Flee: below the flee line, leave by a confirmed exit to a quiet room, keep running if followed, rest, return | B | L | C-025, C-027, C-029 | review |
+| [C-029](C-029-store.md) | `wayfarer-store`: the bot's state survives a brain restart; measured statistics; a stats tab | B | M | C-025, C-018, C-027 | |
+| [C-030](C-030-task-mode.md) | Task mode: run a loop: walk to the area, go stop to stop, fight at each, rest between, respawn delays, narrate | B | L | C-024, C-028, C-029, C-031 | review |
+| [C-031](C-031-typing-beside-the-bot.md) | Typing beside the bot: input arbitration; talk and look lines go between actions, acting lines pause | B | L | C-025, C-027, C-028 | review |
+| [C-032](C-032-replay.md) | Replay: play a recorded session back into the UI and the brain on its recorded clock; the CI replay layer | B | M | C-029, C-030, C-031 | |
+| [C-033](C-033-soak-scenario.md) | The timed run: `--scenario soak`: a character runs a loop for N minutes and the numbers come out | C | M | C-030, C-029 | |
+
 Tier: B Opus, C Sonnet. Size: S under half a day of agent time, M about a day, L two to three
 days.
 
@@ -121,6 +134,9 @@ C-005 and C-006 together; then C-007, C-008 and C-009 together. Wave 2: C-012, C
 C-015 together; then C-013 and C-016; then C-017 and C-019; then C-018. Wave 3: C-020,
 C-021 and C-026 together; then C-022; then C-023; then C-025; then C-024 (C-023, C-025 and
 C-024 all edit the UI's keys table, docs and generated protocol files, so they run one at a time).
+Wave 4: C-027; then C-029; then C-028; then C-031; then C-030; then C-032 and C-033 together
+(every card to C-030 changes the brain's session or modes, so one at a time; C-032's clock
+refactor goes last).
 
 **M0 is done** when John opens the browser on his rig, sees one tile per configured
 character, each logged on by its logon script, types into them, scrolls back, reloads the
@@ -138,3 +154,9 @@ walks there confirming each step, with the route drawn and a stop that works; a 
 loop is listed for the area and walks once; in a room he picks, Start makes the character
 fight what comes and rest when low, typing pauses it and `F9` resumes it, and it stops itself
 below 30% HP; and `docs/server.md` has been tried end to end on a Linux machine.
+
+**M3 is done** when Thorgrim runs a Wooden Passage loop for thirty minutes on John's rig
+(`scripts/live-check.sh --scenario soak`, with and without the Chieftain's room), fights,
+rests and flees on his own, survives, the stats tab shows exp per hour and kills, a brain
+restart mid-run resumes the loop, John types `st` into the tile without pausing him, and the
+run can be replayed afterwards in the browser.
