@@ -28,7 +28,8 @@ use crate::executor::{Action, Executor, Guard};
 use crate::modes::{Bot, Do, Presence, View};
 use crate::policy::{COMBAT_QUIET, hp_percent};
 use crate::position::Position;
-use crate::stats::Ledger;
+use crate::rules::{self, RuleBook, Sightings};
+use crate::stats::{Ledger, unix};
 use crate::task::{Task, TaskLoop};
 use crate::walker::{Next, Say, Walker};
 
@@ -282,6 +283,10 @@ pub(crate) struct Session {
     /// The bot as a brain before this one left it, running or paused: put back once the
     /// catch-up is done.
     restore: Option<BotRecord>,
+    /// The monster rules: the defaults, the session's and the player's (kept with the bot).
+    rules: RuleBook,
+    /// Where the monsters to avoid were last seen: the router keeps out of those rooms.
+    sightings: Sightings,
 }
 
 /// The events of the character's own auto-combat: its engaging and its blows, hits, misses,
@@ -299,7 +304,10 @@ const OWN_COMBAT: [&str; 7] = [
 
 impl Session {
     /// A session the brain has just learned of: its history up to now is fed silently. A bot
-    /// the store has running or paused for it is resumed once that is done.
+    /// the store has running or paused for it is resumed once that is done. Its monster rules
+    /// are the store's, with *flee from* for each of `flee_from` (`--flee-from`) as the
+    /// player's.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         info: &SessionInfo,
         registry: Arc<Registry>,
@@ -307,6 +315,7 @@ impl Session {
         store: Option<Arc<Mutex<Store>>>,
         clock: Arc<dyn Clock>,
         flee_below: i32,
+        flee_from: &[String],
         now: Instant,
     ) -> Self {
         let ledger = Ledger::new(store, clock.clone(), &info.id);
@@ -314,7 +323,13 @@ impl Session {
             .stored()
             .filter(|b| b.state != BotState::Stopped)
             .cloned();
+        let mut rules = RuleBook::new(ledger.stored().map_or(&[], |b| &b.monster_rules));
+        for name in flee_from {
+            rules.set(name, Some(world::MonsterRule::FleeFrom), unix(clock.now()));
+        }
         Self {
+            rules,
+            sightings: Sightings::default(),
             ledger,
             clock,
             restore,
@@ -591,10 +606,12 @@ impl Session {
             if let Some(name) = &dead {
                 self.bot.killed(name, now);
             }
-            if let Some(atlas) = &self.atlas {
-                self.presence.event(atlas, &typed);
+            if let Some(atlas) = self.atlas.clone() {
+                self.presence.event(&atlas, &typed);
+                self.sighted(&typed, now, out);
                 let says = self.bot.event(&typed, now);
                 self.say(says, out);
+                self.learn(now, out);
             }
             if !silent {
                 out.push(event_message(&self.id, ev));
@@ -628,6 +645,102 @@ impl Session {
                 idle: typed,
             };
         }
+    }
+
+    /// Who is in the room changed: where the monsters to avoid were last seen (the router
+    /// keeps out of those rooms), and a monster to flee from makes what the bot has in flight
+    /// give way.
+    fn sighted(&mut self, ev: &GameEvent, now: Instant, out: &mut Vec<ToGateway>) {
+        use GameEvent as G;
+        let shown = matches!(
+            ev,
+            G::RoomExits { .. }
+                | G::RoomDark
+                | G::Prompt { .. }
+                | G::MonsterArrives { .. }
+                | G::MonsterLeaves { .. }
+                | G::MonsterDeath { .. }
+        );
+        if !shown {
+            return;
+        }
+        let room = self.position.best();
+        if let Some(room) = room.filter(|_| self.position.belief.certain())
+            && self
+                .sightings
+                .seen(self.rules.rules(), room, &self.presence.here, now)
+        {
+            self.position.traveller.avoid = self.sightings.rooms(now);
+        }
+        // A walk of the bot's that only passes through the room (the router keeps out of it
+        // when there is another way) goes on: its next step leaves anyway, and a flee from
+        // here would only send it back the way it came.
+        let passing = self.bot_walk
+            && self.walker.walking()
+            && room.is_some()
+            && self.walker.destination() != room;
+        if !passing
+            && self
+                .bot
+                .flee_urgent(self.rules.rules(), &self.presence, room)
+        {
+            self.give_way(out);
+        }
+    }
+
+    /// The monsters stalemates gave up become *never fight* for the session (kept with the
+    /// bot), and their room is kept out of as a monster to avoid's would be.
+    fn learn(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
+        for name in self.bot.take_learned() {
+            if self.rules.learn(&name, unix(self.clock.now())) {
+                out.push(self.notice(&format!("Monster rule: never fight {name} (a stalemate)")));
+            }
+            if let Some(room) = self.position.best() {
+                self.sightings.mark(room, &name, now);
+                self.position.traveller.avoid = self.sightings.rooms(now);
+            }
+        }
+    }
+
+    /// `set_monster_rule`: the player's rule for monsters whose name holds `pattern`, or none.
+    pub fn set_monster_rule(
+        &mut self,
+        pattern: &str,
+        rule: Option<world::MonsterRule>,
+        now: Instant,
+        out: &mut Vec<ToGateway>,
+    ) {
+        let pattern = pattern.trim();
+        if pattern.chars().count() < 2 {
+            out.push(self.warning("set_monster_rule: the pattern needs two characters or more"));
+            return;
+        }
+        if !self.rules.set(pattern, rule, unix(self.clock.now())) {
+            return;
+        }
+        let text = match rule {
+            Some(r) => format!("Monster rule: {} {pattern}", rules::describe(r)),
+            None => format!("Monster rule removed: {pattern}"),
+        };
+        out.push(self.notice(&text));
+        // Who is here now, by the new rules.
+        if let Some(room) = self
+            .position
+            .best()
+            .filter(|_| self.position.belief.certain())
+        {
+            self.sightings
+                .seen(self.rules.rules(), room, &self.presence.here, now);
+            self.position.traveller.avoid = self.sightings.rooms(now);
+        }
+        if self
+            .bot
+            .flee_urgent(self.rules.rules(), &self.presence, self.position.best())
+        {
+            self.give_way(out);
+        }
+        self.drive(now, out);
+        self.flush_views(out);
     }
 
     /// What the run counts: kills (`dead`, with the exp that follows), deaths, rests, and a
@@ -743,7 +856,9 @@ impl Session {
         if self.atlas.is_none() || self.restore.is_some() {
             return;
         }
-        if self.ledger.save(self.bot.record(), self.clock.instant()) {
+        let mut record = self.bot.record();
+        record.monster_rules = self.rules.stored();
+        if self.ledger.save(record, self.clock.instant()) {
             self.publish_patch(out);
         }
     }
@@ -1711,9 +1826,12 @@ impl Session {
             traveller: &self.position.traveller,
             doors: &self.position.doors,
             presence: &self.presence,
+            rules: self.rules.rules(),
+            sightings: &self.sightings,
         };
         let (act, says) = self.bot.tick(&view);
         self.say(says, out);
+        self.learn(now, out);
         if let Some(hp) = self.bot.take_fled() {
             let who = self.presence.attackers.first().cloned();
             let room = self.position.best();
@@ -1833,7 +1951,9 @@ impl Session {
                     if self.bot_walk
                         && self.bot.task_walking()
                         && self.walker.walking()
-                        && self.bot.would_fight(&atlas, &self.presence)
+                        && self
+                            .bot
+                            .would_fight(&atlas, self.rules.rules(), &self.presence)
                     {
                         self.stop_walk("a monster to fight", out);
                     }
@@ -1881,7 +2001,9 @@ impl Session {
         }
         s.walking = self.walker.snapshot();
         if self.atlas.is_some() {
-            s.bot = Some(self.bot.snapshot());
+            let mut bot = self.bot.snapshot();
+            bot.monster_rules = self.rules.wire();
+            s.bot = Some(bot);
             s.run = self.ledger.snapshot();
         }
         s
@@ -1959,7 +2081,7 @@ impl Session {
         // lapsed, or when a wait of Recover's ends.
         let now = self.clock.instant();
         let lapse = (!self.down).then_some(self.last_combat + COMBAT_QUIET);
-        let bot = [lapse, self.bot.wake(now)]
+        let bot = [lapse, self.bot.wake(now), self.sightings.next_expiry()]
             .into_iter()
             .flatten()
             .filter(|&t| t > now && self.bot.running() && !self.executor.busy());
@@ -1990,6 +2112,9 @@ impl Session {
         if self.character.state().in_combat == Some(true) && self.quiet(now) {
             tracing::debug!(session = %self.id, "the fight lapsed: quiet for {COMBAT_QUIET:?}");
             self.character.combat_lapsed();
+        }
+        if self.sightings.expire(now) {
+            self.position.traveller.avoid = self.sightings.rooms(now);
         }
         let c = self.character.state();
         let (exp, hp) = (

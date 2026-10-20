@@ -29,7 +29,7 @@ pub use build::{BuildReport, MegaMudReport, build};
 pub use find::{Finder, Found, FoundKind, FoundRoom, PlaceKind, Reach};
 pub use layout::{Layout, Placed, Segment, SegmentKind, layout};
 pub use loops::{Area, HuntRoom, Loop, MmLoop, generate, hunt_rooms};
-pub use monsters::{Monsters, huntable};
+pub use monsters::{DEFAULT_RULES, MonsterRule, MonsterRules, Monsters, huntable};
 pub use nav::{Category, DirSet, Edge, ExitType, Gate, Key, LockState, RoomGraph};
 pub use pack::WorldPack;
 pub use route::{Costs, Route, Step, Traveller, distances, route, route_within};

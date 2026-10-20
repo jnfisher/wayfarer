@@ -186,6 +186,11 @@ impl Walker {
         })
     }
 
+    /// Where the walk in progress goes.
+    pub fn destination(&self) -> Option<Key> {
+        self.walk.as_ref().map(|w| w.to)
+    }
+
     /// The rooms still to pass, from the one the step in progress leaves.
     pub fn route_keys(&self) -> Option<Vec<Key>> {
         let w = self.walk.as_ref()?;

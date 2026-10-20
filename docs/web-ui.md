@@ -239,6 +239,13 @@ the run still going is in cyan. The rows come from the brain's store (`stats_req
 for when the tab opens, when a run starts or ends, every minute while it is open, and on
 `refresh`.
 
+Between the two, the **monster rules** the bot plays by ([brain.md](brain.md) "Monster
+rules"): each rule (*flee from*, *never fight*, *avoid*), its pattern and where it comes from
+(`default`, dim; `session`, learned from a stalemate; `player`). A player's rule has an `x` to
+remove it; the line under the list adds one (`set_monster_rule`): pick the rule, type the
+name, `add`. A pattern matches any monster whose name holds it, so use the full name (`ooze`
+would also catch the glittering ooze). The settings page (M4) replaces this list.
+
 ## The dev panel
 
 For development: what the brain sees. It is the drawer's `dev` tab (above).

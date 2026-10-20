@@ -1,6 +1,6 @@
 <script lang="ts">
   import { count, sparkline, startedAt, type Stats } from "./lib/stats";
-  import type { CharacterState, SessionInfo } from "./proto";
+  import type { CharacterState, MonsterRuleKind, SessionInfo } from "./proto";
 
   interface Props {
     /** The focused tile's session, which the panel follows. */
@@ -11,9 +11,29 @@
     stats: Stats | undefined;
     attached: boolean | null;
     onrefresh: (session: string) => void;
+    /** Set the player's monster rule for a pattern, or remove it (`null`). */
+    onrule?: (session: string, pattern: string, rule: MonsterRuleKind | null) => void;
   }
 
-  let { session, character, stats, attached, onrefresh }: Props = $props();
+  let { session, character, stats, attached, onrefresh, onrule = () => {} }: Props = $props();
+
+  const rules = $derived(character?.bot?.monster_rules ?? []);
+  const RULES: { rule: MonsterRuleKind; label: string }[] = [
+    { rule: "flee_from", label: "flee from" },
+    { rule: "never_fight", label: "never fight" },
+    { rule: "avoid", label: "avoid" },
+  ];
+  const ruleLabel = (r: MonsterRuleKind) => RULES.find((x) => x.rule === r)?.label ?? r;
+  let pattern = $state("");
+  let newRule: MonsterRuleKind = $state("flee_from");
+
+  function addRule(e: SubmitEvent) {
+    e.preventDefault();
+    const p = pattern.trim();
+    if (!session || p.length < 2) return;
+    onrule(session.id, p, newRule);
+    pattern = "";
+  }
 
   const run = $derived(character?.run);
   const spark = $derived(stats ? sparkline(stats.samples) : "");
@@ -50,6 +70,33 @@
       {#if spark}
         <div class="spark" title="exp over the newest run, a bar a minute" aria-label="exp over time">{spark}</div>
       {/if}
+    </section>
+    <section class="rules" aria-label="Monster rules">
+      <div class="tools"><span>monster rules</span></div>
+      {#each rules as r (r.source + ":" + r.pattern)}
+        <div class="rule" data-source={r.source}>
+          <span class="r-rule">{ruleLabel(r.rule)}</span>
+          <span class="r-pattern">{r.pattern}</span>
+          <span class="r-source">{r.source}</span>
+          {#if r.source === "player"}
+            <button aria-label={`remove ${r.pattern}`} onclick={() => onrule(session.id, r.pattern, null)}>x</button>
+          {/if}
+        </div>
+      {/each}
+      <form class="add" onsubmit={addRule}>
+        <select aria-label="rule" bind:value={newRule}>
+          {#each RULES as o (o.rule)}
+            <option value={o.rule}>{o.label}</option>
+          {/each}
+        </select>
+        <input
+          aria-label="monster name"
+          placeholder="full monster name"
+          title="Matches any monster whose name holds this, in any case: 'ooze' would also match the glittering ooze. Use the full name."
+          bind:value={pattern}
+        />
+        <button type="submit">add</button>
+      </form>
     </section>
     <div class="tools">
       <span>last runs</span>
@@ -141,6 +188,51 @@
     background: var(--vga-lightgray);
     border: none;
     cursor: pointer;
+  }
+  .rules {
+    border-bottom: 1px solid var(--frame);
+    padding-bottom: 2px;
+  }
+  .rule {
+    display: flex;
+    gap: 1ch;
+    padding: 0 1ch;
+    white-space: pre;
+  }
+  .rule[data-source="default"] {
+    color: var(--dim);
+  }
+  .r-rule {
+    width: 11ch;
+    color: var(--vga-yellow);
+  }
+  .r-pattern {
+    flex: 1;
+    min-width: 4ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .r-source {
+    color: var(--dim);
+  }
+  .add {
+    display: flex;
+    gap: 1ch;
+    padding: 2px 1ch;
+  }
+  .add input {
+    flex: 1;
+    min-width: 8ch;
+    font: inherit;
+    color: var(--vga-lightgray);
+    background: #000;
+    border: 1px solid var(--frame);
+  }
+  .add select {
+    font: inherit;
+    color: var(--vga-lightgray);
+    background: #000;
+    border: 1px solid var(--frame);
   }
   .list {
     flex: 1;

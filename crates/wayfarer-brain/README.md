@@ -7,7 +7,8 @@ each character's position, serves the map panel (`map_view`), walks a character 
 (`walk_to`, one room short of a boss lair by default), finds rooms, places and monsters by
 name (`find`), lists the loops of an area and walks one once (`loops_request`, `walk_loop`),
 plays it where it stands (`bot_control`: "fight here"), and runs a loop (`run_loop`: Task
-mode). When the gateway is about to log a
+mode), by the monster rules (`rules.rs`: *never fight*, *flee from*, *avoid*, a stalemate
+making a monster *never fight*; `set_monster_rule`, `Brain::with_flee_from`). When the gateway is about to log a
 character off (`logging_off`) it stops that character's bot, sends it nothing more and answers
 `ready_to_leave`. With a store (`Brain::with_store`) it saves each bot's state and counts each
 run, and a restarted brain resumes the bots. Depends on `wayfarer-proto`, `wayfarer-parse`,

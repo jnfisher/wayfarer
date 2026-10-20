@@ -4,9 +4,9 @@
 use wayfarer_proto::{
     Bot, BotAction, BotMode, BotState, CharacterState, Chunk, ClientKind, CoinCount, Coins,
     DecodeError, Encumbrance, ExitKind, ExpSample, Family, Found, FoundKind, FoundRoom,
-    GeneratedLoop, LoopStop, MapExit, MapRoom, MegaMudLoop, PROTOCOL, ParseCounts, Position,
-    RoomKey, RoomKind, RunSummary, SessionInfo, SessionState, Stats, ToClient, ToGateway, Walking,
-    WorldPackInfo, protocol_mismatch,
+    GeneratedLoop, LoopStop, MapExit, MapRoom, MegaMudLoop, MonsterRuleEntry, MonsterRuleKind,
+    PROTOCOL, ParseCounts, Position, RoomKey, RoomKind, RuleSource, RunSummary, SessionInfo,
+    SessionState, Stats, ToClient, ToGateway, Walking, WorldPackInfo, protocol_mismatch,
 };
 
 fn kasimir(state: SessionState, last_seq: u64) -> SessionInfo {
@@ -96,11 +96,16 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                         narration: "Fight: large giant rat".into(),
                         reason: None,
                         task: None,
+                        monster_rules: vec![MonsterRuleEntry {
+                            pattern: "gigantic black ooze".into(),
+                            rule: MonsterRuleKind::FleeFrom,
+                            source: RuleSource::Default,
+                        }],
                     }),
                     ..CharacterState::default()
                 }),
             },
-            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]},"bot":{"state":"running","mode":"fight","narration":"Fight: large giant rat"}}}"#,
+            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]},"bot":{"state":"running","mode":"fight","narration":"Fight: large giant rat","monster_rules":[{"pattern":"gigantic black ooze","rule":"flee_from","source":"default"}]}}}"#,
         ),
         (
             ToGateway::CharacterPatch {
@@ -368,6 +373,14 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
                 query: "chief".into(),
             },
             r#"{"type":"find","session":"kasimir","query":"chief"}"#,
+        ),
+        (
+            ToGateway::SetMonsterRule {
+                session: "kasimir".into(),
+                pattern: "giant rat".into(),
+                rule: Some(MonsterRuleKind::NeverFight),
+            },
+            r#"{"type":"set_monster_rule","session":"kasimir","pattern":"giant rat","rule":"never_fight"}"#,
         ),
     ]
 }
@@ -734,6 +747,20 @@ fn protocol_mismatch_names_both_numbers() {
 }
 
 #[test]
+fn a_monster_rule_is_removed_with_a_null() {
+    let json =
+        r#"{"type":"set_monster_rule","session":"kasimir","pattern":"giant rat","rule":null}"#;
+    let msg = ToGateway::SetMonsterRule {
+        session: "kasimir".into(),
+        pattern: "giant rat".into(),
+        rule: None,
+    };
+    assert_eq!(msg.to_json(), json);
+    assert_eq!(ToGateway::from_json(json).unwrap(), msg);
+    assert!(include_str!("../../../docs/protocol.md").contains(json));
+}
+
+#[test]
 fn every_example_is_in_the_docs() {
     let readme = include_str!("../README.md");
     let protocol = include_str!("../../../docs/protocol.md");
@@ -754,7 +781,7 @@ fn families_say_who_may_send_what() {
         let want = match msg.type_name() {
             "resync" | "state_request" | "walk_to" | "walk_stop" | "map_request"
             | "bot_control" | "loops_request" | "walk_loop" | "run_loop" | "stats_request"
-            | "find" => Family::Control,
+            | "find" | "set_monster_rule" => Family::Control,
             "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
             | "map_view" | "loops" | "stats" | "input_held" | "found" => Family::Brain,
             "ready_to_leave" | "arbitrate" => Family::BrainToGateway,

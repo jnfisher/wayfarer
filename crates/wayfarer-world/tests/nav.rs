@@ -135,7 +135,10 @@ fn routes() {
     // has a detour of one step, so this is a spawning Normal room.
     let free = level1.clone();
     let cautious = Traveller {
-        costs: wayfarer_world::Costs { spawn: 40, door: 1 },
+        costs: wayfarer_world::Costs {
+            spawn: 40,
+            ..Default::default()
+        },
         ..level1.clone()
     };
     let river = (1, 2342);
@@ -150,6 +153,38 @@ fn routes() {
             .all(|s| s.to == NEWHAVEN_DOCKS || !g.node(s.to).unwrap().spawns)
     );
     assert_eq!(commands(&safe), ["s", "w", "n", "n", "n"]);
+
+    // A room to avoid (a monster the bot avoids was last seen there) is gone round when there
+    // is another way, however much longer: the river again, by the docks and the skiff.
+    let wary = Traveller {
+        avoid: [river].into(),
+        ..level1.clone()
+    };
+    let around = route(&g, (1, 1813), NEWHAVEN_DOCKS, &wary).unwrap();
+    assert!(
+        around.iter().all(|s| s.to != river),
+        "{:?}",
+        commands(&around)
+    );
+    assert_eq!(around.len(), 5);
+    // And still walked through when it is the only way: from the Arena to the Narrow Path,
+    // by the Narrow Road. The destination is never avoided.
+    let road = (1, 2146);
+    let wary = Traveller {
+        avoid: [road].into(),
+        ..level1.clone()
+    };
+    let through = route(&g, ARENA, (1, 2143), &wary).unwrap();
+    assert!(
+        through.iter().any(|s| s.to == road),
+        "{:?}",
+        commands(&through)
+    );
+    assert_eq!(
+        commands(&route(&g, ARENA, road, &wary).unwrap()),
+        ["u"],
+        "the destination itself is not avoided"
+    );
 
     // Key exits only when allowed.
     let key = g

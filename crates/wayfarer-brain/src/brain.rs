@@ -17,6 +17,7 @@ use wayfarer_world::{Finder, Key, MmLoop, Monsters, RoomGraph, WorldPack};
 use crate::clock::{Clock, rfc3339};
 use crate::link::Link;
 use crate::policy::FLEE_BELOW;
+use crate::rules;
 use crate::session::{Progress, Session};
 
 /// This build: the version, and the commit it was built from when known.
@@ -203,6 +204,8 @@ pub struct Brain {
     store: Option<Arc<Mutex<Store>>>,
     /// The bots' flee line, per cent of the maximum HP.
     flee_below: i32,
+    /// Monsters every bot flees from, as the player's rules (`--flee-from`).
+    flee_from: Vec<String>,
 }
 
 impl Brain {
@@ -218,6 +221,7 @@ impl Brain {
             attaches: 0,
             store: None,
             flee_below: FLEE_BELOW,
+            flee_from: Vec::new(),
         }
     }
 
@@ -226,6 +230,14 @@ impl Brain {
     /// the player the line in M4.
     pub fn with_flee_below(mut self, percent: i32) -> Self {
         self.flee_below = percent;
+        self
+    }
+
+    /// Every bot flees from monsters whose name holds one of `names`, as if the player had set
+    /// *flee from* for each (`wayfarer brain --flee-from`, the live check's way to name one
+    /// without a UI). Kept with the bot's record like any rule of the player's.
+    pub fn with_flee_from(mut self, names: Vec<String>) -> Self {
+        self.flee_from = names;
         self
     }
 
@@ -324,6 +336,7 @@ impl Brain {
                         self.store.clone(),
                         self.clock.clone(),
                         self.flee_below,
+                        &self.flee_from,
                         now,
                     );
                     s.attach(info, now, out);
@@ -435,6 +448,14 @@ impl Brain {
                     s.run_loop(&id, skip, now, out);
                 }
                 None => out.push(no_session("run_loop", &session)),
+            },
+            ToClient::SetMonsterRule {
+                session,
+                pattern,
+                rule,
+            } => match self.sessions.get_mut(&session) {
+                Some(s) => s.set_monster_rule(&pattern, rule.map(rules::from_wire), now, out),
+                None => out.push(no_session("set_monster_rule", &session)),
             },
             ToClient::StatsRequest { session } => match self.sessions.get(&session) {
                 Some(s) => s.stats_request(out),

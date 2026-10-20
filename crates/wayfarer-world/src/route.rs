@@ -6,6 +6,10 @@ use std::collections::{BTreeSet, BinaryHeap, HashMap, VecDeque};
 
 use crate::nav::{Category, Edge, ExitType, Gate, Key, LockState, RoomGraph};
 
+/// What entering a room the traveller avoids costs by default: more than any detour, so
+/// another way wins whenever there is one, and still a way when there is not.
+pub const AVOID_COST: u32 = 1000;
+
 /// Extra costs on top of 1 per step. The default is the shortest route (John, 2026-10-19):
 /// no penalty for rooms that spawn monsters; a door costs one extra step, the `open`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -14,11 +18,17 @@ pub struct Costs {
     pub spawn: u32,
     /// Going through a door, gate or key door.
     pub door: u32,
+    /// Entering a room in [`Traveller::avoid`] (not the destination).
+    pub avoid: u32,
 }
 
 impl Default for Costs {
     fn default() -> Costs {
-        Costs { spawn: 0, door: 1 }
+        Costs {
+            spawn: 0,
+            door: 1,
+            avoid: AVOID_COST,
+        }
     }
 }
 
@@ -39,6 +49,9 @@ pub struct Traveller {
     pub allow: BTreeSet<Category>,
     /// Doors, gates and key doors are not taken (a loop generated without doors).
     pub no_doors: bool,
+    /// Rooms to keep out of when there is another way: where a monster the bot avoids was
+    /// last seen. Costly, not impassable ([`Costs::avoid`]).
+    pub avoid: BTreeSet<Key>,
     pub costs: Costs,
 }
 
@@ -57,7 +70,11 @@ impl Traveller {
                 Category::Ability,
             ]
             .into(),
-            costs: Costs { spawn: 0, door: 0 },
+            costs: Costs {
+                spawn: 0,
+                door: 0,
+                avoid: 0,
+            },
             ..Traveller::default()
         }
     }
@@ -117,7 +134,8 @@ pub struct Step {
 pub type Route = Vec<Step>;
 
 /// The cheapest route from `from` to `to` (Dijkstra): 1 per step, plus `costs.spawn` for
-/// entering a room that spawns monsters (the destination exempt) and `costs.door` per door.
+/// entering a room that spawns monsters and `costs.avoid` for one the traveller avoids (the
+/// destination exempt from both), and `costs.door` per door.
 /// `None` when there is no way; an empty route when `from` is `to`.
 pub fn route(graph: &RoomGraph, from: Key, to: Key, t: &Traveller) -> Option<Route> {
     route_within(graph, from, to, t, |_| true)
@@ -149,6 +167,9 @@ pub fn route_within(
             let mut c = cost + 1;
             if e.to_ix != dst && graph.node_at(e.to_ix).spawns {
                 c += t.costs.spawn;
+            }
+            if e.to_ix != dst && t.avoid.contains(&e.to) {
+                c += t.costs.avoid;
             }
             if e.door.is_some() {
                 c += t.costs.door;

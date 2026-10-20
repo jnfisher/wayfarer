@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 use crate::gateway::Gateway;
-use crate::{Ctx, bot_field, placed_brain, stop_brain, walk_out_to};
+use crate::{Ctx, bot_field, flee_from_args, placed_brain, stop_brain, walk_out_to};
 
 /// What `--scenario soak` was asked for.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -201,7 +201,8 @@ pub async fn scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
     use wayfarer_proto::BotAction;
 
     let soak = ctx.args.soak.clone();
-    let Some((running, start)) = placed_brain(ctx, gw, "soak", &[]).await else {
+    let extra = flee_from_args(&ctx.args.flee_from);
+    let Some((running, start)) = placed_brain(ctx, gw, "soak", &extra).await else {
         return false;
     };
     let dir = running.dir().to_path_buf();

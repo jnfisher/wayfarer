@@ -243,7 +243,7 @@ The brain's log is `NN-loop/brain.log`.
 
 ```sh
 scripts/live-check.sh --scenario soak --char NAME --minutes N [--anchor MAP:ROOM]
-    [--radius R] [--skip MAP:ROOM ...] [--loop ID]
+    [--radius R] [--skip MAP:ROOM ...] [--loop ID] [--flee-from NAME ...]
 scripts/live-check.sh --scenario soak --char Waychecka --minutes 3 --anchor 1:2140 \
     --skip 1:2152 --skip 1:2156          # the smoke run: Newhaven, the Lairs unticked
 ```
@@ -253,7 +253,10 @@ A character runs a loop for N minutes and the numbers come out. It is for M3's a
 the numbers are.
 
 1. **The world pack** and **a brain**, as in "walk" (the brain's store is `store.sqlite` in
-   the run's `NN-soak` directory).
+   the run's `NN-soak` directory). Each `--flee-from NAME` goes to the brain as `wayfarer
+   brain --flee-from NAME`: the bot leaves on sight of a monster whose name holds it
+   (`docs/brain.md` "Monster rules"), so a soak can declare one without a UI. The gigantic
+   black ooze is *flee from* by default.
 2. **The loop**: `loops_request` around the anchor (default: the room the re-sync placed the
    character in; radius 8) and the first generated loop, or `--loop ID`.
 3. **`run_loop`** with the `--skip` stops, watched for N minutes. A line a minute is printed:
@@ -307,6 +310,27 @@ It claims and logs on a character, then:
 6. **Stopping the brain**, then the gateway logs off as in M0.
 
 The brain's log is `NN-goto/brain.log`.
+
+## Scenario "flee-from" (C-035, monster rules)
+
+```sh
+scripts/live-check.sh --scenario flee-from [--flee-from NAME ...]
+```
+
+The brain runs with `--flee-from` for each NAME, by default `kobold thief` and `giant rat`
+(the Newhaven Arena's monsters; the fight scenario attacks the thieves). It claims and logs on
+a character, then:
+
+1. **The world pack** and **a brain**, as in "walk"; **rest to full HP** by hand, as in
+   "flee".
+2. **To the Arena** and **Start**, as in "fight".
+3. **On sight: flee, no attack**: within three minutes (a monster may have to come first) the
+   brain narrates "Fleeing: <name> is here (flee from): ..." and then "Safe in ...", at full
+   HP; it fails if `*Combat Engaged*` shows (an attack of the bot's) or the bot stops.
+4. **Stop the bot**, check again that no attack went, walk out to the Narrow Road, stop the
+   brain; the gateway logs off as in M0.
+
+The brain's log is `NN-flee-from/brain.log`.
 
 ## The test-character pool
 

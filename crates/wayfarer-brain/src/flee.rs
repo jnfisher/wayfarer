@@ -8,18 +8,29 @@
 //! is; a door on the way is opened first (never bashed: a locked door is no candidate). After
 //! the room comes it waits [`FLEE_WATCH`] at the prompt for a follower: the follow text, a
 //! hostile monster arriving, or an attack.
+//!
+//! Some flees do not wait for the flee line: a monster to *flee from* seen in the room (the
+//! monster rules), and a stalemate Fight gave up ([`Flee::run_from`]). Those stop at the first
+//! room nothing followed into, and a cornered one does not stop the bot: it stays, and fights
+//! only what attacks it.
 
 use std::collections::BTreeSet;
 
 use tokio::time::Instant;
 use wayfarer_parse::typed::{GameEvent, Refusal};
-use wayfarer_world::{Key, LockState, mm};
+use wayfarer_world::{Key, LockState, MonsterRules, mm};
 
 use crate::executor::{Action, Confirmed, Expect, Outcome, Refused};
-use crate::modes::{Mode, Step, View};
+use crate::modes::{Mode, Presence, Step, View};
 use crate::policy::{
-    Candidate, FLEE_BELOW, FLEE_HOPS, FLEE_WATCH, flee_exits, hostile, spawns_here,
+    Candidate, FLEE_BELOW, FLEE_HOPS, FLEE_WATCH, flee_exits, flee_from, hostile, spawns_here,
 };
+
+/// A monster to flee from in the room: listed, come in, or attacking (one that attacks can be
+/// missing from the room's list: `<Name> appears!`, `kb/combat.md`).
+fn to_flee<'a>(rules: &MonsterRules, p: &'a Presence) -> Option<&'a str> {
+    flee_from(rules, &p.here).or_else(|| flee_from(rules, &p.attackers))
+}
 
 /// The long name of direction `d`: `north`, `up`.
 fn dir_name(d: u8) -> &'static str {
@@ -86,6 +97,13 @@ pub(crate) struct Flee {
     give_up: Option<String>,
     /// A flee started, at this HP: for the run's statistics.
     started: Option<i32>,
+    /// A flee whatever the HP, and what it says: a monster to flee from is here, or a
+    /// stalemate. Set until the flee is over.
+    forced: Option<String>,
+    /// A forced flee found no way out of this room: it is not tried again here.
+    trapped: Option<Key>,
+    /// A forced flee finished (or was cornered), for the bot to move on.
+    forced_done: bool,
 }
 
 impl Default for Flee {
@@ -113,6 +131,9 @@ impl Flee {
             spent: false,
             give_up: None,
             started: None,
+            forced: None,
+            trapped: None,
+            forced_done: false,
         }
     }
 
@@ -130,6 +151,36 @@ impl Flee {
         self.leaving = true;
         self.spent = false;
         self.hops = 0;
+    }
+
+    /// Leave the room now, whatever the HP, saying `why` (a stalemate): as a monster to flee
+    /// from does. Not while a flee is going on.
+    pub fn run_from(&mut self, why: String) {
+        if self.active {
+            return;
+        }
+        self.forced = Some(why);
+        self.spent = false;
+        self.hops = 0;
+    }
+
+    /// A monster to flee from is here, and a flee for it would start now: what is in flight
+    /// should give way.
+    pub fn sighted(&self, rules: &MonsterRules, presence: &Presence, room: Option<Key>) -> bool {
+        !self.active
+            && !self.leaving
+            && (self.forced.is_some()
+                || (to_flee(rules, presence).is_some() && !self.trapped_in(room)))
+    }
+
+    /// Whether the flee that just finished was a forced one, once.
+    pub fn take_forced_done(&mut self) -> bool {
+        std::mem::take(&mut self.forced_done)
+    }
+
+    /// A forced flee could not get out of `room`.
+    pub fn trapped_in(&self, room: Option<Key>) -> bool {
+        self.trapped.is_some() && self.trapped == room
     }
 
     /// An HP value: back at or above the line, the next fall is a new flee with its hops.
@@ -173,11 +224,26 @@ impl Flee {
         self.landed = false;
         self.tried.clear();
         self.chasers.clear();
+        self.forced_done |= self.forced.take().is_some() && !self.leaving;
         Step::wait(narration)
     }
 
-    /// Give up: `break` off a fight first; the bot then stops itself with `why`.
+    /// Give up: `break` off a fight first; the bot then stops itself with `why`. A forced flee
+    /// does not stop the bot: it stays in the room, and fights only what attacks it.
     fn corner(&mut self, v: &View, why: String) -> Step {
+        if self.forced.is_some() && !self.leaving {
+            self.trapped = v.room;
+            let why = format!("{why}; fighting only what attacks");
+            let step = self.finish(format!("Flee: {why}"));
+            if v.engaged {
+                return Step::send(
+                    Action::new("break", Expect::Prompt),
+                    format!("Flee: {why}; breaking off"),
+                )
+                .warning();
+            }
+            return step.warning();
+        }
         let hp = v.hp.map_or_else(String::new, |hp| format!("at {hp}% HP: "));
         let step = self.finish(format!("Flee: {why}"));
         self.give_up = Some(format!("{hp}{why}; fight or run by hand"));
@@ -217,6 +283,14 @@ impl Mode for Flee {
             // Once: the session asked because the character was attacked.
             return (!self.spent).then(|| "logging off under attack".to_owned());
         }
+        if let Some(why) = &self.forced {
+            return Some(why.clone());
+        }
+        if let Some(name) = to_flee(v.rules, v.presence)
+            && !self.trapped_in(v.room)
+        {
+            return Some(format!("{name} is here (flee from)"));
+        }
         let hp = v.hp.filter(|&hp| hp < self.below)?;
         let attacked = !v.presence.attackers.is_empty();
         // Fled already: Recover rests, unless a monster attacks again. Nothing to run from
@@ -230,10 +304,20 @@ impl Mode for Flee {
 
     fn step(&mut self, v: &View) -> Step {
         let here = v.room_name(v.room);
-        let line = match v.hp {
+        if !self.active
+            && !self.leaving
+            && self.forced.is_none()
+            && let Some(name) = to_flee(v.rules, v.presence)
+            && !self.trapped_in(v.room)
+        {
+            self.forced = Some(format!("Fleeing: {name} is here (flee from)"));
+            self.hops = 0;
+        }
+        let line = match (&self.forced, v.hp) {
             _ if self.leaving => "Logging off under attack: fleeing first".to_owned(),
-            Some(hp) => format!("Fleeing: HP {hp}%"),
-            None => "Fleeing".to_owned(),
+            (Some(why), _) => why.clone(),
+            (None, Some(hp)) => format!("Fleeing: HP {hp}%"),
+            (None, None) => "Fleeing".to_owned(),
         };
         if !self.active {
             self.active = true;
@@ -263,7 +347,8 @@ impl Mode for Flee {
             }
             self.watch = None;
             match follower {
-                None if !spawns_here(v.atlas, v.room, v.certain) => {
+                // A forced flee is over once nothing follows: it was not for HP.
+                None if self.forced.is_some() || !spawns_here(v.atlas, v.room, v.certain) => {
                     return self.finish(format!("Safe in {here}"));
                 }
                 None if self.hops >= FLEE_HOPS => {
@@ -277,7 +362,8 @@ impl Mode for Flee {
                 }
                 Some(name) => why = format!("Followed by {name}"),
             }
-        } else if !v.engaged
+        } else if self.forced.is_none()
+            && !v.engaged
             && v.presence.attackers.is_empty()
             && !spawns_here(v.atlas, v.room, v.certain)
         {

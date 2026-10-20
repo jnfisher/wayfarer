@@ -248,6 +248,34 @@ impl Task {
         }
     }
 
+    /// The bot left the stop it was at or heading to for a monster it does not fight (a flee
+    /// from, a stalemate): that stop is passed by this time round, not cleared, and the loop
+    /// goes on to the next stop that is ticked and ready (or waits for one).
+    pub fn move_on(&mut self, v: &View) {
+        let n = self.stops.len();
+        if n == 0 {
+            return;
+        }
+        let left = self.index;
+        self.passed[left] = Some(v.now);
+        self.tries = 0;
+        self.notes.push(format!(
+            "Stop {} {}: leaving it for now",
+            self.nth(left),
+            self.stops[left].name
+        ));
+        let next = (1..n)
+            .map(|k| (left + k) % n)
+            .find(|&j| !self.skip.contains(&j) && self.ready_in(v.now, j).is_zero());
+        match next {
+            Some(j) => {
+                self.index = j;
+                self.phase = Phase::Going;
+            }
+            None => self.phase = Phase::Waiting,
+        }
+    }
+
     /// The lines to narrate before the step's own.
     pub fn take_notes(&mut self) -> Vec<String> {
         std::mem::take(&mut self.notes)
@@ -335,6 +363,16 @@ impl Task {
                     self.nth(j),
                     minutes(wait)
                 ));
+                continue;
+            }
+            if let Some(name) = v.shunned(s.key).filter(|_| Some(s.key) != v.room) {
+                // A monster to keep away from was last seen there: passed by this time round.
+                notes.push(format!(
+                    "Skipping stop {} {}: {name} was last seen there",
+                    self.nth(j),
+                    s.name
+                ));
+                self.passed[j] = Some(v.now);
                 continue;
             }
             if Some(s.key) == v.room {
