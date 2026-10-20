@@ -17,7 +17,9 @@ tokio-tungstenite = "0.30.0"
 tracing.workspace = true
 wayfarer-parse = { path = "../wayfarer-parse" }
 wayfarer-proto = { path = "../wayfarer-proto" }
+wayfarer-store = { path = "../wayfarer-store" }
 wayfarer-world = { path = "../wayfarer-world" }
 
 [dev-dependencies]
+tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }

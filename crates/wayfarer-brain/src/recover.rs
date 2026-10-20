@@ -197,4 +197,9 @@ impl Recover {
     pub fn wake(&self) -> Option<Instant> {
         self.wait_until
     }
+
+    /// Where the bot plays from, once known.
+    pub fn home(&self) -> Option<Key> {
+        self.home
+    }
 }

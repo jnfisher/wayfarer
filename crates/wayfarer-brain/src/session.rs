@@ -7,22 +7,27 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 
+use std::sync::Mutex;
 use tokio::time::Instant;
+
 use wayfarer_parse::typed::GameEvent;
 use wayfarer_parse::{Event, Parser, Registry};
 use wayfarer_proto::{
     BotAction, CharacterState, Chunk, GeneratedLoop, LoopStop, MegaMudLoop, RoomKey, SessionId,
     SessionInfo, SessionState, ToGateway,
 };
+use wayfarer_store::{BotRecord, BotState, EventKind, Store};
 use wayfarer_world::loops::{Area, circuits, hunt_rooms, megamud_through};
 use wayfarer_world::{Key, Traveller, route};
 
 use crate::brain::Atlas;
 use crate::character::{Character, merge_patch};
+use crate::clock::Clock;
 use crate::executor::Executor;
-use crate::modes::{Bot, Do, Presence, View};
+use crate::modes::{Bot, Do, Presence, TaskLoop, View};
 use crate::policy::{COMBAT_QUIET, hp_percent};
 use crate::position::Position;
+use crate::stats::Ledger;
 use crate::walker::{Next, Say, Walker};
 
 /// The rooms a `map_view` holds unless a `map_request` asks for another radius: those within
@@ -247,6 +252,11 @@ pub(crate) struct Session {
     down: bool,
     /// The gateway is logging the character off (`logging_off`): nothing more is sent.
     leaving: bool,
+    /// The bot's state and the run, in the store.
+    ledger: Ledger,
+    /// The bot as a brain before this one left it, running or paused: put back once the
+    /// catch-up is done.
+    restore: Option<BotRecord>,
 }
 
 /// The events of the character's own auto-combat: its engaging and its blows, hits, misses,
@@ -263,14 +273,24 @@ const OWN_COMBAT: [&str; 7] = [
 ];
 
 impl Session {
-    /// A session the brain has just learned of: its history up to now is fed silently.
+    /// A session the brain has just learned of: its history up to now is fed silently. A bot
+    /// the store has running or paused for it is resumed once that is done.
     pub fn new(
         info: &SessionInfo,
         registry: Arc<Registry>,
         atlas: Option<Arc<Atlas>>,
+        store: Option<Arc<Mutex<Store>>>,
+        clock: Arc<dyn Clock>,
         now: Instant,
     ) -> Self {
+        let ledger = Ledger::new(store, clock, &info.id);
+        let restore = ledger
+            .stored()
+            .filter(|b| b.state != BotState::Stopped)
+            .cloned();
         Self {
+            ledger,
+            restore,
             atlas,
             position: Position::default(),
             executor: Executor::default(),
@@ -468,6 +488,7 @@ impl Session {
         let mut changed = false;
         let mut combat = false;
         for ev in &events {
+            let level = self.character.state().level;
             let applied = self.character.apply_event(ev);
             changed |= applied;
             if applied && self.atlas.is_some() {
@@ -509,6 +530,9 @@ impl Session {
             if let Some(who) = self.pvp_attacker(ev) {
                 self.presence.pvp(&who);
             }
+            if !silent && self.atlas.is_some() {
+                self.count(&typed, level);
+            }
             if let Some(atlas) = &self.atlas {
                 self.presence.event(atlas, &typed);
                 let says = self.bot.event(&typed, now);
@@ -546,6 +570,130 @@ impl Session {
                 idle: typed,
             };
         }
+    }
+
+    /// What the run counts: kills (with the exp that follows), deaths, rests, and a level
+    /// above `level`, the one before the event.
+    fn count(&mut self, ev: &GameEvent, level: Option<u32>) {
+        let room = self.position.best();
+        match ev {
+            GameEvent::MonsterDeath { monsters } => {
+                let name = monsters.first().map(String::as_str);
+                self.ledger.event(EventKind::Kill, 0, name, room);
+            }
+            GameEvent::ExpGain { amount } => self.ledger.exp(*amount, room),
+            GameEvent::YouKilled => self.ledger.event(EventKind::Death, 0, None, room),
+            GameEvent::Resting { .. } => self.ledger.event(EventKind::Rest, 0, None, room),
+            _ => {}
+        }
+        if let (Some(was), Some(now)) = (level, self.character.state().level)
+            && now > was
+        {
+            self.ledger
+                .event(EventKind::LevelUp, i64::from(now), None, room);
+        }
+    }
+
+    /// The bot a brain before this one left running or paused, now that the catch-up is
+    /// done: back in that state with its home and loop, narrated; the re-sync the attach
+    /// started goes first. Outside the realm it stays stopped.
+    pub fn resume(&mut self, out: &mut Vec<ToGateway>) {
+        let Some(rec) = self.restore.take() else {
+            return;
+        };
+        let Some(atlas) = self.atlas.clone() else {
+            return;
+        };
+        if self.state != SessionState::Realm {
+            out.push(self.notice("Not resuming the bot: the character is not in the realm"));
+            return;
+        }
+        let name = |k: Option<Key>| {
+            k.and_then(|k| atlas.graph.room(k))
+                .map_or_else(|| "an unknown room".to_owned(), |r| r.name.clone())
+        };
+        let task = rec.loop_id.as_ref().map(|id| TaskLoop {
+            id: id.clone(),
+            stops: rec.loop_stops.clone(),
+            index: rec.stop_index,
+            skip: rec.skip.clone(),
+        });
+        let doing = match &task {
+            Some(t) => {
+                let stops = t.stops.len().max(1);
+                format!(
+                    "running loop {} at stop {}/{stops}",
+                    self.loop_name(&atlas, t, out),
+                    t.index % stops + 1
+                )
+            }
+            None => format!("fighting in {}", name(rec.home)),
+        };
+        let narration = match &rec.paused_reason {
+            Some(why) if rec.state == BotState::Paused => {
+                format!("Resumed paused ({why}): {doing} (brain restarted)")
+            }
+            _ if rec.state == BotState::Paused => {
+                format!("Resumed paused: {doing} (brain restarted)")
+            }
+            _ => format!("Resumed: {doing} (brain restarted)"),
+        };
+        let says = self.bot.restore(&rec, task, narration);
+        self.say(says, out);
+        self.ledger.adopt(rec, Instant::now());
+        if self.resync == Resync::Off {
+            self.request_resync();
+        }
+    }
+
+    /// A stored loop's name: what its id makes now if that has the same stops; otherwise the
+    /// id, with a notice that the stored stops are kept (a level-up can change what a generated
+    /// id names).
+    fn loop_name(&mut self, atlas: &Atlas, t: &TaskLoop, out: &mut Vec<ToGateway>) -> String {
+        self.position.refresh(atlas, &self.character.snapshot());
+        let found = parse_loop_id(&t.id, self.position.traveller.level)
+            .filter(|(k, _)| atlas.graph.contains(k.anchor))
+            .and_then(|(k, i)| self.generated(atlas, k).get(i).cloned());
+        match found {
+            Some(l)
+                if l.stops
+                    .iter()
+                    .map(|s| (s.map, s.room))
+                    .eq(t.stops.iter().copied()) =>
+            {
+                l.name
+            }
+            _ => {
+                tracing::warn!(session = %self.id, id = %t.id, "the stored loop's id no longer matches its stops");
+                out.push(self.warning(&format!(
+                    "Loop {} no longer makes the stored stops (the level changed?): keeping the \
+                     stored stops",
+                    t.id
+                )));
+                t.id.clone()
+            }
+        }
+    }
+
+    /// Save the bot if it changed (the run starts or ends with it). Not before a pending resume:
+    /// that would overwrite what is to be resumed.
+    pub fn persist(&mut self, out: &mut Vec<ToGateway>) {
+        if self.atlas.is_none() || self.restore.is_some() {
+            return;
+        }
+        if self.ledger.save(self.bot.record(), Instant::now()) {
+            self.publish_patch(out);
+        }
+    }
+
+    /// `stats_request`.
+    pub fn stats_request(&self, out: &mut Vec<ToGateway>) {
+        let (runs, samples) = self.ledger.summaries();
+        out.push(ToGateway::Stats {
+            session: self.id.clone(),
+            runs,
+            samples,
+        });
     }
 
     /// The player a PvP line shows attacking the character: `X moves to attack you!` from a
@@ -1199,6 +1347,7 @@ impl Session {
         s.walking = self.walker.snapshot();
         if self.atlas.is_some() {
             s.bot = Some(self.bot.snapshot());
+            s.run = self.ledger.snapshot();
         }
         s
     }
@@ -1286,6 +1435,7 @@ impl Session {
             .chain(self.executor.deadline())
             .chain(bot)
             .chain(engaged)
+            .chain(self.ledger.deadline())
             .min()
     }
 
@@ -1299,6 +1449,12 @@ impl Session {
             tracing::debug!(session = %self.id, "the fight lapsed: quiet for {COMBAT_QUIET:?}");
             self.character.combat_lapsed();
         }
+        let c = self.character.state();
+        let (exp, hp) = (
+            c.exp.and_then(|e| i64::try_from(e).ok()),
+            c.hp.map(i64::from),
+        );
+        self.ledger.sample(exp, hp, now);
         if let Resync::Waiting {
             step,
             deadline,

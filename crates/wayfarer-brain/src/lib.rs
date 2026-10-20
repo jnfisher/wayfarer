@@ -3,7 +3,9 @@
 //! events and snapshots to the UIs, and re-syncs a character by asking the game (`st`, `exp`,
 //! `i`, `look`). With a world pack it also keeps each character's position, serves the map
 //! panel, walks a character to a room (`walk_to`) through the [`executor`], and plays it where
-//! it stands when asked (`bot_control`: "fight here", with the [`policy`] constants).
+//! it stands when asked (`bot_control`: "fight here", with the [`policy`] constants). With a
+//! [`Store`] it keeps the bot's state and the runs' statistics on disk, and resumes each bot
+//! after a restart.
 //!
 //! ```no_run
 //! # async fn f() -> Result<(), Box<dyn std::error::Error>> {
@@ -28,14 +30,17 @@ pub mod policy;
 mod position;
 mod recover;
 mod session;
+mod stats;
 mod walker;
 
 pub use brain::{Atlas, BUILD, Brain, BrainError, World};
 pub use character::{Character, apply_patch, merge_patch};
-pub use clock::{Clock, FixedClock, SystemClock, rfc3339};
+pub use clock::{Clock, FixedClock, InstantClock, SystemClock, rfc3339};
 pub use fight::ATTACK_TRIES;
 pub use link::{ChannelLink, ConnectError, Link, WsLink};
 pub use session::{
     ANSWER_TIMEOUT, HISTORY_CHUNKS, IDLE, MAP_RADIUS, OWN_PATIENCE, RESYNC_COMMANDS,
 };
+pub use stats::{SAMPLE_EVERY, STATS_RUNS};
 pub use walker::{MAX_BASHES, MAX_RELOCATIONS, MAX_REPLANS};
+pub use wayfarer_store::Store;

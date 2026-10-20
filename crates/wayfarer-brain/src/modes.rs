@@ -7,6 +7,7 @@
 use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
 use wayfarer_proto::{BotMode, BotState};
+use wayfarer_store::BotRecord;
 use wayfarer_world::{Key, Traveller};
 
 use crate::brain::Atlas;
@@ -198,6 +199,19 @@ pub(crate) trait Mode {
     fn outcome(&mut self, action: &Action, outcome: Outcome);
 }
 
+/// The loop the bot runs, as the store keeps it: Task mode (C-030) fills it; until then it
+/// only survives a restart.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct TaskLoop {
+    pub id: String,
+    /// The stops when the loop was started; they win over what `id` resolves to now.
+    pub stops: Vec<Key>,
+    /// The stop it is at or walking to.
+    pub index: usize,
+    /// Stops to pass by this time round.
+    pub skip: Vec<usize>,
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct Bot {
     state: BotState,
@@ -210,6 +224,7 @@ pub(crate) struct Bot {
     acting: Option<BotMode>,
     /// Pause when the action in flight is done, and why.
     pausing: Option<String>,
+    task: Option<TaskLoop>,
 }
 
 impl Bot {
@@ -256,7 +271,56 @@ impl Bot {
         self.pausing = None;
         self.fight = Fight::default();
         self.recover = Recover::new(home);
+        self.task = None;
         self.narrate(format!("Starting in {room_name}: re-syncing"), &mut says);
+        says
+    }
+
+    /// What the store keeps of the bot.
+    pub fn record(&self) -> BotRecord {
+        let state = match self.state {
+            BotState::Stopped => wayfarer_store::BotState::Stopped,
+            BotState::Running => wayfarer_store::BotState::Running,
+            BotState::Paused => wayfarer_store::BotState::Paused,
+        };
+        let task = self.task.clone().unwrap_or_default();
+        BotRecord {
+            state,
+            home: self.recover.home(),
+            loop_id: self.task.as_ref().map(|t| t.id.clone()),
+            loop_stops: task.stops,
+            stop_index: task.index,
+            skip: task.skip,
+            paused_reason: self
+                .reason
+                .clone()
+                .filter(|_| self.state == BotState::Paused),
+        }
+    }
+
+    /// A restarted brain puts the bot back as the store had it (`running` or `paused`), with
+    /// its home and loop, narrating `narration`. The session re-syncs first.
+    pub fn restore(
+        &mut self,
+        rec: &BotRecord,
+        task: Option<TaskLoop>,
+        narration: String,
+    ) -> Vec<Say> {
+        let mut says = Vec::new();
+        self.state = match rec.state {
+            wayfarer_store::BotState::Paused => BotState::Paused,
+            _ => BotState::Running,
+        };
+        self.mode = BotMode::Idle;
+        self.reason = rec
+            .paused_reason
+            .clone()
+            .filter(|_| self.state == BotState::Paused);
+        self.pausing = None;
+        self.fight = Fight::default();
+        self.recover = Recover::new(rec.home);
+        self.task = task;
+        self.narrate(narration, &mut says);
         says
     }
 
@@ -269,6 +333,7 @@ impl Bot {
         self.state = BotState::Stopped;
         self.mode = BotMode::Idle;
         self.pausing = None;
+        self.task = None;
         self.reason = Some(why.to_owned());
         // "Stopped at 24% HP: ...", "Stopped: asked to stop".
         let sep = if why.starts_with("at ") { " " } else { ": " };

@@ -50,6 +50,8 @@ pub struct Gateway {
     pub map_centers: Vec<(i64, i64)>,
     /// The last `loops` for the session.
     pub loops: Option<ToClient>,
+    /// The last `stats` for the session.
+    pub stats: Option<ToClient>,
 }
 
 /// How a stop went: whether the character logged off, and the gateway's own account.
@@ -137,6 +139,7 @@ impl Gateway {
             warnings: Vec::new(),
             map_centers: Vec::new(),
             loops: None,
+            stats: None,
         };
         match gateway.next(Instant::now() + START_TIMEOUT).await {
             Some(ToClient::Welcome { sessions, .. }) => {
@@ -179,6 +182,15 @@ impl Gateway {
             }),
             radius,
             doors: None,
+        })
+        .await
+    }
+
+    /// `stats_request` for the session.
+    pub async fn stats_request(&mut self) -> Result<(), String> {
+        self.stats = None;
+        self.send(ToGateway::StatsRequest {
+            session: SESSION.into(),
         })
         .await
     }
@@ -277,6 +289,9 @@ impl Gateway {
                 } if session == SESSION => self.map_centers.push((center.map, center.room)),
                 ToClient::Loops { session, .. } if session == SESSION => {
                     self.loops = Some(msg.clone());
+                }
+                ToClient::Stats { session, .. } if session == SESSION => {
+                    self.stats = Some(msg.clone());
                 }
                 ToClient::SessionList { sessions } | ToClient::Welcome { sessions, .. } => {
                     if let Some(s) = sessions.iter().find(|s| s.id == SESSION) {

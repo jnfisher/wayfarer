@@ -131,6 +131,26 @@ character, not as a routine check.
 If step 5 never comes (the bot stopped itself, say), it fails there and tidies up as "fight"
 does.
 
+## Scenario "restart" (C-029, the bot survives a brain restart)
+
+```sh
+scripts/live-check.sh --scenario restart
+```
+
+Steps 1 to 4 of "fight" (the brain's store is `store.sqlite` in the run's directory), then:
+
+5. **The bot is running**: a kill came, not a stop (the bot stopping itself fails it here).
+6. **Restart the brain mid-run**: SIGTERM, then `wayfarer brain` again in the same directory,
+   so on the same store. It passes when the new brain narrates `Resumed: ...`, re-syncs, and
+   the snapshot shows the bot `running`, its home the Arena (it may be resting nearby: Recover
+   walks it back once rested).
+7. **`stats_request`**: the newest run has not ended and has at least the kills the snapshot
+   showed before the restart; the summary gives its kills, exp, exp per hour and samples.
+8. Then as "fight" ends: **Stop**, **walk out**, **rest by hand**, **stopping the brain**, and
+   the gateway logs off.
+
+The brains' logs are `NN-restart/brain.log` and `NN-restart/brain-2.log`.
+
 ## Scenario "loop" (M2, generated loops)
 
 ```sh

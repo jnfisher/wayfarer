@@ -7,8 +7,9 @@ each character's position, serves the map panel (`map_view`), walks a character 
 (`walk_to`), lists the loops of an area and walks one once (`loops_request`, `walk_loop`), and
 plays it where it stands (`bot_control`: "fight here"). When the gateway is about to log a
 character off (`logging_off`) it stops that character's bot, sends it nothing more and answers
-`ready_to_leave`. Depends on
-`wayfarer-proto`, `wayfarer-parse` and `wayfarer-world`, not on the gateway.
+`ready_to_leave`. With a store (`Brain::with_store`) it saves each bot's state and counts each
+run, and a restarted brain resumes the bots. Depends on `wayfarer-proto`, `wayfarer-parse`,
+`wayfarer-world` and `wayfarer-store`, not on the gateway.
 
 ```rust
 let world = World::open(path)?;                          // game texts, rooms (`Atlas`)
@@ -46,6 +47,10 @@ brain.run(&mut link).await?;                             // Ok when the gateway 
 - **`Atlas`** (`brain.rs`): the `RoomGraph`, room kinds, class and race numbers, the
   `Monsters` and MegaMud's verified loops, loaded once
   per brain and shared by its sessions; `World` keeps the `WorldPack` open beside it.
+- **`stats.rs`**: the `Ledger` per session: the bot's state saved when it changes (the brain
+  calls `Session::persist` after every message and timer), the run from Start to Stop with its
+  events and a sample a minute, and the run's numbers for the snapshot's `run`. A stored bot
+  that was running or paused is put back by `Session::resume` once the catch-up is done.
 - `BUILD`: the version and commit (`build.rs`), for `brain_info`.
 
 Tests: `cargo nextest run -p wayfarer-brain`. `tests/brain.rs` runs the brain against a fake
@@ -59,5 +64,8 @@ nothing while engaged, the look after a kill, an arrival, resting in a quiet roo
 back, the stop below 30%, pause, take-over and resume, determinism, `logging_off`, Recover's
 two fallbacks narrated, knocked down not counting as quiet, players not taken for attackers,
 `in_combat` going false when a fight lapses, and the policies on the pack. `tests/loops.rs`: the Newhaven loops, `walk_loop` round the stops and back, from the
-nearest stop, and its stops. The live scenarios: `scripts/live-check.sh --scenario brain`,
+nearest stop, and its stops. `tests/store.rs`: a second brain on the same store resumes the bot
+paused with its home and the same run, a running bot resumes and fights, a stored loop's fields
+survive and its stops win, nothing is resumed outside the realm or when stopped, a run's kills,
+death, samples and exp per hour, and the run counted without a store. The live scenarios: `scripts/live-check.sh --scenario brain`,
 `--scenario walk`, `--scenario fight` and `--scenario loop`.

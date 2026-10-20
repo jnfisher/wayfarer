@@ -220,8 +220,8 @@ export function clock(at: number): string {
 export const DEV_KEY = "wayfarer.dev";
 export const DEV_TABS = ["events", "unclassified", "brain"] as const;
 export type DevTab = (typeof DEV_TABS)[number];
-/** The drawer's two panels (C-023). */
-export const DRAWER_PANELS = ["map", "dev"] as const;
+/** The drawer's panels (C-023; stats, C-029). */
+export const DRAWER_PANELS = ["map", "stats", "dev"] as const;
 export type DrawerPanel = (typeof DRAWER_PANELS)[number];
 export interface DevPrefs {
   open: boolean;
@@ -248,7 +248,7 @@ export function loadDevPrefs(storage: Pick<Storage, "getItem"> | undefined): Dev
 }
 
 /**
- * `Alt+M` / `Alt+D` and the two buttons: open the drawer on that panel, or close it when it is
+ * `Alt+M` / `Alt+S` / `Alt+D` and the buttons: open the drawer on that panel, or close it when it is
  * already open there.
  */
 export function toggleDrawer(prefs: DevPrefs, panel: DrawerPanel): void {

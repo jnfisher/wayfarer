@@ -49,6 +49,11 @@ export const KEY_ROWS: KeyRow[] = [
     does: "Pause or resume the focused character's bot; a line you type pauses it too",
   },
   {
+    group: "Bot",
+    keys: "Alt+S, or the stats button",
+    does: "Open the drawer on the stats of the focused character's runs: exp per hour, kills, deaths and flees, now and for the last runs; or close it (on a Mac, Option)",
+  },
+  {
     group: "Development",
     keys: "Alt+D, or the dev button",
     does: "Open the drawer on the dev panel: the focused character's events, unclassified lines and the brain; or close it (on a Mac, Option)",
@@ -79,6 +84,7 @@ export const FOCUS_TILE_CODE = /^Digit[1-6]$/;
 export const RESET_LAYOUT_CODE = "Digit0";
 export const DEV_PANEL_CODE = "KeyD";
 export const MAP_PANEL_CODE = "KeyM";
+export const STATS_PANEL_CODE = "KeyS";
 export const ZOOM_IN_KEYS = ["+", "="];
 export const ZOOM_OUT_KEYS = ["-"];
 export const ZOOM_RESET_KEYS = ["0"];

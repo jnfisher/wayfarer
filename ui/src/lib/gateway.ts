@@ -9,6 +9,7 @@
 import { PROTOCOL } from "../proto";
 import type { BotAction, CharacterState, Chunk, SessionInfo, SessionState, ToClient, ToGateway } from "../proto";
 import { clampRadius, LOOP_RADIUS, type Loops, type MapView } from "./map";
+import type { Stats } from "./stats";
 
 /** The part of the browser's `WebSocket` the client uses. */
 export interface SocketLike {
@@ -70,6 +71,8 @@ export interface GatewayEvents {
   mapView?(view: MapView): void;
   /** The loops of the area around a character, for the map panel. */
   loops?(loops: Loops): void;
+  /** A character's last runs, for the stats tab. */
+  stats?(stats: Stats): void;
 }
 
 export interface GatewayOptions {
@@ -190,6 +193,11 @@ export class GatewayClient {
    * unless `doors` is false. */
   requestLoops(session: string, radius = LOOP_RADIUS, doors = true): boolean {
     return this.send({ type: "loops_request", session, radius: clampRadius(radius), doors });
+  }
+
+  /** Ask for the character's last runs (a `stats` answer); false when not connected. */
+  requestStats(session: string): boolean {
+    return this.send({ type: "stats_request", session });
   }
 
   /** Walk a generated loop once; false when not connected. */
@@ -321,6 +329,9 @@ export class GatewayClient {
         break;
       case "loops":
         this.opts.events.loops?.(message);
+        break;
+      case "stats":
+        this.opts.events.stats?.(message);
         break;
     }
   }
