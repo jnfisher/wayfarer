@@ -51,6 +51,16 @@ gw.shutdown_on_signal().await?;                     // Ctrl-C/SIGTERM: everyone 
 - **Connectors**: sessions reach servers through `Connect` (`Tcp` by default);
   `Gateway::with_connector` takes another, which the tests use for in-memory pipes on a paused
   clock (`tests/logon.rs`).
+- **Replay** (`replay.rs`, [`docs/replay.md`](../../docs/replay.md)): a `Recording` (a log
+  directory) played by a `ReplayConnector` in place of the socket, on a `Pace` (its `ts`
+  scaled by a speed, or `Speed::Instant`). `Connect::recorded` hands the session the
+  recording's lines, each published as `sent` once the output it followed has been read; the
+  lines written to a replay go nowhere and are not published, except the brain's, so a
+  replay's brain hears its own lines (the recording's brain lines are not fed). A close
+  disconnects without logging off. `replay::gateway` builds the one-session gateway (no
+  credentials, no reconnect, logging into a directory of its own), and `drive_brain`
+  attaches and detaches a brain when the recorded one did and hands it the recorded messages
+  (`Hub::to_brain`, `Hub::wait_for_brain`).
 - **Subscribers** get a `tokio::sync::broadcast` receiver of `Options::subscriber_capacity`
   (1024) `Output` items: `Output::Chunk` for output and `Output::Sent` for each line that went
   to the game (below), in the order they happened. One that falls further behind gets
@@ -151,8 +161,11 @@ Under the logs directory (`<data dir>/logs/`), one directory per character id:
 | `output.log` | Every chunk, one JSON object per line: `{"seq":1,"ts":1760000000000,"text":"..."}`, `ts` in milliseconds since the Unix epoch, `text` UTF-8 with ANSI kept |
 | `raw.bin` | Every byte received, before telnet stripping (`wayfarer_telnet::Capture`) |
 | `sent.bin` | Every byte sent: negotiation replies and input |
+| `sent.log` | Every line sent, one JSON object per line: `{"seq":12,"ts":1760000000000,"origin":"brain","text":"st"}`; `seq` is the output `seq` it followed, `origin` `ui`, `brain` or `script` (logon and log-off steps; `Gateway::send_line_as` names it, `send_line` is `ui`), the text masked as in `sent.bin` |
+| `brain.log` | What reached the brain about the session besides output and `sent`: `{"seq":..,"ts":..,"attached":true}` (or `false`) when a brain attached or went (`Gateway::note_brain`), `{"seq":..,"ts":..,"msg":{...}}` for a UI's control message, `user_input`, `keys_sent` and `logging_off` (`Gateway::note_to_brain`) |
 
-All three are append-only and survive restarts. JSON escapes newlines, so a record is always
+All are append-only and survive restarts (`sent.log` and `brain.log` are made on their first
+line). JSON escapes newlines, so a record is always
 one line: at start-up the gateway reads only the tail of `output.log` to find the last `seq`
 and carries on from it (a record cut short by a crash is dropped), and a history lookup on
 disk is a binary search over byte offsets, since `seq` only rises through the file.

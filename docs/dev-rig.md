@@ -143,6 +143,19 @@ apart so that the brain restarts alone.
 After the laptop sleeps, the brain reattaches by itself (it retries with the web UI's
 backoff, half a second doubling to ten) and catches up from the gateway's history.
 
+## Replay (from M3)
+
+Every gateway session is recorded in `logs/<id>/`, so what a bot did while you were away can
+be watched afterwards:
+
+```sh
+wayfarer replay "$WAYFARER_DATA_DIR/logs/<id>" --config "$WAYFARER_DATA_DIR/wayfarer.toml" \
+    --brain --bind 127.0.0.1:7374
+```
+
+serves the normal page on a port of its own beside the running gateway, with the session
+playing back at its recorded pace (`--speed 10`, `--instant`). See [replay.md](replay.md).
+
 ## A timed run
 
 `scripts/live-check.sh --scenario soak` makes a character run a loop for a number of minutes

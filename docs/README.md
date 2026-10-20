@@ -7,5 +7,7 @@
 - [dev-rig.md](dev-rig.md): running silvermere, the gateway, the UI and card sessions on the laptop.
 - [server.md](server.md): running wayfarer on a Linux server: build, data directory, token, systemd unit, Tailscale.
 - [web-ui.md](web-ui.md): the web UI: tiles, keys, reconnecting.
+- [replay.md](replay.md): playing a recorded session back in the browser (`wayfarer replay`), and
+  the CI replay layer.
 - User-facing docs (configuration, the protocol, the dev rig) are added here by the cards that
   build those parts.

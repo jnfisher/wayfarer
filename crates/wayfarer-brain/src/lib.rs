@@ -38,7 +38,7 @@ mod walker;
 
 pub use brain::{Atlas, BUILD, Brain, BrainError, World};
 pub use character::{Character, apply_patch, merge_patch};
-pub use clock::{Clock, FixedClock, InstantClock, SystemClock, rfc3339};
+pub use clock::{Clock, FixedClock, InstantClock, ReplayClock, Sleep, SystemClock, rfc3339};
 pub use fight::ATTACK_TRIES;
 pub use link::{ChannelLink, ConnectError, Link, WsLink};
 pub use session::{

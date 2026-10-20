@@ -8,10 +8,11 @@ use std::time::Duration;
 
 use clap::{Args, Parser, Subcommand};
 use futures_util::StreamExt;
-use wayfarer::{open_store, spawn_brain};
-use wayfarer_brain::{Brain, BrainError, SystemClock, World, WsLink};
+use wayfarer::{open_store, spawn_brain, spawn_replay_brain};
+use wayfarer_brain::{Brain, BrainError, Clock, ReplayClock, SystemClock, World, WsLink};
+use wayfarer_gateway::replay::{self, Pace, Recording, Speed};
 use wayfarer_gateway::{
-    Gateway, Hub, Options, Paths, ServerOptions, bind, create_token, read_token, serve,
+    Config, Gateway, Hub, Options, Paths, ServerOptions, bind, create_token, read_token, serve,
     stop_signals, token_for_bind,
 };
 
@@ -84,6 +85,37 @@ struct BrainArgs {
     flee_below: Option<i32>,
 }
 
+#[derive(Args)]
+struct ReplayArgs {
+    /// A session's log directory (`logs/<id>/`, with its `output.log`).
+    dir: PathBuf,
+    /// Recorded seconds per second.
+    #[arg(long, default_value_t = 1.0, conflicts_with = "instant")]
+    speed: f64,
+    /// As fast as the session takes the output.
+    #[arg(long)]
+    instant: bool,
+    /// The config whose server for this character gives the logon script the session's state
+    /// follows (default: the silvermere preset's); its directory holds `gateway-token` and
+    /// `world.sqlite`. Default: the user's wayfarer data directory, for those two.
+    #[arg(long)]
+    config: Option<PathBuf>,
+    /// Where to listen. Anything but a loopback address needs a token (`wayfarer gateway
+    /// --new-token`).
+    #[arg(long, default_value = "127.0.0.1:7373")]
+    bind: SocketAddr,
+    /// The built web UI.
+    #[arg(long, default_value = "./ui/dist")]
+    ui_dir: PathBuf,
+    /// Run a brain in-process on the recording's clock, with a throwaway store, attached when
+    /// the recorded brain was.
+    #[arg(long)]
+    brain: bool,
+    /// The world pack for `--brain`. Default: `world.sqlite` beside the config.
+    #[arg(long)]
+    world: Option<PathBuf>,
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// Run the gateway: telnet sessions, logs and the WebSocket server.
@@ -93,6 +125,9 @@ enum Command {
     Brain(BrainArgs),
     /// Run everything in one process: the gateway, and the brain attached to it in-process.
     Serve(ServeArgs),
+    /// Play a recorded session back into the UI (and a brain) as if the game were sending it
+    /// (docs/replay.md).
+    Replay(ReplayArgs),
     /// Build a world pack (SQLite) from the stock-world export, optionally with MegaMud's path set.
     ImportWorld {
         /// The export directory: one `<TABLE>.jsonl.gz` per table and `MANIFEST.json`.
@@ -113,6 +148,15 @@ fn main() -> ExitCode {
     let (name, args, world) = match cli.command {
         Command::Gateway(args) => ("gateway", args, None),
         Command::Serve(args) => ("serve", args.gateway, Some((args.world, args.store))),
+        Command::Replay(args) => {
+            return match run_replay(args) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("wayfarer replay: {e}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Command::Brain(args) => {
             return match run_brain(args) {
                 Ok(()) => ExitCode::SUCCESS,
@@ -310,6 +354,101 @@ fn run_brain(args: BrainArgs) -> Result<(), Box<dyn std::error::Error>> {
                 retry = (retry * 2).min(RETRY_MAX);
             }
             tracing::info!("brain stopped");
+            Ok::<_, Box<dyn std::error::Error>>(())
+        })
+}
+
+fn run_replay(args: ReplayArgs) -> Result<(), Box<dyn std::error::Error>> {
+    let recording = Arc::new(Recording::load(&args.dir)?);
+    let speed = match args.instant {
+        true => Speed::Instant,
+        false if args.speed > 0.0 && args.speed.is_finite() => Speed::Times(args.speed),
+        false => return Err("--speed must be above 0".into()),
+    };
+    let paths = paths(args.config.clone())?;
+    let dir = paths.config.parent().map(PathBuf::from).unwrap_or_default();
+    let server = match &args.config {
+        Some(path) => {
+            let config = Config::load(path)?;
+            config
+                .characters
+                .iter()
+                .find(|c| c.id == recording.id)
+                .and_then(|c| config.server(&c.server))
+                .cloned()
+        }
+        None => None,
+    };
+    let token = token_for_bind(args.bind, &dir.join("gateway-token"))?;
+    let world_path = args.world.unwrap_or_else(|| dir.join("world.sqlite"));
+    if args.brain && !world_path.is_file() {
+        return Err(format!(
+            "--brain: no world pack at {path}: build it with\n  wayfarer import-world --export \
+             tests/fixtures/world --out '{path}'",
+            path = world_path.display()
+        )
+        .into());
+    }
+    let logs = replay::temp_logs(&recording);
+
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(async {
+            init_tracing();
+            let world = args.brain.then(|| World::open(&world_path)).transpose()?;
+            let listener = bind(args.bind).await?;
+            let pace = Arc::new(Pace::new(recording.origin_ms(), speed));
+            let (gateway, connector) =
+                replay::gateway(recording.clone(), pace.clone(), &logs, server)?;
+            tracing::info!(
+                session = %recording.id,
+                chunks = recording.chunks.len(),
+                minutes = (recording.end_ms() - recording.origin_ms()) / 60_000,
+                logs = %logs.display(),
+                "replaying on {}",
+                listener.local_addr()?
+            );
+            let hub = Hub::new(gateway, token);
+            let brain = world.map(|world| {
+                let origin = std::time::UNIX_EPOCH + Duration::from_millis(pace.origin_ms());
+                let clock: Arc<dyn Clock> = Arc::new(match pace.speed() {
+                    Speed::Times(s) => ReplayClock::paced(origin, pace.start(), s),
+                    Speed::Instant => ReplayClock::following(origin, pace.elapsed()),
+                });
+                let (attach, attached) = tokio::sync::watch::channel(false);
+                let task = spawn_replay_brain(&hub, world, clock, attached);
+                let (hub, recording, pace) = (hub.clone(), recording.clone(), pace.clone());
+                let driver = tokio::spawn(async move {
+                    replay::drive_brain(&hub, &recording, &pace, |on| {
+                        attach.send_replace(on);
+                        let hub = hub.clone();
+                        async move { hub.wait_for_brain(on).await }
+                    })
+                    .await;
+                    // Keep the brain as the recording left it until the replay stops.
+                    std::future::pending::<()>().await;
+                    drop(attach);
+                });
+                (task, driver)
+            });
+            let mut finished = connector.finished();
+            let session = recording.id.clone();
+            tokio::spawn(async move {
+                if finished.wait_for(|f| *f).await.is_ok() {
+                    tracing::info!(%session, "the recording has been played to its end; Ctrl-C stops the replay");
+                }
+            });
+            let options = ServerOptions {
+                ui_dir: args.ui_dir,
+            };
+            serve(listener, hub, options, stop_signals()?).await?;
+            if let Some((task, driver)) = brain {
+                driver.abort();
+                if let Err(e) = task.await? {
+                    tracing::warn!("the replay's brain stopped: {e}");
+                }
+            }
             Ok::<_, Box<dyn std::error::Error>>(())
         })
 }

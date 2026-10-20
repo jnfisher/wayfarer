@@ -3,8 +3,9 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use tokio::sync::watch;
 use tokio::task::JoinHandle;
-use wayfarer_brain::{Brain, BrainError, ChannelLink, Store, SystemClock, World};
+use wayfarer_brain::{Brain, BrainError, ChannelLink, Clock, Store, SystemClock, World};
 use wayfarer_gateway::Hub;
 use wayfarer_store::Note;
 
@@ -25,6 +26,38 @@ pub fn open_store(path: &Path) -> Option<Store> {
             None
         }
     }
+}
+
+/// A replay's brain (`wayfarer replay --brain`, `docs/replay.md`): in-process like
+/// [`spawn_brain`], on `clock` (the recording's) and a throwaway store, attached while
+/// `attached` is `true` and detached while it is `false`, as the recorded brain was; the same
+/// brain each time, as a restarted gateway would find it. The task ends when the hub stops.
+pub fn spawn_replay_brain(
+    hub: &Hub,
+    world: World,
+    clock: Arc<dyn Clock>,
+    mut attached: watch::Receiver<bool>,
+) -> JoinHandle<Result<(), BrainError>> {
+    let hub = hub.clone();
+    tokio::spawn(async move {
+        let mut brain = Brain::new(world, clock, None);
+        match Store::in_memory() {
+            Ok(store) => brain = brain.with_store(store),
+            Err(e) => tracing::warn!("a throwaway store: {e}: the replay's brain runs without one"),
+        }
+        loop {
+            if attached.wait_for(|on| *on).await.is_err() {
+                return Ok(());
+            }
+            let (to_gateway, from_gateway) = hub.connect();
+            let mut link = ChannelLink::new(to_gateway, from_gateway);
+            tokio::select! {
+                // The hub stopped (or refused it).
+                ended = brain.run(&mut link) => return ended,
+                _ = attached.wait_for(|on| !*on) => {}
+            }
+        }
+    })
 }
 
 /// Run a brain inside the gateway's process: it attaches to `hub` over channels, with no

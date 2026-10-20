@@ -13,6 +13,7 @@ pub mod config;
 mod gateway;
 pub mod log;
 pub mod logon;
+pub mod replay;
 mod server;
 mod session;
 
@@ -23,5 +24,5 @@ pub use logon::Script;
 pub use server::{
     Hub, ServerError, ServerOptions, bind, create_token, read_token, serve, token_for_bind,
 };
-pub use session::{Connect, Connecting, Output, Sent, StateChange, Stream, Tcp};
+pub use session::{Connect, Connecting, Origin, Output, Recorded, Sent, StateChange, Stream, Tcp};
 pub use wayfarer_proto::{Chunk, SessionInfo, SessionState};

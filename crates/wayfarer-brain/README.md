@@ -22,7 +22,10 @@ brain.run(&mut link).await?;                             // Ok when the gateway 
 - **`Link`**: `send` (never waits: a task of the link's own writes) and `recv`. `WsLink` over
   the WebSocket; `ChannelLink` over a pair of tokio channels (`Hub::connect`'s), for tests and
   the in-process brain of `wayfarer serve`.
-- **`Brain::run`**: one task and one loop, `tokio::time` for its timers (tests pause the clock).
+- **`Brain::run`**: one task and one loop. Every timer reads the injected `Clock`
+  (`instant()` for its `now`, `sleep_until` for its wake-ups; `clock.rs`), never `tokio::time`
+  directly: `SystemClock` and the tests' clocks follow tokio's (tests pause it), and
+  `ReplayClock` runs on a recording's time (`docs/replay.md`).
   The brain's sessions, parsers and characters live in `Brain` across runs, so a reattach
   carries on from the last `seq` seen. `Err(Refused)` when the gateway says no.
 - **`Character`**: `apply(&GameEvent)` and `snapshot() -> CharacterState`; `merge_patch` and

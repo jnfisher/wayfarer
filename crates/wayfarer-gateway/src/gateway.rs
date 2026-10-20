@@ -9,12 +9,15 @@ use std::time::Duration;
 
 use futures_util::{FutureExt, Stream, StreamExt};
 use tokio::sync::{broadcast, mpsc, oneshot};
-use wayfarer_proto::{SessionInfo, SessionState};
+use wayfarer_proto::{SessionInfo, SessionState, ToClient};
 use wayfarer_telnet::Capture;
 
 use crate::config::{Config, ConfigError, Credentials, Paths};
-use crate::log::{History, HistoryQuery, OutputLog};
-use crate::session::{self, Command, Connect, Output, Running, Slot, SlotParts, StateChange, Tcp};
+use crate::log::{History, HistoryQuery, LineLog, OutputLog, now_ms};
+use crate::replay::BrainRecord;
+use crate::session::{
+    self, Command, Connect, Origin, Output, Running, Slot, SlotParts, StateChange, Tcp,
+};
 
 /// Tunables; the defaults suit a real gateway, tests shrink them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,6 +140,8 @@ impl Gateway {
                 host: server.host.clone(),
                 port: server.port,
                 log,
+                sent_log: LineLog::new(dir.join("sent.log")),
+                brain_log: LineLog::new(dir.join("brain.log")),
                 login: credentials.get(&c.id).cloned(),
                 script,
                 read_buffer: options.read_buffer,
@@ -340,9 +345,45 @@ impl Gateway {
     }
 
     /// Send a line (the gateway adds the line ending). Lines from any number of callers go out
-    /// whole, one after another.
+    /// whole, one after another. `sent.log` says a UI sent it.
     pub async fn send_line(&self, id: &str, text: &str) -> Result<(), GatewayError> {
-        self.send(id, Command::Line(text.to_owned())).await
+        self.send_line_as(id, text, Origin::Ui).await
+    }
+
+    /// [`Gateway::send_line`], recorded in `sent.log` as sent by `origin`.
+    pub async fn send_line_as(
+        &self,
+        id: &str,
+        text: &str,
+        origin: Origin,
+    ) -> Result<(), GatewayError> {
+        self.send(id, Command::Line(text.to_owned(), origin)).await
+    }
+
+    /// Record in every session's `brain.log` that a brain attached, or went.
+    pub fn note_brain(&self, attached: bool) {
+        for slot in &self.inner.slots {
+            slot.brain_log.append(&BrainRecord {
+                seq: slot.log.last_seq(),
+                ts: now_ms(),
+                attached: Some(attached),
+                msg: None,
+            });
+        }
+    }
+
+    /// Record in its session's `brain.log` a message that reached the brain other than output
+    /// and `sent` (a UI's control message, `user_input`, `keys_sent`, `logging_off`), so a
+    /// replay can hand it to the brain again. Messages about no session are not recorded.
+    pub fn note_to_brain(&self, msg: &ToClient) {
+        if let Some(slot) = msg.session().and_then(|id| self.slot(id).ok()) {
+            slot.brain_log.append(&BrainRecord {
+                seq: slot.log.last_seq(),
+                ts: now_ms(),
+                attached: None,
+                msg: Some(msg.clone()),
+            });
+        }
     }
 
     /// Send raw bytes as they are (`Hit any key`, the character editor).

@@ -28,7 +28,7 @@ use tokio::task::JoinHandle;
 use tower_http::services::ServeDir;
 use wayfarer_proto::{ClientKind, Family, SessionId, ToClient, ToGateway, protocol_mismatch};
 
-use crate::session::{Output, Sent};
+use crate::session::{Origin, Output, Sent};
 use crate::{Gateway, GatewayError, HistoryQuery};
 
 /// How long a new connection may take to say hello.
@@ -143,13 +143,16 @@ struct BrainGuard {
 
 impl Drop for BrainGuard {
     fn drop(&mut self) {
-        self.hub.inner.brain.send_if_modified(|brain| {
+        let detached = self.hub.inner.brain.send_if_modified(|brain| {
             let ours = brain.as_ref().is_some_and(|b| b.id == self.id);
             if ours {
                 *brain = None;
             }
             ours
         });
+        if detached {
+            self.hub.gateway().note_brain(false);
+        }
     }
 }
 
@@ -222,13 +225,11 @@ impl Hub {
         let mut brain = self.inner.brain.subscribe();
         tracing::info!(%session, "asking the brain to get ready to leave");
         let answer = async {
-            if out
-                .send(ToClient::LoggingOff {
-                    session: session.clone(),
-                })
-                .await
-                .is_err()
-            {
+            let msg = ToClient::LoggingOff {
+                session: session.clone(),
+            };
+            self.gateway().note_to_brain(&msg);
+            if out.send(msg).await.is_err() {
                 return "the brain has gone";
             }
             tokio::select! {
@@ -277,10 +278,34 @@ impl Hub {
             }
             free
         });
+        if attached {
+            self.gateway().note_brain(true);
+        }
         attached.then(|| BrainGuard {
             hub: self.clone(),
             id,
         })
+    }
+
+    /// Wait until a brain is attached (`true`) or none is (`false`).
+    pub async fn wait_for_brain(&self, attached: bool) {
+        let _ = self
+            .inner
+            .brain
+            .subscribe()
+            .wait_for(|b| b.is_some() == attached)
+            .await;
+    }
+
+    /// Hand `msg` to the attached brain as if a UI had sent it (a replay's recorded control
+    /// messages, `docs/replay.md`). `false` with no brain attached, or one that has gone.
+    pub async fn to_brain(&self, msg: ToClient) -> bool {
+        let brain = self.inner.brain.borrow().as_ref().map(|b| b.out.clone());
+        let Some(brain) = brain else {
+            return false;
+        };
+        self.gateway().note_to_brain(&msg);
+        brain.send(msg).await.is_ok()
     }
 
     /// The brain's outbox, if a brain is attached and arbitrates `session`'s input.
@@ -711,6 +736,7 @@ impl Connection {
             // If the brain's connection closes meanwhile the message is lost, as it would
             // have been a moment later.
             Some(brain) => {
+                self.hub.gateway().note_to_brain(&msg);
                 let _ = brain.send(msg).await;
                 None
             }
@@ -738,6 +764,7 @@ impl Connection {
                     from: format!("ui-{}", self.id),
                     force,
                 };
+                self.hub.gateway().note_to_brain(&msg);
                 // A brain gone meanwhile: the line goes straight through after all.
                 match brain.send(msg).await {
                     Ok(()) => return None,
@@ -749,9 +776,13 @@ impl Connection {
             }
             None => (session, text),
         };
+        let origin = match self.kind {
+            ClientKind::Ui => Origin::Ui,
+            ClientKind::Brain => Origin::Brain,
+        };
         let gateway = self.hub.gateway();
         gateway
-            .send_line(&session, &text)
+            .send_line_as(&session, &text, origin)
             .await
             .err()
             .map(|e| ToClient::Error {
@@ -784,7 +815,9 @@ impl Connection {
                     return Some(error(e));
                 }
                 if let Some(brain) = self.ui_arbitrator(&session) {
-                    let _ = brain.send(ToClient::KeysSent { session }).await;
+                    let msg = ToClient::KeysSent { session };
+                    gateway.note_to_brain(&msg);
+                    let _ = brain.send(msg).await;
                 }
                 None
             }

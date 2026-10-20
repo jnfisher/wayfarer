@@ -22,4 +22,5 @@ wayfarer-world = { path = "../wayfarer-world" }
 
 [dev-dependencies]
 tempfile = "3"
+wayfarer-gateway = { path = "../wayfarer-gateway" }
 tokio = { workspace = true, features = ["test-util"] }
