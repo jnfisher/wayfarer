@@ -1,8 +1,9 @@
 //! One session as the brain follows it: its parser, its character, the catch-up on its output,
-//! the re-sync, and with a world pack its position, the executor, the walker and the bot. The
-//! re-sync's commands and the walker's and the bot's actions are all it sends to the game.
+//! the re-sync, and with a world pack its position, the executor, the walker, the loops and
+//! the bot. The re-sync's commands and the walker's and the bot's actions are all it sends to
+//! the game.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,9 +11,11 @@ use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
 use wayfarer_parse::{Event, Parser, Registry};
 use wayfarer_proto::{
-    BotAction, CharacterState, Chunk, SessionId, SessionInfo, SessionState, ToGateway,
+    BotAction, CharacterState, Chunk, GeneratedLoop, LoopStop, MegaMudLoop, RoomKey, SessionId,
+    SessionInfo, SessionState, ToGateway,
 };
-use wayfarer_world::Key;
+use wayfarer_world::loops::{Area, circuits, hunt_rooms, megamud_through};
+use wayfarer_world::{Key, Traveller, route};
 
 use crate::brain::Atlas;
 use crate::character::{Character, merge_patch};
@@ -41,6 +44,77 @@ pub const ANSWER_TIMEOUT: Duration = Duration::from_secs(5);
 pub const OWN_PATIENCE: Duration = Duration::from_secs(10);
 /// Chunks asked for per `history_request`.
 pub const HISTORY_CHUNKS: u32 = 2000;
+/// The widest area a `loops_request` may ask for, in steps from the anchor.
+pub const MAX_LOOP_RADIUS: u32 = 30;
+
+/// What the generated loops of an area depend on: the anchor, the radius, the character's
+/// level (the gated exits) and whether doors are taken.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct LoopsKey {
+    anchor: Key,
+    radius: u32,
+    level: Option<i64>,
+    doors: bool,
+}
+
+/// A generated loop's `id`: `map:room:radius:doors|nodoors:index`, so a restarted brain can
+/// make the same loop again.
+fn loop_id(k: &LoopsKey, index: usize) -> String {
+    let doors = if k.doors { "doors" } else { "nodoors" };
+    format!("{}:{}:{}:{doors}:{index}", k.anchor.0, k.anchor.1, k.radius)
+}
+
+/// An `id` back to its area (at `level`) and the loop's index in it.
+fn parse_loop_id(id: &str, level: Option<i64>) -> Option<(LoopsKey, usize)> {
+    let mut it = id.split(':');
+    let map = it.next()?.parse().ok()?;
+    let room = it.next()?.parse().ok()?;
+    let radius: u32 = it.next()?.parse().ok()?;
+    let doors = match it.next()? {
+        "doors" => true,
+        "nodoors" => false,
+        _ => return None,
+    };
+    let index = it.next()?.parse().ok()?;
+    if it.next().is_some() || radius > MAX_LOOP_RADIUS {
+        return None;
+    }
+    let key = LoopsKey {
+        anchor: (map, room),
+        radius,
+        level,
+        doors,
+    };
+    Some((key, index))
+}
+
+fn room_key(k: Key) -> RoomKey {
+    RoomKey {
+        map: k.0,
+        room: k.1,
+    }
+}
+
+/// A loop being walked once (`walk_loop`): a `walk_to` per stop.
+#[derive(Debug)]
+struct LoopWalk {
+    name: String,
+    /// The stops from the one nearest where the walk started, then that one again.
+    stops: Vec<Key>,
+    /// The stop being walked to.
+    next: usize,
+}
+
+impl LoopWalk {
+    /// Stops on the loop (the last of `stops` is the first again).
+    fn total(&self) -> usize {
+        if self.stops.len() > 1 {
+            self.stops.len() - 1
+        } else {
+            1
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Resync {
@@ -159,6 +233,10 @@ pub(crate) struct Session {
     presence: Presence,
     /// The walk in progress is the bot's.
     bot_walk: bool,
+    /// The generated loops of the areas asked for, made once each.
+    loops: HashMap<LoopsKey, Arc<Vec<GeneratedLoop>>>,
+    /// The loop being walked once.
+    loop_walk: Option<LoopWalk>,
     /// When the character's own auto-combat last showed (`*Combat Engaged*`, its blows), or
     /// the brain attached: for how long it has been quiet, since auto-combat can end without a
     /// word (`kb/pitfalls.md` 42).
@@ -198,6 +276,8 @@ impl Session {
             bot: Bot::default(),
             presence: Presence::default(),
             bot_walk: false,
+            loops: HashMap::new(),
+            loop_walk: None,
             last_combat: now,
             id: info.id.clone(),
             state: info.state,
@@ -537,6 +617,9 @@ impl Session {
         }
         self.take_over(out);
         self.bot_walk = false;
+        if let Some(l) = self.loop_walk.take() {
+            out.push(self.notice(&format!("Loop {} stopped: walking elsewhere", l.name)));
+        }
         // An action queued but not sent yet is the old walk's (or the bot's): drop it.
         if self.executor.in_flight().is_none() {
             self.cancel(out);
@@ -549,14 +632,253 @@ impl Session {
         self.flush_views(out);
     }
 
+    /// `loops_request`: the loops of the area around `anchor` (the believed room by default).
+    pub fn loops_request(
+        &mut self,
+        anchor: Option<Key>,
+        radius: u32,
+        doors: bool,
+        out: &mut Vec<ToGateway>,
+    ) {
+        let Some(atlas) = self.atlas.clone() else {
+            out.push(self.warning("loops: the brain has no world pack"));
+            return;
+        };
+        let Some(anchor) = anchor.or_else(|| self.position.best()) else {
+            out.push(self.warning("loops: the position is unknown"));
+            return;
+        };
+        if !atlas.graph.contains(anchor) {
+            out.push(self.warning(&format!(
+                "loops: no room {}/{} in the world pack",
+                anchor.0, anchor.1
+            )));
+            return;
+        }
+        let radius = radius.min(MAX_LOOP_RADIUS);
+        self.position.refresh(&atlas, &self.character.snapshot());
+        let key = LoopsKey {
+            anchor,
+            radius,
+            level: self.position.traveller.level,
+            doors,
+        };
+        let generated = self.generated(&atlas, key);
+        let area = Area { anchor, radius }.rooms(&atlas.graph, &self.loop_traveller(doors));
+        let megamud = megamud_through(&atlas.mm_loops, &area)
+            .into_iter()
+            .map(|l| MegaMudLoop {
+                file: l.path.file.clone(),
+                description: l.path.description.clone(),
+                author: l.path.author.clone(),
+                path: l.rooms.iter().copied().map(room_key).collect(),
+                steps: u32::try_from(l.path.verification.steps_checked).unwrap_or(0),
+                exact: u32::try_from(l.path.verification.steps_exact).unwrap_or(0),
+            })
+            .collect();
+        out.push(ToGateway::Loops {
+            session: self.id.clone(),
+            anchor: room_key(anchor),
+            radius,
+            doors,
+            generated: generated.as_ref().clone(),
+            megamud,
+        });
+    }
+
+    /// The traveller loops are made for: the character's, through doors or not.
+    fn loop_traveller(&self, doors: bool) -> Traveller {
+        Traveller {
+            no_doors: !doors,
+            ..self.position.traveller.clone()
+        }
+    }
+
+    /// The generated loops of an area, made the first time they are asked for.
+    fn generated(&mut self, atlas: &Atlas, key: LoopsKey) -> Arc<Vec<GeneratedLoop>> {
+        if let Some(l) = self.loops.get(&key) {
+            return l.clone();
+        }
+        let t = Traveller {
+            level: key.level,
+            ..self.loop_traveller(key.doors)
+        };
+        let area = Area {
+            anchor: key.anchor,
+            radius: key.radius,
+        };
+        let rooms = area.rooms(&atlas.graph, &t);
+        let hunt = hunt_rooms(&atlas.graph, &atlas.monsters, area, &t);
+        let loops = circuits(&atlas.graph, area, &rooms, &hunt, &t);
+        let wire: Vec<GeneratedLoop> = loops
+            .iter()
+            .enumerate()
+            .map(|(i, l)| GeneratedLoop {
+                id: loop_id(&key, i),
+                name: l.name.clone(),
+                stops: l
+                    .rooms
+                    .iter()
+                    .filter_map(|k| hunt.iter().find(|h| h.key == *k))
+                    .map(|h| LoopStop {
+                        map: h.key.0,
+                        room: h.key.1,
+                        name: h.name.clone(),
+                        monsters: h.monsters.iter().map(|(_, n)| n.clone()).collect(),
+                        arena: h.is_arena,
+                        lair: h.is_lair,
+                        regen: h.regen,
+                    })
+                    .collect(),
+                path: std::iter::once(l.rooms[0])
+                    .chain(l.steps.iter().map(|s| s.to))
+                    .map(room_key)
+                    .collect(),
+                steps: u32::try_from(l.length).unwrap_or(u32::MAX),
+                doors: u32::try_from(l.steps.iter().filter(|s| s.door.is_some()).count())
+                    .unwrap_or(u32::MAX),
+            })
+            .collect();
+        let wire = Arc::new(wire);
+        self.loops.insert(key, wire.clone());
+        wire
+    }
+
+    /// `walk_loop`: walk a generated loop once, from its stop nearest the character round to
+    /// that stop again, a `walk_to` per stop.
+    pub fn walk_loop(&mut self, id: &str, now: Instant, out: &mut Vec<ToGateway>) {
+        let Some(atlas) = self.atlas.clone() else {
+            out.push(self.warning("walk_loop: the brain has no world pack"));
+            return;
+        };
+        if self.state != SessionState::Realm {
+            out.push(self.warning("walk_loop: the character is not in the realm"));
+            return;
+        }
+        self.position.refresh(&atlas, &self.character.snapshot());
+        let found = parse_loop_id(id, self.position.traveller.level)
+            .filter(|(k, _)| atlas.graph.contains(k.anchor))
+            .and_then(|(k, i)| self.generated(&atlas, k).get(i).cloned());
+        let Some(l) = found else {
+            out.push(self.warning(&format!("walk_loop: no loop {id:?}")));
+            return;
+        };
+        let Some(from) = self.position.best() else {
+            out.push(self.warning(&format!(
+                "Not walking loop {}: the position is unknown",
+                l.name
+            )));
+            return;
+        };
+        let stops: Vec<Key> = l.stops.iter().map(|s| (s.map, s.room)).collect();
+        // The nearest stop by route, the first of equals in loop order.
+        let nearest = stops
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &k)| {
+                route(&atlas.graph, from, k, &self.position.traveller).map(|r| (r.len(), i))
+            })
+            .min();
+        let Some((_, first)) = nearest else {
+            out.push(self.warning(&format!(
+                "Not walking loop {}: no way to any of its stops",
+                l.name
+            )));
+            return;
+        };
+        self.take_over(out);
+        self.bot_walk = false;
+        if self.executor.in_flight().is_none() {
+            self.cancel(out);
+        }
+        let mut order: Vec<Key> = stops[first..]
+            .iter()
+            .chain(&stops[..first])
+            .copied()
+            .collect();
+        if order.len() > 1 {
+            order.push(order[0]);
+        }
+        let start = order[0];
+        let name = |k: Key| {
+            atlas
+                .graph
+                .room(k)
+                .map_or("", |r| r.name.as_str())
+                .to_owned()
+        };
+        out.push(self.notice(&format!(
+            "Walking loop {}: {} stops, {} steps, from {}",
+            l.name,
+            l.stops.len(),
+            l.steps,
+            name(start)
+        )));
+        self.loop_walk = Some(LoopWalk {
+            name: l.name.clone(),
+            stops: order,
+            next: 0,
+        });
+        let busy = self.executor.in_flight().is_some();
+        let next = self.walker.start(&mut self.position, &atlas, start, busy);
+        self.apply(next, out);
+        self.drive(now, out);
+        self.flush_views(out);
+    }
+
+    /// The loop walk after the walker's latest word: on to the next stop when it arrived at
+    /// this one, over when the walk ended anywhere else.
+    fn loop_step(&mut self, arrived: Option<Key>, out: &mut Vec<ToGateway>) {
+        let Some(atlas) = self.atlas.clone() else {
+            return;
+        };
+        let Some(lw) = &mut self.loop_walk else {
+            return;
+        };
+        let at = lw.stops[lw.next];
+        if arrived != Some(at) {
+            if !self.walker.walking() {
+                let lw = self.loop_walk.take().expect("walking a loop");
+                let text = format!(
+                    "Loop {} stopped before stop {}/{}",
+                    lw.name,
+                    (lw.next % lw.total()) + 1,
+                    lw.total()
+                );
+                out.push(self.warning(&text));
+            }
+            return;
+        }
+        let name = atlas.graph.room(at).map_or("", |r| r.name.as_str());
+        let text = if lw.next + 1 == lw.stops.len() && lw.stops.len() > 1 {
+            format!("Loop {} done: back at {name}", lw.name)
+        } else {
+            format!("Loop stop {}/{}: {name}", lw.next + 1, lw.total())
+        };
+        lw.next += 1;
+        let to = lw.stops.get(lw.next).copied();
+        if to.is_none() {
+            self.loop_walk = None;
+        }
+        out.push(self.notice(&text));
+        if let Some(to) = to {
+            let busy = self.executor.in_flight().is_some();
+            let next = self.walker.start(&mut self.position, &atlas, to, busy);
+            self.apply(next, out);
+        }
+    }
+
     /// `walk_stop`.
     pub fn walk_stop(&mut self, out: &mut Vec<ToGateway>) {
         self.stop_walk("asked to stop", out);
         self.flush_views(out);
     }
 
-    /// Stop walking after the action in flight; at once if none has gone.
+    /// Stop walking after the action in flight; at once if none has gone. A loop walk ends.
     fn stop_walk(&mut self, why: &str, out: &mut Vec<ToGateway>) {
+        if let Some(l) = self.loop_walk.take() {
+            out.push(self.notice(&format!("Loop {} stopped: {why}", l.name)));
+        }
         if self.executor.in_flight().is_none() && self.owner == Some(Owner::Walker) {
             self.executor.cancel();
             self.owner = None;
@@ -722,8 +1044,16 @@ impl Session {
         }
     }
 
-    /// Do what the walker asked: narrate, and submit its next action.
+    fn notice(&self, text: &str) -> ToGateway {
+        ToGateway::Notice {
+            session: Some(self.id.clone()),
+            text: text.to_owned(),
+        }
+    }
+
+    /// Do what the walker asked: narrate, and submit its next action; a loop walk goes on.
     fn apply(&mut self, next: Next, out: &mut Vec<ToGateway>) {
+        let arrived = next.arrived;
         self.say(next.says, out);
         self.map_dirty |= next.route_changed;
         if let Some(action) = next.action {
@@ -737,6 +1067,7 @@ impl Session {
                 }
             }
         }
+        self.loop_step(arrived, out);
     }
 
     /// Move the executor on: hand a finished action's outcome to the walker, and send the next

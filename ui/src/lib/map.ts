@@ -4,9 +4,13 @@
 //
 // The brain lays the rooms out and plans the routes; this file only draws what it was sent.
 
-import type { MapExit, MapRoom, RoomKey, RoomKind, ToClient, Walking } from "../proto";
+import type { GeneratedLoop, MapExit, MapRoom, RoomKey, RoomKind, ToClient, Walking } from "../proto";
 
 export type MapView = Extract<ToClient, { type: "map_view" }>;
+export type Loops = Extract<ToClient, { type: "loops" }>;
+
+/** The area a `loops_request` asks about: the rooms within this many steps of the character. */
+export const LOOP_RADIUS = 8;
 
 /** The radius a `map_request` asks for, and the most it ever asks for (C-022's review). */
 export const MAP_RADIUS = 15;
@@ -62,6 +66,8 @@ export interface ViewState {
   panY: number;
   level: number;
   hover?: RoomKey | null;
+  /** A loop to draw: every room it passes, and its stops (numbered in loop order). */
+  loop?: { path: RoomKey[]; stops: RoomKey[] } | null;
 }
 
 /** The part of `CanvasRenderingContext2D` the drawing uses. */
@@ -189,6 +195,14 @@ export function describeRoom(view: MapView, room: MapRoom): string[] {
   return lines;
 }
 
+/** A generated loop's size: `3 stops, 4 steps, 1 door`. */
+export function loopText(l: GeneratedLoop): string {
+  const n = (k: number, one: string) => `${k} ${one}${k === 1 ? "" : "s"}`;
+  const parts = [n(l.stops.length, "stop"), n(l.steps, "step")];
+  if (l.doors > 0) parts.push(n(l.doors, "door"));
+  return parts.join(", ");
+}
+
 /** The route bar's line: the walker's commands still to type, `n, n, e, borrow skiff`. */
 export function walkText(walking: Walking | undefined): string {
   return walking?.commands?.join(", ") ?? "";
@@ -246,6 +260,22 @@ export function drawMap(ctx: Ctx, view: MapView, v: ViewState, fontFamily: strin
     drawExit(ctx, e, a, b, v, s);
   }
 
+  // A loop hovered or picked in the loops list, in yellow under the route.
+  const loop = v.loop?.path ?? [];
+  const stop = new Map<string, number>();
+  v.loop?.stops.forEach((k, i) => stop.set(keyOf(k), i + 1));
+  ctx.setLineDash([]);
+  ctx.strokeStyle = COLOURS.yellow;
+  ctx.lineWidth = Math.max(2, 3 * s);
+  for (let i = 0; i + 1 < loop.length; i++) {
+    const [a, b] = [byKey.get(keyOf(loop[i])), byKey.get(keyOf(loop[i + 1]))];
+    if (!a || !b) continue;
+    ctx.beginPath();
+    ctx.moveTo(...roomCentre(a, v));
+    ctx.lineTo(...roomCentre(b, v));
+    ctx.stroke();
+  }
+
   // The route, over the exits and under the boxes.
   const route = view.route ?? [];
   const step = new Map<string, number>();
@@ -270,6 +300,7 @@ export function drawMap(ctx: Ctx, view: MapView, v: ViewState, fontFamily: strin
       up: up.has(k),
       down: down.has(k),
       step: step.get(k),
+      stop: stop.get(k),
       hover: !!v.hover && same(v.hover, r),
     });
   }
@@ -327,6 +358,8 @@ interface Marks {
   down: boolean;
   /** Its step on the route, from 1. */
   step?: number;
+  /** Its stop on the loop drawn, from 1. */
+  stop?: number;
   hover: boolean;
 }
 
@@ -380,5 +413,8 @@ function drawRoom(ctx: Ctx, view: MapView, r: MapRoom, v: ViewState, m: Metrics,
   if (marks.step !== undefined) {
     ctx.fillStyle = COLOURS.lightgreen;
     ctx.fillText(String(marks.step), col(1), bottom);
+  } else if (marks.stop !== undefined) {
+    ctx.fillStyle = COLOURS.yellow;
+    ctx.fillText(String(marks.stop), col(1), bottom);
   }
 }

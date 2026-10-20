@@ -62,6 +62,8 @@ Client → gateway:
 {"type":"walk_stop","session":"kasimir"}
 {"type":"map_request","session":"kasimir","radius":15}
 {"type":"bot_control","session":"kasimir","action":"start"}
+{"type":"loops_request","session":"kasimir","radius":8}
+{"type":"walk_loop","session":"kasimir","id":"1:2140:8:doors:0"}
 ```
 
 Brain → gateway → UIs (the same JSON both ways):
@@ -74,6 +76,7 @@ Brain → gateway → UIs (the same JSON both ways):
 {"type":"notice","session":"kasimir","text":"re-synced"}
 {"type":"warning","text":"world pack not found; walking blind"}
 {"type":"map_view","session":"kasimir","center":{"map":1,"room":2140},"level":0,"rooms":[{"map":1,"room":2140,"name":"Newhaven, Village Entrance","x":0,"y":0,"level":0,"spawns":false,"visited":true,"candidate":true,"collides":false},{"map":1,"room":2141,"name":"Newhaven, Weapons Shop","x":0,"y":-1,"level":0,"spawns":false,"kind":"shop","visited":false,"candidate":false,"collides":false}],"exits":[{"from":{"map":1,"room":2140},"to":{"map":1,"room":2141},"dir":"n","kind":"plain","one_way":false}],"route":[{"map":1,"room":2140},{"map":1,"room":2141}]}
+{"type":"loops","session":"kasimir","anchor":{"map":1,"room":2140},"radius":8,"doors":true,"generated":[{"id":"1:2140:8:doors:0","name":"Newhaven","stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1}],"path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"doors":1}],"megamud":[{"file":"EXAMPLE.mp","description":"Arena loop","author":"someone","path":[{"map":1,"room":2150},{"map":1,"room":2146},{"map":1,"room":2150}],"steps":2,"exact":2}]}
 ```
 
 The control messages above are relayed to the brain the same way.

@@ -101,6 +101,30 @@ It claims and logs on a character (level 3 or below: the pool's are level 1), th
 
 The brain's log is `NN-fight/brain.log`.
 
+## Scenario "loop" (M2, generated loops)
+
+```sh
+scripts/live-check.sh --scenario loop
+```
+
+It claims and logs on a character, then:
+
+1. **The world pack** and **a brain**, as in "walk".
+2. **To the Village Entrance** (1/2140), checked as in "walk" (skipped when already there).
+3. **The loops** (`loops_request` around it, radius 8): the generated "Newhaven" loop stops
+   at the Arena, the Dungeon Entrance and the Small Cavern, the Arena flagged, under 40
+   steps.
+4. **`walk_loop`** on it, and `walk_stop` as soon as the brain narrates the walk to its first
+   stop (the Arena, three steps away): the brain narrates "Loop Newhaven stopped: asked to
+   stop" and the walk stops after the move in flight, short of the Arena. Every stop of the
+   loop spawns monsters, and a fight stops a walk, so the check never walks one round; the
+   in-process tests (`crates/wayfarer-brain/tests/loops.rs`) walk the whole loop and back.
+   If the character did reach the Arena, it walks out as in "fight" and the step fails.
+5. **A walk back** to the Village Entrance, then **stopping the brain**, and the gateway logs
+   off as in M0.
+
+The brain's log is `NN-loop/brain.log`.
+
 ## The test-character pool
 
 `fixtures.toml` lists the characters: account, family name, race, class and the stat totals

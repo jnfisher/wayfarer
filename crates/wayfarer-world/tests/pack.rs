@@ -244,4 +244,25 @@ fn megamud_paths_verify() {
     assert_eq!(steps.len(), 40);
     assert_eq!(steps[0].walk, Some(((1, 1224), "exact".to_string())));
     assert_eq!(pack.paths().unwrap().len(), 1_957);
+
+    // The loops wayfarer may list or run: the 183 that walk to the end, all closing; those
+    // through Newhaven (radius 8) among them.
+    let mm = wayfarer_world::loops::megamud_loops(&pack).unwrap();
+    assert_eq!(mm.len(), 183);
+    assert!(mm.iter().all(|l| wayfarer_world::loops::verified(&l.path)));
+    let slmb = mm.iter().find(|l| l.path.file == "SLMBLOOP.mp").unwrap();
+    assert_eq!(slmb.rooms.first(), Some(&(1, 1224)));
+    assert_eq!(slmb.rooms.last(), Some(&(1, 1224)));
+    let graph = wayfarer_world::RoomGraph::load(&pack).unwrap();
+    let area = wayfarer_world::Area {
+        anchor: (1, 2140),
+        radius: 8,
+    }
+    .rooms(&graph, &wayfarer_world::Traveller::default());
+    let through = wayfarer_world::loops::megamud_through(&mm, &area);
+    eprintln!(
+        "MegaMud loops through Newhaven: {:?}",
+        through.iter().map(|l| &l.path.file).collect::<Vec<_>>()
+    );
+    assert!(through.iter().all(|l| l.path.verification.closes));
 }

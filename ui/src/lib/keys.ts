@@ -34,6 +34,11 @@ export const KEY_ROWS: KeyRow[] = [
   { group: "Map", keys: "Click a room on the map", does: "Walk the character there; stop under the map ends the walk" },
   { group: "Map", keys: "Mouse wheel, drag on the map", does: "Zoom (three sizes), pan; centre goes back to the character" },
   {
+    group: "Map",
+    keys: "loops, under the map",
+    does: "The loops around the character: hover or pick one to draw it in yellow, walk once walks it",
+  },
+  {
     group: "Bot",
     keys: "F10, or [►] and [■] in the tile's header",
     does: "Start the focused character's bot where it stands (fight what comes, rest when low), or stop it",

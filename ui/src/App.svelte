@@ -15,7 +15,7 @@
     ZOOM_OUT_KEYS,
     ZOOM_RESET_KEYS,
   } from "./lib/keys";
-  import { MAP_RADIUS, type MapView } from "./lib/map";
+  import { LOOP_RADIUS, MAP_RADIUS, type Loops, type MapView } from "./lib/map";
   import {
     drag,
     equalWeights,
@@ -80,6 +80,8 @@
 
   // The brain's last `map_view` per session (replaced whole, so not deeply reactive).
   let mapViews = $state.raw<Record<string, MapView>>({});
+  // The brain's last `loops` per session.
+  let loopsBySession = $state.raw<Record<string, Loops>>({});
   // Sessions whose map has been asked for since the connection opened or the brain attached:
   // the brain sends a view by itself only when the believed room or the route changes.
   const mapAsked = new Set<string>();
@@ -225,6 +227,9 @@
       },
       mapView: (view) => {
         mapViews = { ...mapViews, [view.session]: view };
+      },
+      loops: (loops) => {
+        loopsBySession = { ...loopsBySession, [loops.session]: loops };
       },
       event: (id, e) => {
         addEvent(dev, id, e);
@@ -406,6 +411,9 @@
             attached={brain.attached}
             onwalk={(id, map, room) => client.walkTo(id, map, room)}
             onstop={(id) => client.walkStop(id)}
+            loops={focusedId ? loopsBySession[focusedId] : undefined}
+            onloops={(id, doors) => client.requestLoops(id, LOOP_RADIUS, doors)}
+            onwalkloop={(id, loop) => client.walkLoop(id, loop)}
           />
         {:else}
           <DevPanel

@@ -32,6 +32,8 @@ pub(crate) struct Next {
     pub says: Vec<Say>,
     /// The route started, changed or ended.
     pub route_changed: bool,
+    /// The walk ended in its destination: this room.
+    pub arrived: Option<Key>,
 }
 
 impl Next {
@@ -169,6 +171,7 @@ impl Walker {
         };
         if r.is_empty() {
             next.notice(format!("Arrived: {name}"));
+            next.arrived = Some(to);
             return next;
         }
         next.notice(format!("Walking to {name}: {}", describe(&r)));
@@ -246,8 +249,9 @@ impl Walker {
                     w.confirmed += 1;
                     w.bashes = 0;
                     if w.next == w.route.len() {
-                        let name = w.name.clone();
+                        let (name, to) = (w.name.clone(), w.to);
                         self.end(&mut next, Say::Notice(format!("Arrived: {name}")));
+                        next.arrived = Some(to);
                         return self.then_start(pos, atlas, next);
                     }
                     Ok(Doing::Move)
@@ -320,8 +324,9 @@ impl Walker {
             }
             Ok(_) if w.next == w.route.len() => {
                 // Replanned from the destination itself.
-                let name = w.name.clone();
+                let (name, to) = (w.name.clone(), w.to);
                 self.end(&mut next, Say::Notice(format!("Arrived: {name}")));
+                next.arrived = Some(to);
                 next
             }
             Ok(doing) => {
@@ -331,13 +336,15 @@ impl Walker {
         }
     }
 
-    /// Start the walk a `walk_to` asked for while the last one was finishing.
+    /// Start the walk a `walk_to` asked for while the last one was finishing. Only the new
+    /// walk's arrival counts: the old one was replaced.
     fn then_start(&mut self, pos: &mut Position, atlas: &Atlas, mut next: Next) -> Next {
         if let Some(to) = self.then.take() {
             let started = self.start(pos, atlas, to, false);
             next.action = started.action;
             next.says.extend(started.says);
             next.route_changed = true;
+            next.arrived = started.arrived;
         }
         next
     }

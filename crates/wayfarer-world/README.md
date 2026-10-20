@@ -124,7 +124,7 @@ Also `rooms_by_name`, `room_raw`, `item`, `spell`, `shop` (with stock), `message
 `text_block`, `waypoints`, `paths`, `path_steps` and `meta`. The pack is opened read only and
 nothing is loaded up front.
 
-## Rooms in memory: graph, routes, belief, layout, monsters
+## Rooms in memory: graph, routes, belief, layout, monsters, loops
 
 Pure data and functions over `&RoomGraph` and plain values; no I/O beyond loading from the pack,
 no clock. The brain advances the belief and asks for routes; the map panel asks for a layout.
@@ -151,8 +151,9 @@ let monsters = Monsters::load(&pack)?;
   that spawns (the destination exempt) and `Costs::door` (2) per door. A `Traveller` carries the
   level, class, race and evil points for gated exits (`None`: not checked), the exits refused
   this session (`blocked`), the Hidden exits `found`, and the `Category`s allowed beyond the
-  default (Key, Spell, Item, Toll, Cast, Ability, every Hidden). Remote Action exits are never
-  walked. `distances` is a breadth-first search to a radius.
+  default (Key, Spell, Item, Toll, Cast, Ability, every Hidden), and `no_doors` to take none.
+  Remote Action exits are never walked. `distances` is a breadth-first search to a radius;
+  `route_within` keeps a route inside a set of rooms.
 - **`Belief`** (`belief.rs`): the candidate rooms, empty for unknown. `observe(title, exits,
   dark)` keeps the candidates with that name whose exits fit; from unknown it starts from every
   room of that name; when nothing fits it widens to 12 steps around the old candidates (name and
@@ -173,6 +174,14 @@ let monsters = Monsters::load(&pack)?;
   Arena and Lair rooms, only when `maxmonsters` > 0 and never with `maxlevel` 0) and `spawn_pool(room)` (that plus the room's
   `specmon`); `huntable` is evil, not an NPC (`montype` 2) and worth exp; `hunt_room` is a pool
   with a huntable monster (`kb/progression.md`, `kb/combat.md`).
+- **`loops`** (`loops.rs`): an `Area` is the rooms within a radius of an anchor by exits the
+  traveller may take; `hunt_rooms` are those whose pool has a huntable monster (with the
+  monsters, arena, lair and `regendelay`). `generate` makes a closed circuit through them
+  (nearest neighbour, then 2-opt, legs routed inside the area): one over all of them, and one
+  per part when they don't all reach each other inside it (`Loop {name, rooms, steps, length,
+  spawns}`). Newhaven, Village Entrance at radius 8: the Arena, the Dungeon Entrance and the
+  Small Cavern, `n, n, s, s`. `megamud_loops` reads MegaMud's verified loops (walked to the end,
+  closed) with the rooms each walk passed; `megamud_through` keeps those passing the area.
 
 The graph has no state: doors relock at a cold start, found Hidden exits hide again after about
 five minutes (`kb/navigation.md`); the brain's `Traveller` holds what it learns.
