@@ -4,7 +4,7 @@
 mod game;
 
 use game::*;
-use wayfarer_proto::GeneratedLoop;
+use wayfarer_proto::{BossStatus, GeneratedLoop};
 
 /// North of the Dungeon Entrance: a Lair of cave bears.
 const SMALL_CAVERN: Key = (1, 2156);
@@ -210,4 +210,38 @@ async fn an_unknown_loop_is_a_warning() {
     }
     let (_, played) = g.close(run).await;
     assert!(played.is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_boss_stop_says_whether_the_boss_should_be_up() {
+    // The Minotaur Chieftain's Large Wooden Room (24 hours after a kill). Killed by the
+    // character, bot or no bot: down for a day from then.
+    let chieftain: Key = (1, 1865);
+    let (mut g, run) = Game::start(SessionState::Realm, chieftain).await;
+    let stop_there = |loops: &[GeneratedLoop]| {
+        loops
+            .iter()
+            .flat_map(|l| &l.stops)
+            .find(|s| (s.map, s.room) == chieftain)
+            .cloned()
+            .expect("a stop at the Chieftain's room")
+    };
+    let (generated, _) = g.loops_request(None).await;
+    assert_eq!(
+        stop_there(&generated).bosses,
+        [BossStatus {
+            name: "minotaur chieftain".into(),
+            regen_hours: 24,
+            up_in_minutes: None,
+        }]
+    );
+    g.output(&arena::line(
+        "The minotaur chieftain curses at you spitefully, and dies!",
+        35,
+    ))
+    .await;
+    let (generated, _) = g.loops_request(None).await;
+    let boss = stop_there(&generated).bosses[0].clone();
+    assert_eq!(boss.up_in_minutes, Some(24 * 60), "{boss:?}");
+    g.close(run).await;
 }

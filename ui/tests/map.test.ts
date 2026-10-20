@@ -6,6 +6,8 @@ import {
   describeRoom,
   drawMap,
   loopText,
+  minutesText,
+  stopTip,
   MAP_RADIUS,
   MAX_MAP_RADIUS,
   metrics,
@@ -283,7 +285,7 @@ describe("hover and zoom", () => {
 
 describe("the loops list", () => {
   it("says a loop's size", () => {
-    const stop = { map: 1, room: 11, name: "Arena", monsters: [], arena: true, lair: false, regen: 0 };
+    const stop = { map: 1, room: 11, name: "Arena", monsters: [], arena: true, lair: false, regen: 0, bosses: [] };
     const l = { id: "1:10:8:doors:0", name: "Town", stops: [stop], path: [k(11)], steps: 0, doors: 0 };
     expect(loopText(l)).toBe("1 stop, 0 steps");
     expect(loopText({ ...l, stops: [stop, stop, stop], steps: 4, doors: 1 })).toBe("3 stops, 4 steps, 1 door");
@@ -297,5 +299,41 @@ describe("the route bar", () => {
     expect(walkText(undefined)).toBe("");
     // From a brain that did not send them.
     expect(walkText({ ...walking, commands: undefined } as never)).toBe("");
+  });
+});
+
+describe("a loop stop's tooltip", () => {
+  const stop = {
+    map: 1,
+    room: 1865,
+    name: "Large Wooden Room",
+    monsters: ["minotaur chieftain"],
+    arena: false,
+    lair: true,
+    regen: 0,
+    bosses: [] as { name: string; regen_hours: number; up_in_minutes?: number }[],
+  };
+
+  it("says how long minutes are", () => {
+    expect(minutesText(45)).toBe("45 m");
+    expect(minutesText(60)).toBe("1 h");
+    expect(minutesText(80)).toBe("1 h 20 m");
+    expect(minutesText(1440)).toBe("24 h");
+  });
+
+  it("names what spawns and when it is back", () => {
+    expect(stopTip(stop)).toBe("minotaur chieftain; lair, back 5 m after a kill");
+  });
+
+  it("says whether a boss should be up", () => {
+    const up = { ...stop, bosses: [{ name: "minotaur chieftain", regen_hours: 24 }] };
+    expect(stopTip(up)).toBe("minotaur chieftain; lair, back 5 m after a kill; minotaur chieftain should be up");
+    const down = { ...stop, bosses: [{ name: "minotaur chieftain", regen_hours: 24, up_in_minutes: 80 }] };
+    expect(stopTip(down)).toContain("minotaur chieftain should be up in 1 h 20 m");
+  });
+
+  it("copes with a brain that sends no bosses", () => {
+    const { bosses: _bosses, ...old } = stop;
+    expect(stopTip(old as unknown as typeof stop)).toBe("minotaur chieftain; lair, back 5 m after a kill");
   });
 });

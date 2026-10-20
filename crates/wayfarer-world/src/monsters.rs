@@ -140,6 +140,19 @@ impl Monsters {
         self.bosses.contains(&number)
     }
 
+    /// Whether a monster seen by `name` is a boss (any record of that name is).
+    pub fn boss_named(&self, name: &str) -> bool {
+        self.by_name(name).iter().any(|m| self.is_boss(m.number))
+    }
+
+    /// Hours a boss takes to come back after a kill (`regenhrs`); `None` for a monster that is
+    /// not a boss.
+    pub fn regen_hours(&self, number: i64) -> Option<i64> {
+        let m = self.get(number).filter(|m| self.is_boss(m.number))?;
+        let raw = serde_json::from_str::<serde_json::Value>(&m.raw).ok()?;
+        raw.get("regenhrs").and_then(serde_json::Value::as_i64)
+    }
+
     /// The bosses a room's pool holds, if any: the room is their lair. Only bosses count, not
     /// every Lair room (John, 2026-10-20); a MegaMud waypoint flagged boss is the other way a
     /// room becomes one ([`crate::Finder::boss_lair`]).
@@ -368,7 +381,11 @@ mod tests {
             monster(111, "minotaur", 11, 4),
         ]);
         assert!(ms.is_boss(114));
+        assert_eq!(ms.regen_hours(114), Some(24));
+        assert!(ms.boss_named("Minotaur Chieftain") && !ms.boss_named("minotaur"));
+        assert!(!ms.boss_named("nobody"));
         for n in [465, 160, 161, 111] {
+            assert_eq!(ms.regen_hours(n), None, "{n}");
             assert!(!ms.is_boss(n), "{n}");
         }
         let lair = room(114, 1, 11, (4, 4));

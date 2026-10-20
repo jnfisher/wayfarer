@@ -3,6 +3,7 @@
 export const PROTOCOL = 1;
 
 export type { BossLair } from "./BossLair";
+export type { BossStatus } from "./BossStatus";
 export type { Bot } from "./Bot";
 export type { BotAction } from "./BotAction";
 export type { BotMode } from "./BotMode";
