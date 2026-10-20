@@ -252,6 +252,9 @@ pub(crate) struct Session {
     down: bool,
     /// The gateway is logging the character off (`logging_off`): nothing more is sent.
     leaving: bool,
+    /// The gateway is logging the character off, and it was attacked: the bot flees first,
+    /// then the brain answers `ready_to_leave`.
+    flee_out: bool,
     /// The bot's state and the run, in the store.
     ledger: Ledger,
     /// The bot as a brain before this one left it, running or paused: put back once the
@@ -281,6 +284,7 @@ impl Session {
         atlas: Option<Arc<Atlas>>,
         store: Option<Arc<Mutex<Store>>>,
         clock: Arc<dyn Clock>,
+        flee_below: i32,
         now: Instant,
     ) -> Self {
         let ledger = Ledger::new(store, clock, &info.id);
@@ -299,7 +303,7 @@ impl Session {
             map_center: None,
             map_dirty: false,
             owner: None,
-            bot: Bot::default(),
+            bot: Bot::new(flee_below),
             presence: Presence::default(),
             bot_walk: false,
             walk_after: None,
@@ -308,6 +312,7 @@ impl Session {
             last_combat: now,
             down: false,
             leaving: false,
+            flee_out: false,
             id: info.id.clone(),
             state: info.state,
             parser: Parser::new(registry.clone()),
@@ -337,6 +342,7 @@ impl Session {
         self.last_combat = now;
         self.down = false;
         self.leaving = false;
+        self.flee_out = false;
         // An answer to the action in flight may have gone by unseen.
         self.cancel(out);
         let next = self.walker.abandon("the brain re-attached");
@@ -395,6 +401,7 @@ impl Session {
                 // Cut short: start again from `st` in the realm.
                 self.request_resync();
             }
+            self.flee_out_done(out);
         } else if was != SessionState::Realm {
             self.synced = false;
         }
@@ -493,10 +500,11 @@ impl Session {
             changed |= applied;
             if applied && self.atlas.is_some() {
                 // Every HP value, not only those the bot sees at its ticks: a walk or an
-                // action in flight does not hold the stop back (`bot_held` below ends the walk).
+                // action in flight does not hold Flee back.
                 let c = self.character.state();
-                let says = self.bot.hp(hp_percent(c.hp, c.hp_max));
-                self.say(says, out);
+                if self.bot.hp(hp_percent(c.hp, c.hp_max)) {
+                    self.give_way(out);
+                }
             }
             let typed = GameEvent::from_event(ev);
             if let Resync::Waiting {
@@ -715,11 +723,80 @@ impl Session {
         (attacked && player).then(|| who.to_owned())
     }
 
-    /// `logging_off`: the gateway is about to log the character off. The bot stops, a walk
-    /// stops after the move in flight, an action not sent yet is dropped, and nothing more
-    /// goes to the game (a re-sync included) while the session is in the realm. The caller
-    /// answers `ready_to_leave`.
-    pub fn logging_off(&mut self, out: &mut Vec<ToGateway>) {
+    /// Flee takes control: the bot's walk stops after the move in flight, and its action that
+    /// has not gone yet is dropped.
+    fn give_way(&mut self, out: &mut Vec<ToGateway>) {
+        if self.bot_walk {
+            self.stop_walk("fleeing", out);
+        }
+        if self.owner == Some(Owner::Bot)
+            && self.executor.busy()
+            && self.executor.in_flight().is_none()
+        {
+            self.executor.cancel();
+            self.owner = None;
+            self.bot.forget();
+        }
+    }
+
+    /// `logging_off`: the gateway is about to log the character off. If it is attacked or
+    /// fighting, the bot flees first (an attack cancels the exit, `kb/recovery.md`), whatever
+    /// it was doing, and `false` is returned: the session answers `ready_to_leave` itself
+    /// once the flee is over. Otherwise, at once: the bot stops, a walk stops after the move
+    /// in flight, an action not sent yet is dropped, and nothing more goes to the game (a
+    /// re-sync included) while the session is in the realm; the caller answers.
+    pub fn logging_off(&mut self, now: Instant, out: &mut Vec<ToGateway>) -> bool {
+        if self.attacked(now) {
+            if self.walker.walking() {
+                self.stop_walk("the gateway is logging off", out);
+            }
+            if self.executor.in_flight().is_none() {
+                self.cancel(out);
+            }
+            self.resync = Resync::Off;
+            // The flee goes on the run before it ends.
+            let c = self.character.state();
+            let hp = hp_percent(c.hp, c.hp_max).unwrap_or(0);
+            let who = self.presence.attackers.first().cloned();
+            let room = self.position.best();
+            self.ledger
+                .event(EventKind::Flee, i64::from(hp), who.as_deref(), room);
+            let says = self.bot.leave();
+            self.say(says, out);
+            self.flee_out = true;
+            self.drive(now, out);
+            self.flush_views(out);
+            return false;
+        }
+        self.leave_now(out);
+        true
+    }
+
+    /// Whether the character is under attack as far as the brain can tell: a monster or a
+    /// player attacked it in this room, or its own auto-combat is going on.
+    fn attacked(&self, now: Instant) -> bool {
+        self.atlas.is_some()
+            && self.state == SessionState::Realm
+            && self.live()
+            && (!self.presence.attackers.is_empty()
+                || (self.character.state().in_combat == Some(true) && !self.quiet(now)))
+    }
+
+    /// The flee before a log-off is over (safe, cornered, or the bot stopped): nothing more
+    /// goes to the game, and the brain answers `ready_to_leave`.
+    fn flee_out_done(&mut self, out: &mut Vec<ToGateway>) {
+        if !self.flee_out || self.bot.leaving() {
+            return;
+        }
+        self.flee_out = false;
+        self.leave_now(out);
+        out.push(ToGateway::ReadyToLeave {
+            session: self.id.clone(),
+        });
+    }
+
+    /// Stop the bot and send nothing more (`logging_off`).
+    fn leave_now(&mut self, out: &mut Vec<ToGateway>) {
         self.leaving = true;
         let says = self.bot.stop("the gateway is logging off", false);
         self.say(says, out);
@@ -1221,10 +1298,17 @@ impl Session {
             room: self.position.best(),
             certain: self.position.belief.certain(),
             traveller: &self.position.traveller,
+            doors: &self.position.doors,
             presence: &self.presence,
         };
         let (act, says) = self.bot.tick(&view);
         self.say(says, out);
+        if let Some(hp) = self.bot.take_fled() {
+            let who = self.presence.attackers.first().cloned();
+            let room = self.position.best();
+            self.ledger
+                .event(EventKind::Flee, i64::from(hp), who.as_deref(), room);
+        }
         match act {
             Some(Do::Send(action)) => match self.executor.submit(action, in_combat) {
                 Ok(()) => self.owner = Some(Owner::Bot),
@@ -1327,6 +1411,7 @@ impl Session {
             self.bot.forget();
         }
         self.bot_tick(now, out);
+        self.flee_out_done(out);
         if self.state == SessionState::Realm
             && self.live()
             && !self.leaving

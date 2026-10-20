@@ -42,6 +42,7 @@ pub struct Brain {
     dir: PathBuf,
     addr: String,
     world: PathBuf,
+    extra: Vec<String>,
 }
 
 impl Brain {
@@ -53,6 +54,18 @@ impl Brain {
         addr: &str,
         world: &Path,
     ) -> Result<Self, String> {
+        Self::start_with(binary, dir, label, addr, world, &[]).await
+    }
+
+    /// The same, with `extra` arguments for `wayfarer brain` (`--flee-below 100`).
+    pub async fn start_with(
+        binary: &Path,
+        dir: &Path,
+        label: &str,
+        addr: &str,
+        world: &Path,
+        extra: &[String],
+    ) -> Result<Self, String> {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         let mut child = Command::new(binary)
             .arg("brain")
@@ -63,6 +76,7 @@ impl Brain {
             // An empty data directory: no token file (the gateway is on loopback).
             .arg("--config")
             .arg(dir.join("wayfarer.toml"))
+            .args(extra)
             .env("NO_COLOR", "1")
             .env("RUST_LOG", "info")
             .stdin(Stdio::null())
@@ -95,23 +109,25 @@ impl Brain {
             dir: dir.to_owned(),
             addr: addr.to_owned(),
             world: world.to_owned(),
+            extra: extra.to_vec(),
         })
     }
 
     /// Stop it (SIGTERM) and start it again in the same directory, so on the same store,
     /// logging to `dir/<label>.log`: how it exited, and the new brain.
     pub async fn restart(self, label: &str) -> Result<(String, Self), String> {
-        let (binary, dir, addr, world) = (
+        let (binary, dir, addr, world, extra) = (
             self.binary.clone(),
             self.dir.clone(),
             self.addr.clone(),
             self.world.clone(),
+            self.extra.clone(),
         );
         let (status, _) = self.stop().await?;
         if !status.success() {
             return Err(format!("the first brain exited with {status}"));
         }
-        let again = Self::start(&binary, &dir, label, &addr, &world).await?;
+        let again = Self::start_with(&binary, &dir, label, &addr, &world, &extra).await?;
         Ok((format!("exited with {status}"), again))
     }
 
@@ -125,6 +141,11 @@ impl Brain {
         tokio::time::sleep(Duration::from_millis(100)).await;
         let log = self.log.lock().unwrap().join("\n");
         Ok((status, log))
+    }
+
+    /// Its log so far.
+    pub fn log(&self) -> Vec<String> {
+        self.log.lock().unwrap().clone()
     }
 
     /// Stop it as Ctrl-C would (SIGTERM) and wait for it to exit.

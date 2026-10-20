@@ -233,6 +233,7 @@ pub enum BotMode {
     Idle,
     Fight,
     Recover,
+    Flee,
 }
 
 /// What the bot is doing for a character.

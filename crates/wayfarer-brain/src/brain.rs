@@ -16,6 +16,7 @@ use wayfarer_world::{Key, MmLoop, Monsters, RoomGraph, WorldPack};
 
 use crate::clock::{Clock, rfc3339};
 use crate::link::Link;
+use crate::policy::FLEE_BELOW;
 use crate::session::{Progress, Session};
 
 /// This build: the version, and the commit it was built from when known.
@@ -196,6 +197,8 @@ pub struct Brain {
     sessions: BTreeMap<String, Session>,
     attaches: u64,
     store: Option<Arc<Mutex<Store>>>,
+    /// The bots' flee line, per cent of the maximum HP.
+    flee_below: i32,
 }
 
 impl Brain {
@@ -210,7 +213,16 @@ impl Brain {
             sessions: BTreeMap::new(),
             attaches: 0,
             store: None,
+            flee_below: FLEE_BELOW,
         }
+    }
+
+    /// Flee below `percent` HP instead of [`FLEE_BELOW`]: a test knob for the live check
+    /// (`wayfarer brain --flee-below`), so the first blow sets a flee off. The settings give
+    /// the player the line in M4.
+    pub fn with_flee_below(mut self, percent: i32) -> Self {
+        self.flee_below = percent;
+        self
     }
 
     /// Keep the bot's state and the statistics in `store`, and resume the bots it has running
@@ -306,6 +318,7 @@ impl Brain {
                         self.world.atlas.clone(),
                         self.store.clone(),
                         self.clock.clone(),
+                        self.flee_below,
                         now,
                     );
                     s.attach(info, now, out);
@@ -407,11 +420,14 @@ impl Brain {
             }
             ToClient::LoggingOff { session } => {
                 tracing::info!(%session, "the gateway is logging the character off");
-                if let Some(s) = self.sessions.get_mut(&session) {
-                    s.logging_off(out);
+                // An attacked character flees first; its session answers when that is over.
+                let ready = match self.sessions.get_mut(&session) {
+                    Some(s) => s.logging_off(now, out),
+                    None => true,
+                };
+                if ready {
+                    out.push(ToGateway::ReadyToLeave { session });
                 }
-                // C-028 flees first when the character is attacked.
-                out.push(ToGateway::ReadyToLeave { session });
             }
             ToClient::Error { message } => tracing::warn!("the gateway says: {message}"),
             other => tracing::debug!("ignored: {:?}", other.type_name()),

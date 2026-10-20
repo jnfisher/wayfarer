@@ -183,8 +183,8 @@ one. MegaMud's loops are listed, not walked, until the Task mode runs them.
 
 The first slice of the bot (`docs/plan/03-engine.md` sections 4 and 5). With the character
 standing in a room the player chose, **Start** (`F10` or the tile's `[►]`, `bot_control
-start`) makes it fight what comes there, rest when low, and stop itself when HP is
-dangerously low. Every character starts **stopped**; the snapshot's `bot` says `{state, mode,
+start`) makes it fight what comes there, rest when low, and flee when HP is dangerously low
+("Flee", below). Every character starts **stopped**; the snapshot's `bot` says `{state, mode,
 narration, reason?}`, and every change of what the bot is doing is a `notice` (its narration).
 It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
 
@@ -196,6 +196,7 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
 
   | Mode | Wants control when | Does |
   |---|---|---|
+  | Flee | HP below 30% while running, whether or not engaged, with something to run from (a fight, an attacker, or a room that spawns); until it is done | Leaves by a confirmed exit toward a room that spawns nothing, keeps running if followed, then hands over to Recover ("Flee", below) |
   | Recover | HP below 80% (or poisoned) and not fighting; or a rest it began is not finished | Rests: in this room if nothing spawns here; else walks (through the walker, each step confirmed) to the nearest room within 5 steps where nothing spawns, and rests there; else rests here anyway. `rest` again when the next prompt lacks `(Resting)` (three times, then a 30 s wait; `You are too sick to rest!` waits 30 s too). Rested at 95%, it walks back home. Each walk is tried twice (a fight can stop one): after two walks out that were stopped it rests where it is, against the quiet-room rule, and says so with a warning ("Recover: resting in Newhaven, Arena though it spawns: 2 walks to a quiet room were stopped"); after two walks home that were stopped it waits where it rested: "Rested; could not walk home, waiting here" |
   | Fight | Engaged; or a monster worth fighting is here | Picks one that is attacking the character first, else the first listed; sends `a <its last word>` once and lets auto-combat run. After `*Combat Off*` or a kill it looks (`look`) and picks the next. A target the game refuses (`You do not see rat here!`, `Your weapon has no effect`) is left alone for the rest of the session. Never leaves the room |
   | Idle | Otherwise | Sends nothing: "Waiting here" |
@@ -219,30 +220,74 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
 - **A monster that attacks while resting** wakes the bot: Fight takes the character (in the
   quiet room, if it is there), then Recover carries on and walks home when rested. One that
   arrives and doesn't attack leaves the rest alone.
-- **Stop in place of Flee**: below 30% HP the bot stops itself with a warning, "Stopped at 24%
-  HP: flee is not built yet; fight or run by hand". Auto-combat goes on in the game: the fight
-  is the player's. So does dying (`You have been killed!`) and leaving the realm.
+- **The bot stops itself** when Flee has no way out (below), when the character dies (`You have
+  been killed!`) and when the session leaves the realm, with a warning. Auto-combat goes on in
+  the game: the fight is the player's.
 - **Pause and take-over**: a line the player types (not the brain's own) while the bot runs
   pauses it after the action in flight: "You took over Waydeva", then "Paused: you took over".
   So do a `walk_to` from the map and `pause` (`F9`, `[║]`). Paused, it sends nothing. **Resume**
   (`F9`, `[►]`) re-syncs first, then narrates what it does next. **Stop** (`F10`, `[■]`)
   sends nothing more; a walk of the bot's stops after the move in flight.
 - **Constants** in this slice, settings in M4 (`docs/plan/04-settings.md` section 3): rest
-  below 80%, rest until 95%, stop below 30%, a quiet room within 5 steps
-  (`crates/wayfarer-brain/src/policy.rs`).
+  below 80%, rest until 95%, flee below 30%, three rooms of fleeing, a 1.5 s watch for a
+  follower, a quiet room within 5 steps (`crates/wayfarer-brain/src/policy.rs`).
 
 Not in this slice: coins and loot, healing spells and healers, bash and the other attacks,
-flee, "guard while paused" (paused means nothing is sent), and a fight the bot thinks it
-cannot win.
+"guard while paused" (paused means nothing is sent, Flee included), and a fight the bot thinks
+it cannot win.
+
+## Flee
+
+Below the flee line (30% of the maximum HP; a plain percentage, John dropped "twice the
+hardest hit this fight" on 2026-10-19) the bot leaves the fight. Every HP value is checked,
+whatever is in flight: a walk of the bot's stops after the move in flight, an action of its not
+sent yet is dropped, and Flee acts at the next prompt.
+
+- **The exit**, from the room the position is sure of, best first: plain exits to rooms that
+  spawn nothing, then plain exits to rooms that spawn, then doors and gates (quiet first).
+  Within each, a room that is not protected comes first (a protected room, the shops and the
+  Guild in Newhaven, refuses a character in combat: `You may not enter that room while in
+  combat.`), and not back to the room it just left if another is as good. Never an exit the
+  game refused this session, a gated exit (level, class, race, alignment, item, toll, spell,
+  key), a Text, Hidden, Action or Remote Action exit, or a door that is locked: a door counts
+  as the game last showed it this session (`open door north` in the exits, `The door is
+  closed!`, `The door is locked.`, `The door is now open.`), else as the pack has it, and a cold
+  start locks every door. A door is opened (`open <dir>`) then walked through, never bashed.
+- **A hop**: the direction through the executor, confirmed by the room it shows (as a walker's
+  step is). A refusal or a locked door tries the next exit at once; a shut door that is not
+  locked (`The door is Closed!`) is opened first. Then it waits up to 1.5 s at the prompt for a
+  follower: the monster's follow text (`The giant rat creeps in after you!`), a hostile monster
+  arriving, or an attack. Followed, it hops again; not followed, and nothing spawns here, it is
+  **safe**; not followed but in a room that spawns, it hops on toward a quiet one. Three hops at
+  most while HP stays under the line.
+- **After**: Recover takes over, whatever the HP: it rests where Flee got to (walking to a quiet
+  room within 5 steps if it must) to 95%, then walks back home, and Fight carries on there. A
+  monster that attacks again while HP is still under the line sets off another flee.
+- **Cornered**: with no exit to take (the position not sure of the room, every exit refused,
+  locked or gated), or still followed after the third hop, it sends `break` if the character is
+  fighting and the bot stops itself with a warning: "Stopped at 22% HP: cornered in Newhaven,
+  Arena: no exit to flee by; fight or run by hand".
+- Narrated as it goes: "Fleeing: HP 22%: up to Newhaven, Narrow Road", "Followed by large giant
+  rat: east to Newhaven, Narrow Path", "Flee: in Newhaven, Narrow Path, watching for
+  followers", "Safe in Newhaven, Narrow Path". The snapshot's `bot.mode` is `flee` meanwhile.
+- **Paused or stopped**, nothing is sent: Flee does not act either (until "guard while paused",
+  M4).
+- **The live check's flee line**: `wayfarer brain --flee-below 100` (hidden, test only) raises
+  the line so the first blow sets a flee off (`tests/live/README.md` "flee"). The settings give
+  the player the line in M4.
 
 ## Stopping, restarting, the gateway going away
 
 - **The gateway stops** (it logs every character off): before each log-off it sends
-  `logging_off`; the brain stops that character's bot ("Stopped: the gateway is logging off"),
-  stops a walk after the move in flight, sends nothing more to it (no re-sync either) and
-  answers `ready_to_leave` at once. From C-028 it flees a fight first. The brain stays
-  attached while the gateway logs off (the retried `x`s come as `sent`), then the gateway
-  closes the connection.
+  `logging_off`. If the character is under attack (a monster or a player attacked it in this
+  room, or its own auto-combat is going on), the brain flees first, whatever the bot was doing
+  and whatever the HP, since every attack cancels the exit (`kb/recovery.md`): "Logging off
+  under attack: fleeing first", the same hops as Flee, to a room where nothing follows (or
+  cornered: `break`). Then, and at once when it was not attacked, it stops that character's bot
+  ("Stopped: the gateway is logging off"), stops a walk after the move in flight, sends nothing
+  more to it (no re-sync either) and answers `ready_to_leave`. The gateway waits 30 s for that
+  answer at most. The brain stays attached while the gateway logs off (the retried `x`s come as
+  `sent`), then the gateway closes the connection.
 - **Ctrl-C or SIGTERM** closes the WebSocket and exits. Nothing is sent to the game; the
   characters stay where they are. The UIs see `brain_state false`.
 - **Starting it again** attaches afresh: catch-up, a whole snapshot, a re-sync for every
@@ -299,7 +344,9 @@ A run starts at Start and ends at Stop, a death, the session leaving the realm o
 logging it off; pauses and brain restarts are inside it. While a run is open the brain records
 what the game shows (not the catch-up's history, which a brain before it saw): a monster's
 death text is a kill, the `You gain N experience.` after it its exp; `You have been killed!` a
-death; `rest` starting a rest; the level going up a level-up. Flees come with Flee (C-028).
+death; `rest` starting a rest; the level going up a level-up; each flee a flee (the HP per
+cent it started at, the first attacker, the room it left), a flee before a log-off included,
+counted before the log-off ends the run.
 Every minute it samples the character's exp and HP. Times come from the brain's clock, so a
 replay can run on a throwaway store and its recorded clock.
 
@@ -311,7 +358,7 @@ shows them ([web-ui.md](web-ui.md) "The stats").
 
 ## Not yet
 
-No modes beyond Fight, Recover and Idle (no Flee, Maintain or Task); no input arbitration
+No modes beyond Flee, Fight, Recover and Idle (no Maintain or Task); no input arbitration
 (every client's input still goes straight to the game, `docs/protocol.md`; a typed line stops
 a walk and pauses the bot); moves are not pipelined along a known route (one in flight); the
 refused exits are forgotten when the brain restarts; MegaMud's loops and player-recorded ones

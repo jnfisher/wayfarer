@@ -3,9 +3,9 @@
 //! events and snapshots to the UIs, and re-syncs a character by asking the game (`st`, `exp`,
 //! `i`, `look`). With a world pack it also keeps each character's position, serves the map
 //! panel, walks a character to a room (`walk_to`) through the [`executor`], and plays it where
-//! it stands when asked (`bot_control`: "fight here", with the [`policy`] constants). With a
-//! [`Store`] it keeps the bot's state and the runs' statistics on disk, and resumes each bot
-//! after a restart.
+//! it stands when asked (`bot_control`: "fight here", fleeing below the flee line, with the
+//! [`policy`] constants). With a [`Store`] it keeps the bot's state and the runs' statistics
+//! on disk, and resumes each bot after a restart.
 //!
 //! ```no_run
 //! # async fn f() -> Result<(), Box<dyn std::error::Error>> {
@@ -24,6 +24,7 @@ pub mod character;
 mod clock;
 pub mod executor;
 mod fight;
+mod flee;
 mod link;
 mod modes;
 pub mod policy;

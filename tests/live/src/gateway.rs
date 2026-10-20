@@ -52,7 +52,32 @@ pub struct Gateway {
     pub loops: Option<ToClient>,
     /// The last `stats` for the session.
     pub stats: Option<ToClient>,
+    /// The attacks on the character the brain's events showed.
+    pub attacks: Vec<Attack>,
 }
+
+/// An attack on the character, as an `event` from the brain showed it.
+#[derive(Debug, Clone)]
+pub struct Attack {
+    pub at: Instant,
+    /// The attacker, as the line names it.
+    pub who: String,
+    pub line: String,
+}
+
+/// The events of a monster's or a player's attack on the character (the brain's
+/// `AttackedBy`).
+const ATTACK_EVENTS: [&str; 9] = [
+    "attacks_you",
+    "mon_hits_you",
+    "mon_hits_you_generic",
+    "mon_miss_you",
+    "mon_dodge_you",
+    "mon_deflect_you",
+    "mon_miss_builtin",
+    "mon_dodge_builtin",
+    "mon_deflect_builtin",
+];
 
 /// How a stop went: whether the character logged off, and the gateway's own account.
 #[derive(Debug)]
@@ -136,6 +161,7 @@ impl Gateway {
             brain_attached: None,
             character: serde_json::Value::Null,
             notices: Vec::new(),
+            attacks: Vec::new(),
             warnings: Vec::new(),
             map_centers: Vec::new(),
             loops: None,
@@ -277,6 +303,23 @@ impl Gateway {
                 }
                 ToClient::CharacterPatch { session, patch } if session == SESSION => {
                     apply_patch(&mut self.character, patch);
+                }
+                ToClient::Event {
+                    session,
+                    name,
+                    fields,
+                    line,
+                    ..
+                } if session == SESSION && ATTACK_EVENTS.contains(&name.as_str()) => {
+                    let who = ["mon", "who"]
+                        .iter()
+                        .find_map(|f| fields.get(*f)?.as_str())
+                        .unwrap_or("someone");
+                    self.attacks.push(Attack {
+                        at: Instant::now(),
+                        who: who.trim().to_owned(),
+                        line: line.trim().to_owned(),
+                    });
                 }
                 ToClient::Notice { session, text } if session.as_deref() == Some(SESSION) => {
                     self.notices.push(text.clone());

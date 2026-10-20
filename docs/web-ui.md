@@ -67,9 +67,9 @@ controls, just left of the server:
 | Paused | `[►]` resume, `[■]` stop | yellow: "Paused: you took over" |
 
 **Start** plays the character where it stands: it fights what comes, keeps auto-combat on,
-rests when HP is low (in the nearest quiet room if this one spawns, then walks back), and stops
-itself below 30% HP with a warning, since fleeing is not built yet ([brain.md](brain.md) "Fight
-here"). **Any line you type** in the tile pauses it, after the command in flight ("You took
+rests when HP is low (in the nearest quiet room if this one spawns, then walks back), and
+flees below 30% HP to a room where nothing spawns, rests there and walks back; it stops itself
+with a warning only when there is no way out ([brain.md](brain.md) "Flee"). **Any line you type** in the tile pauses it, after the command in flight ("You took
 over Waydeva" in the dev panel); so does clicking a room on the map. `F9` or `[►]` resumes: the
 brain re-syncs first. `F10` starts or stops the focused character's bot. Hovering the line
 shows why the bot stopped or paused. The glyphs are the VGA font's own: code page 437 has `►`
