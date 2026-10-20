@@ -57,6 +57,11 @@ impl Brain {
         Self::start_with(binary, dir, label, addr, world, &[]).await
     }
 
+    /// The directory it was started in (its config, log and `store.sqlite`).
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
     /// The same, with `extra` arguments for `wayfarer brain` (`--flee-below 100`).
     pub async fn start_with(
         binary: &Path,

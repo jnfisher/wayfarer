@@ -239,6 +239,53 @@ It claims and logs on a character, then:
 
 The brain's log is `NN-loop/brain.log`.
 
+## Scenario "soak" (C-033, the timed run)
+
+```sh
+scripts/live-check.sh --scenario soak --char NAME --minutes N [--anchor MAP:ROOM]
+    [--radius R] [--skip MAP:ROOM ...] [--loop ID]
+scripts/live-check.sh --scenario soak --char Waychecka --minutes 3 --anchor 1:2140 \
+    --skip 1:2152 --skip 1:2156          # the smoke run: Newhaven, the Lairs unticked
+```
+
+A character runs a loop for N minutes and the numbers come out. It is for M3's acceptance run
+(`docs/dev-rig.md`, "A timed run"), by hand when wanted; it checks that the run held, not what
+the numbers are.
+
+1. **The world pack** and **a brain**, as in "walk" (the brain's store is `store.sqlite` in
+   the run's `NN-soak` directory).
+2. **The loop**: `loops_request` around the anchor (default: the room the re-sync placed the
+   character in; radius 8) and the first generated loop, or `--loop ID`.
+3. **`run_loop`** with the `--skip` stops, watched for N minutes. A line a minute is printed:
+   time, room, HP, exp gained, kills, flees, deaths, the bot's narration. The run ends at once
+   on a death (a warning that says `killed`, or a death in the run's numbers) or when the bot
+   stops itself, and the step fails with why.
+4. **At the end**: Flee or Recover is given up to three minutes to finish, then **Stop**, a
+   **walk to the anchor** (unless the character died) and the brain is stopped; the gateway
+   logs off as in M0. Put the anchor in a room nothing spawns in, since that is where the
+   character is left.
+5. **The summary table** after the steps, from the store's newest run (`stats_request`) and the
+   streams:
+
+   | Row | From |
+   |---|---|
+   | Minutes, kills, deaths, flees, rests | the run in the store |
+   | Exp gained, exp per hour | the store's exp over the run's wall time (Flee and Recover's wait included) |
+   | Kills by monster | `monster_death` events; one death text can name several monsters and the line does not say which, so they count under their joined names |
+   | Relocations | the brain's "No exit ..." notices (a walk that looked to relocate) |
+   | Unclassified lines | the snapshot's parse counts, over the run only |
+   | Longest gap without a prompt | `[HP=` prompts in the session's output, from the run's start |
+   | Brain restarts | times the brain detached from the gateway during the whole check |
+   | Run in the store | the run's id in `store.sqlite` (via the `sqlite3` tool, else its start time) |
+
+   The full event and notice streams are saved as `events.log` and `notices.log` in the run's
+   `NN-soak` directory, each line with its seconds into the run.
+
+**Safety.** A pool character may soak for ten minutes at most (the pool is for the short
+scenarios): longer, it refuses to start. Nothing is trained or spent. A death ends the run.
+
+The brain's log is `NN-soak/brain.log`.
+
 ## The test-character pool
 
 `fixtures.toml` lists the characters: account, family name, race, class and the stat totals
