@@ -7,7 +7,7 @@
 // for everything after the last `seq`.
 
 import { PROTOCOL } from "../proto";
-import type { BotAction, CharacterState, Chunk, SessionInfo, SessionState, ToClient, ToGateway } from "../proto";
+import type { BotAction, CharacterState, Chunk, RoomKey, SessionInfo, SessionState, ToClient, ToGateway } from "../proto";
 import { clampRadius, LOOP_RADIUS, type Loops, type MapView } from "./map";
 import type { Stats } from "./stats";
 
@@ -210,6 +210,12 @@ export class GatewayClient {
   /** Walk a generated loop once; false when not connected. */
   walkLoop(session: string, id: string): boolean {
     return this.send({ type: "walk_loop", session, id });
+  }
+
+  /** Run a generated loop (Task mode), passing by the stops in `skip`; for the loop the bot
+   * already runs, only change `skip`. False when not connected. */
+  runLoop(session: string, id: string, skip: RoomKey[] = []): boolean {
+    return this.send({ type: "run_loop", session, id, skip });
   }
 
   private send(message: ToGateway): boolean {

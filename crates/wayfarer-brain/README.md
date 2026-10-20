@@ -4,8 +4,9 @@ The brain (`docs/brain.md`): attaches to the gateway as its brain client, parses
 session's output, keeps a character model per session, sends the UIs events and snapshots,
 re-syncs a character (`st`, `exp`, `i`, `look`) at an idle prompt, and with a world pack keeps
 each character's position, serves the map panel (`map_view`), walks a character to a room
-(`walk_to`), lists the loops of an area and walks one once (`loops_request`, `walk_loop`), and
-plays it where it stands (`bot_control`: "fight here"). When the gateway is about to log a
+(`walk_to`), lists the loops of an area and walks one once (`loops_request`, `walk_loop`),
+plays it where it stands (`bot_control`: "fight here"), and runs a loop (`run_loop`: Task
+mode). When the gateway is about to log a
 character off (`logging_off`) it stops that character's bot, sends it nothing more and answers
 `ready_to_leave`. With a store (`Brain::with_store`) it saves each bot's state and counts each
 run, and a restarted brain resumes the bots. Depends on `wayfarer-proto`, `wayfarer-parse`,
@@ -29,7 +30,8 @@ brain.run(&mut link).await?;                             // Ok when the gateway 
 - **The re-sync** (`session.rs`): `Off`, `Want {next, idle}`, `Waiting {step, deadline}`.
 - **`executor`**: an `Action` is a command, the events that confirm it (`Expect`) and a
   timeout; one in flight per session, sent at a prompt in the realm; outcomes confirmed,
-  refused or timed out. The hard guards (`guard`): no attack unless known to be out of combat,
+  refused or timed out. A move may go *ahead* of the move in flight (`submit_ahead`,
+  `take_ahead`: Task's pipelined legs), never anything else. The hard guards (`guard`): no attack unless known to be out of combat,
   never `train stats`. The re-sync and the executor never have a line in flight at once; the
   session knows whose action is in flight (the walker's or the bot's) and hands it the outcome.
 - **`commands`**: the game's command words as runs of prefixes (`TABLE`, from silvermere's
@@ -39,18 +41,25 @@ brain.run(&mut link).await?;                             // Ok when the gateway 
   pauses it, an attack while engaged is held). The executor's attack guard uses it too.
 - **`position.rs`**: the `Belief` fed by every room seen and every move sent, the `Traveller`
   with the exits refused this session, the rooms visited, and the `map_view`.
-- **`walker.rs`**: the route and the per-step policy (doors, refusals, relocation, stops).
+- **`walker.rs`**: the route and the per-step policy (doors, refusals, relocation, stops), and
+  pipelining on a walk started with `start_with(.., pipelined)`: `Next::ahead` proposes the
+  next plain move, the session sends it if the moment allows (`went_ahead`), and a step that
+  goes wrong voids it and replans once its answer is in.
 - **Loops** (`session.rs`): `loops_request` makes an area's loops with `wayfarer_world::loops`
   (cached per anchor, radius, level and doors); `walk_loop` is a `walk_to` per stop, on to the
   next when the walker says it arrived.
 - **The bot** (`modes.rs`): running, paused or stopped, `Presence` (who is in the room), and the
   mode stack, each mode `wants`, `step`, `on_event` and `outcome`: `flee.rs`, `recover.rs`,
-  `fight.rs`, then Idle. A step asks for an action (through the executor) or a walk (through
+  `fight.rs`, `task.rs`, then Idle. A step asks for an action (through the executor) or a walk (through
   the walker), and narrates. Flee hops one move at a time through the executor; it also runs
   alone before a log-off under attack (`Bot::leave`). **`policy`**: the constants (rest below
   80%, until 95%, flee below 30% and at most three rooms, a 1.5 s watch for a follower, a quiet
   room within 5 steps, 12 s of quiet ends a fight) and pure functions over them and the pack
   (`target`, `hostile`, `spawns_here`, `rest_at`, `flee_exits`, `hp_percent`).
+- **`task.rs`**: Task mode: the loop, the stop cursor, when each stop was cleared, the skip set;
+  it asks the walker for each leg and hands the stop to Fight and Recover as home.
+  `stop_ready(now, cleared_at, regen, is_arena)` and `ready_in` are the respawn rule
+  (`STOCK_REGEN`, `STOP_QUIET`, `LEG_TRIES`). `TaskLoop` is what the store keeps of it.
 - **`Atlas`** (`brain.rs`): the `RoomGraph`, room kinds, class and race numbers, the
   `Monsters` and MegaMud's verified loops, loaded once
   per brain and shared by its sessions; `World` keeps the `WorldPack` open beside it.
@@ -74,9 +83,15 @@ two fallbacks narrated, knocked down not counting as quiet, players not taken fo
 under the line mid-fight a hop, a follower and a second hop, safe, rest and back; a shut door
 passed over or opened; three hops then `break` and a stop; cornered; the check while a walk is
 in flight; nothing while paused or stopped; the log-off under attack; determinism; and
-`flee_exits` on the pack. `tests/loops.rs`: the Newhaven loops, `walk_loop` round the stops and back, from the
+`flee_exits` on the pack. `tests/task.rs`: `run_loop` round the fixture's Newhaven loop: to
+the nearest stop with moves pipelined, a fight, on through the door, an unticked stop and a
+not-ready one passed by, the wait for a respawn on the paused clock, a rest before the wait,
+a wrong room voiding the move ahead, combat and a hostile monster on the way, pause and
+resume at the same stop, unticking the stop it walks to, stop, a brain restart going on to
+the same stop, determinism, and never an attack while engaged. `tests/loops.rs`: the Newhaven loops, `walk_loop` round the stops and back, from the
 nearest stop, and its stops. `tests/store.rs`: a second brain on the same store resumes the bot
 paused with its home and the same run, a running bot resumes and fights, a stored loop's fields
 survive and its stops win, nothing is resumed outside the realm or when stopped, a run's kills,
 death, samples and exp per hour, flees (a log-off's too), and the run counted without a store. The live scenarios: `scripts/live-check.sh --scenario brain`,
-`--scenario walk`, `--scenario fight` and `--scenario loop`.
+`--scenario walk`, `--scenario fight` and `--scenario loop` (which runs the Newhaven loop for
+five minutes).

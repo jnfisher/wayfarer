@@ -1067,7 +1067,10 @@ async fn newhaven_loops(gw: &mut Gateway) -> Result<(String, String), String> {
 /// The loop scenario, with the gateway in the realm: a brain; to the Village Entrance; the
 /// loops listed; `walk_loop` on the Newhaven loop, stopped as its first walk starts, so the
 /// character stops a step or two short of the Arena and never fights; back to the Village
-/// Entrance; the brain stopped. Whether all of it went.
+/// Entrance; then `run_loop` on it for [`LOOP_RUN`], its two Lairs unticked ([`UNTICKED`]: the
+/// run: kills at the Arena, the unticked stops passed by, the Arena never waited on, no death);
+/// Stop, out of the Arena, rest by hand if low; the brain stopped.
+/// Whether all of it went.
 async fn loop_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
     // 1. The brain attaches and re-syncs.
     let Some((running, start)) = placed_brain(ctx, gw, "loop", &[]).await else {
@@ -1112,11 +1115,142 @@ async fn loop_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
         let back = walk(gw, VILLAGE_ENTRANCE).await;
         ctx.record("walk back to the Village Entrance", started, &back);
         ok &= back.is_ok();
+        // 6. Run it.
+        if ok {
+            ok = run_the_loop(ctx, gw, &id).await;
+        }
     } else {
         ok = false;
     }
-    // 6. Stop the brain; the character stays in the realm.
+    // 7. Stop the brain; the character stays in the realm.
     stop_brain(ctx, running).await && ok
+}
+
+/// How long the loop scenario runs the loop.
+const LOOP_RUN: Duration = Duration::from_secs(300);
+/// The Newhaven loop's Lairs north of the Arena, passed by: the Small Cavern's cave bears are
+/// too much for a level-1 character, and the Dungeon Entrance fills with three monsters at once
+/// (two runs on 2026-10-20 ended with the bot stopping itself at 22% and 27% HP there, Flee
+/// followed through three rooms). The respawn delays are the in-process tests' to check.
+const UNTICKED: [(i64, i64); 2] = [(1, 2152), (1, 2156)];
+
+/// `run_loop` on the Newhaven loop for [`LOOP_RUN`], the Lairs unticked, then Stop, out of the
+/// Arena, and rest by hand if low. Whether the run held: no death, the bot never stopping
+/// itself, at least one kill at the Arena, the unticked stops passed by with a word and never
+/// walked to, and the Arena (no respawn delay) never waited on.
+async fn run_the_loop(ctx: &mut Ctx, gw: &mut Gateway, id: &str) -> bool {
+    use wayfarer_proto::BotAction;
+
+    let started = Instant::now();
+    let from = gw.notices.len();
+    let warned = gw.warnings.len();
+    let ran = run_for(gw, id, from, warned).await;
+    ctx.record(
+        &format!("run_loop for {} minutes", LOOP_RUN.as_secs() / 60),
+        started,
+        &ran,
+    );
+
+    // Whatever happened: the bot stopped, out of the Arena, HP back before logging off.
+    let started = Instant::now();
+    let stopped = match gw.bot(BotAction::Stop).await {
+        Ok(()) => {
+            gw.wait_for(Duration::from_secs(10), "the bot stopped", |g| {
+                (bot_field(&g.character, "state") == Some("stopped")).then(|| {
+                    bot_field(&g.character, "narration")
+                        .unwrap_or("")
+                        .to_owned()
+                })
+            })
+            .await
+        }
+        Err(e) => Err(e),
+    };
+    ctx.record("stop the bot", started, &stopped);
+    let out = walk_out(ctx, gw).await;
+    let rested = rest_by_hand(ctx, gw).await;
+    ran.is_ok() && stopped.is_ok() && out && rested
+}
+
+/// `run_loop`, the bot running, then followed until [`LOOP_RUN`] is up or it stops (a death,
+/// or stopping itself); the verdict.
+async fn run_for(gw: &mut Gateway, id: &str, from: usize, warned: usize) -> Result<String, String> {
+    gw.run_loop(id, &UNTICKED).await?;
+    gw.wait_for(Duration::from_secs(10), "the bot running", |g| {
+        (bot_field(&g.character, "state") == Some("running")).then_some(())
+    })
+    .await?;
+    let end = Instant::now() + LOOP_RUN;
+    let _ = gw
+        .wait_for(LOOP_RUN, "the run's end", |g| {
+            (Instant::now() >= end || bot_field(&g.character, "state") == Some("stopped"))
+                .then_some(())
+        })
+        .await;
+    judge_the_run(gw, from, warned)
+}
+
+/// The run's verdict from the notices and warnings since `from` and `warned`: a summary, or
+/// what went wrong.
+fn judge_the_run(gw: &Gateway, from: usize, warned: usize) -> Result<String, String> {
+    let said: Vec<(&str, Instant)> = gw.notices[from..]
+        .iter()
+        .map(String::as_str)
+        .zip(gw.notice_at[from..].iter().copied())
+        .collect();
+    let warnings = &gw.warnings[warned..];
+    let state = bot_field(&gw.character, "state").unwrap_or("?");
+    if state != "running" {
+        let why = bot_field(&gw.character, "narration").unwrap_or("");
+        return Err(format!("the bot is {state}: {why}; warnings {warnings:?}"));
+    }
+    if let Some(w) = warnings.iter().find(|w| w.contains("killed")) {
+        return Err(w.clone());
+    }
+    let count = |prefix: &str| said.iter().filter(|(s, _)| s.starts_with(prefix)).count();
+    let arena_kills = said
+        .iter()
+        .filter(|(s, _)| s.starts_with("Stop 1/3 cleared: ") && !s.ends_with("nothing there"))
+        .count();
+    if arena_kills == 0 {
+        return Err(format!("no kill at the Arena; said {:?}", tail_of(&said)));
+    }
+    if let Some((s, _)) = said.iter().find(|(s, _)| {
+        s.starts_with("Loop Newhaven: to stop 2/3") || s.starts_with("Loop Newhaven: to stop 3/3")
+    }) {
+        return Err(format!("walked to an unticked stop: {s}"));
+    }
+    if count("Skipping Dungeon, Entrance (unticked)") == 0
+        || count("Skipping Small Cavern (unticked)") == 0
+    {
+        return Err(format!(
+            "the unticked stops not narrated; said {:?}",
+            tail_of(&said)
+        ));
+    }
+    if let Some((s, _)) = said
+        .iter()
+        .find(|(s, _)| s.starts_with("Stop 1/3 not ready"))
+    {
+        return Err(format!("the Arena has no respawn delay, but: {s}"));
+    }
+    let run = &gw.character["run"];
+    Ok(format!(
+        "{} kills ({} exp/h), {} flees, {} rests; the Arena cleared {} times with kills, {} in \
+         all; {} waits for respawns there",
+        run["kills"],
+        run["exp_per_hour"],
+        run["flees"],
+        run["rests"],
+        arena_kills,
+        count("Stop 1/3 cleared"),
+        count("Waiting for respawns"),
+    ))
+}
+
+/// The last few notices, for an error.
+fn tail_of<'a>(said: &[(&'a str, Instant)]) -> Vec<&'a str> {
+    said.iter().rev().take(8).rev().map(|(s, _)| *s).collect()
 }
 
 /// `walk_loop`, then `walk_stop` as soon as the brain narrates the loop's first walk; the

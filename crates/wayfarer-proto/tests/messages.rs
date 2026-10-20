@@ -94,6 +94,7 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                         mode: BotMode::Fight,
                         narration: "Fight: large giant rat".into(),
                         reason: None,
+                        task: None,
                     }),
                     ..CharacterState::default()
                 }),
@@ -323,6 +324,14 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
                 id: "1:2140:8:doors:0".into(),
             },
             r#"{"type":"walk_loop","session":"kasimir","id":"1:2140:8:doors:0"}"#,
+        ),
+        (
+            ToGateway::RunLoop {
+                session: "kasimir".into(),
+                id: "1:2140:8:doors:0".into(),
+                skip: Some(vec![RoomKey { map: 1, room: 2156 }]),
+            },
+            r#"{"type":"run_loop","session":"kasimir","id":"1:2140:8:doors:0","skip":[{"map":1,"room":2156}]}"#,
         ),
         (
             ToGateway::StatsRequest {
@@ -700,7 +709,9 @@ fn families_say_who_may_send_what() {
         let family = msg.family();
         let want = match msg.type_name() {
             "resync" | "state_request" | "walk_to" | "walk_stop" | "map_request"
-            | "bot_control" | "loops_request" | "walk_loop" | "stats_request" => Family::Control,
+            | "bot_control" | "loops_request" | "walk_loop" | "run_loop" | "stats_request" => {
+                Family::Control
+            }
             "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
             | "map_view" | "loops" | "stats" | "input_held" => Family::Brain,
             "ready_to_leave" | "arbitrate" => Family::BrainToGateway,

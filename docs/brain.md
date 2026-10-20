@@ -69,7 +69,8 @@ line when it starts and attaches, one per re-sync. Nothing the player types is l
   `history_request` and holds live output until they are in.
 - **Control.** `resync` starts a re-sync; `state_request` gets the whole `character` (one
   session's or all) and `brain_info` again; `walk_to` and `walk_stop` walk ("Walking");
-  `bot_control` starts, stops, pauses and resumes the bot ("Fight here").
+  `bot_control` starts, stops, pauses and resumes the bot ("Fight here"); `run_loop` runs a
+  loop ("Running a loop").
 - **Closed sessions** keep their last snapshot; the UI shows the session's state beside it.
 
 ## The re-sync
@@ -144,8 +145,8 @@ out of combat (engaged, or not known either way, refuses it), and never `train s
 ## Loops
 
 The first of the three loop sources (`docs/plan/03-engine.md` section 4): loops generated from
-the world data, beside MegaMud's verified loops. Nothing runs them yet (the Task mode, M3,
-will); a UI lists them and walks one once so the player can watch the route.
+the world data, beside MegaMud's verified loops. A UI lists them, walks one once so the player
+can watch the route, and runs one ("Running a loop", below).
 
 `loops_request {session, anchor?, radius, doors?}` answers with `loops` (`docs/protocol.md`):
 
@@ -277,6 +278,71 @@ sent yet is dropped, and Flee acts at the next prompt.
   the line so the first blow sets a flee off (`tests/live/README.md` "flee"). The settings give
   the player the line in M4.
 
+## Running a loop
+
+Task mode (`docs/plan/03-engine.md` section 4): the bot hunts round a generated loop the player
+chose. `run_loop {session, id, skip?}` (the map panel's **run**) starts it, replacing a running
+"fight here"; `bot_control` stops, pauses and resumes it as it does "fight here". The snapshot's
+`bot.mode` is `task` while it walks between stops or waits, and `bot.task` says the loop, the
+stop it is at or walking to, and the stops it passes by.
+
+- **Start**: the bot re-syncs, then walks (each step confirmed, through the walker) to the
+  loop's ticked stop nearest the character by route, the first of equals in loop order:
+  "Loop Newhaven: to stop 1/3 Newhaven, Arena (3 steps)".
+- **The mode stack** is Flee, Recover, Fight, then **Task**, then Idle: Task has control only
+  when nothing above wants it. The stop it is at or walking to is *home*, so Recover rests from
+  it and walks back to it, and Fight fights there, as in "fight here".
+- **At a stop**: the room shown on arrival (or Fight's `look` after a kill) says who is there.
+  When nothing is left that Fight would attack, the stop is **cleared**: "Stop 1/3 cleared: 1
+  large giant rat" (what died there since it arrived), or "nothing there". A stop where hostile
+  monsters Fight will not attack are left (refused targets) is cleared once the character's own
+  combat has been quiet there for 20 s.
+- **On** to the next stop in loop order that is ticked and ready, passing by the others with a
+  word each: "Skipping Small Cavern (unticked)", "Stop 3/3 not ready (1 m)". **Ready**: an Arena
+  always is (monsters come back at once after a kill, `kb/progression.md`); any other stop once
+  its `regendelay` minutes (0 means the stock 5) have passed since the bot cleared it, or if it
+  never has. (`task::stop_ready`.)
+- **None ready**: with HP under 95% it rests first ("Waiting for respawns: resting first":
+  Recover rests, in a quiet room if this one spawns, and walks back); then it waits where it is,
+  "Waiting for respawns: next in 1 m", and goes when the next stop is ready. An Arena the bot is
+  in is always ready: it waits there and Fight takes what comes.
+- **On the way**: a monster Fight would attack in a room on the way, or one attacking, stops the
+  leg after the moves in flight; Fight takes the character, and then Task walks on to the same
+  stop from wherever it is. `*Combat Engaged*` stops it the same way. Flee and Recover work as in
+  "fight here"; after a flee Recover rests and walks back to the stop. A leg that ends elsewhere
+  three times with no fight between is given up: the stop is passed by this time round, with a
+  warning-like notice ("Stop 2/3 Dungeon, Entrance: could not get there; passing it by this time
+  round"). A stop passed by waits its respawn delay before the bot tries it again, an arena's
+  too (no delay after a kill, but its `regendelay` or the stock five minutes after a pass-by). Three stops passed by in a row, with no stop reached and nothing
+  killed between, and the bot stops itself with a warning ("Stopped: loop Newhaven: could not
+  get to a stop 3 times in a row").
+- **Pipelining**: on a leg, with the belief sure of the room and the character known to be out of
+  combat, the next plain move (a direction, no door on it or on the move in flight) goes ahead
+  of the move in flight, as MegaMud ran paths: two moves in flight at most, each confirmed by
+  its room in order. Nothing but a move ever goes ahead, so two other actions never overlap, and
+  the guards are the executor's as before. When the first move goes wrong (a room that is not
+  the one expected, a refusal, a door) the second has gone already: its confirmation is void,
+  and once its answer is in the walker plans again from wherever the belief puts the character
+  ("Replanned (a move went ahead of a wrong step): one step"). `*Combat Engaged*` drops a move
+  ahead that has not gone yet, and stops the leg after those in flight. Only Task's legs
+  pipeline; a `walk_to`, `walk_loop` or Recover's walks go one move at a time.
+- **Ticks**: `run_loop` again for the loop the bot runs changes only the stops it passes by
+  ("Loop Newhaven: passing by Small Cavern"); a leg to a stop just unticked stops after the
+  move in flight. An unticked stop is not avoided as a room on the way to another (a loop's
+  stops are rarely on each other's routes; a dead end such as the Minotaur Chieftain's room
+  never is).
+- **Pause and resume**: a typed act, keys, a `walk_to` or `pause` pause it after the action in
+  flight (a leg stops after its moves in flight); talk and look lines go between its actions
+  ("Typing beside the bot"). Resume re-syncs and goes on to the same stop.
+- **Restarts**: the loop's id, its stops, the stop it is at or walking to and the stops it passes
+  by are saved on every change ("Restarts", below), so a restarted brain goes on to the same
+  stop: "Resumed: running loop Newhaven at stop 2/3 (brain restarted)". When the stops were
+  cleared is not kept: after a restart every stop counts as ready.
+- **Statistics**: the run's kills, flees, deaths and rests are recorded with the room they
+  happened in ("Statistics", below), so a run on a loop has them per stop. A kill is named by the
+  monster the room showed (`large giant rat`), not the first of every monster that shares its
+  death text.
+
 ## Typing beside the bot
 
 While a character's bot is running or paused, the brain **arbitrates** its input
@@ -390,7 +456,7 @@ shows them ([web-ui.md](web-ui.md) "The stats").
 
 ## Not yet
 
-No modes beyond Flee, Fight, Recover and Idle (no Maintain or Task); no "after this fight"
-control for the typed-line queue; moves are not pipelined along a known route (one in flight); the
-refused exits are forgotten when the brain restarts; MegaMud's loops and player-recorded ones
-are not walked (only generated loops are, once).
+No Maintain mode; no "Where next?" and no moving on to the next area (M4: the loop is the
+player's choice); no "after this fight" control for the typed-line queue; the refused exits and
+the stops' cleared times are forgotten when the brain restarts; MegaMud's loops and
+player-recorded ones are not walked or run (only generated loops are).

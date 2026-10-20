@@ -44,6 +44,8 @@ pub struct Gateway {
     pub character: serde_json::Value,
     /// The brain's `notice` texts for the session.
     pub notices: Vec<String>,
+    /// When each of `notices` came.
+    pub notice_at: Vec<std::time::Instant>,
     /// The brain's `warning` texts for the session.
     pub warnings: Vec<String>,
     /// The center of each `map_view` for the session, (map, room).
@@ -161,6 +163,7 @@ impl Gateway {
             brain_attached: None,
             character: serde_json::Value::Null,
             notices: Vec::new(),
+            notice_at: Vec::new(),
             attacks: Vec::new(),
             warnings: Vec::new(),
             map_centers: Vec::new(),
@@ -226,6 +229,20 @@ impl Gateway {
         self.send(ToGateway::WalkLoop {
             session: SESSION.into(),
             id: id.into(),
+        })
+        .await
+    }
+
+    /// `run_loop` that loop, passing by the stops `skip`.
+    pub async fn run_loop(&mut self, id: &str, skip: &[(i64, i64)]) -> Result<(), String> {
+        self.send(ToGateway::RunLoop {
+            session: SESSION.into(),
+            id: id.into(),
+            skip: Some(
+                skip.iter()
+                    .map(|&(map, room)| wayfarer_proto::RoomKey { map, room })
+                    .collect(),
+            ),
         })
         .await
     }
@@ -323,6 +340,7 @@ impl Gateway {
                 }
                 ToClient::Notice { session, text } if session.as_deref() == Some(SESSION) => {
                     self.notices.push(text.clone());
+                    self.notice_at.push(std::time::Instant::now());
                 }
                 ToClient::Warning { session, text } if session.as_deref() == Some(SESSION) => {
                     self.warnings.push(text.clone());

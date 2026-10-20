@@ -3,7 +3,7 @@
 //! the bot. The re-sync's commands and the walker's and the bot's actions are all it sends to
 //! the game.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -24,11 +24,12 @@ use crate::brain::Atlas;
 use crate::character::{Character, merge_patch};
 use crate::clock::Clock;
 use crate::commands::{Kind, classify};
-use crate::executor::{Executor, Guard};
-use crate::modes::{Bot, Do, Presence, TaskLoop, View};
+use crate::executor::{Action, Executor, Guard};
+use crate::modes::{Bot, Do, Presence, View};
 use crate::policy::{COMBAT_QUIET, hp_percent};
 use crate::position::Position;
 use crate::stats::Ledger;
+use crate::task::{Task, TaskLoop};
 use crate::walker::{Next, Say, Walker};
 
 /// The rooms a `map_view` holds unless a `map_request` asks for another radius: those within
@@ -553,7 +554,8 @@ impl Session {
             if let Some(atlas) = &self.atlas
                 && self.position.event(atlas, &typed).is_some()
             {
-                self.executor.room_seen();
+                self.executor
+                    .room_seen_in(Some(self.position.belief.clone()));
             }
             self.executor.event(&typed);
             combat |= typed == GameEvent::CombatEngaged;
@@ -572,8 +574,19 @@ impl Session {
             if let Some(who) = self.pvp_attacker(ev) {
                 self.presence.pvp(&who);
             }
+            // Who died, before the presence forgets them.
+            let dead = match (&typed, &self.atlas) {
+                (GameEvent::MonsterDeath { monsters }, Some(atlas)) => self
+                    .presence
+                    .dead(atlas, monsters)
+                    .or_else(|| monsters.first().cloned()),
+                _ => None,
+            };
             if !silent && self.atlas.is_some() {
-                self.count(&typed, level);
+                self.count(&typed, dead.as_deref(), level);
+            }
+            if let Some(name) = &dead {
+                self.bot.killed(name, now);
             }
             if let Some(atlas) = &self.atlas {
                 self.presence.event(atlas, &typed);
@@ -614,14 +627,13 @@ impl Session {
         }
     }
 
-    /// What the run counts: kills (with the exp that follows), deaths, rests, and a level
-    /// above `level`, the one before the event.
-    fn count(&mut self, ev: &GameEvent, level: Option<u32>) {
+    /// What the run counts: kills (`dead`, with the exp that follows), deaths, rests, and a
+    /// level above `level`, the one before the event.
+    fn count(&mut self, ev: &GameEvent, dead: Option<&str>, level: Option<u32>) {
         let room = self.position.best();
         match ev {
-            GameEvent::MonsterDeath { monsters } => {
-                let name = monsters.first().map(String::as_str);
-                self.ledger.event(EventKind::Kill, 0, name, room);
+            GameEvent::MonsterDeath { .. } => {
+                self.ledger.event(EventKind::Kill, 0, dead, room);
             }
             GameEvent::ExpGain { amount } => self.ledger.exp(*amount, room),
             GameEvent::YouKilled => self.ledger.event(EventKind::Death, 0, None, room),
@@ -654,19 +666,24 @@ impl Session {
             k.and_then(|k| atlas.graph.room(k))
                 .map_or_else(|| "an unknown room".to_owned(), |r| r.name.clone())
         };
-        let task = rec.loop_id.as_ref().map(|id| TaskLoop {
+        let stored = rec.loop_id.as_ref().map(|id| TaskLoop {
             id: id.clone(),
             stops: rec.loop_stops.clone(),
             index: rec.stop_index,
             skip: rec.skip.clone(),
         });
+        let task = stored.map(|t| {
+            let name = self.loop_name(&atlas, &t, out);
+            Task::restore(&atlas, name, &t)
+        });
         let doing = match &task {
             Some(t) => {
-                let stops = t.stops.len().max(1);
+                let w = t.snapshot();
+                let stops = w.stops.len().max(1);
                 format!(
                     "running loop {} at stop {}/{stops}",
-                    self.loop_name(&atlas, t, out),
-                    t.index % stops + 1
+                    w.loop_name,
+                    w.stop as usize % stops + 1
                 )
             }
             None => format!("fighting in {}", name(rec.home)),
@@ -1068,6 +1085,36 @@ impl Session {
         });
     }
 
+    /// Send a move pipelined ahead of the brain's move in flight: the position expects its room
+    /// after that one's.
+    fn send_own_ahead(&mut self, cmd: &str, now: Instant, out: &mut Vec<ToGateway>) {
+        self.parser.sent(cmd);
+        self.position.sent_ahead(cmd);
+        self.own.push_back((cmd.to_owned(), now));
+        self.last_sent = now;
+        self.at_prompt = false;
+        out.push(ToGateway::InputLine {
+            session: self.id.clone(),
+            text: cmd.to_owned(),
+        });
+    }
+
+    /// Queue the walker's move to go ahead of its move in flight, if the moment allows: the
+    /// belief sure of the room, the character known to be out of combat, and no line the
+    /// player typed waiting.
+    fn pipeline(&mut self, action: Action) {
+        let now = Instant::now();
+        let in_combat = self.combat(now);
+        if self.owner == Some(Owner::Walker)
+            && self.position.belief.certain()
+            && in_combat == Some(false)
+            && self.typed.is_empty()
+            && self.executor.submit_ahead(action, in_combat)
+        {
+            self.walker.went_ahead();
+        }
+    }
+
     /// `walk_to`: plan a route from the believed room and start on it.
     pub fn walk_to(&mut self, to: Key, now: Instant, out: &mut Vec<ToGateway>) {
         let Some(atlas) = self.atlas.clone() else {
@@ -1229,11 +1276,7 @@ impl Session {
             out.push(self.warning("walk_loop: the character is not in the realm"));
             return;
         }
-        self.position.refresh(&atlas, &self.character.snapshot());
-        let found = parse_loop_id(id, self.position.traveller.level)
-            .filter(|(k, _)| atlas.graph.contains(k.anchor))
-            .and_then(|(k, i)| self.generated(&atlas, k).get(i).cloned());
-        let Some(l) = found else {
+        let Some(l) = self.find_loop(&atlas, id) else {
             out.push(self.warning(&format!("walk_loop: no loop {id:?}")));
             return;
         };
@@ -1298,6 +1341,128 @@ impl Session {
         self.flush_views(out);
     }
 
+    /// The generated loop `id` names, at the character's level now.
+    fn find_loop(&mut self, atlas: &Atlas, id: &str) -> Option<GeneratedLoop> {
+        self.position.refresh(atlas, &self.character.snapshot());
+        parse_loop_id(id, self.position.traveller.level)
+            .filter(|(k, _)| atlas.graph.contains(k.anchor))
+            .and_then(|(k, i)| self.generated(atlas, k).get(i).cloned())
+    }
+
+    /// `run_loop`: Task mode on a generated loop, from its ticked stop nearest the character
+    /// (docs/brain.md "Running a loop"). For the loop the bot already runs, only its `skip`
+    /// changes.
+    pub fn run_loop(
+        &mut self,
+        id: &str,
+        skip: Option<Vec<Key>>,
+        now: Instant,
+        out: &mut Vec<ToGateway>,
+    ) {
+        let Some(atlas) = self.atlas.clone() else {
+            out.push(self.warning("run_loop: the brain has no world pack"));
+            return;
+        };
+        if self.state != SessionState::Realm {
+            out.push(self.warning("run_loop: the character is not in the realm"));
+            return;
+        }
+        let skip = skip.unwrap_or_default();
+        if !self.bot.stopped()
+            && let Some(task) = self.bot.task_mut()
+            && task.id() == id
+        {
+            self.set_skip(&atlas, &skip, out);
+            self.drive(now, out);
+            self.flush_views(out);
+            return;
+        }
+        let Some(l) = self.find_loop(&atlas, id) else {
+            out.push(self.warning(&format!("run_loop: no loop {id:?}")));
+            return;
+        };
+        let stops: Vec<Key> = l.stops.iter().map(|s| (s.map, s.room)).collect();
+        let skipped: BTreeSet<usize> = (0..stops.len())
+            .filter(|&i| skip.contains(&stops[i]))
+            .collect();
+        let Some(from) = self.position.best() else {
+            out.push(self.warning(&format!(
+                "Not running loop {}: the position is unknown",
+                l.name
+            )));
+            return;
+        };
+        // The ticked stop nearest by route, the first of equals in loop order.
+        let nearest = stops
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !skipped.contains(i))
+            .filter_map(|(i, &k)| {
+                route(&atlas.graph, from, k, &self.position.traveller).map(|r| (r.len(), i))
+            })
+            .min();
+        let Some((_, first)) = nearest else {
+            out.push(self.warning(&format!(
+                "Not running loop {}: no way to any of its ticked stops",
+                l.name
+            )));
+            return;
+        };
+        if let Some(lw) = self.loop_walk.take() {
+            out.push(self.notice(&format!("Loop {} stopped: running a loop", lw.name)));
+        }
+        if self.walker.walking() {
+            self.stop_walk("running a loop", out);
+        }
+        self.bot_walk = false;
+        if self.executor.in_flight().is_none() {
+            self.cancel(out);
+        }
+        let task = Task::new(&atlas, l.id.clone(), l.name.clone(), &stops, first, skipped);
+        // Re-sync first: the HP maximum, the combat state, who is here.
+        self.request_resync();
+        let says = self.bot.run_loop(task, &l.name);
+        self.say(says, out);
+        self.bot_held(out);
+        self.drive(now, out);
+        self.flush_views(out);
+    }
+
+    /// The stops the running loop passes by from now on: narrated, and a leg to one of them
+    /// stops after the move in flight.
+    fn set_skip(&mut self, atlas: &Atlas, skip: &[Key], out: &mut Vec<ToGateway>) {
+        let Some(task) = self.bot.task_mut() else {
+            return;
+        };
+        let stops = task.snapshot().stops;
+        let skipped: BTreeSet<usize> = (0..stops.len())
+            .filter(|&i| skip.contains(&(stops[i].map, stops[i].room)))
+            .collect();
+        let names: Vec<String> = skipped
+            .iter()
+            .map(|&i| {
+                let k = (stops[i].map, stops[i].room);
+                atlas
+                    .graph
+                    .room(k)
+                    .map_or("", |r| r.name.as_str())
+                    .to_owned()
+            })
+            .collect();
+        let name = task.snapshot().loop_name;
+        task.set_skip(skipped);
+        let away = task.heading_to_skipped();
+        let text = if names.is_empty() {
+            format!("Loop {name}: every stop ticked")
+        } else {
+            format!("Loop {name}: passing by {}", names.join(", "))
+        };
+        out.push(self.notice(&text));
+        if away && self.bot_walk {
+            self.stop_walk("its stop was unticked", out);
+        }
+    }
+
     /// The loop walk after the walker's latest word: on to the next stop when it arrived at
     /// this one, over when the walk ended anywhere else.
     fn loop_step(&mut self, arrived: Option<Key>, out: &mut Vec<ToGateway>) {
@@ -1346,10 +1511,14 @@ impl Session {
         self.flush_views(out);
     }
 
-    /// Stop walking after the action in flight; at once if none has gone. A loop walk ends.
+    /// Stop walking after the action in flight (and a move pipelined ahead of it that has gone);
+    /// at once if none has gone. A loop walk ends.
     fn stop_walk(&mut self, why: &str, out: &mut Vec<ToGateway>) {
         if let Some(l) = self.loop_walk.take() {
             out.push(self.notice(&format!("Loop {} stopped: {why}", l.name)));
+        }
+        if self.owner == Some(Owner::Walker) && self.executor.drop_ahead() {
+            self.walker.ahead_dropped();
         }
         if self.executor.in_flight().is_none() && self.owner == Some(Owner::Walker) {
             self.executor.cancel();
@@ -1495,7 +1664,11 @@ impl Session {
                 }
             },
             Some(Do::Walk(to)) => {
-                let next = self.walker.start(&mut self.position, &atlas, to, false);
+                // Task's legs pipeline their moves.
+                let pipelined = self.bot.task_walking();
+                let next = self
+                    .walker
+                    .start_with(&mut self.position, &atlas, to, false, pipelined);
                 self.bot_walk = self.walker.walking();
                 if !self.bot_walk {
                     self.bot.forget();
@@ -1539,6 +1712,7 @@ impl Session {
         let arrived = next.arrived;
         self.say(next.says, out);
         self.map_dirty |= next.route_changed;
+        let ahead = next.ahead;
         if let Some(action) = next.action {
             let in_combat = self.combat(Instant::now());
             match self.executor.submit(action, in_combat) {
@@ -1547,8 +1721,12 @@ impl Session {
                     out.push(self.warning(&format!("refused: {}", guard.describe())));
                     let next = self.walker.abandon(guard.describe());
                     self.apply(next, out);
+                    return;
                 }
             }
+        }
+        if let Some(action) = ahead {
+            self.pipeline(action);
         }
         self.loop_step(arrived, out);
     }
@@ -1570,11 +1748,28 @@ impl Session {
                     }
                 }
                 _ => {
+                    if self.executor.busy() {
+                        // The move that went ahead is in flight now: the walker's still.
+                        self.owner = Some(Owner::Walker);
+                    }
                     self.position.refresh(&atlas, &self.character.snapshot());
-                    let next = self
-                        .walker
-                        .outcome(&mut self.position, &atlas, &action, outcome);
+                    let seen = self.executor.take_belief();
+                    let next = self.walker.outcome(
+                        &mut self.position,
+                        &atlas,
+                        &action,
+                        outcome,
+                        seen.as_ref(),
+                    );
                     self.apply(next, out);
+                    // A leg of Task's stops where Fight would take the character.
+                    if self.bot_walk
+                        && self.bot.task_walking()
+                        && self.walker.walking()
+                        && self.bot.would_fight(&atlas, &self.presence)
+                    {
+                        self.stop_walk("a monster to fight", out);
+                    }
                     // A pause asked for while the walker's action was in flight.
                     let says = self.bot.settle();
                     self.say(says, out);
@@ -1599,6 +1794,15 @@ impl Session {
             && let Some(cmd) = self.executor.take_ready(now)
         {
             self.send_own(&cmd, now, out);
+        }
+        // A move pipelined ahead goes at once behind the one in flight, prompt or not.
+        if self.state == SessionState::Realm
+            && self.live()
+            && !self.leaving
+            && !matches!(self.resync, Resync::Waiting { .. })
+            && let Some(cmd) = self.executor.take_ahead(now)
+        {
+            self.send_own_ahead(&cmd, now, out);
         }
     }
 
@@ -1688,7 +1892,7 @@ impl Session {
         // lapsed, or when a wait of Recover's ends.
         let now = Instant::now();
         let lapse = (!self.down).then_some(self.last_combat + COMBAT_QUIET);
-        let bot = [lapse, self.bot.wake()]
+        let bot = [lapse, self.bot.wake(now)]
             .into_iter()
             .flatten()
             .filter(|&t| t > now && self.bot.running() && !self.executor.busy());

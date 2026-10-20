@@ -9,8 +9,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
 
+use crate::brain::Atlas;
 use crate::executor::{Action, Expect, Outcome, Refused};
-use crate::modes::{Mode, Step, View};
+use crate::modes::{Mode, Presence, Step, View};
 use crate::policy::{attack_word, target};
 
 /// How many attacks on one monster may go unanswered (no `*Combat Engaged*`, no refusal)
@@ -105,6 +106,19 @@ impl Mode for Fight {
 }
 
 impl Fight {
+    /// Whether it would take the character with `presence` in the room: a hostile monster it
+    /// has not given up on, or anything attacking.
+    pub fn would_fight(&self, atlas: &Atlas, presence: &Presence) -> bool {
+        !presence.attackers.is_empty()
+            || target(
+                &atlas.monsters,
+                &presence.here,
+                &presence.attackers,
+                &self.skip,
+            )
+            .is_some()
+    }
+
     /// The game refused the target: leave it alone for the session, and look again.
     fn refused(&mut self) {
         if let Some(t) = self.target.take() {

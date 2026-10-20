@@ -202,7 +202,7 @@ Steps 1 to 3 of "fight" (to the Arena, Start), then, from the check's own WebSoc
 
 The brain's log is `NN-typing/brain.log`.
 
-## Scenario "loop" (M2, generated loops)
+## Scenario "loop" (M2, generated loops; C-030, running one)
 
 ```sh
 scripts/live-check.sh --scenario loop
@@ -221,8 +221,21 @@ It claims and logs on a character, then:
    loop spawns monsters, and a fight stops a walk, so the check never walks one round; the
    in-process tests (`crates/wayfarer-brain/tests/loops.rs`) walk the whole loop and back.
    If the character did reach the Arena, it walks out as in "fight" and the step fails.
-5. **A walk back** to the Village Entrance, then **stopping the brain**, and the gateway logs
-   off as in M0.
+5. **A walk back** to the Village Entrance.
+6. **`run_loop`** on it for five minutes with its two Lairs unticked, so the bot hunts the
+   Arena: it walks there (moves pipelined), fights what comes, clears the stop, passes the
+   Lairs by ("Skipping Dungeon, Entrance (unticked)") and waits there for respawns. The Lairs
+   are unticked because a level-1 character is no match for them: the Small Cavern has cave
+   bears, and in two runs on 2026-10-20 with the Dungeon Entrance ticked its three monsters
+   took the character under the flee line and the bot stopped itself, followed through three
+   rooms (no death). The respawn delays of non-arena stops are checked in-process
+   (`crates/wayfarer-brain/tests/task.rs`, on the paused clock). The step passes when, after
+   the five minutes, the bot is still running (no death, never stopped itself), the Arena was
+   cleared with at least one kill, the unticked stops were narrated and never walked to, and
+   the Arena (no respawn delay) was never called not ready. Its note has the run's numbers:
+   kills, exp per hour, flees, rests, waits.
+7. **Stop**, **walk out** to the Narrow Road, **rest by hand** if HP is low, **stopping the
+   brain**, and the gateway logs off as in M0.
 
 The brain's log is `NN-loop/brain.log`.
 

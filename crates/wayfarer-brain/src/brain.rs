@@ -415,6 +415,13 @@ impl Brain {
                 Some(s) => s.walk_loop(&id, now, out),
                 None => out.push(no_session("walk_loop", &session)),
             },
+            ToClient::RunLoop { session, id, skip } => match self.sessions.get_mut(&session) {
+                Some(s) => {
+                    let skip = skip.map(|v| v.into_iter().map(|k| (k.map, k.room)).collect());
+                    s.run_loop(&id, skip, now, out);
+                }
+                None => out.push(no_session("run_loop", &session)),
+            },
             ToClient::StatsRequest { session } => match self.sessions.get(&session) {
                 Some(s) => s.stats_request(out),
                 None => out.push(no_session("stats_request", &session)),

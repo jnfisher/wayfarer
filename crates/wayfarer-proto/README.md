@@ -68,6 +68,7 @@ Client → gateway:
 {"type":"bot_control","session":"kasimir","action":"start"}
 {"type":"loops_request","session":"kasimir","radius":8}
 {"type":"walk_loop","session":"kasimir","id":"1:2140:8:doors:0"}
+{"type":"run_loop","session":"kasimir","id":"1:2140:8:doors:0","skip":[{"map":1,"room":2156}]}
 {"type":"stats_request","session":"kasimir"}
 ```
 

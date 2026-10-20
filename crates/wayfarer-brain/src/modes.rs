@@ -1,5 +1,6 @@
-//! The bot (docs/brain.md "Fight here", docs/plan/03-engine.md sections 4 and 5): running,
-//! paused or stopped, and the mode stack, highest first: Flee, Recover, Fight, Idle. On every tick
+//! The bot (docs/brain.md "Fight here", "Running a loop", docs/plan/03-engine.md sections 4 and
+//! 5): running, paused or stopped, and the mode stack, highest first: Flee, Recover, Fight, Task
+//! (with a loop to run), Idle. On every tick
 //! the highest mode that wants control gets it and says what to do next; the session sends its
 //! action through the executor (one in flight) or its walk through the walker, and hands the
 //! outcome back. Every change of what it is doing is narrated.
@@ -18,6 +19,7 @@ use crate::fight::Fight;
 use crate::flee::Flee;
 use crate::policy;
 use crate::recover::Recover;
+use crate::task::Task;
 use crate::walker::Say;
 
 /// Who is in the room, as the game has shown it: the monsters and players of the last `Also
@@ -89,6 +91,18 @@ impl Presence {
 }
 
 impl Presence {
+    /// Who a monster's death text (`monsters`: every monster that dies with it) is about: the
+    /// one attacking the character, if one of them fits, else the first here that does. Many
+    /// monsters share a death text, so its list alone does not say.
+    pub fn dead(&self, atlas: &Atlas, monsters: &[String]) -> Option<String> {
+        let dead = |n: &&String| policy::is_one_of(&atlas.monsters, n, monsters);
+        self.attackers
+            .iter()
+            .find(dead)
+            .or_else(|| self.here.iter().find(dead))
+            .cloned()
+    }
+
     /// A PvP line showed `who` attacking the character (`attacks_you` from a player, or
     /// `pvp_attacked` naming the character).
     pub fn pvp(&mut self, who: &str) {
@@ -204,19 +218,6 @@ pub(crate) trait Mode {
     fn outcome(&mut self, action: &Action, outcome: Outcome);
 }
 
-/// The loop the bot runs, as the store keeps it: Task mode (C-030) fills it; until then it
-/// only survives a restart.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct TaskLoop {
-    pub id: String,
-    /// The stops when the loop was started; they win over what `id` resolves to now.
-    pub stops: Vec<Key>,
-    /// The stop it is at or walking to.
-    pub index: usize,
-    /// Stops to pass by this time round.
-    pub skip: Vec<usize>,
-}
-
 #[derive(Debug, Default)]
 pub(crate) struct Bot {
     state: BotState,
@@ -233,7 +234,8 @@ pub(crate) struct Bot {
     acting: Option<BotMode>,
     /// Pause when the action in flight is done, and why.
     pausing: Option<String>,
-    task: Option<TaskLoop>,
+    /// The loop it runs (Task mode).
+    task: Option<Task>,
 }
 
 impl Bot {
@@ -265,6 +267,7 @@ impl Bot {
             mode: self.mode,
             narration: self.narration.clone(),
             reason: self.reason.clone(),
+            task: self.task.as_ref().map(Task::snapshot),
         }
     }
 
@@ -299,6 +302,39 @@ impl Bot {
         says
     }
 
+    /// `run_loop`: run `task`, from wherever the character is (replacing a "fight here"). The
+    /// session re-syncs first.
+    pub fn run_loop(&mut self, task: Task, loop_name: &str) -> Vec<Say> {
+        let mut says = Vec::new();
+        self.state = BotState::Running;
+        self.mode = BotMode::Idle;
+        self.reason = None;
+        self.pausing = None;
+        self.leaving = false;
+        self.flee.restart();
+        self.fight = Fight::default();
+        self.recover = Recover::new(Some(task.home()));
+        self.task = Some(task);
+        self.narrate(format!("Running loop {loop_name}: re-syncing"), &mut says);
+        says
+    }
+
+    /// The loop it runs, if it runs one.
+    pub fn task_mut(&mut self) -> Option<&mut Task> {
+        self.task.as_mut()
+    }
+
+    /// The walk in progress is a leg of Task's.
+    pub fn task_walking(&self) -> bool {
+        self.acting == Some(BotMode::Task)
+    }
+
+    /// Whether Fight would take the character here: a hostile monster it has not given up on,
+    /// or one attacking.
+    pub fn would_fight(&self, atlas: &Atlas, presence: &Presence) -> bool {
+        self.fight.would_fight(atlas, presence)
+    }
+
     /// What the store keeps of the bot.
     pub fn record(&self) -> BotRecord {
         let state = match self.state {
@@ -308,11 +344,11 @@ impl Bot {
             BotState::Running => wayfarer_store::BotState::Running,
             BotState::Paused => wayfarer_store::BotState::Paused,
         };
-        let task = self.task.clone().unwrap_or_default();
+        let task = self.task.as_ref().map(Task::stored).unwrap_or_default();
         BotRecord {
             state,
             home: self.recover.home(),
-            loop_id: self.task.as_ref().map(|t| t.id.clone()),
+            loop_id: self.task.as_ref().map(|t| t.id().to_owned()),
             loop_stops: task.stops,
             stop_index: task.index,
             skip: task.skip,
@@ -325,12 +361,7 @@ impl Bot {
 
     /// A restarted brain puts the bot back as the store had it (`running` or `paused`), with
     /// its home and loop, narrating `narration`. The session re-syncs first.
-    pub fn restore(
-        &mut self,
-        rec: &BotRecord,
-        task: Option<TaskLoop>,
-        narration: String,
-    ) -> Vec<Say> {
+    pub fn restore(&mut self, rec: &BotRecord, task: Option<Task>, narration: String) -> Vec<Say> {
         let mut says = Vec::new();
         self.state = match rec.state {
             wayfarer_store::BotState::Paused => BotState::Paused,
@@ -345,7 +376,7 @@ impl Bot {
         self.leaving = false;
         self.flee.restart();
         self.fight = Fight::default();
-        self.recover = Recover::new(rec.home);
+        self.recover = Recover::new(task.as_ref().map(Task::home).or(rec.home));
         self.task = task;
         self.narrate(narration, &mut says);
         says
@@ -440,9 +471,19 @@ impl Bot {
         self.flee.on_event(ev, now);
         self.fight.on_event(ev, now);
         self.recover.on_event(ev, now);
+        if let Some(t) = &mut self.task {
+            t.on_event(ev, now);
+        }
         match ev {
             GameEvent::YouKilled => self.stop("the character was killed", true),
             _ => Vec::new(),
+        }
+    }
+
+    /// A monster died (`name`, as the room showed it): Task counts it for the stop it is at.
+    pub fn killed(&mut self, name: &str, now: Instant) {
+        if let Some(t) = &mut self.task {
+            t.killed(name, now);
         }
     }
 
@@ -480,11 +521,12 @@ impl Bot {
     }
 
     /// When a wait ends, for the clock to wake the bot.
-    pub fn wake(&self) -> Option<Instant> {
+    pub fn wake(&self, now: Instant) -> Option<Instant> {
         self.recover
             .wake()
             .into_iter()
             .chain(self.flee.wake())
+            .chain(self.task.as_ref().and_then(|t| t.wake(now)))
             .min()
     }
 
@@ -499,6 +541,11 @@ impl Bot {
         let mut says = Vec::new();
         if self.state != BotState::Running || self.pausing.is_some() {
             return (None, says);
+        }
+        if let Some(t) = &mut self.task {
+            t.observe(v);
+            // Recover rests from, and walks back to, the stop Task is at or walking to.
+            self.recover.set_home(t.home());
         }
         if !self.leaving
             && let Some(home) = self.recover.find_home(v)
@@ -518,6 +565,8 @@ impl Bot {
                 (BotMode::Recover, r)
             } else if let Some(r) = self.fight.wants(v) {
                 (BotMode::Fight, r)
+            } else if let Some(r) = self.task.as_ref().and_then(|t| t.wants(v)) {
+                (BotMode::Task, r)
             } else {
                 (BotMode::Idle, "nothing to do".to_owned())
             };
@@ -529,6 +578,18 @@ impl Bot {
                 BotMode::Flee => self.flee.step(v),
                 BotMode::Recover => self.recover.step(v),
                 BotMode::Fight => self.fight.step(v),
+                BotMode::Task => {
+                    let task = self.task.as_mut().expect("Task has a loop");
+                    let step = task.step(v);
+                    let (notes, rest) = (task.take_notes(), task.take_rest());
+                    for note in notes {
+                        self.narrate(note, &mut says);
+                    }
+                    if rest {
+                        self.recover.after_flee();
+                    }
+                    step
+                }
                 BotMode::Idle if self.recover.stranded(v) => {
                     Step::wait("Rested; could not walk home, waiting here")
                 }
@@ -548,7 +609,10 @@ impl Bot {
             }
             self.narrate_as(step.narration, step.warn, &mut says);
             if step.act.is_none()
-                && let Some(why) = self.flee.take_give_up()
+                && let Some(why) = self
+                    .flee
+                    .take_give_up()
+                    .or_else(|| self.task.as_mut().and_then(Task::take_give_up))
             {
                 says.extend(self.stop(&why, true));
                 return (None, says);

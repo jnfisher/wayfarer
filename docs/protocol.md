@@ -205,7 +205,7 @@ The character snapshot: every field is optional and left out until the brain kno
 | `encumbrance` | `{current?, max?, level?}`: weight carried, what the character can carry, and the game's word for it (`None`, `Light`, ...) |
 | `kills` | Monster deaths seen since the brain attached |
 | `position` | `{map?, room?, candidates, title?}`: the room the brain believes the character is in (the lowest key among the candidates; absent when unknown), how many rooms fit what was seen (1 is certain), and the last room title seen. Absent without a world pack |
-| `bot` | `{state, mode, narration, reason?}`, with a world pack: `state` is `stopped` (the default), `running` or `paused`; `mode` is `idle`, `fight`, `recover` or `flee`; `narration` is what it is doing ("Fight: large giant rat", "Recover: resting to 95% in Newhaven, Narrow Road", "Paused: you took over"); `reason` why it stopped or paused, when it did so itself or for the player ([brain.md](brain.md) "Fight here") |
+| `bot` | `{state, mode, narration, reason?, task?}`, with a world pack: `state` is `stopped` (the default), `running` or `paused`; `mode` is `idle`, `fight`, `recover`, `flee` or `task`; `task`, while it runs a loop (`run_loop`), is `{loop_id, loop_name, stop, stops, skip}`: `stop` the index into `stops` (`[{map, room}]`, in loop order) of the stop it is at or walking to, `skip` the stops it passes by; `narration` is what it is doing ("Fight: large giant rat", "Recover: resting to 95% in Newhaven, Narrow Road", "Paused: you took over"); `reason` why it stopped or paused, when it did so itself or for the player ([brain.md](brain.md) "Fight here") |
 | `run` | `{run_started_at, exp_per_hour, kills, deaths, flees, rests, exp_gained}` while the bot has a run (from Start to Stop or a death; [brain.md](brain.md) "Statistics"): when it started (RFC 3339), exp gained over the wall time since then (a minute at least), and what the run has counted. Absent when there is none |
 | `walking` | `{to, name, steps_left, step, commands}` while a walk is in progress: the destination (`{map, room}`) and its name, the steps not yet confirmed, the step in progress from 1 (counted over the whole walk, replans included), and what the walker will type for each step left, the one in progress first (`n`, or a text exit's phrase such as `borrow skiff`; a closed door adds an `open` not listed). Absent when not walking |
 
@@ -256,6 +256,7 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 | `bot_control {session, action}` | The bot ([brain.md](brain.md) "Fight here"): `start` (fight here: re-sync, then fight what comes and rest when low), `stop`, `pause` (after the action in flight) or `resume` (re-sync, then carry on) |
 | `loops_request {session, anchor?, radius, doors?}` | Send the `loops` of the area within `radius` steps of `anchor` (`{map, room}`; the believed room when left out), through doors unless `doors` is false |
 | `walk_loop {session, id}` | Walk a generated loop once ([brain.md](brain.md) "Loops"): to its stop nearest the character, round every other stop and back to that one, each leg a `walk_to`; `walk_stop` stops it and a `walk_to` replaces it |
+| `run_loop {session, id, skip?}` | Run a generated loop ([brain.md](brain.md) "Running a loop"), replacing a running "fight here": the bot re-syncs, walks to the loop's ticked stop nearest the character, then round its stops in loop order, fighting at each, passing by the stops in `skip` (`[{map, room}]`) and those whose respawn delay has not passed. Sent again for the loop the bot already runs, it only changes `skip` (left out: none). `bot_control` `stop`, `pause` and `resume` apply |
 | `stats_request {session}` | Send a `stats` message: the character's last runs and the newest run's samples |
 
 ```json
@@ -267,6 +268,7 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 {"type":"bot_control","session":"kasimir","action":"start"}
 {"type":"loops_request","session":"kasimir","radius":8}
 {"type":"walk_loop","session":"kasimir","id":"1:2140:8:doors:0"}
+{"type":"run_loop","session":"kasimir","id":"1:2140:8:doors:0","skip":[{"map":1,"room":2156}]}
 {"type":"stats_request","session":"kasimir"}
 ```
 

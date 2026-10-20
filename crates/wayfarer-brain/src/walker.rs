@@ -1,10 +1,16 @@
 //! The walker: a route to a room over the world graph, walked one confirmed step at a time
 //! (docs/brain.md "Walking"). It decides what to send next from each action's outcome; the
 //! session sends it through the executor. It never fights: combat stops it.
+//!
+//! A pipelined walk (Task mode's legs) may have two moves in flight: with the belief sure of
+//! the room, the next plain move goes ahead of the one in flight ([`Next::ahead`]). Each room
+//! confirms its move in order. When the first goes wrong (a room that disagrees, a refusal, a
+//! door) the move ahead has gone already: its confirmation is void, and once its answer is in
+//! the walker plans again from wherever the belief puts the character.
 
 use wayfarer_parse::typed::Refusal;
 use wayfarer_proto::{RoomKey, Walking};
-use wayfarer_world::{Key, Route, mm, route};
+use wayfarer_world::{Belief, Key, Route, mm, route};
 
 use crate::brain::Atlas;
 use crate::executor::{Action, Confirmed, Expect, Outcome, Refused};
@@ -34,6 +40,9 @@ pub(crate) struct Next {
     pub route_changed: bool,
     /// The walk ended in its destination: this room.
     pub arrived: Option<Key>,
+    /// A move to send ahead of `action` or of the move in flight, if the session may
+    /// (pipelining): it says so with [`Walker::went_ahead`].
+    pub ahead: Option<Action>,
 }
 
 impl Next {
@@ -72,6 +81,13 @@ struct Walk {
     drifts: u32,
     /// Stop when the action in flight is done, and why.
     stopping: Option<String>,
+    /// Moves may be pipelined on this walk.
+    pipelined: bool,
+    /// The move of step `next + 1` went ahead of the one in flight.
+    ahead: bool,
+    /// The step before the move ahead went wrong: the move ahead's answer is awaited, then the
+    /// walk plans again (`Ok`, why) or ends (`Err`, why).
+    void: Option<Result<String, String>>,
 }
 
 #[derive(Debug, Default)]
@@ -96,7 +112,7 @@ fn plural(n: usize, one: &str) -> String {
 }
 
 /// "6 steps, one door".
-fn describe(route: &Route) -> String {
+pub(crate) fn describe(route: &Route) -> String {
     let doors = route.iter().filter(|s| s.door.is_some()).count();
     let mut s = plural(route.len(), "step");
     if doors > 0 {
@@ -108,6 +124,20 @@ fn describe(route: &Route) -> String {
 impl Walker {
     pub fn walking(&self) -> bool {
         self.walk.is_some()
+    }
+
+    /// The move [`Next::ahead`] proposed went to the executor.
+    pub fn went_ahead(&mut self) {
+        if let Some(w) = &mut self.walk {
+            w.ahead = true;
+        }
+    }
+
+    /// The move ahead was dropped before it went (combat started).
+    pub fn ahead_dropped(&mut self) {
+        if let Some(w) = &mut self.walk {
+            w.ahead = false;
+        }
     }
 
     /// The wire's `walking`.
@@ -143,6 +173,18 @@ impl Walker {
     /// `walk_to`. `busy`: an action of the walk in progress is in flight; the new walk starts
     /// when it is done.
     pub fn start(&mut self, pos: &mut Position, atlas: &Atlas, to: Key, busy: bool) -> Next {
+        self.start_with(pos, atlas, to, busy, false)
+    }
+
+    /// `start`, pipelining the moves when `pipelined`.
+    pub fn start_with(
+        &mut self,
+        pos: &mut Position,
+        atlas: &Atlas,
+        to: Key,
+        busy: bool,
+        pipelined: bool,
+    ) -> Next {
         let mut next = Next::default();
         if !atlas.graph.contains(to) {
             next.warning(format!("walk: no room {}/{} in the world pack", to.0, to.1));
@@ -187,8 +229,12 @@ impl Walker {
             replans: 0,
             drifts: 0,
             stopping: None,
+            pipelined,
+            ahead: false,
+            void: None,
         };
         next.action = Some(w.send(Doing::Move));
+        next.ahead = w.propose_ahead(pos);
         next.route_changed = true;
         self.walk = Some(w);
         next
@@ -227,27 +273,42 @@ impl Walker {
         next.route_changed = true;
     }
 
-    /// The walk's action is done. The position has already read the room it brought, if any.
+    /// The walk's action is done. The position has already read the room it brought, if any;
+    /// `seen` is the belief as that room left it (with a move ahead, the position may have
+    /// read that move's room too since).
     pub fn outcome(
         &mut self,
         pos: &mut Position,
         atlas: &Atlas,
         action: &Action,
         outcome: Outcome,
+        seen: Option<&Belief>,
     ) -> Next {
         let mut next = Next::default();
         let Some(w) = &mut self.walk else {
             return next;
         };
+        if let Some(void) = w.void.take() {
+            // The move that went ahead of a step that went wrong: the belief has read its room
+            // (or its refusal), so plan from wherever that is.
+            let result = match (void, outcome) {
+                (Err(why), _) => Err(why),
+                (Ok(_), Outcome::TimedOut) => Err(format!("no answer to `{}`", action.command)),
+                (Ok(why), _) => w.replan(pos, atlas, &mut next, &why),
+            };
+            return self.after(pos, atlas, result, next);
+        }
         let doing = w.doing;
         let step = w.route[w.next].clone();
+        let mut advanced = false;
         let result = match (doing, outcome) {
             (_, Outcome::TimedOut) => Err(format!("no answer to `{}`", action.command)),
             (Doing::Move, Outcome::Confirmed(Confirmed::Room)) => {
-                if pos.belief.contains(step.to) {
+                if seen.unwrap_or(&pos.belief).contains(step.to) {
                     w.next += 1;
                     w.confirmed += 1;
                     w.bashes = 0;
+                    advanced = true;
                     if w.next == w.route.len() {
                         let (name, to) = (w.name.clone(), w.to);
                         self.end(&mut next, Say::Notice(format!("Arrived: {name}")));
@@ -312,6 +373,31 @@ impl Walker {
             (_, other) => Err(format!("`{}`: unexpected {other:?}", action.command)),
         };
         let w = self.walk.as_mut().expect("still walking");
+        if w.ahead {
+            w.ahead = false;
+            if advanced {
+                // The move ahead is the move of this step, in flight already; perhaps the next
+                // goes ahead of it.
+                w.doing = Doing::Move;
+                next.ahead = w.propose_ahead(pos);
+            } else {
+                // It went after a step that went wrong: wait for its answer.
+                w.void = Some(result.map(|_| "a move went ahead of a wrong step".to_owned()));
+            }
+            return next;
+        }
+        self.after(pos, atlas, result, next)
+    }
+
+    /// Go on from an outcome's `result`: stop the walk, arrive, or send the next action.
+    fn after(
+        &mut self,
+        pos: &mut Position,
+        atlas: &Atlas,
+        result: Result<Doing, String>,
+        mut next: Next,
+    ) -> Next {
+        let w = self.walk.as_mut().expect("still walking");
         match result {
             Err(why) => {
                 self.end(&mut next, Say::Warning(format!("Stopped walking: {why}")));
@@ -331,6 +417,7 @@ impl Walker {
             }
             Ok(doing) => {
                 next.action = Some(w.send(doing));
+                next.ahead = w.propose_ahead(pos);
                 next
             }
         }
@@ -351,6 +438,29 @@ impl Walker {
 }
 
 impl Walk {
+    /// The move of the step after the one in progress, to go ahead of it: on a pipelined walk,
+    /// with the belief sure of the room, both steps plain moves (a direction, no door), the step
+    /// in progress a move, and the walk not stopping.
+    fn propose_ahead(&self, pos: &Position) -> Option<Action> {
+        let plain = |i: usize| {
+            self.route
+                .get(i)
+                .filter(|s| s.door.is_none() && mm::direction(&s.command).is_some())
+        };
+        if !self.pipelined
+            || self.ahead
+            || self.void.is_some()
+            || self.stopping.is_some()
+            || self.doing != Doing::Move
+            || !pos.belief.certain()
+        {
+            return None;
+        }
+        plain(self.next)?;
+        let step = plain(self.next + 1)?;
+        Some(Action::new(step.command.clone(), Expect::RoomSeen))
+    }
+
     /// The action for `doing` at the step in progress.
     fn send(&mut self, doing: Doing) -> Action {
         self.doing = doing;

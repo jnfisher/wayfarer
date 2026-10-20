@@ -51,6 +51,12 @@ the exit's Nth parameter in the room record. Every refusal text is in `screen-pa
   slowed, /2 quickened, at least 1, +1 after two moves in a row; the fast tick walks. No exit:
   "There is no exit in that direction!" and the room sees "%s ran into the wall to the %s."
   (message level Medium, sighted only); sneaking ends [C] `LJNCMDB.C:5110-5205`.
+  - **Two at once** (a client pipelining a route, as MegaMud runs paths): the second direction
+    sent before the first's room has come is taken after it, and each move shows its own room
+    and its own prompt, in the order sent (`w`, `w`, `d` from the Village Entrance: the Narrow
+    Path, the Narrow Road, the Arena). Both rooms can reach the client in one read, so a client
+    must confirm each move by its own room, not by where the last one left it [C, silvermere,
+    wayfarer C-030 live check, 2026-10-20].
 - **Leaving a room**: one genrdn(0,100) roll for the room; the first monster whose `followpct`
   is at least the roll strikes once if its alignment lets it (good ones and Angels only a player
   they follow and are not friendly with; a Lawful Evil one spares `evil >= 80`); a death cancels

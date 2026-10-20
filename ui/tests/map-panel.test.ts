@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import MapPanel from "../src/MapPanel.svelte";
 import type { Loops, MapView } from "../src/lib/map";
+import type { CharacterState } from "../src/proto";
 
 const session = { id: "aria", name: "Aria", server: "silvermere", state: "realm", last_seq: 0 } as const;
 const view: MapView = {
@@ -31,6 +32,7 @@ function mount(props: Partial<Parameters<typeof render<typeof MapPanel>>[1]> = {
   const onstop = vi.fn();
   const onloops = vi.fn();
   const onwalkloop = vi.fn();
+  const onrunloop = vi.fn();
   render(MapPanel, {
     session,
     view,
@@ -40,9 +42,10 @@ function mount(props: Partial<Parameters<typeof render<typeof MapPanel>>[1]> = {
     onstop,
     onloops,
     onwalkloop,
+    onrunloop,
     ...props,
   } as never);
-  return { onwalk, onstop, onloops, onwalkloop };
+  return { onwalk, onstop, onloops, onwalkloop, onrunloop };
 }
 
 const here = { position: { map: 1, room: 10, candidates: 1 } };
@@ -141,6 +144,57 @@ describe("the map panel", () => {
     expect(gate.getAttribute("aria-pressed")).toBe("true");
     await fireEvent.click(gate);
     expect(gate.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("runs a loop passing by the stops unticked; hovering a stop shows what spawns there", async () => {
+    const { onrunloop } = mount({ character: here, loops });
+    await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
+    // The stops show once the loop is picked.
+    expect(screen.queryByRole("list", { name: "Stops of Gate" })).toBeNull();
+    await fireEvent.click(screen.getByRole("button", { name: "Gate" }));
+    const lair = screen.getByRole("checkbox", { name: "2. Lair" }) as HTMLInputElement;
+    expect(lair.checked).toBe(true);
+    expect(lair.closest("label")?.getAttribute("title")).toBe("giant rat; back 5 m after a kill");
+    expect(screen.getByRole("checkbox", { name: "1. Road" }).closest("label")?.getAttribute("title")).toBe(
+      "giant rat; arena: back at once",
+    );
+    await fireEvent.click(lair);
+    expect(lair.checked).toBe(false);
+    // Not running yet: nothing is sent for a tick.
+    expect(onrunloop).not.toHaveBeenCalled();
+    await fireEvent.click(screen.getByRole("button", { name: "run" }));
+    expect(onrunloop).toHaveBeenCalledWith("aria", "1:10:8:doors:0", [{ map: 1, room: 12 }]);
+  });
+
+  it("shows the loop the bot runs, its stop, and sends a tick at once", async () => {
+    const running: CharacterState = {
+      ...here,
+      bot: {
+        state: "running",
+        mode: "task",
+        narration: "Loop Gate: to stop 2/2 Lair (one step)",
+        task: {
+          loop_id: "1:10:8:doors:0",
+          loop_name: "Gate",
+          stop: 1,
+          stops: [
+            { map: 1, room: 11 },
+            { map: 1, room: 12 },
+          ],
+          skip: [{ map: 1, room: 11 }],
+        },
+      },
+    };
+    const { onrunloop } = mount({ character: running, loops });
+    await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
+    expect(screen.getByText("running: stop 2/2")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "run" })).toBeNull();
+    // The brain's ticks, without picking the loop.
+    const road = screen.getByRole("checkbox", { name: "1. Road" }) as HTMLInputElement;
+    expect(road.checked).toBe(false);
+    expect(screen.getByRole("checkbox", { name: "2. Lair" }).closest("li")?.classList.contains("at")).toBe(true);
+    await fireEvent.click(road);
+    expect(onrunloop).toHaveBeenCalledWith("aria", "1:10:8:doors:0", []);
   });
 
   it("says when there is nothing to hunt in reach", async () => {
