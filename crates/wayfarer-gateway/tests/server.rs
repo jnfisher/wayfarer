@@ -874,3 +874,126 @@ fn a_non_loopback_bind_needs_a_token_and_a_loopback_one_needs_nothing() {
     assert_eq!(token_for_bind(local, &file).unwrap(), None);
     assert_ne!(create_token(&file).unwrap(), token, "a new token each time");
 }
+
+/// The brain sends `msg`, then a notice the UI waits for: the gateway handled `msg` by then
+/// (one connection's messages are handled in order).
+async fn brain_says(brain: &mut Client, ui: &mut Client, msg: ToGateway) {
+    send(brain, &msg).await;
+    let mark = ToGateway::Notice {
+        session: None,
+        text: format!("after {}", msg.type_name()),
+    };
+    send(brain, &mark).await;
+    let want = mark.into_relayed().unwrap();
+    recv_where(ui, |m| *m == want).await;
+}
+
+/// Read exactly `want` from the game, and nothing more for a moment.
+async fn game_reads(game: &mut TcpStream, want: &[u8]) {
+    let mut got = vec![0u8; want.len()];
+    tokio::time::timeout(PATIENCE, game.read_exact(&mut got))
+        .await
+        .expect("the input reaches the game")
+        .unwrap();
+    assert_eq!(String::from_utf8_lossy(&got), String::from_utf8_lossy(want));
+    let mut more = [0u8; 1];
+    let extra = tokio::time::timeout(Duration::from_millis(50), game.read(&mut more)).await;
+    assert!(extra.is_err(), "the game got more: {more:?}");
+}
+
+fn arbitrate(on: bool) -> ToGateway {
+    ToGateway::Arbitrate {
+        session: ID.into(),
+        on,
+    }
+}
+
+#[tokio::test]
+async fn a_session_the_brain_arbitrates_sends_its_ui_lines_to_the_brain_and_its_keys_to_the_game() {
+    let dir = tempfile::tempdir().unwrap();
+    let rig = Rig::start(dir.path(), None).await;
+    let mut ui = rig.welcomed().await;
+    let mut brain = rig.brain().await;
+    assert_eq!(recv(&mut ui).await, ToClient::BrainState { attached: true });
+    let mut game = rig.connect_game().await;
+    while rig.gateway.state(ID).unwrap() != SessionState::Connected {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let line = |text: &str| ToGateway::InputLine {
+        session: ID.into(),
+        text: text.into(),
+    };
+
+    // Not arbitrated yet: straight through.
+    send(&mut ui, &line("look")).await;
+    game_reads(&mut game, b"look\r").await;
+
+    brain_says(&mut brain, &mut ui, arbitrate(true)).await;
+    send(&mut ui, &line("gossip hi")).await;
+    let ToClient::UserInput {
+        session,
+        text,
+        from,
+        force,
+    } = recv_where(&mut brain, |m| matches!(m, ToClient::UserInput { .. })).await
+    else {
+        unreachable!()
+    };
+    assert_eq!(
+        (session.as_str(), text.as_str(), force),
+        (ID, "gossip hi", false)
+    );
+    assert!(from.starts_with("ui-"), "{from}");
+    // `send anyway`: the same, with `force`.
+    send(
+        &mut ui,
+        &ToGateway::UserInput {
+            session: ID.into(),
+            text: "a rat".into(),
+            force: true,
+        },
+    )
+    .await;
+    let got = recv_where(&mut brain, |m| matches!(m, ToClient::UserInput { .. })).await;
+    assert!(
+        matches!(&got, ToClient::UserInput { text, force: true, .. } if text == "a rat"),
+        "{got:?}"
+    );
+    // Keys go to the game, and the brain hears of them.
+    send(
+        &mut ui,
+        &ToGateway::InputKeys {
+            session: ID.into(),
+            bytes: vec![b' '],
+        },
+    )
+    .await;
+    assert_eq!(
+        recv_where(&mut brain, |m| matches!(m, ToClient::KeysSent { .. })).await,
+        ToClient::KeysSent { session: ID.into() }
+    );
+    // The brain's own lines go to the game: neither UI line above did.
+    send(&mut brain, &line("st")).await;
+    game_reads(&mut game, b" st\r").await;
+
+    // Off again: straight through.
+    brain_says(&mut brain, &mut ui, arbitrate(false)).await;
+    send(&mut ui, &line("n")).await;
+    game_reads(&mut game, b"n\r").await;
+
+    // On, and then the brain goes: straight through at once.
+    brain_says(&mut brain, &mut ui, arbitrate(true)).await;
+    drop(brain);
+    assert_eq!(
+        recv_where(&mut ui, |m| matches!(m, ToClient::BrainState { .. })).await,
+        ToClient::BrainState { attached: false }
+    );
+    send(&mut ui, &line("s")).await;
+    game_reads(&mut game, b"s\r").await;
+    // A new brain arbitrates nothing until it says so.
+    let _brain = rig.brain().await;
+    recv_where(&mut ui, |m| matches!(m, ToClient::BrainState { .. })).await;
+    send(&mut ui, &line("e")).await;
+    game_reads(&mut game, b"e\r").await;
+    rig.stop().await;
+}

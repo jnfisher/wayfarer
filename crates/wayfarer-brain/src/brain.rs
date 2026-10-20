@@ -364,6 +364,23 @@ impl Brain {
                     s.sent(&text, now, out);
                 }
             }
+            ToClient::UserInput {
+                session,
+                text,
+                from,
+                force,
+            } => match self.sessions.get_mut(&session) {
+                Some(s) => {
+                    tracing::debug!(%session, %from, "user_input");
+                    s.user_input(text, force, now, out);
+                }
+                None => out.push(no_session("user_input", &session)),
+            },
+            ToClient::KeysSent { session } => {
+                if let Some(s) = self.sessions.get_mut(&session) {
+                    s.keys_sent(out);
+                }
+            }
             ToClient::WalkTo { session, map, room } => match self.sessions.get_mut(&session) {
                 Some(s) => s.walk_to((map, room), now, out),
                 None => out.push(no_session("walk_to", &session)),
@@ -446,8 +463,10 @@ impl Brain {
                 });
                 tracing::info!(session = %s.id, "re-synced");
             }
-            // After every message and timer: the bot's state, if it changed, to the store.
+            // After every message and timer: the bot's state, if it changed, to the store, and
+            // whether the brain arbitrates the session's input, to the gateway.
             s.persist(out);
+            s.arbitrate(out);
         }
     }
 }

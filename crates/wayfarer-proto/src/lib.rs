@@ -10,8 +10,9 @@
 //! and the map (`walk_to`, `walk_stop`, `map_request`, `map_view`, and the character's
 //! `position` and `walking`), the bot's first slice (`bot_control`, the character's `bot`), and loops (`loops_request`,
 //! `loops`, `walk_loop`); M3 adds the log-off handshake (`logging_off`, `ready_to_leave`) and
-//! statistics (the character's `run`, `stats_request`, `stats`). [`Family`] says who may send what. Adding a variant later bumps nothing; removing or changing one bumps
-//! [`PROTOCOL`].
+//! statistics (the character's `run`, `stats_request`, `stats`), and typing beside the bot
+//! (`user_input`, `keys_sent`, `arbitrate`, `input_held`). [`Family`] says who may send what.
+//! Adding a variant later bumps nothing; removing or changing one bumps [`PROTOCOL`].
 
 use std::path::Path;
 
@@ -481,8 +482,8 @@ pub enum Family {
     /// From the brain, relayed to the UIs: events, state and dev (`event`, `character`,
     /// `character_patch`, `brain_info`, `notice`, `warning`).
     Brain,
-    /// From the brain, handled by the gateway: `ready_to_leave`.
-    Leaving,
+    /// From the brain, handled by the gateway: `ready_to_leave`, `arbitrate`.
+    BrainToGateway,
 }
 
 impl Family {
@@ -491,7 +492,7 @@ impl Family {
         match self {
             Self::Gateway => true,
             Self::Control => client == ClientKind::Ui,
-            Self::Brain | Self::Leaving => client == ClientKind::Brain,
+            Self::Brain | Self::BrainToGateway => client == ClientKind::Brain,
         }
     }
 }
@@ -608,6 +609,11 @@ pub enum ToClient {
         runs: Vec<RunSummary>,
         samples: Vec<ExpSample>,
     },
+    InputHeld {
+        session: SessionId,
+        text: String,
+        reason: String,
+    },
 
     // From a UI, relayed to the brain.
     Resync {
@@ -678,6 +684,23 @@ pub enum ToClient {
     LoggingOff {
         session: SessionId,
     },
+    /// To the brain only: a line a UI typed for a session the brain arbitrates (`arbitrate`),
+    /// which the gateway did not send to the game. The brain decides when it goes, and what
+    /// the bot does meanwhile. `from` names the UI connection (`ui-3`); `force`: send it even
+    /// if it was held (`input_held`), the UI's `send anyway`.
+    UserInput {
+        session: SessionId,
+        text: String,
+        from: String,
+        #[serde(default, skip_serializing_if = "is_false")]
+        #[ts(as = "Option<bool>", optional)]
+        force: bool,
+    },
+    /// To the brain only: a UI's raw keys went to the game for a session the brain arbitrates
+    /// (they always go straight through): the bot pauses.
+    KeysSent {
+        session: SessionId,
+    },
 }
 
 /// Client → gateway.
@@ -717,6 +740,16 @@ pub enum ToGateway {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         sessions: Option<Vec<SessionId>>,
+    },
+    /// A line of input as `input_line`, with `force`: the UI's `send anyway` for a line the
+    /// brain held (`input_held`). For a session the brain arbitrates it goes to the brain as
+    /// `user_input`; otherwise straight to the game.
+    UserInput {
+        session: SessionId,
+        text: String,
+        #[serde(default, skip_serializing_if = "is_false")]
+        #[ts(as = "Option<bool>", optional)]
+        force: bool,
     },
 
     /// UI → brain: re-sync the character (`st`, `exp`, `i`, look).
@@ -846,10 +879,23 @@ pub enum ToGateway {
         runs: Vec<RunSummary>,
         samples: Vec<ExpSample>,
     },
+    /// Brain → UIs: a line the player typed was not sent: it would break a rule while the bot
+    /// plays (an attack while combat is engaged). The UI shows it with a `send anyway`, which
+    /// sends `user_input` with `force`.
+    InputHeld {
+        session: SessionId,
+        text: String,
+        reason: String,
+    },
 
     /// Brain → gateway: the answer to `logging_off`: the brain sends the session nothing more,
     /// and the log-off may start.
     ReadyToLeave { session: SessionId },
+    /// Brain → gateway: whether the brain arbitrates the session's input (its bot is running
+    /// or paused): while it does, a UI's lines go to the brain as `user_input` and its keys are
+    /// reported with `keys_sent`. Off for every session when a brain attaches, and again when
+    /// it goes.
+    Arbitrate { session: SessionId, on: bool },
 }
 
 /// Why a received message could not be decoded. The receiver reports it (an `error` reply)
@@ -889,6 +935,7 @@ impl ToClient {
         "map_view",
         "loops",
         "stats",
+        "input_held",
         "resync",
         "state_request",
         "walk_to",
@@ -902,6 +949,8 @@ impl ToClient {
         "brain_state",
         "brain_lagged",
         "logging_off",
+        "user_input",
+        "keys_sent",
     ];
 
     /// This message's `type`.
@@ -924,6 +973,7 @@ impl ToClient {
             Self::MapView { .. } => "map_view",
             Self::Loops { .. } => "loops",
             Self::Stats { .. } => "stats",
+            Self::InputHeld { .. } => "input_held",
             Self::Resync { .. } => "resync",
             Self::StateRequest { .. } => "state_request",
             Self::WalkTo { .. } => "walk_to",
@@ -937,6 +987,8 @@ impl ToClient {
             Self::BrainState { .. } => "brain_state",
             Self::BrainLagged { .. } => "brain_lagged",
             Self::LoggingOff { .. } => "logging_off",
+            Self::UserInput { .. } => "user_input",
+            Self::KeysSent { .. } => "keys_sent",
         }
     }
 
@@ -953,6 +1005,7 @@ impl ToClient {
             | Self::MapView { session, .. }
             | Self::Loops { session, .. }
             | Self::Stats { session, .. }
+            | Self::InputHeld { session, .. }
             | Self::Resync { session }
             | Self::WalkTo { session, .. }
             | Self::WalkStop { session }
@@ -962,7 +1015,9 @@ impl ToClient {
             | Self::WalkLoop { session, .. }
             | Self::StatsRequest { session }
             | Self::Sent { session, .. }
-            | Self::LoggingOff { session } => Some(session),
+            | Self::LoggingOff { session }
+            | Self::UserInput { session, .. }
+            | Self::KeysSent { session } => Some(session),
             Self::Notice { session, .. }
             | Self::Warning { session, .. }
             | Self::StateRequest { session } => session.as_deref(),
@@ -993,6 +1048,7 @@ impl ToGateway {
         "input_keys",
         "history_request",
         "subscribe",
+        "user_input",
         "resync",
         "state_request",
         "walk_to",
@@ -1011,7 +1067,9 @@ impl ToGateway {
         "map_view",
         "loops",
         "stats",
+        "input_held",
         "ready_to_leave",
+        "arbitrate",
     ];
 
     /// This message's `type`.
@@ -1022,6 +1080,7 @@ impl ToGateway {
             Self::InputKeys { .. } => "input_keys",
             Self::HistoryRequest { .. } => "history_request",
             Self::Subscribe { .. } => "subscribe",
+            Self::UserInput { .. } => "user_input",
             Self::Resync { .. } => "resync",
             Self::StateRequest { .. } => "state_request",
             Self::WalkTo { .. } => "walk_to",
@@ -1040,7 +1099,9 @@ impl ToGateway {
             Self::MapView { .. } => "map_view",
             Self::Loops { .. } => "loops",
             Self::Stats { .. } => "stats",
+            Self::InputHeld { .. } => "input_held",
             Self::ReadyToLeave { .. } => "ready_to_leave",
+            Self::Arbitrate { .. } => "arbitrate",
         }
     }
 
@@ -1051,7 +1112,8 @@ impl ToGateway {
             | Self::InputLine { .. }
             | Self::InputKeys { .. }
             | Self::HistoryRequest { .. }
-            | Self::Subscribe { .. } => Family::Gateway,
+            | Self::Subscribe { .. }
+            | Self::UserInput { .. } => Family::Gateway,
             Self::Resync { .. }
             | Self::StateRequest { .. }
             | Self::WalkTo { .. }
@@ -1069,14 +1131,15 @@ impl ToGateway {
             | Self::Warning { .. }
             | Self::MapView { .. }
             | Self::Loops { .. }
-            | Self::Stats { .. } => Family::Brain,
-            Self::ReadyToLeave { .. } => Family::Leaving,
+            | Self::Stats { .. }
+            | Self::InputHeld { .. } => Family::Brain,
+            Self::ReadyToLeave { .. } | Self::Arbitrate { .. } => Family::BrainToGateway,
         }
     }
 
     /// A [`Family::Control`] or [`Family::Brain`] message as the gateway relays it, unchanged;
     /// `None` for a message the gateway handles itself ([`Family::Gateway`],
-    /// [`Family::Leaving`]).
+    /// [`Family::BrainToGateway`]).
     pub fn into_relayed(self) -> Option<ToClient> {
         Some(match self {
             Self::Resync { session } => ToClient::Resync { session },
@@ -1167,12 +1230,23 @@ impl ToGateway {
                 runs,
                 samples,
             },
+            Self::InputHeld {
+                session,
+                text,
+                reason,
+            } => ToClient::InputHeld {
+                session,
+                text,
+                reason,
+            },
             Self::Hello { .. }
             | Self::InputLine { .. }
             | Self::InputKeys { .. }
             | Self::HistoryRequest { .. }
             | Self::Subscribe { .. }
-            | Self::ReadyToLeave { .. } => return None,
+            | Self::UserInput { .. }
+            | Self::ReadyToLeave { .. }
+            | Self::Arbitrate { .. } => return None,
         })
     }
 
@@ -1183,6 +1257,10 @@ impl ToGateway {
     pub fn to_json(&self) -> String {
         serde_json::to_string(self).expect("wire messages always serialize")
     }
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 /// The `refused` reason for a client speaking another protocol version, or `None` when it

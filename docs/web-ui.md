@@ -69,8 +69,13 @@ controls, just left of the server:
 **Start** plays the character where it stands: it fights what comes, keeps auto-combat on,
 rests when HP is low (in the nearest quiet room if this one spawns, then walks back), and
 flees below 30% HP to a room where nothing spawns, rests there and walks back; it stops itself
-with a warning only when there is no way out ([brain.md](brain.md) "Flee"). **Any line you type** in the tile pauses it, after the command in flight ("You took
-over Waydeva" in the dev panel); so does clicking a room on the map. `F9` or `[►]` resumes: the
+with a warning only when there is no way out ([brain.md](brain.md) "Flee"). **Typing beside
+it**: talk and look (`gossip hi`, `st`, `look`, `who`) goes between the bot's commands and does
+not pause it; a line that acts (`n`, `rest`, `buy sword`) pauses it after the command in flight
+("You took over Waydeva" in the dev panel), then goes; so do keys, and clicking a room on the
+map. An attack (`a rat`) while the character is fighting is **held**: a yellow line above the
+input shows it and why, with `send anyway` (it goes, and the bot pauses) and `×` to forget it;
+typing another line forgets it too ([brain.md](brain.md) "Typing beside the bot"). `F9` or `[►]` resumes: the
 brain re-syncs first. `F10` starts or stops the focused character's bot. Hovering the line
 shows why the bot stopped or paused. The glyphs are the VGA font's own: code page 437 has `►`
 and `■` but no pause sign, so pause is `[║]`.

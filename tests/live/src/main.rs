@@ -12,7 +12,8 @@
 //! `--scenario under-attack` then stops the gateway while a monster is attacking (the brain
 //! flees first); `--scenario restart` restarts the brain while the bot fights there, and checks
 //! it resumes; `--scenario flee` raises the flee line so the first blow sends the character
-//! out of the Arena to rest and back.
+//! out of the Arena to rest and back; `--scenario typing` types beside the bot while it fights
+//! there (`st` goes without a pause, `u` pauses it and moves).
 
 mod brain;
 mod claim;
@@ -76,12 +77,15 @@ enum Scenario {
     /// first blow sends the character up to the Narrow Road, where it rests and from where it
     /// walks back.
     Flee,
+    /// C-031: as "fight", then lines typed beside the bot while it fights: `st` shows the
+    /// status screen with the bot still running, `u` pauses it and goes up the stairs.
+    Typing,
 }
 
 fn usage() -> ! {
     eprintln!(
         "usage: wayfarer-live --wayfarer BIN --out DIR [--addr HOST:PORT] [--pool FILE] \
-         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart|flee]\n(run it through \
+         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart|flee|typing]\n(run it through \
          scripts/live-check.sh)"
     );
     std::process::exit(2);
@@ -118,6 +122,7 @@ fn args() -> Args {
                     "under-attack" => Scenario::UnderAttack,
                     "restart" => Scenario::Restart,
                     "flee" => Scenario::Flee,
+                    "typing" => Scenario::Typing,
                     _ => usage(),
                 }
             }
@@ -515,6 +520,15 @@ async fn run(ctx: &mut Ctx, pool: &Pool) -> Result<String, String> {
         let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
         let again = logged_off && log_on_again(ctx, fixture, true).await;
         return if fled && again { Ok(who) } else { Err(who) };
+    }
+    if ctx.args.scenario == Scenario::Typing {
+        let typed = typing_scenario(ctx, &mut gw).await;
+        let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
+        return if typed && logged_off {
+            Ok(who)
+        } else {
+            Err(who)
+        };
     }
     if ctx.args.scenario == Scenario::Restart {
         let restarted = restart_scenario(ctx, &mut gw).await;
@@ -1405,6 +1419,114 @@ async fn restart_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
         Some(b) => stop_brain(ctx, b).await,
         None => false,
     };
+    ok && stopped.is_ok() && out && rested && brain
+}
+
+/// The typing scenario, with the gateway in the realm: a brain; to the Arena and Start; once
+/// the bot is fighting, `st` typed from the UI connection shows the status screen while the bot
+/// keeps running (no "took over"); then `u` typed pauses it ("You took over", "Paused: you took
+/// over") and the character goes up the stairs to the Narrow Road. Then the bot stopped, rest by
+/// hand if HP is low, the brain stopped.
+async fn typing_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
+    use wayfarer_proto::BotAction;
+
+    let Some((running, start)) = placed_brain(ctx, gw, "typing", &[]).await else {
+        return false;
+    };
+    let mut ok = fight_in_the_arena(ctx, gw, start, false).await;
+
+    // 4. The bot fighting: its own `*Combat Engaged*` after Start.
+    if ok {
+        let started = Instant::now();
+        let seq = gw.last_seq();
+        let engaged = gw
+            .wait_for(ENGAGE_TIMEOUT, "the bot fighting", |g| {
+                if bot_field(&g.character, "state") != Some("running") {
+                    let why = bot_field(&g.character, "narration").unwrap_or("");
+                    return Some(Err(format!("the bot is not running: {why}")));
+                }
+                let fighting =
+                    bot_field(&g.character, "narration").is_some_and(|n| n.starts_with("Fight:"));
+                (fighting && screen::plain(&g.text_after(seq)).contains("*Combat Engaged*")).then(
+                    || {
+                        Ok(bot_field(&g.character, "narration")
+                            .unwrap_or("")
+                            .to_owned())
+                    },
+                )
+            })
+            .await
+            .and_then(|r| r);
+        ctx.record("the bot fighting in the Arena", started, &engaged);
+        ok = engaged.is_ok();
+    }
+
+    // 5. `st` beside the bot: the status screen, and the bot still running.
+    if ok {
+        let started = Instant::now();
+        let notices = gw.notices.len();
+        let status = status_screen(gw).await.and_then(|name| {
+            let took = gw.notices[notices..]
+                .iter()
+                .find(|n| n.contains("took over") || n.starts_with("Paused"));
+            match (took, bot_field(&gw.character, "state")) {
+                (Some(n), _) => Err(format!("the bot paused: {n}")),
+                (None, Some("running")) => Ok(format!(
+                    "{name}; the bot still running: {}",
+                    bot_field(&gw.character, "narration").unwrap_or("")
+                )),
+                (None, state) => Err(format!("the bot is {state:?}")),
+            }
+        });
+        ctx.record(
+            "`st` shows the status screen without a pause",
+            started,
+            &status,
+        );
+        ok = status.is_ok();
+    }
+
+    // 6. `u` beside the bot: it pauses, and the character goes up the stairs.
+    if ok {
+        let started = Instant::now();
+        let notices = gw.notices.len();
+        let moved = match gw.send_line("u").await {
+            Ok(()) => {
+                gw.wait_for(Duration::from_secs(20), "the pause and the move", |g| {
+                    let said = &g.notices[notices..];
+                    let took = said.iter().find(|n| n.starts_with("You took over"))?;
+                    said.iter().find(|n| *n == "Paused: you took over")?;
+                    let (room, title) = believed(&g.character)?;
+                    (bot_field(&g.character, "state") == Some("paused") && room == WALK_TO)
+                        .then(|| format!("{took}; paused; now in {title}"))
+                })
+                .await
+            }
+            Err(e) => Err(e),
+        };
+        ctx.record("`u` pauses the bot and moves", started, &moved);
+        ok = moved.is_ok();
+    }
+
+    // Whatever happened: the bot stopped, out of the Arena, HP back, the brain stopped.
+    let started = Instant::now();
+    let stopped = match gw.bot(BotAction::Stop).await {
+        Ok(()) => {
+            gw.wait_for(Duration::from_secs(10), "the bot stopped", |g| {
+                (bot_field(&g.character, "state") == Some("stopped")).then(|| {
+                    bot_field(&g.character, "narration")
+                        .unwrap_or("")
+                        .to_owned()
+                })
+            })
+            .await
+        }
+        Err(e) => Err(e),
+    };
+    ctx.record("stop the bot", started, &stopped);
+    let out = walk_out(ctx, gw).await;
+    let rested = rest_by_hand(ctx, gw).await;
+    let brain = stop_brain(ctx, running).await;
     ok && stopped.is_ok() && out && rested && brain
 }
 

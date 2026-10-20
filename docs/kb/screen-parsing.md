@@ -157,6 +157,8 @@ command, one letter more or a wrong letter gives none. Words a client is likely 
 | `PU`, `PUN`.. , `PUR`, `PURG` | PUNCH | (sic) PURGE only in full (`:3405-3413`) |
 | `?` | HELP, only alone | `'` or `-` broadcast, `>` direct message, `/` whisper, with any text after |
 | `SUICIDE`, `REROLL` | only in full | the minimum forms elsewhere: `STATL` STATLINE, `ST` STATUS, `SOUN` SOUND, `INVI` INVITE, `INVO` INVOKE, `C` CAST, `G` GET, `L` LOOK, `I` INVENTORY, `U` UP, `D` DOWN |
+| `I`, `INVE`..`INVENTORY` | INVENTORY | `IN` and `INV` are no command: the 4th letter decides (`INVE` INVENTORY, `INVI` INVITE, `INVO` INVOKE). Likewise `EX` is none (`EXI` EXITS, `EXP` EXPERIENCE) and `GO` is none (`GOS` GOSSIP) [C: silvermere's `command_words.json`, generated from `LJNPARSE.C`] |
+| `SAY`, `YELL`, `TELEPATH`, `TIME` | no command | the parser has no such codes: talking in the room is any line it does not take (step 5 above); `/name text` is WHISPER and `>name text` DIRECTMSG [C: as above] |
 
 Codes the parser knows that do nothing: the dispatcher has no routine for SOUND, THROW, FIRE, DONATE, PLAY,
 SHOOT, TAKE, TEXT, AUTOCOMBAT, DEFEND, HUNT, DISMISS and RESEARCH (the list is the natural reading of the

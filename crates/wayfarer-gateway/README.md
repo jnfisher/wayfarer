@@ -120,8 +120,13 @@ sender ends it). The rules are the same either way:
 - A UI's control message (`resync`, `state_request`) goes to the brain's outbox; with no brain
   it gets `error "no brain attached"`. A UI sending a brain message, or the brain sending a
   control one, gets an `error` and the message is dropped.
-- Input still goes straight to the game from any client (no arbitration until a bot plays);
-  `Connection::handle_own` marks where it will hook in.
+- **Input arbitration**: input goes straight to the game from any client, except a UI's line
+  (`input_line`, or `user_input` with `force`) for a session the brain arbitrates: that goes to
+  the brain as `user_input {from: "ui-<n>"}`, and nothing goes to the game. The brain turns a
+  session on and off with `arbitrate {session, on}`; the set lives with the brain's
+  registration, so it is empty for a new brain and gone the moment the brain detaches (lines go
+  straight through again at once). A UI's keys always go straight through, and for an
+  arbitrated session the brain gets `keys_sent`.
 
 **Token.** On a loopback bind `hello.token` is not checked. On any other bind the gateway
 refuses to start until `wayfarer gateway --new-token` has written `gateway-token` (mode 0600,

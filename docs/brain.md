@@ -223,9 +223,10 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
 - **The bot stops itself** when Flee has no way out (below), when the character dies (`You have
   been killed!`) and when the session leaves the realm, with a warning. Auto-combat goes on in
   the game: the fight is the player's.
-- **Pause and take-over**: a line the player types (not the brain's own) while the bot runs
-  pauses it after the action in flight: "You took over Waydeva", then "Paused: you took over".
-  So do a `walk_to` from the map and `pause` (`F9`, `[║]`). Paused, it sends nothing. **Resume**
+- **Pause and take-over**: a line the player types that acts in the game (a move, `rest`,
+  `get`, ...; "Typing beside the bot", below), or keys, pause the bot after the action in
+  flight: "You took over Waydeva", then "Paused: you took over". Talk and look (`gossip`, `st`)
+  do not. So do a `walk_to` from the map and `pause` (`F9`, `[║]`). Paused, it sends nothing. **Resume**
   (`F9`, `[►]`) re-syncs first, then narrates what it does next. **Stop** (`F10`, `[■]`)
   sends nothing more; a walk of the bot's stops after the move in flight.
 - **Constants** in this slice, settings in M4 (`docs/plan/04-settings.md` section 3): rest
@@ -275,6 +276,37 @@ sent yet is dropped, and Flee acts at the next prompt.
 - **The live check's flee line**: `wayfarer brain --flee-below 100` (hidden, test only) raises
   the line so the first blow sets a flee off (`tests/live/README.md` "flee"). The settings give
   the player the line in M4.
+
+## Typing beside the bot
+
+While a character's bot is running or paused, the brain **arbitrates** its input
+(`docs/plan/03-engine.md` section 6): it tells the gateway so (`arbitrate`), and every line a
+UI types for that character comes to the brain (`user_input`) instead of going to the game.
+The brain reads the line's first word with the game's own command table
+(`crates/wayfarer-brain/src/commands.rs`: every abbreviation the game's parser accepts, checked
+against silvermere's oracle, `tests/fixtures/command-words/`) and sends it as its kind says:
+
+| Kind | Commands | What happens |
+|---|---|---|
+| Talk and look | `gossip`, `broadcast` (`br`, `'`, `-`), `auction`, `whisper` (`/`), `>`, `broadgang`; `look` (not at a direction), `st`, `exp`, `i`, `health`, `who`/`scan`, `help`/`?`, `wealth`, `spells`, `exits`, `keys`, `topten`, `version`; `set`; an empty line | Goes at the next prompt with nothing in flight, between the bot's actions: the bot's next action waits for the prompt after it. The bot keeps going, unpaused. Its output is parsed like any (a `st` refreshes HP), and confirms none of the bot's actions, which only go once it is answered |
+| Acts | moves, `cast`, `rest`, `get`, `drop`, `buy`, `sell`, `wear`, `wield`, `open`, `search`, `look <dir>` (it shows the next room), `bash <dir>`, `x`, ... | The bot pauses after the action in flight ("You took over Waydeva", "Paused: you took over"), a walk stops after its move in flight, then the line goes the same way. Resume with `F9` |
+| Attacks | `a`/`attack`/`au`, `bash` (`aa`, `allout`, `force`), `backstab` (`bs`), `killblow` (`kil`), `punch` (`pu`, `purg`) | While combat is engaged (or not known to be over) the line is held: not sent, and the UIs get `input_held` with the reason ("no attack command while combat is engaged": it would restart the swing timer, `kb/combat.md`); the tile shows it with `send anyway`, which sends it again with `force` and then it goes as an act. Out of combat, an act. An attack typed while the bot's own action is in flight is checked again when its turn comes, and held then if that action engaged |
+| No command | `borrow skiff`, `hello there`, `say hi` (MajorMUD has no SAY: talking is a line the parser does not take) | Treated as an act: a text exit's phrase moves the character |
+
+- **Keys** (`input_keys`) always go straight to the game; the gateway tells the brain
+  (`keys_sent`) and the bot pauses as for an act.
+- **One line at a time**: a typed line goes only at a prompt with nothing in flight and no
+  re-sync command waiting for its answer, so it never interleaves with the bot's exchange;
+  several typed lines go one per prompt, in order. One that has waited 5 s for a prompt goes
+  anyway (the game showed text and no prompt after it).
+- **Stopped**, the brain arbitrates nothing (`arbitrate` off): the gateway sends lines straight
+  to the game, and a typed line pauses nothing (it still stops a walk from the map). A line
+  that reaches the brain after its bot stopped, or out of the realm, goes at once. While the
+  gateway logs the character off, a typed line is not sent (a warning says so).
+- **When the brain goes**, the gateway sends every session's input straight through at once; a
+  brain that attaches again says which sessions it arbitrates.
+- The plan's "after this fight, `sell sword`" is the same queue with one entry; the UI has no
+  control for it yet.
 
 ## Stopping, restarting, the gateway going away
 
@@ -358,8 +390,7 @@ shows them ([web-ui.md](web-ui.md) "The stats").
 
 ## Not yet
 
-No modes beyond Flee, Fight, Recover and Idle (no Maintain or Task); no input arbitration
-(every client's input still goes straight to the game, `docs/protocol.md`; a typed line stops
-a walk and pauses the bot); moves are not pipelined along a known route (one in flight); the
+No modes beyond Flee, Fight, Recover and Idle (no Maintain or Task); no "after this fight"
+control for the typed-line queue; moves are not pipelined along a known route (one in flight); the
 refused exits are forgotten when the brain restarts; MegaMud's loops and player-recorded ones
 are not walked (only generated loops are, once).

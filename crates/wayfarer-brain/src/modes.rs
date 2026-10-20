@@ -249,6 +249,10 @@ impl Bot {
         self.state == BotState::Running
     }
 
+    pub fn stopped(&self) -> bool {
+        self.state == BotState::Stopped
+    }
+
     /// Running, and not about to pause.
     pub fn active(&self) -> bool {
         self.running() && self.pausing.is_none()

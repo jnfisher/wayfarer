@@ -32,6 +32,11 @@ brain.run(&mut link).await?;                             // Ok when the gateway 
   refused or timed out. The hard guards (`guard`): no attack unless known to be out of combat,
   never `train stats`. The re-sync and the executor never have a line in flight at once; the
   session knows whose action is in flight (the walker's or the bot's) and hands it the outcome.
+- **`commands`**: the game's command words as runs of prefixes (`TABLE`, from silvermere's
+  `commands/table.rs`, tested against its oracle in `tests/fixtures/command-words/`),
+  `parse_command`, and `classify` a typed line into a `Kind` (talk, act, attack, no command)
+  for typing beside the bot (`Session::user_input`: talk goes between the bot's actions, an act
+  pauses it, an attack while engaged is held). The executor's attack guard uses it too.
 - **`position.rs`**: the `Belief` fed by every room seen and every move sent, the `Traveller`
   with the exits refused this session, the rooms visited, and the `map_view`.
 - **`walker.rs`**: the route and the per-step policy (doors, refusals, relocation, stops).
