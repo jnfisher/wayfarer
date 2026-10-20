@@ -1246,22 +1246,29 @@ async fn restart_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
             let resumed = gw
                 .wait_for(
                     Duration::from_secs(60),
-                    "the bot resumed in the Arena",
+                    "the bot resumed, its home the Arena",
                     |g| {
+                        // Its home, not where it stands: Recover may have walked it out of the
+                        // Arena to rest before the restart, and walks it back once rested.
                         let said = g.notices[notices..]
                             .iter()
-                            .find(|n| n.starts_with("Resumed"))?;
-                        let room = believed(&g.character).map(|(k, _)| k);
+                            .find(|n| n.starts_with("Resumed") && n.contains("Newhaven, Arena"))?;
+                        let room = believed(&g.character).map_or_else(
+                            || "an unknown room".to_owned(),
+                            |(k, title)| format!("{title} ({}/{})", k.0, k.1),
+                        );
                         (g.brain_attached == Some(true)
                             && bot_field(&g.character, "state") == Some("running")
-                            && room == Some(ARENA)
                             && g.notices[notices..].iter().any(|n| n == "re-synced"))
-                        .then(|| format!("{said}; running in {}/{}", ARENA.0, ARENA.1))
+                        .then(|| {
+                            let doing = bot_field(&g.character, "narration").unwrap_or("");
+                            format!("{said}; running in {room}: {doing}")
+                        })
                     },
                 )
                 .await;
             ctx.record(
-                "a restarted brain resumes the bot in the Arena",
+                "a restarted brain resumes the bot, home the Arena",
                 started,
                 &resumed,
             );
@@ -1275,8 +1282,8 @@ async fn restart_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
     if ok {
         let started = Instant::now();
         let stats = match gw.stats_request().await {
-            Ok(()) => {
-                gw.wait_for(Duration::from_secs(10), "stats", |g| {
+            Ok(()) => gw
+                .wait_for(Duration::from_secs(10), "stats", |g| {
                     let Some(wayfarer_proto::ToClient::Stats { runs, samples, .. }) = &g.stats
                     else {
                         return None;
@@ -1284,7 +1291,7 @@ async fn restart_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
                     let r = runs.first()?;
                     Some(if r.ended_at.is_none() && r.kills >= kills_before {
                         Ok(format!(
-                            "run since {}: {} kills, {} exp, {} exp/hr, {} samples, {} runs                              listed",
+                            "run since {}: {} kills, {} exp, {} exp/hr, {} samples, {} runs listed",
                             r.started_at,
                             r.kills,
                             r.exp_gained,
@@ -1299,8 +1306,7 @@ async fn restart_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
                     })
                 })
                 .await
-                .and_then(|r| r)
-            }
+                .and_then(|r| r),
             Err(e) => Err(e),
         };
         ctx.record("stats_request shows the kills so far", started, &stats);

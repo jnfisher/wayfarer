@@ -142,7 +142,8 @@ Steps 1 to 4 of "fight" (the brain's store is `store.sqlite` in the run's direct
 5. **The bot is running**: a kill came, not a stop (the bot stopping itself fails it here).
 6. **Restart the brain mid-run**: SIGTERM, then `wayfarer brain` again in the same directory,
    so on the same store. It passes when the new brain narrates `Resumed: ...`, re-syncs, and
-   the snapshot shows the bot `running` in the Arena.
+   the snapshot shows the bot `running`, its home the Arena (it may be resting nearby: Recover
+   walks it back once rested).
 7. **`stats_request`**: the newest run has not ended and has at least the kills the snapshot
    showed before the restart; the summary gives its kills, exp, exp per hour and samples.
 8. Then as "fight" ends: **Stop**, **walk out**, **rest by hand**, **stopping the brain**, and
