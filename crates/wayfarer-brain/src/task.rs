@@ -30,8 +30,11 @@ pub const STOCK_REGEN: i64 = 5;
 /// once the character's own combat has been quiet this long there.
 pub const STOP_QUIET: Duration = Duration::from_secs(20);
 /// Legs to one stop that end elsewhere, with no fight on the way, before the stop is passed by
-/// this time round (its delay then runs as if it were cleared).
+/// this time round (its delay then runs as if it were cleared, an arena's too).
 pub const LEG_TRIES: u32 = 3;
+/// Stops passed by in a row, with no stop reached and nothing killed between, before the bot
+/// stops itself: the loop cannot go round.
+pub const GIVE_UPS: u32 = 3;
 
 /// Whether a stop has respawned: an arena always has (no delay after a kill); any other once
 /// `regen` minutes (0: [`STOCK_REGEN`]) have passed since the bot cleared it, or if it never
@@ -100,6 +103,13 @@ pub(crate) struct Task {
     skip: BTreeSet<usize>,
     /// When the bot last cleared each stop.
     cleared: Vec<Option<Instant>>,
+    /// When the bot last passed each stop by, not getting there: its delay runs from then
+    /// whether or not it is an arena, so the bot does not try again at once.
+    passed: Vec<Option<Instant>>,
+    /// Stops passed by in a row since it last reached a stop or killed something.
+    give_ups: u32,
+    /// Why the bot should stop itself, once [`GIVE_UPS`] stops are passed by in a row.
+    gave_up: Option<String>,
     phase: Phase,
     /// Legs to the stop at `index` begun since it last arrived or fought.
     tries: u32,
@@ -137,6 +147,9 @@ impl Task {
             id,
             name,
             cleared: vec![None; n],
+            passed: vec![None; n],
+            give_ups: 0,
+            gave_up: None,
             index: first.min(n.saturating_sub(1)),
             skip: skip.into_iter().filter(|&i| i < n).collect(),
             stops,
@@ -208,6 +221,8 @@ impl Task {
     pub fn observe(&mut self, v: &View) {
         if self.phase == Phase::Going && !self.stops.is_empty() && v.room == Some(self.home()) {
             self.tries = 0;
+            self.give_ups = 0;
+            self.passed[self.index] = None;
             self.phase = Phase::At {
                 kills: Vec::new(),
                 quiet_from: v.now,
@@ -217,6 +232,7 @@ impl Task {
 
     /// A monster died: one more for the stop, if it is at one.
     pub fn killed(&mut self, name: &str, now: Instant) {
+        self.give_ups = 0;
         match &mut self.phase {
             Phase::At { kills, quiet_from } => {
                 kills.push(name.to_owned());
@@ -235,6 +251,11 @@ impl Task {
     /// The lines to narrate before the step's own.
     pub fn take_notes(&mut self) -> Vec<String> {
         std::mem::take(&mut self.notes)
+    }
+
+    /// Why the bot should stop itself, if the loop cannot go round.
+    pub fn take_give_up(&mut self) -> Option<String> {
+        self.gave_up.take()
     }
 
     /// Whether it wants Recover to rest before the wait for respawns.
@@ -260,7 +281,13 @@ impl Task {
 
     fn ready_in(&self, now: Instant, i: usize) -> Duration {
         let s = &self.stops[i];
-        ready_in(now, self.cleared[i], s.regen, s.arena)
+        // Passed by: the delay runs from then, an arena's too.
+        ready_in(now, self.cleared[i], s.regen, s.arena).max(ready_in(
+            now,
+            self.passed[i],
+            s.regen,
+            false,
+        ))
     }
 
     /// "stop 3/9".
@@ -328,8 +355,10 @@ impl Task {
             self.rest = true;
             return Step::wait("Waiting for respawns: resting first");
         }
+        // Away from the stop it was heading to (passed by): its own wait counts too.
+        let here = Some(self.stops[self.index].key) == v.room;
         let next = (0..n)
-            .filter(|&j| j != self.index && !self.skip.contains(&j))
+            .filter(|&j| !(here && j == self.index) && !self.skip.contains(&j))
             .map(|j| self.ready_in(v.now, j))
             .filter(|d| !d.is_zero())
             .min();
@@ -400,8 +429,16 @@ impl Mode for Task {
                     self.nth(self.index),
                     s.name
                 );
-                self.cleared[self.index] = Some(v.now);
+                self.passed[self.index] = Some(v.now);
                 self.tries = 0;
+                self.give_ups += 1;
+                if self.give_ups >= GIVE_UPS {
+                    self.gave_up = Some(format!(
+                        "loop {}: could not get to a stop {GIVE_UPS} times in a row",
+                        self.name
+                    ));
+                    return Step::wait(text);
+                }
                 let step = self.next_leg(v);
                 self.notes.insert(0, text);
                 return step;

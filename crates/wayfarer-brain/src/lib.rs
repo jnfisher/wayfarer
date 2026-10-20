@@ -45,6 +45,6 @@ pub use session::{
     ANSWER_TIMEOUT, HISTORY_CHUNKS, IDLE, MAP_RADIUS, OWN_PATIENCE, RESYNC_COMMANDS,
 };
 pub use stats::{SAMPLE_EVERY, STATS_RUNS};
-pub use task::{LEG_TRIES, STOCK_REGEN, STOP_QUIET, ready_in, stop_ready};
+pub use task::{GIVE_UPS, LEG_TRIES, STOCK_REGEN, STOP_QUIET, ready_in, stop_ready};
 pub use walker::{MAX_BASHES, MAX_RELOCATIONS, MAX_REPLANS};
 pub use wayfarer_store::Store;

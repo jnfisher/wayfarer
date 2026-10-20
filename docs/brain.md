@@ -312,7 +312,10 @@ stop it is at or walking to, and the stops it passes by.
   "fight here"; after a flee Recover rests and walks back to the stop. A leg that ends elsewhere
   three times with no fight between is given up: the stop is passed by this time round, with a
   warning-like notice ("Stop 2/3 Dungeon, Entrance: could not get there; passing it by this time
-  round").
+  round"). A stop passed by waits its respawn delay before the bot tries it again, an arena's
+  too (no delay after a kill, but its `regendelay` or the stock five minutes after a pass-by). Three stops passed by in a row, with no stop reached and nothing
+  killed between, and the bot stops itself with a warning ("Stopped: loop Newhaven: could not
+  get to a stop 3 times in a row").
 - **Pipelining**: on a leg, with the belief sure of the room and the character known to be out of
   combat, the next plain move (a direction, no door on it or on the move in flight) goes ahead
   of the move in flight, as MegaMud ran paths: two moves in flight at most, each confirmed by

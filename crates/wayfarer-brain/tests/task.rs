@@ -10,7 +10,7 @@ use std::path::Path;
 
 use game::arena::*;
 use game::*;
-use wayfarer_brain::{Brain, InstantClock, Store};
+use wayfarer_brain::{Brain, GIVE_UPS, InstantClock, LEG_TRIES, Store};
 use wayfarer_proto::{BotAction, BotMode, BotState};
 
 const NEWHAVEN_LOOP: &str = "1:2140:8:doors:0";
@@ -470,4 +470,42 @@ async fn a_stop_it_cannot_get_to_is_passed_by_after_three_legs() {
     assert_eq!(legs, 3, "{said:?}");
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "n", "n", "n"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_arena_it_cannot_get_to_waits_its_delay_and_the_bot_stops_after_three_give_ups() {
+    // The Arena the only ticked stop, every `d` toward it refused: three legs, then it is
+    // passed by and waits the stock delay (an arena has none after a kill, but a stop passed
+    // by does); after three give-ups in a row the bot stops itself with a warning. A `d`
+    // beyond the script's fails the test.
+    let (mut g, run) = ready_at(NARROW_ROAD).await;
+    let tries = (LEG_TRIES * GIVE_UPS) as usize;
+    for _ in 0..tries {
+        g.expect("d", says("You may not enter that room while in combat."));
+    }
+    g.run_loop(&[BEYOND_ARENA, SMALL_CAVERN]).await;
+    let started = tokio::time::Instant::now();
+    let said = g.narrated("Waiting for respawns: next in 5 m").await;
+    assert!(
+        said.iter()
+            .any(|s| s
+                == "Stop 1/3 Newhaven, Arena: could not get there; passing it by this time round"),
+        "{said:?}"
+    );
+    let why = "Stopped: loop Newhaven: could not get to a stop 3 times in a row";
+    g.narrated(why).await;
+    let took = started.elapsed();
+    assert!(took >= Duration::from_secs(2 * 5 * 60), "{took:?}");
+    g.idle(Duration::from_secs(30 * 60)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played[..2], ["st", "look"]);
+    assert_eq!(played[2..], vec!["d"; tries]);
+    assert!(
+        seen.iter()
+            .any(|m| matches!(m, ToGateway::Warning { text, .. } if text == why)),
+        "{:?}",
+        notices(&seen)
+    );
+    let b = bot(&seen);
+    assert_eq!((b.state, b.task), (BotState::Stopped, None));
 }

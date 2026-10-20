@@ -609,7 +609,10 @@ impl Bot {
             }
             self.narrate_as(step.narration, step.warn, &mut says);
             if step.act.is_none()
-                && let Some(why) = self.flee.take_give_up()
+                && let Some(why) = self
+                    .flee
+                    .take_give_up()
+                    .or_else(|| self.task.as_mut().and_then(Task::take_give_up))
             {
                 says.extend(self.stop(&why, true));
                 return (None, says);
