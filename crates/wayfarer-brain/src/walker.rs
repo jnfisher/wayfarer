@@ -9,8 +9,8 @@
 //! the walker plans again from wherever the belief puts the character.
 
 use wayfarer_parse::typed::Refusal;
-use wayfarer_proto::{RoomKey, Walking};
-use wayfarer_world::{Belief, Key, Route, mm, route};
+use wayfarer_proto::{BossLair, RoomKey, Walking};
+use wayfarer_world::{Belief, Key, Route, mm, route, route_within};
 
 use crate::brain::Atlas;
 use crate::executor::{Action, Confirmed, Expect, Outcome, Refused};
@@ -88,13 +88,35 @@ struct Walk {
     /// The step before the move ahead went wrong: the move ahead's answer is awaited, then the
     /// walk plans again (`Ok`, why) or ends (`Err`, why).
     void: Option<Result<String, String>>,
+    /// The boss lair this walk stops one room short of: `to` is the room before it.
+    short_of: Option<Lair>,
+}
+
+/// A boss lair a walk stops short of.
+#[derive(Debug, Clone)]
+struct Lair {
+    key: Key,
+    name: String,
+    bosses: Vec<String>,
+}
+
+impl Lair {
+    /// "Large Wooden Room (boss: minotaur chieftain)".
+    fn describe(&self) -> String {
+        if self.bosses.is_empty() {
+            format!("{} (a boss lair)", self.name)
+        } else {
+            format!("{} (boss: {})", self.name, self.bosses.join(", "))
+        }
+    }
 }
 
 #[derive(Debug, Default)]
 pub(crate) struct Walker {
     walk: Option<Walk>,
-    /// A `walk_to` that came while an action of the walk it replaces was in flight.
-    then: Option<Key>,
+    /// A `walk_to` that came while an action of the walk it replaces was in flight, and whether
+    /// it stops short of a boss lair.
+    then: Option<(Key, bool)>,
 }
 
 fn room_name(atlas: &Atlas, k: Key) -> String {
@@ -155,6 +177,12 @@ impl Walker {
                 .iter()
                 .map(|s| s.command.clone())
                 .collect(),
+            short_of: w.short_of.as_ref().map(|l| BossLair {
+                map: l.key.0,
+                room: l.key.1,
+                name: l.name.clone(),
+                bosses: l.bosses.clone(),
+            }),
         })
     }
 
@@ -173,10 +201,11 @@ impl Walker {
     /// `walk_to`. `busy`: an action of the walk in progress is in flight; the new walk starts
     /// when it is done.
     pub fn start(&mut self, pos: &mut Position, atlas: &Atlas, to: Key, busy: bool) -> Next {
-        self.start_with(pos, atlas, to, busy, false)
+        self.start_with(pos, atlas, to, busy, false, false)
     }
 
-    /// `start`, pipelining the moves when `pipelined`.
+    /// `start`, pipelining the moves when `pipelined`, and stopping one room short of `to`
+    /// when `short` and `to` is a boss lair (docs/brain.md "Go to").
     pub fn start_with(
         &mut self,
         pos: &mut Position,
@@ -184,6 +213,7 @@ impl Walker {
         to: Key,
         busy: bool,
         pipelined: bool,
+        short: bool,
     ) -> Next {
         let mut next = Next::default();
         if !atlas.graph.contains(to) {
@@ -193,7 +223,7 @@ impl Walker {
         if let Some(w) = &mut self.walk {
             if busy {
                 w.stopping = Some(format!("walking to {} instead", room_name(atlas, to)));
-                self.then = Some(to);
+                self.then = Some((to, short));
                 return next;
             }
             self.walk = None;
@@ -204,7 +234,7 @@ impl Walker {
             next.warning(format!("Not walking to {name}: the position is unknown"));
             return next;
         };
-        let Some(r) = route(&atlas.graph, from, to, &pos.traveller) else {
+        let Some(mut r) = route(&atlas.graph, from, to, &pos.traveller) else {
             next.warning(format!(
                 "Not walking to {name}: no way there from {}",
                 room_name(atlas, from)
@@ -216,8 +246,37 @@ impl Walker {
             next.arrived = Some(to);
             return next;
         }
-        next.notice(format!("Walking to {name}: {}", describe(&r)));
+        // Stop-short is a route cut: the destination becomes the room before the lair.
+        let lair = short
+            .then(|| atlas.finder.boss_lair(to, &atlas.monsters))
+            .flatten()
+            .map(|bosses| Lair {
+                key: to,
+                name: name.clone(),
+                bosses: bosses.iter().map(|m| m.name.clone()).collect(),
+            });
+        let (to, name) = match &lair {
+            Some(lair) => {
+                let before = r.pop().expect("a route of a step or more").from;
+                if r.is_empty() {
+                    next.notice(format!("Stopped one room short of {}", lair.describe()));
+                    next.arrived = Some(before);
+                    return next;
+                }
+                next.notice(format!(
+                    "Walking to {}: {}, stopping one room short",
+                    lair.name,
+                    describe(&r)
+                ));
+                (before, room_name(atlas, before))
+            }
+            None => {
+                next.notice(format!("Walking to {name}: {}", describe(&r)));
+                (to, name)
+            }
+        };
         let mut w = Walk {
+            short_of: lair,
             to,
             name,
             route: r,
@@ -310,8 +369,8 @@ impl Walker {
                     w.bashes = 0;
                     advanced = true;
                     if w.next == w.route.len() {
-                        let (name, to) = (w.name.clone(), w.to);
-                        self.end(&mut next, Say::Notice(format!("Arrived: {name}")));
+                        let (arrival, to) = (w.arrival(), w.to);
+                        self.end(&mut next, Say::Notice(arrival));
                         next.arrived = Some(to);
                         return self.then_start(pos, atlas, next);
                     }
@@ -410,8 +469,8 @@ impl Walker {
             }
             Ok(_) if w.next == w.route.len() => {
                 // Replanned from the destination itself.
-                let (name, to) = (w.name.clone(), w.to);
-                self.end(&mut next, Say::Notice(format!("Arrived: {name}")));
+                let (arrival, to) = (w.arrival(), w.to);
+                self.end(&mut next, Say::Notice(arrival));
                 next.arrived = Some(to);
                 next
             }
@@ -426,8 +485,8 @@ impl Walker {
     /// Start the walk a `walk_to` asked for while the last one was finishing. Only the new
     /// walk's arrival counts: the old one was replaced.
     fn then_start(&mut self, pos: &mut Position, atlas: &Atlas, mut next: Next) -> Next {
-        if let Some(to) = self.then.take() {
-            let started = self.start(pos, atlas, to, false);
+        if let Some((to, short)) = self.then.take() {
+            let started = self.start_with(pos, atlas, to, false, false, short);
             next.action = started.action;
             next.says.extend(started.says);
             next.route_changed = true;
@@ -438,6 +497,14 @@ impl Walker {
 }
 
 impl Walk {
+    /// What the walk says when it ends in its destination.
+    fn arrival(&self) -> String {
+        match &self.short_of {
+            Some(lair) => format!("Stopped one room short of {}", lair.describe()),
+            None => format!("Arrived: {}", self.name),
+        }
+    }
+
     /// The move of the step after the one in progress, to go ahead of it: on a pipelined walk,
     /// with the belief sure of the room, both steps plain moves (a direction, no door), the step
     /// in progress a move, and the walk not stopping.
@@ -495,7 +562,12 @@ impl Walk {
         let Some(from) = pos.best() else {
             return Err(format!("{why}; the position is unknown"));
         };
-        let Some(r) = route(&atlas.graph, from, self.to, &pos.traveller) else {
+        // A walk stopping short of a boss lair never plans through it.
+        let lair = self.short_of.as_ref().map(|l| l.key);
+        let r = route_within(&atlas.graph, from, self.to, &pos.traveller, |k| {
+            Some(k) != lair
+        });
+        let Some(r) = r else {
             return Err(format!(
                 "{why}; no way to {} from {}",
                 self.name,

@@ -1,7 +1,7 @@
 //! Monsters by name, what a room spawns, and which monsters are worth hunting
 //! (`kb/progression.md` "Choosing where to grind", `kb/combat.md`).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::Error;
 use crate::pack::{Monster, Room, WorldPack};
@@ -19,12 +19,28 @@ pub struct Monsters {
     by_number: HashMap<i64, usize>,
     /// Lower-cased name to positions in `list`, in number order.
     by_name: HashMap<String, Vec<usize>>,
+    /// The numbers of the bosses: monsters that spawn one at a time.
+    bosses: HashSet<i64>,
 }
 
 /// The four evil alignments of `ALIGNMENTS` (Good, Evil, Chaotic Evil, Neutral, Lawful Good,
 /// Neutral Evil, Lawful Evil): Evil, Chaotic Evil, Neutral Evil and Lawful Evil.
 pub fn is_evil(alignment: i64) -> bool {
     matches!(alignment, 1 | 2 | 5 | 6)
+}
+
+/// A boss: a unique monster, one alive at a time (`maxalive` 1) that comes back `regenhrs`
+/// hours after its kill (`kb/progression.md`): the Minotaur Chieftain, the champion. Not an
+/// NPC and worth experience: healers, shopkeepers and quest figures are unique too.
+fn boss(m: &Monster) -> bool {
+    if m.mon_type == MONTYPE_NPC || m.exp <= 0 {
+        return false;
+    }
+    let Ok(raw) = serde_json::from_str::<serde_json::Value>(&m.raw) else {
+        return false;
+    };
+    let field = |f: &str| raw.get(f).and_then(serde_json::Value::as_i64).unwrap_or(0);
+    field("maxalive") == 1 && field("regenhrs") > 0
 }
 
 /// Worth attacking: evil, not an NPC and worth experience (`kb/combat.md`).
@@ -48,10 +64,12 @@ impl Monsters {
         for (i, m) in list.iter().enumerate() {
             by_name.entry(m.name.to_lowercase()).or_default().push(i);
         }
+        let bosses = list.iter().filter(|m| boss(m)).map(|m| m.number).collect();
         Monsters {
             list,
             by_number,
             by_name,
+            bosses,
         }
     }
 
@@ -115,6 +133,23 @@ impl Monsters {
             }
         }
         pool
+    }
+
+    /// A boss: one alive at a time, back hours after its kill.
+    pub fn is_boss(&self, number: i64) -> bool {
+        self.bosses.contains(&number)
+    }
+
+    /// The bosses a room's pool holds, if any: the room is their lair. Only bosses count, not
+    /// every Lair room (John, 2026-10-20); a MegaMud waypoint flagged boss is the other way a
+    /// room becomes one ([`crate::Finder::boss_lair`]).
+    pub fn boss_lair(&self, room: &Room) -> Option<Vec<&Monster>> {
+        let bosses: Vec<&Monster> = self
+            .spawn_pool(room)
+            .into_iter()
+            .filter(|m| self.is_boss(m.number))
+            .collect();
+        (!bosses.is_empty()).then_some(bosses)
     }
 
     /// A room whose pool holds a monster worth hunting.
@@ -187,6 +222,36 @@ mod tests {
         let mut shop = room(0, 1, 2, (0, 0));
         shop.spec_mon = 3;
         assert_eq!(ms.spawn_pool(&shop).len(), 1);
+    }
+
+    #[test]
+    fn a_boss_spawns_one_at_a_time_and_comes_back_hours_later() {
+        let mut chief = monster(114, "minotaur chieftain", 11, 0);
+        chief.raw = r#"{"maxalive":1,"regenhrs":24}"#.into();
+        let mut once = monster(465, "Champion Gudruk", 11, 0);
+        once.raw = r#"{"maxalive":1,"regenhrs":0}"#.into();
+        let mut healer = monster(160, "healer", MONTYPE_NPC, 0);
+        healer.raw = r#"{"maxalive":1,"regenhrs":1}"#.into();
+        let mut merchant = monster(161, "dwarven barkeep", 24, 0);
+        merchant.raw = healer.raw.clone();
+        merchant.exp = 0;
+        let ms = Monsters::new(vec![
+            chief,
+            once,
+            healer,
+            merchant,
+            monster(111, "minotaur", 11, 4),
+        ]);
+        assert!(ms.is_boss(114));
+        for n in [465, 160, 161, 111] {
+            assert!(!ms.is_boss(n), "{n}");
+        }
+        let lair = room(114, 1, 11, (4, 4));
+        assert_eq!(ms.boss_lair(&lair).unwrap()[0].name, "minotaur chieftain");
+        assert!(ms.boss_lair(&room(0, 5, 11, (4, 4))).is_none());
+        let mut spec = room(0, 5, 11, (4, 4));
+        spec.spec_mon = 114;
+        assert!(ms.boss_lair(&spec).is_some());
     }
 
     #[test]

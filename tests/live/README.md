@@ -286,6 +286,28 @@ scenarios): longer, it refuses to start. Nothing is trained or spent. A death en
 
 The brain's log is `NN-soak/brain.log`.
 
+## Scenario "goto" (C-034, go to)
+
+```sh
+scripts/live-check.sh --scenario goto
+```
+
+It claims and logs on a character, then:
+
+1. **The world pack** and **a brain**, as in "walk".
+2. **To the Village Entrance** (1/2140), as in "loop" (skipped when already there).
+3. **`find` "arena"**: the `found` has "Newhaven, Arena" (two rooms) with a route length to
+   its nearest room.
+4. **A `walk_to` that room** arrives, checked as in "walk"; then out to the Narrow Road as in
+   "fight" (the Arena's monsters may come at the character).
+5. **`find` "dungeon"**: the `found` has "Dungeon, Entrance", and the step says whether it is a
+   boss lair. The stock world does not make it one (a Lair room of plain monsters), so there
+   is no live stop-short walk: the in-process tests (`crates/wayfarer-brain/tests/goto.rs`)
+   walk to the Chieftain's room and stop one room short.
+6. **Stopping the brain**, then the gateway logs off as in M0.
+
+The brain's log is `NN-goto/brain.log`.
+
 ## The test-character pool
 
 `fixtures.toml` lists the characters: account, family name, race, class and the stat totals

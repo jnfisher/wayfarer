@@ -97,6 +97,9 @@ and `■` but no pause sign, so pause is `[║]`.
 | `Esc`, `?` again, or a click outside | Close this help |
 | `Alt+M`, or the `map` button | Open the drawer on the map of the focused character's surroundings, or close it (on a Mac, `Option`) |
 | Click a room on the map | Walk the character there; `stop` under the map ends the walk |
+| `Alt+G`, or the `go` button | Open the go box above the map: type part of the name of a room, a shop, bank or trainer, or a monster (two letters or more) and the list fills as you type (on a Mac, `Option`) |
+| `Up`, `Down`, `Enter` in the go box | Choose a row (the map centres on its room when in view) and walk there; a boss lair's row has a ticked `stop short` box: the walk stops one room before it |
+| `Esc` in the go box | Clear it; `Esc` again closes it |
 | Mouse wheel, drag on the map | Zoom (three sizes), pan; `centre` goes back to the character |
 | `loops`, under the map | The loops around the character: hover or pick one to draw it in yellow, `walk once` walks it, `run` hunts round it (untick a stop to pass it by) |
 | `F10`, or `[►]` and `[■]` in the tile's header | Start the focused character's bot where it stands (fight what comes, rest when low), or stop it |
@@ -176,6 +179,22 @@ and works nothing out itself.
   closed, so that is not listed ahead. **stop** stops the walk
   after the move in flight. Clicking another room while walking replaces the walk. Two
   characters can walk at once; the panel shows the focused one.
+- **Go to**: the map only shows its 15 steps, so for anywhere farther there is the **go**
+  box (`Alt+G`, or the `go` button on the tools line). Type part of a name, two letters or
+  more (`woo`, `chief`, `skali`): the list under the box fills as you type, from the brain
+  ([brain.md](brain.md), "Go to"), best first. It holds room names (`Wooden Passage, 63
+  rooms, nearest 43 steps`; `▸` opens the group onto its nearest 20 rooms), well-known places
+  (shops, banks and trainers by their room name, and MegaMud's named rooms when the world
+  pack has them) and monsters with the rooms they spawn in (`minotaur chieftain, boss, lairs
+  at Large Wooden Room 1:1865, 46 steps`). Distances are route lengths from the character;
+  beyond 200 steps a room is `far`, and one the character has no way to is `no route`,
+  listed last and not walkable. `Up` and `Down` choose a row, and the map centres on its room
+  when the room is in view; `Enter` (or the row's **go** button, or a double-click) walks
+  there as a click on the map does. A **boss lair**'s row (a room whose monster spawns one
+  at a time, such as the Chieftain's) has a ticked **stop short** box: the walk stops in the
+  room before the lair so you can look before going in, and the walk bar says `one room
+  short of Large Wooden Room (boss: minotaur chieftain)`. Untick it to walk in. `Esc`
+  clears the box; `Esc` again closes it.
 - **Loops**: `▸ loops` under the map opens the list of loops around the character
   ([brain.md](brain.md), "Loops"): those generated over the hunt rooms within 8 steps of
   the room it is in, each with its stops, steps and doors (hover the name for the stops,

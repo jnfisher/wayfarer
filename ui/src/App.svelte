@@ -11,6 +11,7 @@
   import {
     DEV_PANEL_CODE,
     FOCUS_TILE_CODE,
+    GO_CODE,
     MAP_PANEL_CODE,
     RESET_LAYOUT_CODE,
     STATS_PANEL_CODE,
@@ -19,6 +20,7 @@
     ZOOM_RESET_KEYS,
   } from "./lib/keys";
   import { LOOP_RADIUS, MAP_RADIUS, type Loops, type MapView } from "./lib/map";
+  import type { FoundMessage } from "./lib/goto";
   import {
     drag,
     equalWeights,
@@ -88,6 +90,10 @@
   let loopsBySession = $state.raw<Record<string, Loops>>({});
   // The brain's last `stats` per session.
   let statsBySession = $state.raw<Record<string, Stats>>({});
+  // The brain's last `found` per session, for the map panel's go box.
+  let foundBySession = $state.raw<Record<string, FoundMessage>>({});
+  /** Bumped by Alt+G: the map panel opens its go box and focuses it. */
+  let goAsked = $state(0);
   /** The last line the brain held per session (`input_held`), until sent anyway or dismissed. */
   let held = $state.raw<Record<string, { text: string; reason: string }>>({});
   // Sessions whose map has been asked for since the connection opened or the brain attached:
@@ -254,6 +260,9 @@
       stats: (stats) => {
         statsBySession = { ...statsBySession, [stats.session]: stats };
       },
+      found: (found) => {
+        foundBySession = { ...foundBySession, [found.session]: found };
+      },
       inputHeld: (id, text, reason) => {
         held = { ...held, [id]: { text, reason } };
         addNote(dev, "warning", `held: ${text} (${reason})`, id, Date.now());
@@ -296,7 +305,8 @@
     }
   }
 
-  // Alt+M, Alt+S and Alt+D open the drawer on the map, stats or dev panel; Alt+1..Alt+6 focus a tile; Ctrl +/-/0
+  // Alt+M, Alt+S and Alt+D open the drawer on the map, stats or dev panel; Alt+G on the map's go
+  // box; Alt+1..Alt+6 focus a tile; Ctrl +/-/0
   // zoom the focused one; F9 and F10 pause or resume, start or stop its bot. Captured before
   // xterm sees them.
   function onkeydown(e: KeyboardEvent) {
@@ -312,6 +322,13 @@
     if (e.altKey && !e.ctrlKey && !e.metaKey && drawer) {
       e.preventDefault();
       toggleDrawer(devPrefs, drawer);
+      return;
+    }
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === GO_CODE) {
+      e.preventDefault();
+      devPrefs.open = true;
+      devPrefs.panel = "map";
+      goAsked += 1;
       return;
     }
     if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === RESET_LAYOUT_CODE) {
@@ -443,7 +460,10 @@
             view={focusedId ? mapViews[focusedId] : undefined}
             character={focusedId ? brain.characters[focusedId] : undefined}
             attached={brain.attached}
-            onwalk={(id, map, room) => client.walkTo(id, map, room)}
+            onwalk={(id, map, room, stopShort) => client.walkTo(id, map, room, stopShort)}
+            found={focusedId ? foundBySession[focusedId] : undefined}
+            onfind={(id, query) => client.find(id, query)}
+            {goAsked}
             onstop={(id) => client.walkStop(id)}
             loops={focusedId ? loopsBySession[focusedId] : undefined}
             onloops={(id, doors) => client.requestLoops(id, LOOP_RADIUS, doors)}

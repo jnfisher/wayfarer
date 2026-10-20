@@ -1,3 +1,8 @@
+<script lang="ts" module>
+  /** The last Alt+G the go box answered, kept while the panel is unmounted (another tab). */
+  let handledGo = 0;
+</script>
+
 <script lang="ts">
   import { untrack } from "svelte";
   import {
@@ -16,6 +21,7 @@
     type MapView,
     type ViewState,
   } from "./lib/map";
+  import { centreOn, FIND_DEBOUNCE_MS, goRows, MIN_QUERY, moveChoice, type FoundMessage, type GoRow } from "./lib/goto";
   import { FONT_FAMILY } from "./lib/theme";
   import type { CharacterState, GeneratedLoop, LoopStop, MapRoom, RoomKey, SessionInfo } from "./proto";
 
@@ -26,7 +32,8 @@
     view: MapView | undefined;
     character: CharacterState | undefined;
     attached: boolean | null;
-    onwalk: (session: string, map: number, room: number) => void;
+    /** Walk there; `stopShort` false walks into a boss lair (left out: the brain's default). */
+    onwalk: (session: string, map: number, room: number, stopShort?: boolean) => void;
     onstop: (session: string) => void;
     /** The brain's last `loops` for it. */
     loops?: Loops;
@@ -36,10 +43,120 @@
     onwalkloop?: (session: string, id: string) => void;
     /** Run a generated loop, passing by the stops in `skip` (the unticked ones). */
     onrunloop?: (session: string, id: string, skip: RoomKey[]) => void;
+    /** The brain's last `found` for it. */
+    found?: FoundMessage;
+    /** Find rooms, places and monsters by part of a name. */
+    onfind?: (session: string, query: string) => void;
+    /** Bumped by Alt+G: open the go box and focus it. */
+    goAsked?: number;
   }
 
-  let { session, view, character, attached, onwalk, onstop, loops, onloops, onwalkloop, onrunloop }: Props =
-    $props();
+  let {
+    session,
+    view,
+    character,
+    attached,
+    onwalk,
+    onstop,
+    loops,
+    onloops,
+    onwalkloop,
+    onrunloop,
+    found,
+    onfind,
+    goAsked = 0,
+  }: Props = $props();
+
+  // The go box: open or not, what is typed, the row chosen, the results opened onto their
+  // rooms, and the boss-lair rows whose "stop short" was unticked.
+  let goOpen = $state(false);
+  let query = $state("");
+  let chosen = $state(-1);
+  let expanded = $state.raw<Set<number>>(new Set());
+  let walkIn = $state.raw<Set<string>>(new Set());
+  let goInput = $state<HTMLInputElement>();
+  let findTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const results = $derived(
+    query.trim().length >= MIN_QUERY && found && found.session === session?.id ? found.results : [],
+  );
+  const rows = $derived(goRows(results, expanded));
+
+  // Other results shown: the first row chosen, nothing opened or unticked.
+  $effect(() => {
+    void results;
+    untrack(() => {
+      chosen = rows.length > 0 ? 0 : -1;
+      expanded = new Set();
+      walkIn = new Set();
+    });
+  });
+
+  // Alt+G: open the box and put the cursor in it.
+  $effect(() => {
+    if (goAsked <= handledGo) return;
+    handledGo = goAsked;
+    untrack(() => {
+      goOpen = true;
+    });
+    queueMicrotask(() => goInput?.focus());
+  });
+
+  function toggleGo() {
+    goOpen = !goOpen;
+    if (goOpen) queueMicrotask(() => goInput?.focus());
+  }
+
+  function oninput() {
+    clearTimeout(findTimer);
+    const q = query.trim();
+    if (!session || q.length < MIN_QUERY) return;
+    const id = session.id;
+    findTimer = setTimeout(() => onfind?.(id, q), FIND_DEBOUNCE_MS);
+  }
+
+  function choose(i: number) {
+    chosen = i;
+    const c = centreOn(view, zoom, rows[i]?.room);
+    if (c) {
+      ({ panX, panY, level } = c);
+      moved = true;
+    }
+  }
+
+  function go(row: GoRow | undefined) {
+    const r = row?.room;
+    if (!r || !session) return;
+    onwalk(session.id, r.map, r.room, r.boss ? !walkIn.has(row.id) : undefined);
+  }
+
+  function toggleOpen(i: number) {
+    const next = new Set(expanded);
+    if (!next.delete(i)) next.add(i);
+    expanded = next;
+  }
+
+  function toggleShort(id: string) {
+    const next = new Set(walkIn);
+    if (!next.delete(id)) next.add(id);
+    walkIn = next;
+  }
+
+  function ongokeydown(e: KeyboardEvent) {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      choose(moveChoice(rows, chosen, e.key === "ArrowDown" ? 1 : -1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      go(rows[chosen] ?? rows[0]);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      clearTimeout(findTimer);
+      if (query) query = "";
+      else goOpen = false;
+    }
+  }
 
   let canvas = $state<HTMLCanvasElement>();
   let width = $state(0);
@@ -255,6 +372,9 @@
     <p class="msg">position unknown: re-sync or look</p>
   {:else}
     <div class="tools">
+      <button class="gobutton" aria-expanded={goOpen} onclick={toggleGo} title="Go to a room, a place or a monster by name (Alt+G)"
+        >go</button
+      >
       <span class="dim">level</span>
       <button aria-label="Level down" disabled={levels.indexOf(level) <= 0} onclick={() => changeLevel(-1)}>▼</button>
       <span class="level">{level}</span>
@@ -269,6 +389,54 @@
         <span class="maybe">{position?.candidates} candidates</span>
       {/if}
     </div>
+    {#if goOpen}
+      <div class="go" aria-label="Go to">
+        <input
+          bind:this={goInput}
+          bind:value={query}
+          {oninput}
+          onkeydown={ongokeydown}
+          placeholder="go to: part of a name (woo, chief, skali)"
+          aria-label="Go to"
+          spellcheck="false"
+          autocomplete="off"
+        />
+        {#if query.trim().length >= MIN_QUERY}
+          {#if !found || found.session !== session.id || found.query !== query.trim()}
+            {#if rows.length === 0}<p class="dim">Asking the brain…</p>{/if}
+          {:else if rows.length === 0}
+            <p class="dim">Nothing by that name.</p>
+          {/if}
+          {#if rows.length > 0}
+            <ul aria-label="Found">
+              {#each rows as row, i (row.id)}
+                <li class:sub={row.sub} class:on={chosen === i} class:none={!row.room}>
+                  {#if row.expandable}
+                    <button
+                      class="open"
+                      aria-label={expanded.has(row.result) ? "Close the rooms" : "Open the rooms"}
+                      aria-expanded={expanded.has(row.result)}
+                      onclick={() => toggleOpen(row.result)}>{expanded.has(row.result) ? "▾" : "▸"}</button
+                    >
+                  {/if}
+                  <button class="row" aria-pressed={chosen === i} onclick={() => choose(i)} ondblclick={() => go(row)}
+                    >{row.text}</button
+                  >
+                  {#if row.room?.boss}
+                    <label title="Stop in the room before the lair, to look before going in">
+                      <input type="checkbox" checked={!walkIn.has(row.id)} onchange={() => toggleShort(row.id)} /> stop short
+                    </label>
+                  {/if}
+                  {#if chosen === i && row.room}
+                    <button class="walk" onclick={() => go(row)}>go</button>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        {/if}
+      </div>
+    {/if}
     <div class="canvas" bind:clientWidth={width} bind:clientHeight={height}>
       {#if view}
         <canvas
@@ -367,6 +535,12 @@
     <div class="bar" aria-label="Walk">
       {#if walking}
         <span class="to">→ {walking.name}</span>
+        {#if walking.short_of}
+          <span class="short">one room short of {walking.short_of.name}{walking.short_of.bosses.length
+              ? ` (boss: ${walking.short_of.bosses.join(", ")})`
+              : ""}</span
+          >
+        {/if}
         <span class="dim">step {walking.step}, {walking.steps_left} left</span>
         <button class="stop" onclick={() => onstop(session.id)}>stop</button>
         <div class="route">{route || "…"}</div>
@@ -399,6 +573,55 @@
   .bar,
   .loops {
     border-top: 1px solid var(--frame);
+  }
+  .go {
+    padding: 2px 1ch;
+    max-height: 40%;
+    overflow-y: auto;
+    border-bottom: 1px solid var(--frame);
+  }
+  .go input:not([type]) {
+    width: 100%;
+    box-sizing: border-box;
+    font: inherit;
+    color: var(--vga-white);
+    background: var(--vga-black);
+    border: 1px solid var(--vga-darkgray);
+  }
+  .go ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .go li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1ch;
+  }
+  .go li.sub {
+    padding-left: 2ch;
+  }
+  .go p {
+    margin: 0;
+  }
+  .go .row,
+  .go .open {
+    color: var(--vga-lightgray);
+    background: none;
+    padding: 0;
+    text-align: left;
+  }
+  .go li.none .row {
+    color: var(--vga-darkgray);
+  }
+  .go li.on .row {
+    color: #000;
+    background: var(--vga-lightcyan);
+    padding: 0 1ch;
+  }
+  .go .walk {
+    background: var(--vga-lightgreen);
   }
   .loops {
     padding: 2px 1ch;
@@ -494,6 +717,9 @@
   }
   .to {
     color: var(--vga-lightgreen);
+  }
+  .short {
+    color: var(--vga-yellow);
   }
   .route {
     flex-basis: 100%;

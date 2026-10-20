@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import MapPanel from "../src/MapPanel.svelte";
+import type { FoundMessage } from "../src/lib/goto";
 import type { Loops, MapView } from "../src/lib/map";
 import type { CharacterState } from "../src/proto";
 
@@ -207,5 +208,117 @@ describe("the map panel", () => {
     mount({ character: { position: { map: 1, room: 10, candidates: 3 } } });
     expect(screen.getByText("3 candidates")).toBeTruthy();
     expect(screen.getByText("Click a room to walk there.")).toBeTruthy();
+  });
+});
+
+describe("the go box", () => {
+  const chiefFound = {
+    type: "found",
+    session: "aria",
+    query: "chief",
+    results: [
+      {
+        kind: "monster",
+        name: "minotaur chieftain",
+        rooms: [{ map: 1, room: 11, name: "Large Wooden Room", steps: 1, boss: true }],
+        count: 1,
+        monsters: ["minotaur chieftain"],
+      },
+      {
+        kind: "rooms",
+        name: "Chief's Hall",
+        rooms: [
+          { map: 1, room: 20, name: "Chief's Hall", steps: 5, boss: false },
+          { map: 1, room: 21, name: "Chief's Hall", no_route: true, boss: false },
+        ],
+        count: 2,
+      },
+    ],
+  } satisfies FoundMessage;
+
+  async function typeIn(text: string) {
+    const input = screen.getByRole("textbox", { name: "Go to" }) as HTMLInputElement;
+    await fireEvent.input(input, { target: { value: text } });
+    return input;
+  }
+
+  it("opens with the go button and asks the brain as you type, two letters or more", async () => {
+    vi.useFakeTimers();
+    try {
+      const onfind = vi.fn();
+      mount({ character: here, onfind });
+      expect(screen.queryByRole("textbox", { name: "Go to" })).toBeNull();
+      await fireEvent.click(screen.getByRole("button", { name: "go" }));
+      await typeIn("c");
+      vi.advanceTimersByTime(500);
+      expect(onfind).not.toHaveBeenCalled();
+      await typeIn("ch");
+      await typeIn("chi");
+      vi.advanceTimersByTime(500);
+      expect(onfind).toHaveBeenCalledOnce();
+      expect(onfind).toHaveBeenCalledWith("aria", "chi");
+      expect(screen.getByText("Asking the brain…")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lists what was found; Enter walks to the chosen row, stopping short of a boss lair", async () => {
+    const { onwalk } = mount({ character: here, found: chiefFound, goAsked: 1 });
+    const input = await typeIn("chief");
+    expect(screen.getByText("minotaur chieftain, boss, lairs at Large Wooden Room 1:11, 1 step")).toBeTruthy();
+    expect(screen.getByText("Chief's Hall, 2 rooms, nearest 5 steps")).toBeTruthy();
+    const short = screen.getByRole("checkbox", { name: "stop short" }) as HTMLInputElement;
+    expect(short.checked).toBe(true);
+    await fireEvent.keyDown(input, { key: "Enter" });
+    expect(onwalk).toHaveBeenLastCalledWith("aria", 1, 11, true);
+    // Unticked for this walk: it walks in.
+    await fireEvent.click(short);
+    await fireEvent.keyDown(input, { key: "Enter" });
+    expect(onwalk).toHaveBeenLastCalledWith("aria", 1, 11, false);
+    // Down to the room names: not a boss lair, so the brain's default.
+    await fireEvent.keyDown(input, { key: "ArrowDown" });
+    await fireEvent.keyDown(input, { key: "Enter" });
+    expect(onwalk).toHaveBeenLastCalledWith("aria", 1, 20, undefined);
+  });
+
+  it("opens a result onto its rooms; one with no route cannot be walked to", async () => {
+    const { onwalk } = mount({ character: here, found: chiefFound, goAsked: 2 });
+    const input = await typeIn("chief");
+    await fireEvent.click(screen.getByRole("button", { name: "Open the rooms" }));
+    await fireEvent.click(screen.getByText("Chief's Hall 1:21, no route"));
+    await fireEvent.keyDown(input, { key: "Enter" });
+    expect(onwalk).not.toHaveBeenCalled();
+    await fireEvent.click(screen.getByText("Chief's Hall 1:20, 5 steps"));
+    const go = screen.getAllByRole("button", { name: "go" });
+    await fireEvent.click(go[go.length - 1]);
+    expect(onwalk).toHaveBeenCalledExactlyOnceWith("aria", 1, 20, undefined);
+  });
+
+  it("Esc clears it, and again closes it", async () => {
+    mount({ character: here, found: chiefFound, goAsked: 3 });
+    const input = await typeIn("chief");
+    await fireEvent.keyDown(input, { key: "Escape" });
+    expect(input.value).toBe("");
+    expect(screen.queryByText(/minotaur chieftain/)).toBeNull();
+    await fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("textbox", { name: "Go to" })).toBeNull();
+  });
+
+  it("the walk bar says when a walk stops short of a boss lair", () => {
+    mount({
+      character: {
+        position: { map: 1, room: 10, candidates: 1 },
+        walking: {
+          to: { map: 1, room: 10 },
+          name: "Wooden Passage",
+          steps_left: 1,
+          step: 1,
+          commands: ["s"],
+          short_of: { map: 1, room: 11, name: "Large Wooden Room", bosses: ["minotaur chieftain"] },
+        },
+      },
+    });
+    expect(screen.getByText("one room short of Large Wooden Room (boss: minotaur chieftain)")).toBeTruthy();
   });
 });

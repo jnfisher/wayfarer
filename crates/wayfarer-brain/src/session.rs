@@ -13,12 +13,12 @@ use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
 use wayfarer_parse::{Event, Parser, Registry};
 use wayfarer_proto::{
-    BotAction, CharacterState, Chunk, GeneratedLoop, LoopStop, MegaMudLoop, RoomKey, SessionId,
-    SessionInfo, SessionState, ToGateway,
+    BotAction, CharacterState, Chunk, Found, FoundKind, FoundRoom, GeneratedLoop, LoopStop,
+    MegaMudLoop, RoomKey, SessionId, SessionInfo, SessionState, ToGateway,
 };
 use wayfarer_store::{BotRecord, BotState, EventKind, Store};
 use wayfarer_world::loops::{Area, circuits, hunt_rooms, megamud_through};
-use wayfarer_world::{Key, Traveller, route};
+use wayfarer_world::{self as world, Key, PlaceKind, Reach, Traveller, route};
 
 use crate::brain::Atlas;
 use crate::character::{Character, merge_patch};
@@ -254,7 +254,7 @@ pub(crate) struct Session {
     /// The walk in progress is the bot's.
     bot_walk: bool,
     /// A walk asked for while the bot's action was in flight: it starts once that is answered.
-    walk_after: Option<Key>,
+    walk_after: Option<(Key, bool)>,
     /// The generated loops of the areas asked for, made once each.
     loops: HashMap<LoopsKey, Arc<Vec<GeneratedLoop>>>,
     /// The loop being walked once.
@@ -1118,8 +1118,15 @@ impl Session {
         }
     }
 
-    /// `walk_to`: plan a route from the believed room and start on it.
-    pub fn walk_to(&mut self, to: Key, now: Instant, out: &mut Vec<ToGateway>) {
+    /// `walk_to`: plan a route from the believed room and start on it. `stop_short` (on when
+    /// left out): stop one room short of a boss lair.
+    pub fn walk_to(
+        &mut self,
+        to: Key,
+        stop_short: Option<bool>,
+        now: Instant,
+        out: &mut Vec<ToGateway>,
+    ) {
         let Some(atlas) = self.atlas.clone() else {
             out.push(self.warning("walk_to: the brain has no world pack"));
             return;
@@ -1138,22 +1145,79 @@ impl Session {
             self.cancel(out);
         }
         self.position.refresh(&atlas, &self.character.snapshot());
-        self.start_walk(&atlas, to, out);
+        self.start_walk(&atlas, to, stop_short.unwrap_or(true), out);
         self.drive(now, out);
         self.flush_views(out);
     }
 
     /// Start the player's walk (or loop walk) to `to`: after the walker's move in flight, or
-    /// once the bot's action in flight is answered (one action at a time).
-    fn start_walk(&mut self, atlas: &Atlas, to: Key, out: &mut Vec<ToGateway>) {
+    /// once the bot's action in flight is answered (one action at a time). `short`: stop one
+    /// room short of a boss lair.
+    fn start_walk(&mut self, atlas: &Atlas, to: Key, short: bool, out: &mut Vec<ToGateway>) {
         let busy = self.executor.in_flight().is_some();
         if busy && self.owner == Some(Owner::Bot) {
-            self.walk_after = Some(to);
+            self.walk_after = Some((to, short));
             return;
         }
         self.walk_after = None;
-        let next = self.walker.start(&mut self.position, atlas, to, busy);
+        let next = self
+            .walker
+            .start_with(&mut self.position, atlas, to, busy, false, short);
         self.apply(next, out);
+    }
+
+    /// `find`: rooms, places and monsters by name, nearest the believed room first.
+    pub fn find(&self, query: &str, out: &mut Vec<ToGateway>) {
+        let Some(atlas) = &self.atlas else {
+            out.push(self.warning("find: the brain has no world pack"));
+            return;
+        };
+        let found = atlas.finder.find(
+            &atlas.graph,
+            &atlas.monsters,
+            query,
+            self.position.best(),
+            &self.position.traveller,
+        );
+        let results = found
+            .into_iter()
+            .map(|f| Found {
+                kind: match f.kind {
+                    world::FoundKind::Rooms => FoundKind::Rooms,
+                    world::FoundKind::Monster => FoundKind::Monster,
+                    world::FoundKind::Place(p) => match p {
+                        PlaceKind::Shop => FoundKind::Shop,
+                        PlaceKind::Bank => FoundKind::Bank,
+                        PlaceKind::Trainer => FoundKind::Trainer,
+                        PlaceKind::Boss => FoundKind::Boss,
+                        PlaceKind::Other => FoundKind::Place,
+                    },
+                },
+                name: f.name,
+                rooms: f
+                    .rooms
+                    .into_iter()
+                    .map(|r| FoundRoom {
+                        map: r.key.0,
+                        room: r.key.1,
+                        name: r.name,
+                        steps: match r.reach {
+                            Reach::Steps(n) => Some(n),
+                            _ => None,
+                        },
+                        no_route: r.reach == Reach::NoRoute,
+                        boss: r.boss,
+                    })
+                    .collect(),
+                count: u32::try_from(f.count).unwrap_or(u32::MAX),
+                monsters: (!f.bosses.is_empty()).then_some(f.bosses),
+            })
+            .collect();
+        out.push(ToGateway::Found {
+            session: self.id.clone(),
+            query: query.to_owned(),
+            results,
+        });
     }
 
     /// `loops_request`: the loops of the area around `anchor` (the believed room by default).
@@ -1339,7 +1403,7 @@ impl Session {
             stops: order,
             next: 0,
         });
-        self.start_walk(&atlas, start, out);
+        self.start_walk(&atlas, start, false, out);
         self.drive(now, out);
         self.flush_views(out);
     }
@@ -1669,9 +1733,9 @@ impl Session {
             Some(Do::Walk(to)) => {
                 // Task's legs pipeline their moves.
                 let pipelined = self.bot.task_walking();
-                let next = self
-                    .walker
-                    .start_with(&mut self.position, &atlas, to, false, pipelined);
+                let next =
+                    self.walker
+                        .start_with(&mut self.position, &atlas, to, false, pipelined, false);
                 self.bot_walk = self.walker.walking();
                 if !self.bot_walk {
                     self.bot.forget();
@@ -1745,9 +1809,9 @@ impl Session {
                 Some(Owner::Bot) => {
                     let says = self.bot.outcome(&action, outcome);
                     self.say(says, out);
-                    if let Some(to) = self.walk_after.take() {
+                    if let Some((to, short)) = self.walk_after.take() {
                         self.position.refresh(&atlas, &self.character.snapshot());
-                        self.start_walk(&atlas, to, out);
+                        self.start_walk(&atlas, to, short, out);
                     }
                 }
                 _ => {

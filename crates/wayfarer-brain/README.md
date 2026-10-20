@@ -4,7 +4,8 @@ The brain (`docs/brain.md`): attaches to the gateway as its brain client, parses
 session's output, keeps a character model per session, sends the UIs events and snapshots,
 re-syncs a character (`st`, `exp`, `i`, `look`) at an idle prompt, and with a world pack keeps
 each character's position, serves the map panel (`map_view`), walks a character to a room
-(`walk_to`), lists the loops of an area and walks one once (`loops_request`, `walk_loop`),
+(`walk_to`, one room short of a boss lair by default), finds rooms, places and monsters by
+name (`find`), lists the loops of an area and walks one once (`loops_request`, `walk_loop`),
 plays it where it stands (`bot_control`: "fight here"), and runs a loop (`run_loop`: Task
 mode). When the gateway is about to log a
 character off (`logging_off`) it stops that character's bot, sends it nothing more and answers
@@ -47,7 +48,13 @@ brain.run(&mut link).await?;                             // Ok when the gateway 
 - **`walker.rs`**: the route and the per-step policy (doors, refusals, relocation, stops), and
   pipelining on a walk started with `start_with(.., pipelined)`: `Next::ahead` proposes the
   next plain move, the session sends it if the moment allows (`went_ahead`), and a step that
-  goes wrong voids it and replans once its answer is in.
+  goes wrong voids it and replans once its answer is in. With `short` (`walk_to`'s
+  `stop_short`, on unless false) and a boss lair as the destination (`Atlas::finder`), the
+  route is cut one room before it and replans keep out of it; arrival says "Stopped one room
+  short of ..." and `walking.short_of` names the lair.
+- **Go to** (`session.rs`): `find` answers with `found` from `Atlas::finder`
+  (`wayfarer_world::Finder`, built once per brain), from the believed room with the
+  character's `Traveller`.
 - **Loops** (`session.rs`): `loops_request` makes an area's loops with `wayfarer_world::loops`
   (cached per anchor, radius, level and doors); `walk_loop` is a `walk_to` per stop, on to the
   next when the walker says it arrived.

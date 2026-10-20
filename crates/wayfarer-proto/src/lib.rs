@@ -11,7 +11,8 @@
 //! `position` and `walking`), the bot's first slice (`bot_control`, the character's `bot`), and loops (`loops_request`,
 //! `loops`, `walk_loop`); M3 adds Task mode (`run_loop`, the bot's `task`), the log-off handshake (`logging_off`, `ready_to_leave`) and
 //! statistics (the character's `run`, `stats_request`, `stats`), and typing beside the bot
-//! (`user_input`, `keys_sent`, `arbitrate`, `input_held`). [`Family`] says who may send what.
+//! (`user_input`, `keys_sent`, `arbitrate`, `input_held`), and go to (`find`, `found`,
+//! `walk_to`'s `stop_short`, `walking`'s `short_of`). [`Family`] says who may send what.
 //! Adding a variant later bumps nothing; removing or changing one bumps [`PROTOCOL`].
 
 use std::path::Path;
@@ -322,6 +323,73 @@ pub struct Walking {
     /// text exit's phrase (`borrow skiff`). A closed door adds an `open` it does not list.
     #[serde(default)]
     pub commands: Vec<String>,
+    /// The walk stops one room short of this boss lair (`walk_to`'s `stop_short`): `to` is the
+    /// room before it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub short_of: Option<BossLair>,
+}
+
+/// A boss lair: a room whose spawn pool holds a monster that spawns one at a time, or that a
+/// MegaMud waypoint flags boss.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct BossLair {
+    pub map: i64,
+    pub room: i64,
+    pub name: String,
+    /// Its bosses, by name (none when only a waypoint says so).
+    pub bosses: Vec<String>,
+}
+
+/// What a `found` result names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum FoundKind {
+    /// Every room with this exact name.
+    Rooms,
+    /// Well-known places: a shop, bank or trainer by its room name, or a MegaMud waypoint
+    /// (a boss's, or another).
+    Shop,
+    Bank,
+    Trainer,
+    Boss,
+    Place,
+    /// A monster, with the rooms it spawns in.
+    Monster,
+}
+
+/// A room of a `found` result.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct FoundRoom {
+    pub map: i64,
+    pub room: i64,
+    pub name: String,
+    /// Route length from the character, when within 200 steps.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub steps: Option<u32>,
+    /// No way there from the character's room. Neither this nor `steps`: far, or the
+    /// character's room is unknown.
+    #[serde(default, skip_serializing_if = "is_false")]
+    #[ts(as = "Option<bool>", optional)]
+    pub no_route: bool,
+    /// A boss lair: `walk_to` stops one room short of it by default.
+    pub boss: bool,
+}
+
+/// One result of a `find`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct Found {
+    pub kind: FoundKind,
+    pub name: String,
+    /// The nearest of its rooms, at most 20.
+    pub rooms: Vec<FoundRoom>,
+    /// How many rooms it names in all.
+    pub count: u32,
+    /// The bosses of its boss lairs (for a monster, itself if it is one), by name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub monsters: Option<Vec<String>>,
 }
 
 /// What kind of place a room is, for the map panel to mark: from the room's type and shop,
@@ -635,6 +703,11 @@ pub enum ToClient {
         text: String,
         reason: String,
     },
+    Found {
+        session: SessionId,
+        query: String,
+        results: Vec<Found>,
+    },
 
     // From a UI, relayed to the brain.
     Resync {
@@ -649,6 +722,9 @@ pub enum ToClient {
         session: SessionId,
         map: i64,
         room: i64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        stop_short: Option<bool>,
     },
     WalkStop {
         session: SessionId,
@@ -686,6 +762,10 @@ pub enum ToClient {
     },
     StatsRequest {
         session: SessionId,
+    },
+    Find {
+        session: SessionId,
+        query: String,
     },
 
     /// To the brain only: a line went to the game, typed by a client or sent by a logon or
@@ -790,11 +870,15 @@ pub enum ToGateway {
         session: Option<SessionId>,
     },
     /// UI → brain: walk the character to this room, confirming each step; replaces a walk in
-    /// progress.
+    /// progress. `stop_short`: stop in the room before it when it is a boss lair; left out,
+    /// on for a boss lair (it changes nothing for another room).
     WalkTo {
         session: SessionId,
         map: i64,
         room: i64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        stop_short: Option<bool>,
     },
     /// UI → brain: stop walking after the move in flight.
     WalkStop { session: SessionId },
@@ -840,6 +924,9 @@ pub enum ToGateway {
     },
     /// UI → brain: send a `stats` message with the character's last runs.
     StatsRequest { session: SessionId },
+    /// UI → brain: find rooms, well-known places and monsters whose name holds `query` (two
+    /// characters or more, any case); the brain answers with `found`.
+    Find { session: SessionId, query: String },
 
     /// Brain → UIs: one parsed event, as `wayfarer-parse` produced it, with the output `seq`
     /// its line came from. The gateway never reads `fields`.
@@ -927,6 +1014,13 @@ pub enum ToGateway {
         text: String,
         reason: String,
     },
+    /// Brain → UIs: the answer to a `find`, best first: those with no way there last, then the
+    /// better match of the name, then the nearer; at most 30.
+    Found {
+        session: SessionId,
+        query: String,
+        results: Vec<Found>,
+    },
 
     /// Brain → gateway: the answer to `logging_off`: the brain sends the session nothing more,
     /// and the log-off may start.
@@ -976,6 +1070,7 @@ impl ToClient {
         "loops",
         "stats",
         "input_held",
+        "found",
         "resync",
         "state_request",
         "walk_to",
@@ -986,6 +1081,7 @@ impl ToClient {
         "walk_loop",
         "run_loop",
         "stats_request",
+        "find",
         "sent",
         "brain_state",
         "brain_lagged",
@@ -1015,6 +1111,7 @@ impl ToClient {
             Self::Loops { .. } => "loops",
             Self::Stats { .. } => "stats",
             Self::InputHeld { .. } => "input_held",
+            Self::Found { .. } => "found",
             Self::Resync { .. } => "resync",
             Self::StateRequest { .. } => "state_request",
             Self::WalkTo { .. } => "walk_to",
@@ -1025,6 +1122,7 @@ impl ToClient {
             Self::WalkLoop { .. } => "walk_loop",
             Self::RunLoop { .. } => "run_loop",
             Self::StatsRequest { .. } => "stats_request",
+            Self::Find { .. } => "find",
             Self::Sent { .. } => "sent",
             Self::BrainState { .. } => "brain_state",
             Self::BrainLagged { .. } => "brain_lagged",
@@ -1048,6 +1146,8 @@ impl ToClient {
             | Self::Loops { session, .. }
             | Self::Stats { session, .. }
             | Self::InputHeld { session, .. }
+            | Self::Found { session, .. }
+            | Self::Find { session, .. }
             | Self::Resync { session }
             | Self::WalkTo { session, .. }
             | Self::WalkStop { session }
@@ -1102,6 +1202,7 @@ impl ToGateway {
         "walk_loop",
         "run_loop",
         "stats_request",
+        "find",
         "event",
         "character",
         "character_patch",
@@ -1112,6 +1213,7 @@ impl ToGateway {
         "loops",
         "stats",
         "input_held",
+        "found",
         "ready_to_leave",
         "arbitrate",
     ];
@@ -1135,6 +1237,7 @@ impl ToGateway {
             Self::WalkLoop { .. } => "walk_loop",
             Self::RunLoop { .. } => "run_loop",
             Self::StatsRequest { .. } => "stats_request",
+            Self::Find { .. } => "find",
             Self::Event { .. } => "event",
             Self::Character { .. } => "character",
             Self::CharacterPatch { .. } => "character_patch",
@@ -1145,6 +1248,7 @@ impl ToGateway {
             Self::Loops { .. } => "loops",
             Self::Stats { .. } => "stats",
             Self::InputHeld { .. } => "input_held",
+            Self::Found { .. } => "found",
             Self::ReadyToLeave { .. } => "ready_to_leave",
             Self::Arbitrate { .. } => "arbitrate",
         }
@@ -1168,7 +1272,8 @@ impl ToGateway {
             | Self::LoopsRequest { .. }
             | Self::WalkLoop { .. }
             | Self::RunLoop { .. }
-            | Self::StatsRequest { .. } => Family::Control,
+            | Self::StatsRequest { .. }
+            | Self::Find { .. } => Family::Control,
             Self::Event { .. }
             | Self::Character { .. }
             | Self::CharacterPatch { .. }
@@ -1178,7 +1283,8 @@ impl ToGateway {
             | Self::MapView { .. }
             | Self::Loops { .. }
             | Self::Stats { .. }
-            | Self::InputHeld { .. } => Family::Brain,
+            | Self::InputHeld { .. }
+            | Self::Found { .. } => Family::Brain,
             Self::ReadyToLeave { .. } | Self::Arbitrate { .. } => Family::BrainToGateway,
         }
     }
@@ -1190,7 +1296,17 @@ impl ToGateway {
         Some(match self {
             Self::Resync { session } => ToClient::Resync { session },
             Self::StateRequest { session } => ToClient::StateRequest { session },
-            Self::WalkTo { session, map, room } => ToClient::WalkTo { session, map, room },
+            Self::WalkTo {
+                session,
+                map,
+                room,
+                stop_short,
+            } => ToClient::WalkTo {
+                session,
+                map,
+                room,
+                stop_short,
+            },
             Self::WalkStop { session } => ToClient::WalkStop { session },
             Self::MapRequest { session, radius } => ToClient::MapRequest { session, radius },
             Self::BotControl { session, action } => ToClient::BotControl { session, action },
@@ -1208,6 +1324,7 @@ impl ToGateway {
             Self::WalkLoop { session, id } => ToClient::WalkLoop { session, id },
             Self::RunLoop { session, id, skip } => ToClient::RunLoop { session, id, skip },
             Self::StatsRequest { session } => ToClient::StatsRequest { session },
+            Self::Find { session, query } => ToClient::Find { session, query },
             Self::Event {
                 session,
                 seq,
@@ -1285,6 +1402,15 @@ impl ToGateway {
                 session,
                 text,
                 reason,
+            },
+            Self::Found {
+                session,
+                query,
+                results,
+            } => ToClient::Found {
+                session,
+                query,
+                results,
             },
             Self::Hello { .. }
             | Self::InputLine { .. }

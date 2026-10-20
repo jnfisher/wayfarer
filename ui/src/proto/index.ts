@@ -2,6 +2,7 @@
 
 export const PROTOCOL = 1;
 
+export type { BossLair } from "./BossLair";
 export type { Bot } from "./Bot";
 export type { BotAction } from "./BotAction";
 export type { BotMode } from "./BotMode";
@@ -14,6 +15,9 @@ export type { Coins } from "./Coins";
 export type { Encumbrance } from "./Encumbrance";
 export type { ExitKind } from "./ExitKind";
 export type { ExpSample } from "./ExpSample";
+export type { Found } from "./Found";
+export type { FoundKind } from "./FoundKind";
+export type { FoundRoom } from "./FoundRoom";
 export type { GeneratedLoop } from "./GeneratedLoop";
 export type { LoopStop } from "./LoopStop";
 export type { MapExit } from "./MapExit";
