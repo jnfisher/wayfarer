@@ -445,3 +445,29 @@ async fn with_hp_short_it_rests_before_waiting_for_respawns() {
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "u", "rest", "d"]);
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_stop_it_cannot_get_to_is_passed_by_after_three_legs() {
+    // Each `n` toward the Dungeon Entrance is refused: three legs, then the stop is passed by
+    // this time round and the bot waits in the Arena.
+    let (mut g, run) = ready_with(arena(&[], 35)).await;
+    g.expect("look", arena(&[], 35));
+    for _ in 0..3 {
+        g.expect("n", says("You may not enter that room while in combat."));
+    }
+    g.run_loop(&[SMALL_CAVERN]).await;
+    let said = g.narrated("Waiting for respawns: next in 1 m").await;
+    assert!(
+        said.iter().any(|s| s
+            == "Stop 2/3 Dungeon, Entrance: could not get there; passing it by this time round"),
+        "{said:?}"
+    );
+    // The leg's narration is said once (it does not change); the walker's, each time.
+    let legs = said
+        .iter()
+        .filter(|s| s.starts_with("Walking to Dungeon, Entrance"))
+        .count();
+    assert_eq!(legs, 3, "{said:?}");
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "n", "n", "n"]);
+}

@@ -402,11 +402,8 @@ impl Mode for Task {
                 );
                 self.cleared[self.index] = Some(v.now);
                 self.tries = 0;
-                let mut step = self.next_leg(v);
+                let step = self.next_leg(v);
                 self.notes.insert(0, text);
-                if step.act.is_none() {
-                    step.narration = format!("{} (away from the loop's stops)", step.narration);
-                }
                 return step;
             }
             return self.leg(v, self.index);
