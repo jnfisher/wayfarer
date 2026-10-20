@@ -436,9 +436,10 @@ fn insert_simple(tx: &Transaction, table: &str, recs: &[Rec]) -> Result<u64, Err
     Ok(extra)
 }
 
-/// The zip to read MegaMud's files from: `path` itself, or the one `.zip` in a directory.
+/// Where to read MegaMud's files from: `path` itself (a zip, or an unpacked copy with its
+/// `Default/` directory), or the one `.zip` in a directory.
 pub fn find_megamud_zip(path: &Path) -> Result<PathBuf, Error> {
-    if !path.is_dir() {
+    if !path.is_dir() || path.join("Default").is_dir() {
         return Ok(path.to_path_buf());
     }
     let mut zips: Vec<PathBuf> = fs::read_dir(path)
@@ -462,7 +463,40 @@ struct MegaMudFiles {
     mps: Vec<(String, Vec<u8>)>,
 }
 
+/// `Default/Rooms.md` and `Default/*.mp` of an unpacked copy; `Rooms.md` may be left out.
+fn read_megamud_dir(dir: &Path) -> Result<MegaMudFiles, Error> {
+    let default = dir.join("Default");
+    let mut names: Vec<String> = fs::read_dir(&default)
+        .map_err(io_err(&default))?
+        .filter_map(|e| e.ok()?.file_name().into_string().ok())
+        .collect();
+    names.sort();
+    let mut rooms = None;
+    let mut mps = Vec::new();
+    for name in names {
+        let is_mp = name.to_ascii_lowercase().ends_with(".mp");
+        if !(is_mp || name.eq_ignore_ascii_case("Rooms.md")) {
+            continue;
+        }
+        let path = default.join(&name);
+        let bytes = fs::read(&path).map_err(io_err(&path))?;
+        if is_mp {
+            mps.push((name, bytes));
+        } else {
+            rooms = Some(bytes);
+        }
+    }
+    // Without Rooms.md there are no waypoints (a test fixture of a few paths).
+    Ok(MegaMudFiles {
+        rooms_md: rooms.unwrap_or_default(),
+        mps,
+    })
+}
+
 fn read_megamud(zip_path: &Path) -> Result<MegaMudFiles, Error> {
+    if zip_path.is_dir() {
+        return read_megamud_dir(zip_path);
+    }
     let file = File::open(zip_path).map_err(io_err(zip_path))?;
     let mut zip = zip::ZipArchive::new(file)?;
     let mut names: Vec<String> = zip
@@ -708,7 +742,18 @@ pub fn build(export: &Path, megamud: Option<&Path>, out: &Path) -> Result<BuildR
         report.runtime.push((t.into(), table_meta(t)?.0));
     }
     if let Some(zip) = &zip_path {
-        let bytes = fs::read(zip).map_err(io_err(zip))?;
+        let bytes = if zip.is_dir() {
+            // An unpacked copy: its files' names and bytes, in name order.
+            let f = read_megamud_dir(zip)?;
+            let mut all = f.rooms_md;
+            for (name, b) in f.mps {
+                all.extend(name.into_bytes());
+                all.extend(b);
+            }
+            all
+        } else {
+            fs::read(zip).map_err(io_err(zip))?
+        };
         meta.push(("megamud.zip_sha256".into(), sha256_hex(&bytes)));
         let rep = insert_megamud(&tx, &graph, zip)?;
         meta.push(("megamud.zip".into(), rep.zip.clone()));

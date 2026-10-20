@@ -12,15 +12,23 @@ use crate::gateway::{keep_lines, terminate};
 /// How long a brain may take to exit once told to.
 const EXIT_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Build the world pack from the fixtures' stock-world export into `dir`.
+/// Build the world pack from the fixtures' stock-world export into `dir`, with MegaMud's paths
+/// from `WAYFARER_MEGAMUD` (its zip or a directory) when set, else the fixtures' few paths
+/// (`tests/fixtures/megamud`: the Newhaven Arena loops among them).
 pub async fn world_pack(binary: &Path, dir: &Path) -> Result<PathBuf, String> {
     let export = Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/world");
+    let megamud = std::env::var_os("WAYFARER_MEGAMUD").map_or_else(
+        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/megamud"),
+        PathBuf::from,
+    );
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let out = dir.join("world.sqlite");
     let status = Command::new(binary)
         .arg("import-world")
         .arg("--export")
         .arg(&export)
+        .arg("--megamud")
+        .arg(&megamud)
         .arg("--out")
         .arg(&out)
         .stdout(Stdio::null())

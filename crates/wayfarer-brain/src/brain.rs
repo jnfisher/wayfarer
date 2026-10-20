@@ -12,7 +12,7 @@ use wayfarer_proto::{
     CharacterState, ClientKind, PROTOCOL, RoomKind, SessionInfo, ToClient, ToGateway, WorldPackInfo,
 };
 use wayfarer_store::Store;
-use wayfarer_world::{Finder, Key, MmLoop, Monsters, RoomGraph, WorldPack};
+use wayfarer_world::{Finder, Key, MmLoop, Monsters, PathKnowledge, RoomGraph, WorldPack};
 
 use crate::clock::{Clock, rfc3339};
 use crate::link::Link;
@@ -52,6 +52,8 @@ pub struct Atlas {
     /// MegaMud's verified loops, with the rooms each walk passed (none when the pack was built
     /// without MegaMud's paths).
     pub mm_loops: Vec<MmLoop>,
+    /// The exits MegaMud's verified paths take: the hidden exits a loop searches for.
+    pub knowledge: PathKnowledge,
     /// Rooms, places and monsters by name (`find`), and the boss lairs.
     pub finder: Finder,
 }
@@ -65,7 +67,10 @@ const SHOP_TRAINING: i64 = 8;
 
 impl Atlas {
     pub fn load(pack: &WorldPack) -> Result<Atlas, wayfarer_world::Error> {
-        let graph = RoomGraph::load(pack)?;
+        let mut graph = RoomGraph::load(pack)?;
+        // What MegaMud's paths know: the phrases Text exits with a blank message take.
+        let knowledge = PathKnowledge::load(pack, &graph)?;
+        graph.learn_phrases(&knowledge);
         let shops: HashMap<i64, i64> = pack.shop_types()?.into_iter().collect();
         let mut kinds = HashMap::new();
         for n in graph.nodes() {
@@ -101,6 +106,7 @@ impl Atlas {
         }
         let by_name = |v: Vec<(i64, String)>| v.into_iter().map(|(n, s)| (s, n)).collect();
         let monsters = Monsters::load(pack)?;
+        let mm_loops = wayfarer_world::loops::megamud_loops(pack, &graph, &monsters)?;
         Ok(Atlas {
             finder: Finder::load(pack, &graph, &monsters)?,
             graph,
@@ -108,7 +114,8 @@ impl Atlas {
             classes: by_name(pack.classes()?),
             races: by_name(pack.races()?),
             monsters,
-            mm_loops: wayfarer_world::loops::megamud_loops(pack)?,
+            mm_loops,
+            knowledge,
         })
     }
 }

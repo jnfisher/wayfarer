@@ -17,9 +17,11 @@ wayfarer import-world --export DIR [--megamud ZIP|DIR] --out PACK.sqlite
 
 - `--export`: the stock-world export, one `<TABLE>.jsonl.gz` per table and `MANIFEST.json`
   (`tests/fixtures/world/`). Each file's SHA-256 must match the manifest.
-- `--megamud` (optional): MegaMud's zip, or a directory holding exactly one zip.
-  `Default/Rooms.md` and `Default/*.mp` are read straight from the zip. Without it the MegaMud
-  tables are empty.
+- `--megamud` (optional): MegaMud's zip, a directory holding exactly one zip, or an unpacked
+  copy (a directory with `Default/` in it). `Default/Rooms.md` and `Default/*.mp` are read
+  straight from the zip or the directory; an unpacked copy may leave `Rooms.md` out (no
+  waypoints: the test fixture `tests/fixtures/megamud` is nine paths alone). Without it the
+  MegaMud tables are empty.
 - `--out`: the pack. It is written to `PACK.sqlite.partial` and renamed at the end, so a failed
   build leaves no pack. Re-running gives a byte-identical file.
 
@@ -198,7 +200,16 @@ let monsters = Monsters::load(&pack)?;
   per part when they don't all reach each other inside it (`Loop {name, rooms, steps, length,
   spawns}`). Newhaven, Village Entrance at radius 8: the Arena, the Dungeon Entrance and the
   Small Cavern, `n, n, s, s`. `megamud_loops` reads MegaMud's verified loops (walked to the end,
-  closed) with the rooms each walk passed; `megamud_through` keeps those passing the area.
+  closed) with the rooms each walk passed and the hunt rooms among them; `MmLoop::stops` is
+  those in path order, each once (`Mwodloop.mp`: 41 Wooden Passages, never the Chieftain's
+  room), `not_runnable` says "nothing to hunt on it" for a loop with none, `name` is its
+  description or its file. `megamud_through` keeps those passing the area.
+- **`PathKnowledge`** (`knowledge.rs`): for every step of a path whose walk reached its end,
+  the room it was typed in and the exit it took (`PathExit`: direction, exit type, the step's
+  actions, the phrase for a Text exit). `hidden_exits(file)` are the Hidden exits a path goes
+  through (`Ftrehkep.mp`: north of the Hidden Keep, 9:724); `phrases(room, dir)` what paths
+  type for a Text exit (`climb tree` at 9:735); `RoomGraph::learn_phrases` gives a Text exit
+  whose message has no text the phrase a path types (none on the stock pack).
 
 The graph has no state: doors relock at a cold start, found Hidden exits hide again after about
 five minutes (`kb/navigation.md`); the brain's `Traveller` holds what it learns.

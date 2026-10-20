@@ -78,10 +78,27 @@ const loops: Loops = {
       author: "someone",
       path: [
         { map: 1, room: 11 },
+        { map: 1, room: 12 },
         { map: 1, room: 11 },
       ],
       steps: 6,
       exact: 6,
+      stops: [stop(11, "Road"), stop(12, "Lair")],
+      runnable: true,
+    },
+    {
+      file: "OASISLOOP.mp",
+      description: "Oasis",
+      author: "someone",
+      path: [
+        { map: 1, room: 13 },
+        { map: 1, room: 13 },
+      ],
+      steps: 4,
+      exact: 4,
+      stops: [],
+      runnable: false,
+      reason: "nothing to hunt on it",
     },
   ],
 };
@@ -124,7 +141,7 @@ describe("the map panel", () => {
     expect(onloops).toHaveBeenCalledTimes(3);
   });
 
-  it("lists the generated and MegaMud loops; walk once walks a generated one", async () => {
+  it("lists the generated and MegaMud loops; walk once walks either", async () => {
     const { onloops, onwalkloop } = mount({ character: here, loops });
     await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
     // The loops it has are for this session: not asked again.
@@ -133,13 +150,14 @@ describe("the map panel", () => {
     expect(screen.getByText("2 stops, 2 steps, 1 door")).toBeTruthy();
     const gate = screen.getByRole("button", { name: "Gate" });
     expect(gate.getAttribute("title")).toBe("1. Road (arena)\n2. Lair");
-    expect(screen.getByText("ROADLOOP.mp")).toBeTruthy();
-    expect(screen.getByText("Road loop, 6 steps")).toBeTruthy();
-    // One walk once: MegaMud's loops are listed, not walked.
+    expect(screen.getByText("ROADLOOP.mp").getAttribute("title")).toBe("1. Road (arena)\n2. Lair");
+    expect(screen.getByText("Road loop, 2 stops, 6 steps")).toBeTruthy();
     const walks = screen.getAllByRole("button", { name: "walk once" });
-    expect(walks).toHaveLength(1);
+    expect(walks).toHaveLength(3);
     await fireEvent.click(walks[0]);
     expect(onwalkloop).toHaveBeenCalledWith("aria", "1:10:8:doors:0");
+    await fireEvent.click(walks[1]);
+    expect(onwalkloop).toHaveBeenLastCalledWith("aria", "ROADLOOP.mp");
     // Picking a loop keeps it drawn; picking it again lets it go.
     await fireEvent.click(gate);
     expect(gate.getAttribute("aria-pressed")).toBe("true");
@@ -163,7 +181,7 @@ describe("the map panel", () => {
     expect(lair.checked).toBe(false);
     // Not running yet: nothing is sent for a tick.
     expect(onrunloop).not.toHaveBeenCalled();
-    await fireEvent.click(screen.getByRole("button", { name: "run" }));
+    await fireEvent.click(screen.getAllByRole("button", { name: "run" })[0]);
     expect(onrunloop).toHaveBeenCalledWith("aria", "1:10:8:doors:0", [{ map: 1, room: 12 }]);
   });
 
@@ -189,13 +207,57 @@ describe("the map panel", () => {
     const { onrunloop } = mount({ character: running, loops });
     await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
     expect(screen.getByText("running: stop 2/2")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "run" })).toBeNull();
+    // Only the MegaMud loops' run buttons are left.
+    expect(screen.getAllByRole("button", { name: "run" })).toHaveLength(2);
     // The brain's ticks, without picking the loop.
     const road = screen.getByRole("checkbox", { name: "1. Road" }) as HTMLInputElement;
     expect(road.checked).toBe(false);
     expect(screen.getByRole("checkbox", { name: "2. Lair" }).closest("li")?.classList.contains("at")).toBe(true);
     await fireEvent.click(road);
     expect(onrunloop).toHaveBeenCalledWith("aria", "1:10:8:doors:0", []);
+  });
+
+  it("runs a MegaMud loop by its file; one that cannot run is greyed with the reason", async () => {
+    const { onrunloop } = mount({ character: here, loops });
+    await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
+    const runs = screen.getAllByRole("button", { name: "run" }) as HTMLButtonElement[];
+    expect(runs).toHaveLength(3);
+    // The Oasis has nothing to hunt.
+    expect(runs[2].disabled).toBe(true);
+    expect(runs[2].getAttribute("title")).toBe("nothing to hunt on it");
+    expect(screen.getByText("nothing to hunt on it")).toBeTruthy();
+    // Picked, the Road loop's stops can be unticked like a generated loop's.
+    await fireEvent.click(screen.getByRole("button", { name: "ROADLOOP.mp" }));
+    await fireEvent.click(screen.getByRole("checkbox", { name: "1. Road" }));
+    await fireEvent.click(runs[1]);
+    expect(onrunloop).toHaveBeenCalledWith("aria", "ROADLOOP.mp", [{ map: 1, room: 11 }]);
+  });
+
+  it("shows the MegaMud loop the bot runs", async () => {
+    const running: CharacterState = {
+      ...here,
+      bot: {
+        state: "running",
+        mode: "task",
+        narration: "Loop Road loop: to stop 1/2 Road (one step)",
+        task: {
+          loop_id: "ROADLOOP.mp",
+          loop_name: "Road loop",
+          stop: 0,
+          stops: [
+            { map: 1, room: 11 },
+            { map: 1, room: 12 },
+          ],
+          skip: [],
+        },
+      },
+    };
+    mount({ character: running, loops });
+    await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
+    expect(screen.getByText("running: stop 1/2")).toBeTruthy();
+    expect(screen.getByRole("list", { name: "Stops of Road loop" })).toBeTruthy();
+    // The generated loop is not the one running: its run button stays.
+    expect(screen.getAllByRole("button", { name: "run" })).toHaveLength(2);
   });
 
   it("says when there is nothing to hunt in reach", async () => {

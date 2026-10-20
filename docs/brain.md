@@ -234,17 +234,39 @@ can watch the route, and runs one ("Running a loop", below).
   north of that, 4 steps; without doors, the Arena alone.
 - **MegaMud's loops** through the area: those whose verification walk passes one of its rooms,
   only ever ones that walked to the end and closed in their start room. None unless the world
-  pack was built with MegaMud's paths.
+  pack was built with MegaMud's paths. Each lists its **stops**: the rooms of its walk, in path
+  order and each once, that are hunt rooms as above (`MmLoop::stops`; the format has no step
+  that waits or attacks, so no other room is a stop; a Wooden Passages loop passes many corridor
+  rooms twice, its stops once each). `runnable` says whether `run_loop` runs it for this
+  character, with a `reason` when not: "nothing to hunt on it" (7 of the 183 verified loops:
+  the Oasis, both Lost City loops, both Storm Giant Fortress loops, the Small Pyramid, the
+  White Forest), or "no way from Crypt, Stone Hallway to Crypt, Sealed Tomb: the exit north of
+  Crypt, Stone Hallway is for level 10 only" for a leg between two stops (in loop order, the
+  last back to the first) that no route takes. For a strong, high-level character 12 of the
+  183 have such a leg: Item exits (BHB1LOOP, BHB2LOOP, BHMPLOOP, BHRQLOO2, RP18LOOP, SHEHLOOP,
+  SHNELOOP), a Cast exit (LCSSLOOP), a level 10-only exit (CRSTLOOP), and doors or gates no
+  bash opens, which the path opens with a lever or a ring (DUELLOO2, SLSTLOO3, Vdtsloop).
+- **What the paths know** (`PathKnowledge`, built once from the pack): for every step of a path
+  whose walk reached its end, the room it is typed in and the exit it takes: a direction, with
+  the actions written before it (`n[search n]`), or a phrase that takes a Text exit (`climb
+  tree`). The Hidden exits a loop's path goes through become ones the character knows are there
+  when that loop is walked or run (`Traveller::searchable`): routes may take them, and the walker
+  searches before each ("Walking"). A Text exit whose message has no text takes the phrase a
+  path types for it. Only the loop's own path counts: the way into the Bandit Keep (`Ftrehkep.mp`:
+  search north at the Hidden Keep, `climb tree` on the Keep Wall) is another path, so
+  `HKEPLOOP.mp` from outside the keep is "no way to any of its ticked stops" with the reason.
 - Made once per anchor, radius, level, strength, picklocks and doors for the session, so asking
   again is cheap.
 
-`walk_loop {session, id}` walks a generated loop once: a `walk_to` to its stop nearest the
+`walk_loop {session, id}` walks a loop once (a generated loop's id, or a MegaMud loop's file):
+a `walk_to` to its stop nearest the
 character, then to each stop in turn, and back to that first one. Narrated: "Walking loop
 Newhaven: 3 stops, 4 steps, from Newhaven, Arena", the walker's own lines for each leg, "Loop
 stop 2/3: Dungeon, Entrance" at each stop, and "Loop Newhaven done: back at Newhaven, Arena".
 Whatever stops a walk stops the loop ("Loop Newhaven stopped: combat started"), and a
-`walk_to` replaces it. The `id` says the area and the loop, so a restarted brain walks the same
-one. MegaMud's loops are listed, not walked, until the Task mode runs them.
+`walk_to` replaces it. A generated loop's `id` says the area and the loop
+(`map:room:radius:doors|nodoors:index`), so a restarted brain walks the same one; a MegaMud
+loop's is its file (`Mwodloop.mp`, any case).
 
 ## Fight here
 
@@ -395,15 +417,28 @@ stayed):
 
 ## Running a loop
 
-Task mode (`docs/plan/03-engine.md` section 4): the bot hunts round a generated loop the player
-chose. `run_loop {session, id, skip?}` (the map panel's **run**) starts it, replacing a running
+Task mode (`docs/plan/03-engine.md` section 4): the bot hunts round a loop the player chose,
+generated or MegaMud's. `run_loop {session, id, skip?}` (the map panel's **run**; `id` a
+generated loop's id or a MegaMud loop's file) starts it, replacing a running
 "fight here"; `bot_control` stops, pauses and resumes it as it does "fight here". The snapshot's
 `bot.mode` is `task` while it walks between stops or waits, and `bot.task` says the loop, the
 stop it is at or walking to, and the stops it passes by.
 
 - **Start**: the bot re-syncs, then walks (each step confirmed, through the walker) to the
   loop's ticked stop nearest the character by route, the first of equals in loop order:
-  "Loop Newhaven: to stop 1/3 Newhaven, Arena (3 steps)".
+  "Loop Newhaven: to stop 1/3 Newhaven, Arena (3 steps)". With none reachable it does not
+  start, and says why for the nearest by any way at all: "Not running loop Bandit Keep: no way
+  to any of its ticked stops (the nearest, Courtyard, Entrance Door: the door east of
+  Darkwood Forest, Hidden Keep cannot be opened)", so the player can walk there by hand or
+  with go to.
+- **A MegaMud loop** runs like a generated one: its name is its description (its file when
+  that is blank), its stops are its hunt rooms in path order, and the laps, waits, rests and
+  statistics below are the same. Legs between stops are routed by the router, not replayed
+  from the file's commands: the path's rooms are a known way, so a leg along them costs no more
+  than the router's own, and one that leaves the path (a shortcut through a door) is taken
+  when the router finds it. The path's hidden exits are known for its legs ("Loops", above). A
+  loop listed not runnable is refused with its reason: "Not running loop Oasis Loop: nothing
+  to hunt on it".
 - **The mode stack** is Flee, Recover, Fight, then **Task**, then Idle: Task has control only
   when nothing above wants it. The stop it is at or walking to is *home*, so Recover rests from
   it and walks back to it, and Fight fights there, as in "fight here".
@@ -461,7 +496,8 @@ stop it is at or walking to, and the stops it passes by.
 - **Restarts**: the loop's id, its stops, the stop it is at or walking to and the stops it passes
   by are saved on every change ("Restarts", below), so a restarted brain goes on to the same
   stop: "Resumed: running loop Newhaven at stop 2/3 (brain restarted)". When the stops were
-  cleared is not kept: after a restart every stop counts as ready.
+  cleared is not kept: after a restart every stop counts as ready. A MegaMud loop is resumed by
+  its file under its own name, its path's hidden exits known again.
 - **Statistics**: the run's kills, flees, deaths and rests are recorded with the room they
   happened in ("Statistics", below), so a run on a loop has them per stop. A kill is named by the
   monster the room showed (`large giant rat`), not the first of every monster that shares its
@@ -583,5 +619,6 @@ shows them ([web-ui.md](web-ui.md) "The stats").
 
 No Maintain mode; no "Where next?" and no moving on to the next area (M4: the loop is the
 player's choice); no "after this fight" control for the typed-line queue; the refused exits and
-the stops' cleared times are forgotten when the brain restarts; MegaMud's loops and
-player-recorded ones are not walked or run (only generated loops are).
+the stops' cleared times are forgotten when the brain restarts; player-recorded loops are not
+walked or run; a MegaMud step's actions other than a search (`n[pull lever]`, `show signet
+ring`) are known but not typed, so the doors and gates they open are not routed through.

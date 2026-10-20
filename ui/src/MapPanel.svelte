@@ -23,7 +23,7 @@
   } from "./lib/map";
   import { centreOn, FIND_DEBOUNCE_MS, goRows, MIN_QUERY, moveChoice, type FoundMessage, type GoRow } from "./lib/goto";
   import { FONT_FAMILY } from "./lib/theme";
-  import type { CharacterState, GeneratedLoop, LoopStop, MapRoom, RoomKey, SessionInfo } from "./proto";
+  import type { CharacterState, GeneratedLoop, LoopStop, MapRoom, MegaMudLoop, RoomKey, SessionInfo } from "./proto";
 
   interface Props {
     /** The focused tile's session, which the panel follows. */
@@ -39,9 +39,9 @@
     loops?: Loops;
     /** Ask for the loops around the character, through doors or not. */
     onloops?: (session: string, doors: boolean) => void;
-    /** Walk a generated loop once. */
+    /** Walk a loop once (a generated loop's id, or a MegaMud loop's file). */
     onwalkloop?: (session: string, id: string) => void;
-    /** Run a generated loop, passing by the stops in `skip` (the unticked ones). */
+    /** Run a loop (by id or file), passing by the stops in `skip` (the unticked ones). */
     onrunloop?: (session: string, id: string, skip: RoomKey[]) => void;
     /** The brain's last `found` for it. */
     found?: FoundMessage;
@@ -186,25 +186,31 @@
     const g = loops.generated.find((l) => l.id === id);
     if (g) return { path: g.path, stops: g.stops.map((s) => ({ map: s.map, room: s.room })) };
     const m = loops.megamud.find((l) => `mm:${l.file}` === id);
-    return m ? { path: m.path, stops: [] } : null;
+    return m ? { path: m.path, stops: m.stops.map((s) => ({ map: s.map, room: s.room })) } : null;
   }
   const drawnLoop = $derived(loopShape(hoverLoop ?? pickedLoop));
+
+  /** A loop `run_loop` names: a generated loop by its id, a MegaMud loop by its file. */
+  type Runnable = Pick<GeneratedLoop, "id" | "name" | "stops">;
+  function mmRunnable(m: MegaMudLoop): Runnable {
+    return { id: m.file, name: m.description || m.file, stops: m.stops };
+  }
 
   // Running a loop: the bot's task, while it is not stopped. Its stops' ticks are the brain's;
   // another loop's are kept here until it is run.
   const task = $derived(character?.bot && character.bot.state !== "stopped" ? character.bot.task : undefined);
   let unticked = $state<Record<string, string[]>>({});
 
-  function skipped(l: GeneratedLoop): string[] {
+  function skipped(l: Runnable): string[] {
     return task?.loop_id === l.id ? task.skip.map(keyOf) : (unticked[l.id] ?? []);
   }
 
-  function skipOf(l: GeneratedLoop, keys: string[]): RoomKey[] {
+  function skipOf(l: Runnable, keys: string[]): RoomKey[] {
     return l.stops.filter((s) => keys.includes(keyOf(s))).map((s) => ({ map: s.map, room: s.room }));
   }
 
   /** Tick or untick a stop: for the loop the bot runs, the brain is told at once. */
-  function toggleStop(l: GeneratedLoop, s: LoopStop) {
+  function toggleStop(l: Runnable, s: LoopStop) {
     const k = keyOf(s);
     const was = skipped(l);
     const now = was.includes(k) ? was.filter((x) => x !== k) : [...was, k];
@@ -212,7 +218,12 @@
     if (session && task?.loop_id === l.id) onrunloop?.(session.id, l.id, skipOf(l, now));
   }
 
-  function runLoop(l: GeneratedLoop) {
+  /** A loop's tooltip: its stops in order. */
+  function stopsTip(stops: LoopStop[]): string {
+    return stops.map((s, i) => `${i + 1}. ${s.name}${s.arena ? " (arena)" : s.lair ? " (lair)" : ""}`).join("\n");
+  }
+
+  function runLoop(l: Runnable) {
     if (session) onrunloop?.(session.id, l.id, skipOf(l, skipped(l)));
   }
   const loopsAround = $derived.by(() => {
@@ -363,6 +374,27 @@
   const route = $derived(walkText(walking));
 </script>
 
+<!-- A loop's run button (or that it is running), and its stops to tick while picked or running. -->
+{#snippet runAndStops(l: Runnable, picked: boolean)}
+  {#if task?.loop_id === l.id}
+    <span class="running">running: stop {task.stop + 1}/{task.stops.length}</span>
+  {:else}
+    <button class="run" onclick={() => runLoop(l)} title="Hunt round this loop: fight at each ticked stop">run</button>
+  {/if}
+  {#if picked || task?.loop_id === l.id}
+    <ul class="stops" aria-label={`Stops of ${l.name}`}>
+      {#each l.stops as s, i (keyOf(s))}
+        <li class:at={task?.loop_id === l.id && task.stop === i}>
+          <label title={stopTip(s)}>
+            <input type="checkbox" checked={!skipped(l).includes(keyOf(s))} onchange={() => toggleStop(l, s)} />
+            {i + 1}. {s.name}
+          </label>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+{/snippet}
+
 <div class="map">
   {#if !attached}
     <p class="msg">No brain attached: the map needs one (<code>wayfarer brain</code>).</p>
@@ -479,7 +511,7 @@
                 <button
                   class="pick"
                   aria-pressed={pickedLoop === l.id}
-                  title={l.stops.map((s, i) => `${i + 1}. ${s.name}${s.arena ? " (arena)" : s.lair ? " (lair)" : ""}`).join("\n")}
+                  title={stopsTip(l.stops)}
                   onclick={() => pickLoop(l.id)}
                   onpointerenter={() => (hoverLoop = l.id)}
                   onpointerleave={() => (hoverLoop = null)}
@@ -488,23 +520,7 @@
                 >
                 <span class="dim">{loopText(l)}</span>
                 <button class="walk" onclick={() => session && onwalkloop?.(session.id, l.id)}>walk once</button>
-                {#if task?.loop_id === l.id}
-                  <span class="running">running: stop {task.stop + 1}/{task.stops.length}</span>
-                {:else}
-                  <button class="run" onclick={() => runLoop(l)} title="Hunt round this loop: fight at each ticked stop">run</button>
-                {/if}
-                {#if pickedLoop === l.id || task?.loop_id === l.id}
-                  <ul class="stops" aria-label={`Stops of ${l.name}`}>
-                    {#each l.stops as s, i (keyOf(s))}
-                      <li class:at={task?.loop_id === l.id && task.stop === i}>
-                        <label title={stopTip(s)}>
-                          <input type="checkbox" checked={!skipped(l).includes(keyOf(s))} onchange={() => toggleStop(l, s)} />
-                          {i + 1}. {s.name}
-                        </label>
-                      </li>
-                    {/each}
-                  </ul>
-                {/if}
+                {@render runAndStops(l, pickedLoop === l.id)}
               </li>
             {:else}
               <li class="dim">No hunt rooms in reach.</li>
@@ -518,13 +534,21 @@
                   <button
                     class="pick"
                     aria-pressed={pickedLoop === `mm:${m.file}`}
+                    title={stopsTip(m.stops)}
                     onclick={() => pickLoop(`mm:${m.file}`)}
                     onpointerenter={() => (hoverLoop = `mm:${m.file}`)}
                     onpointerleave={() => (hoverLoop = null)}
                     onfocus={() => (hoverLoop = `mm:${m.file}`)}
                     onblur={() => (hoverLoop = null)}>{m.file}</button
                   >
-                  <span class="dim">{m.description}, {m.steps} steps</span>
+                  <span class="dim">{m.description}, {m.stops.length} stops, {m.steps} steps</span>
+                  <button class="walk" onclick={() => session && onwalkloop?.(session.id, m.file)}>walk once</button>
+                  {#if m.runnable}
+                    {@render runAndStops(mmRunnable(m), pickedLoop === `mm:${m.file}`)}
+                  {:else}
+                    <button class="run" disabled title={m.reason}>run</button>
+                    <span class="dim reason">{m.reason}</span>
+                  {/if}
                 </li>
               {/each}
             </ul>
@@ -664,6 +688,10 @@
   }
   .loops .run {
     background: var(--vga-lightgreen);
+  }
+  .loops .run:disabled {
+    background: var(--vga-darkgray);
+    cursor: default;
   }
   .loops .running {
     color: var(--vga-lightgreen);

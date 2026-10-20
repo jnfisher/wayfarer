@@ -42,8 +42,9 @@ impl Game {
 async fn the_loops_of_the_area_around_the_character() {
     let (mut g, run) = Game::start(SessionState::Realm, VILLAGE_ENTRANCE).await;
     let (generated, megamud) = g.loops_request(None).await;
-    // The fixture pack has no MegaMud paths.
-    assert_eq!(megamud, 0);
+    // The fixture pack's MegaMud loops through Newhaven: NARNLOO2.mp, NARNLOO3.mp and
+    // Narnloop.mp (`megamud.rs`).
+    assert_eq!(megamud, 3);
     assert_eq!(generated.len(), 1);
     let l = &generated[0];
     assert_eq!(

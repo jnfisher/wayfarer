@@ -246,6 +246,8 @@ scripts/live-check.sh --scenario soak --char NAME --minutes N [--anchor MAP:ROOM
     [--radius R] [--skip MAP:ROOM ...] [--loop ID] [--flee-from NAME ...]
 scripts/live-check.sh --scenario soak --char Waychecka --minutes 3 --anchor 1:2140 \
     --skip 1:2152 --skip 1:2156          # the smoke run: Newhaven, the Lairs unticked
+scripts/live-check.sh --scenario soak --char Waychecka --minutes 3 --anchor 1:2140 \
+    --loop NARNLOO2.mp                   # a MegaMud loop: the Arena and the Dungeon Entrance
 ```
 
 A character runs a loop for N minutes and the numbers come out. It is for M3's acceptance run
@@ -258,7 +260,11 @@ the numbers are.
    (`docs/brain.md` "Monster rules"), so a soak can declare one without a UI. The gigantic
    black ooze is *flee from* by default.
 2. **The loop**: `loops_request` around the anchor (default: the room the re-sync placed the
-   character in; radius 8) and the first generated loop, or `--loop ID`.
+   character in; radius 8) and the first generated loop, or `--loop ID`: a generated loop's
+   id, or a MegaMud loop's file (`--loop NARNLOO2.mp`, any case; one the brain lists not
+   runnable fails the step with its reason). The live check's world pack has MegaMud's paths
+   from `WAYFARER_MEGAMUD` (the zip or a directory) when set, else the nine of
+   `tests/fixtures/megamud` (the three Newhaven Arena loops among them).
 3. **`run_loop`** with the `--skip` stops, watched for N minutes. A line a minute is printed:
    time, room, HP, exp gained, kills, flees, deaths, the bot's narration. The run ends at once
    on a death (a warning that says `killed`, or a death in the run's numbers) or when the bot
@@ -272,6 +278,7 @@ the numbers are.
 
    | Row | From |
    |---|---|
+   | Loop | the loop run: its name, kind and id ("Newhaven Arena (MegaMud, NARNLOO2.mp)") |
    | Minutes, kills, deaths, flees, rests | the run in the store |
    | Exp gained, exp per hour | the store's exp over the run's wall time (Flee and Recover's wait included) |
    | Kills by monster | `monster_death` events; one death text can name several monsters and the line does not say which, so they count under their joined names |

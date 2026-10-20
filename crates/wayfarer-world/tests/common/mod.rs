@@ -1,4 +1,5 @@
-//! The pack built from `tests/fixtures/world`, shared by the tests that read one.
+//! The pack built from `tests/fixtures/world` and the MegaMud paths in `tests/fixtures/megamud`,
+//! shared by the tests that read one.
 
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
@@ -12,14 +13,23 @@ pub fn repo(rel: &str) -> PathBuf {
 }
 
 /// The pack, built once into the target directory's test scratch space and reused by every
-/// later test process. The name carries a hash of the export's MANIFEST.json and the builder's
-/// source, so a changed export or builder builds a new pack; each build goes to a file of its
+/// later test process. The name carries a hash of the export's MANIFEST.json, the MegaMud
+/// files and the builder's source, so a changed export or builder builds a new pack; each build goes to a file of its
 /// own and is renamed into place, so test processes building at once never read a partial pack.
 pub fn pack_path() -> &'static Path {
     static PATH: OnceLock<PathBuf> = OnceLock::new();
     PATH.get_or_init(|| {
         let export = repo("tests/fixtures/world");
-        let manifest = std::fs::read(export.join("MANIFEST.json")).unwrap();
+        let megamud = repo("tests/fixtures/megamud");
+        let mut manifest = std::fs::read(export.join("MANIFEST.json")).unwrap();
+        let mut files: Vec<_> = std::fs::read_dir(megamud.join("Default"))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect();
+        files.sort();
+        for f in files {
+            manifest.extend(std::fs::read(f).unwrap());
+        }
         let builder = [
             include_str!("../../src/build.rs"),
             include_str!("../../src/schema.rs"),
@@ -62,7 +72,7 @@ pub fn pack_path() -> &'static Path {
             }
         }
         let mine = dir.join(format!("world-{tag:016x}.{}.sqlite", std::process::id()));
-        wayfarer_world::build(&export, None, &mine).unwrap();
+        wayfarer_world::build(&export, Some(&megamud), &mine).unwrap();
         std::fs::rename(&mine, &path).unwrap();
         let _ = std::fs::remove_file(&lock);
         path

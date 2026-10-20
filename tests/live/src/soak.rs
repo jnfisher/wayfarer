@@ -16,7 +16,8 @@ pub struct SoakArgs {
     pub radius: u32,
     /// Stops the loop passes by (`--skip MAP:ROOM`, repeatable).
     pub skip: Vec<(i64, i64)>,
-    /// A generated loop's id; the first one listed when absent.
+    /// A generated loop's id or a MegaMud loop's file (`Mwodloop.mp`); the first generated
+    /// loop listed when absent.
     pub loop_id: Option<String>,
 }
 
@@ -124,6 +125,8 @@ pub fn relocations<'a>(notices: impl IntoIterator<Item = &'a str>) -> usize {
 /// The numbers a soak prints.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Tally {
+    /// The loop run, with its kind and id: "Wooden Passages (MegaMud, Mwodloop.mp)".
+    pub loop_name: String,
     pub minutes: u64,
     pub exp_gained: i64,
     pub exp_per_hour: i64,
@@ -155,6 +158,7 @@ pub fn table(t: &Tally) -> String {
             .join(", ")
     };
     let rows = [
+        ("Loop", t.loop_name.clone()),
         ("Minutes", t.minutes.to_string()),
         ("Exp gained", t.exp_gained.to_string()),
         ("Exp per hour", t.exp_per_hour.to_string()),
@@ -216,13 +220,13 @@ pub async fn scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
         started,
         &picked
             .as_ref()
-            .map(|(_, s)| s.clone())
+            .map(|(_, _, s)| s.clone())
             .map_err(Clone::clone),
     );
     let mut ok = picked.is_ok();
     let mut tally = Tally::default();
     let mut ended_early = None;
-    if let Ok((id, _)) = picked {
+    if let Ok((id, label, _)) = picked {
         // Run it.
         let from = (gw.notices.len(), gw.warnings.len(), gw.events.len());
         let parse_from = parse_counts(&gw.character);
@@ -274,6 +278,7 @@ pub async fn scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
         // The numbers: the store's run (ended now) for the counts, the stream for the rest.
         tally = collect(gw, from, (parse_from, ended), (longest_gap, run_secs), &dir).await;
         tally.ended_early = ended_early.clone();
+        tally.loop_name = label;
         save_streams(gw, from, &dir);
 
         // Back to the anchor.
@@ -285,21 +290,25 @@ pub async fn scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
     stop_brain(ctx, running).await && ok && ended_early.is_none()
 }
 
-/// `loops_request` around `anchor` and the loop to run: `wanted` by id, else the first
-/// generated; its id and a note on what was listed.
+/// `loops_request` around `anchor` and the loop to run: `wanted` by a generated loop's id or
+/// a MegaMud loop's file, else the first generated; its id, its name and kind, and a note on
+/// what was listed.
 async fn pick_loop(
     gw: &mut Gateway,
     anchor: (i64, i64),
     radius: u32,
     wanted: Option<&str>,
-) -> Result<(String, String), String> {
+) -> Result<(String, String, String), String> {
     gw.loops_request(anchor, radius).await?;
     let warnings = gw.warnings.len();
     gw.wait_for(Duration::from_secs(15), "the loops", |g| {
         if let Some(w) = g.warnings[warnings..].first() {
             return Some(Err(w.clone()));
         }
-        let wayfarer_proto::ToClient::Loops { generated, .. } = g.loops.as_ref()? else {
+        let wayfarer_proto::ToClient::Loops {
+            generated, megamud, ..
+        } = g.loops.as_ref()?
+        else {
             return None;
         };
         let listed = generated
@@ -313,14 +322,43 @@ async fn pick_loop(
                     l.steps
                 )
             })
+            .chain(megamud.iter().map(|m| {
+                let run = m.reason.as_deref().map_or_else(
+                    || format!("{} stops", m.stops.len()),
+                    |why| format!("not runnable: {why}"),
+                );
+                format!("{} (MegaMud {}, {run})", m.description, m.file)
+            }))
             .collect::<Vec<_>>()
             .join("; ");
+        let generated_one = |l: &wayfarer_proto::GeneratedLoop| {
+            Ok((l.id.clone(), format!("{} (generated, {})", l.name, l.id)))
+        };
         let chosen = match wanted {
-            Some(id) => generated.iter().find(|l| l.id == id),
-            None => generated.first(),
+            Some(id) => generated
+                .iter()
+                .find(|l| l.id == id)
+                .map(generated_one)
+                .or_else(|| {
+                    let m = megamud.iter().find(|m| m.file.eq_ignore_ascii_case(id))?;
+                    let name = if m.description.trim().is_empty() {
+                        &m.file
+                    } else {
+                        &m.description
+                    };
+                    Some(match &m.reason {
+                        None => Ok((m.file.clone(), format!("{name} (MegaMud, {})", m.file))),
+                        Some(why) => Err(format!("MegaMud loop {} is not runnable: {why}", m.file)),
+                    })
+                }),
+            None => generated.first().map(generated_one),
         };
         Some(match chosen {
-            Some(l) => Ok((l.id.clone(), format!("running {}; listed {listed}", l.name))),
+            Some(Ok((id, label))) => {
+                let note = format!("running {label}; listed {listed}");
+                Ok((id, label, note))
+            }
+            Some(Err(why)) => Err(format!("{why}; listed {listed}")),
             None => Err(format!("no such loop ({wanted:?}); listed {listed:?}")),
         })
     })
@@ -556,6 +594,7 @@ mod tests {
     #[test]
     fn the_table_gives_every_number_the_card_names() {
         let t = Tally {
+            loop_name: "Wooden Passages (MegaMud, Mwodloop.mp)".to_owned(),
             minutes: 3,
             exp_gained: 150,
             exp_per_hour: 3000,
@@ -569,6 +608,7 @@ mod tests {
         };
         let text = table(&t);
         for want in [
+            "| Loop | Wooden Passages (MegaMud, Mwodloop.mp) |",
             "| Minutes | 3 |",
             "| Exp per hour | 3000 |",
             "| Kills | 3 (large rat 3) |",

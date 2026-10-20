@@ -460,6 +460,28 @@ impl RoomGraph {
         self.edges(key).iter().find(|e| e.dir == dir)
     }
 
+    /// Give the Text exits whose message has no text the phrases MegaMud's paths type for
+    /// them, so they can be taken; returns how many it gave one.
+    pub fn learn_phrases(&mut self, k: &crate::knowledge::PathKnowledge) -> usize {
+        let mut learned = 0;
+        for ((from, dir), phrases) in k.text_exits() {
+            let Some(&i) = self.index.get(&from) else {
+                continue;
+            };
+            let range = self.nodes[i as usize].edges.clone();
+            let edges = &mut self.edges[range.start as usize..range.end as usize];
+            if let Some(e) = edges.iter_mut().find(|e| e.dir == dir)
+                && e.kind == ExitType::Text
+                && e.command.is_empty()
+            {
+                e.command = phrases[0].clone();
+                e.phrases = phrases.to_vec();
+                learned += 1;
+            }
+        }
+        learned
+    }
+
     /// The rooms with exactly this name, in key order.
     pub fn rooms_named(&self, name: &str) -> Vec<Key> {
         self.by_name.get(name).map_or_else(Vec::new, |v| {
