@@ -9,6 +9,8 @@ use std::time::Duration;
 use tokio::time::Instant;
 use wayfarer_parse::typed::{GameEvent, Refusal};
 
+use crate::commands;
+
 /// How long an action waits for its answer. A direction command waits a tick before the game
 /// takes it (`kb/navigation.md`), well within this.
 pub const ACTION_TIMEOUT: Duration = Duration::from_secs(5);
@@ -109,41 +111,15 @@ pub const ATTACK_REFUSALS: [&str; 8] = [
     "ambiguous",
 ];
 
-/// The game's command words for an attack (`kb/screen-parsing.md` "Command words": every
-/// prefix from the shortest accepted form to the full word): (full word, shortest form).
-const ATTACKS: [(&str, usize); 9] = [
-    ("attack", 1),
-    ("au", 2),
-    ("aa", 2),
-    ("allout", 2),
-    ("force", 4),
-    ("bash", 3),
-    ("backstab", 5),
-    ("bs", 2),
-    ("punch", 2),
-];
+/// Whether `command` starts an attack: its first word is one of the game's attack commands
+/// ([`commands::Kind::Attack`], every abbreviation the game accepts). `bash <dir>` bashes a
+/// door, not a monster.
+pub fn is_attack(command: &str) -> bool {
+    commands::classify(command).kind == commands::Kind::Attack
+}
 
 fn abbreviates(word: &str, full: &str, shortest: usize) -> bool {
     word.len() >= shortest && full.starts_with(word)
-}
-
-/// Whether `command` starts an attack. `bash <dir>` bashes a door, not a monster.
-pub fn is_attack(command: &str) -> bool {
-    let lower = command.trim().to_ascii_lowercase();
-    let mut words = lower.split_whitespace();
-    let Some(verb) = words.next() else {
-        return false;
-    };
-    let attack = ATTACKS
-        .iter()
-        .any(|&(full, shortest)| abbreviates(verb, full, shortest))
-        || abbreviates(verb, "purg", 3)
-        || abbreviates(verb, "killlblo", 3);
-    let at_door = abbreviates(verb, "bash", 3)
-        && words
-            .next()
-            .is_some_and(|w| wayfarer_world::mm::direction(w).is_some());
-    attack && !at_door
 }
 
 /// Whether `command` is `train stats` (or an abbreviation of it).

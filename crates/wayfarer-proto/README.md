@@ -11,7 +11,7 @@ means is in [`docs/protocol.md`](../../docs/protocol.md).
 - `ToClient` (gateway → client) and `ToGateway` (client → gateway) are enums tagged by a
   `"type"` field. The brain's messages and the UIs' control messages are in both, since the
   gateway relays them: `ToGateway::family()` says who may send one (`Family::Gateway`: anyone;
-  `Control`: a UI; `Brain`: the brain) and `into_relayed()` turns it into the `ToClient` the
+  `Control`: a UI; `Brain` and `BrainToGateway`: the brain) and `into_relayed()` turns it into the `ToClient` the
   gateway passes on. `ToClient::session()` names the session a message is about, for
   subscription filtering.
 - `CharacterState` is the brain's snapshot of a character: flat, every field optional and left
@@ -47,6 +47,8 @@ Gateway → client:
 {"type":"brain_state","attached":true}
 {"type":"brain_lagged","missed":17}
 {"type":"logging_off","session":"kasimir"}
+{"type":"user_input","session":"kasimir","text":"a rat","from":"ui-3","force":true}
+{"type":"keys_sent","session":"kasimir"}
 ```
 
 Client → gateway:
@@ -57,6 +59,7 @@ Client → gateway:
 {"type":"input_keys","session":"kasimir","bytes":[13]}
 {"type":"history_request","session":"kasimir","after_seq":42,"max_chunks":2000}
 {"type":"subscribe","sessions":["kasimir"]}
+{"type":"user_input","session":"kasimir","text":"a rat","force":true}
 {"type":"resync","session":"kasimir"}
 {"type":"state_request","session":"kasimir"}
 {"type":"walk_to","session":"kasimir","map":1,"room":2150}
@@ -80,12 +83,15 @@ Brain → gateway → UIs (the same JSON both ways):
 {"type":"map_view","session":"kasimir","center":{"map":1,"room":2140},"level":0,"rooms":[{"map":1,"room":2140,"name":"Newhaven, Village Entrance","x":0,"y":0,"level":0,"spawns":false,"visited":true,"candidate":true,"collides":false},{"map":1,"room":2141,"name":"Newhaven, Weapons Shop","x":0,"y":-1,"level":0,"spawns":false,"kind":"shop","visited":false,"candidate":false,"collides":false}],"exits":[{"from":{"map":1,"room":2140},"to":{"map":1,"room":2141},"dir":"n","kind":"plain","one_way":false}],"route":[{"map":1,"room":2140},{"map":1,"room":2141}]}
 {"type":"loops","session":"kasimir","anchor":{"map":1,"room":2140},"radius":8,"doors":true,"generated":[{"id":"1:2140:8:doors:0","name":"Newhaven","stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1}],"path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"doors":1}],"megamud":[{"file":"EXAMPLE.mp","description":"Arena loop","author":"someone","path":[{"map":1,"room":2150},{"map":1,"room":2146},{"map":1,"room":2150}],"steps":2,"exact":2}]}
 {"type":"stats","session":"kasimir","runs":[{"started_at":"2026-10-19T12:00:00Z","minutes":2,"exp_per_hour":540,"kills":2,"deaths":0,"flees":0,"rests":1,"exp_gained":18}],"samples":[{"at":"2026-10-19T12:01:00Z","exp":355,"hp":30}]}
+{"type":"input_held","session":"kasimir","text":"a rat","reason":"no attack command while combat is engaged"}
 ```
 
 The control messages above are relayed to the brain the same way.
 
-Brain → gateway (the answer to `logging_off`, never relayed):
+Brain → gateway (the answer to `logging_off`, and which sessions' input the brain
+arbitrates; never relayed):
 
 ```json
 {"type":"ready_to_leave","session":"kasimir"}
+{"type":"arbitrate","session":"kasimir","on":true}
 ```

@@ -143,3 +143,7 @@
   case of the character leaving: fleeing a fight by a move, the new room shows and then
   `*Combat Off*` at the next round, no `break` needed [C, silvermere, the C-028 live check in
   the Newhaven Arena].
+- **2026-10-20**: From wayfarer wave 4 (C-031): `screen-parsing.md` "Command words" gains two
+  rows from silvermere's command-word oracle (copied to `tests/fixtures/command-words/`):
+  `IN` and `INV` are no command (`I` or `INVE`.. is INVENTORY; `EX` and `GO` likewise), and
+  there are no SAY, YELL, TELEPATH or TIME command words [C, `LJNPARSE.C` via the oracle].

@@ -23,7 +23,8 @@ use wayfarer_world::{Key, Traveller, route};
 use crate::brain::Atlas;
 use crate::character::{Character, merge_patch};
 use crate::clock::Clock;
-use crate::executor::Executor;
+use crate::commands::{Kind, classify};
+use crate::executor::{Executor, Guard};
 use crate::modes::{Bot, Do, Presence, TaskLoop, View};
 use crate::policy::{COMBAT_QUIET, hp_percent};
 use crate::position::Position;
@@ -47,6 +48,9 @@ pub const ANSWER_TIMEOUT: Duration = Duration::from_secs(5);
 /// was lost (a lagged connection) and is forgotten, so a later line the player types is not
 /// taken for the brain's.
 pub const OWN_PATIENCE: Duration = Duration::from_secs(10);
+/// How long a line the player typed beside the bot waits for a prompt with nothing in flight
+/// before it goes anyway (the game showed text and no prompt after it).
+pub const TYPED_PATIENCE: Duration = Duration::from_secs(5);
 /// Chunks asked for per `history_request`.
 pub const HISTORY_CHUNKS: u32 = 2000;
 /// The widest area a `loops_request` may ask for, in steps from the anchor.
@@ -137,6 +141,16 @@ pub(crate) enum Resync {
         answered: bool,
         typed: bool,
     },
+}
+
+/// A line the player typed beside the bot, waiting for its moment.
+#[derive(Debug)]
+struct TypedLine {
+    text: String,
+    /// When it came.
+    at: Instant,
+    /// An attack not forced: held if combat is engaged when it would go.
+    guarded: bool,
 }
 
 /// Whose action is in the executor.
@@ -255,6 +269,11 @@ pub(crate) struct Session {
     /// The gateway is logging the character off, and it was attacked: the bot flees first,
     /// then the brain answers `ready_to_leave`.
     flee_out: bool,
+    /// Lines the player typed beside the bot (`user_input`): each goes at a prompt with
+    /// nothing in flight, between the bot's actions.
+    typed: VecDeque<TypedLine>,
+    /// What the gateway was last told by `arbitrate`.
+    arbitrating: bool,
     /// The bot's state and the run, in the store.
     ledger: Ledger,
     /// The bot as a brain before this one left it, running or paused: put back once the
@@ -313,6 +332,8 @@ impl Session {
             down: false,
             leaving: false,
             flee_out: false,
+            typed: VecDeque::new(),
+            arbitrating: false,
             id: info.id.clone(),
             state: info.state,
             parser: Parser::new(registry.clone()),
@@ -343,6 +364,10 @@ impl Session {
         self.down = false;
         self.leaving = false;
         self.flee_out = false;
+        // A new connection: the gateway arbitrates nothing for it yet. Lines typed for the
+        // old one went with it.
+        self.arbitrating = false;
+        self.typed.clear();
         // An answer to the action in flight may have gone by unseen.
         self.cancel(out);
         let next = self.walker.abandon("the brain re-attached");
@@ -385,6 +410,10 @@ impl Session {
             self.synced = false;
             self.leaving = false;
             self.down = false;
+            // Out of the realm the player's lines go as they would without the bot.
+            for line in std::mem::take(&mut self.typed) {
+                self.send_straight(line.text, out);
+            }
             // Nothing in flight will be answered now.
             self.cancel(out);
             let says = self.bot.stop("the session left the realm", true);
@@ -841,6 +870,131 @@ impl Session {
         }
         self.take_over(out);
         self.flush_views(out);
+    }
+
+    /// `user_input`: a line the player typed while the brain arbitrates the session (its bot
+    /// running or paused). Talk and look waits for a prompt with nothing in flight and goes
+    /// between the bot's actions; an act pauses the bot after the action in flight (and stops
+    /// a walk), then goes the same way; an attack while combat is engaged is held, unless
+    /// `force` (`input_held`). With the bot stopped meanwhile, or out of the realm, the line
+    /// goes at once, as the gateway would have sent it.
+    pub fn user_input(
+        &mut self,
+        text: String,
+        force: bool,
+        now: Instant,
+        out: &mut Vec<ToGateway>,
+    ) {
+        if self.leaving || self.flee_out {
+            out.push(self.warning(&format!("Not sent: {text} (the gateway is logging off)")));
+            return;
+        }
+        if !self.wants_arbitration() || self.state != SessionState::Realm {
+            self.send_straight(text, out);
+            return;
+        }
+        let kind = classify(&text).kind;
+        tracing::info!(session = %self.id, %text, ?kind, force, "typed beside the bot");
+        let line = TypedLine {
+            text,
+            at: now,
+            guarded: kind == Kind::Attack && !force,
+        };
+        if line.guarded && self.combat(now) != Some(false) {
+            self.hold(line.text, out);
+            return;
+        }
+        if kind != Kind::Talk {
+            if self.walker.walking() {
+                self.stop_walk("you typed a line", out);
+            }
+            self.take_over(out);
+        }
+        self.typed.push_back(line);
+        self.drive(now, out);
+        self.flush_views(out);
+    }
+
+    /// Not sent: an attack while combat is engaged (or not known to be over) would restart the
+    /// swing timer. The UIs show it with a `send anyway`.
+    fn hold(&self, text: String, out: &mut Vec<ToGateway>) {
+        tracing::info!(session = %self.id, %text, "held: combat is engaged");
+        out.push(ToGateway::InputHeld {
+            session: self.id.clone(),
+            text,
+            reason: Guard::AttackInCombat.describe().to_owned(),
+        });
+    }
+
+    /// `keys_sent`: the player's keys went straight to the game; the bot pauses after the
+    /// action in flight, and a walk stops.
+    pub fn keys_sent(&mut self, out: &mut Vec<ToGateway>) {
+        if self.walker.walking() {
+            self.stop_walk("you pressed a key", out);
+        }
+        self.take_over(out);
+        self.flush_views(out);
+    }
+
+    /// Whether the brain arbitrates the session's input: it has a bot, running or paused, and
+    /// the gateway is not logging the character off.
+    fn wants_arbitration(&self) -> bool {
+        self.atlas.is_some() && !self.bot.stopped() && !self.leaving
+    }
+
+    /// Tell the gateway whether the brain arbitrates the session's input, when that changed.
+    pub fn arbitrate(&mut self, out: &mut Vec<ToGateway>) {
+        let on = self.wants_arbitration();
+        if on != self.arbitrating {
+            self.arbitrating = on;
+            out.push(ToGateway::Arbitrate {
+                session: self.id.clone(),
+                on,
+            });
+        }
+    }
+
+    /// A player's line to the game at once, as the gateway sends one it does not hold: its
+    /// `sent` is the player's.
+    fn send_straight(&mut self, text: String, out: &mut Vec<ToGateway>) {
+        out.push(ToGateway::InputLine {
+            session: self.id.clone(),
+            text,
+        });
+    }
+
+    /// The player's next typed line, if its moment has come: a prompt in the realm with nothing
+    /// in flight and no re-sync command waiting for its answer (or it has waited
+    /// [`TYPED_PATIENCE`] for a prompt). It goes as the brain's own line, so the parser and the
+    /// position are told now and its `sent` is not taken for a new one.
+    ///
+    /// An attack is checked again when its moment comes: the bot's own action in flight may
+    /// have engaged meanwhile, and then it is held.
+    fn send_typed(&mut self, now: Instant, out: &mut Vec<ToGateway>) -> bool {
+        let Some(line) = self.typed.front() else {
+            return false;
+        };
+        let prompt = self.at_prompt || now >= line.at + TYPED_PATIENCE;
+        if self.state != SessionState::Realm
+            || !self.live()
+            || self.leaving
+            || !prompt
+            || self.executor.in_flight().is_some()
+            || matches!(self.resync, Resync::Waiting { .. })
+        {
+            return false;
+        }
+        let line = self.typed.pop_front().expect("a typed line");
+        if line.guarded && self.combat(now) != Some(false) {
+            self.hold(line.text, out);
+            return self.send_typed(now, out);
+        }
+        self.send_own(&line.text, now, out);
+        // A re-sync command after it waits for an idle prompt, as after any typed line.
+        if let Resync::Want { idle, .. } = &mut self.resync {
+            *idle = true;
+        }
+        true
     }
 
     /// The player acted (a typed line, a walk): a running bot pauses after the action in
@@ -1412,6 +1566,10 @@ impl Session {
         }
         self.bot_tick(now, out);
         self.flee_out_done(out);
+        // The player's line first: the bot's next action waits for the prompt after it.
+        if self.send_typed(now, out) {
+            return;
+        }
         if self.state == SessionState::Realm
             && self.live()
             && !self.leaving
@@ -1513,6 +1671,12 @@ impl Session {
             .into_iter()
             .flatten()
             .filter(|&t| t > now && self.bot.running() && !self.executor.busy());
+        // A typed line waiting for a prompt goes anyway once it has waited long enough.
+        let typed = self
+            .typed
+            .front()
+            .map(|line| line.at + TYPED_PATIENCE)
+            .filter(|_| !self.at_prompt);
         // The snapshot's `in_combat` goes false when the fight lapses.
         let engaged = lapse.filter(|&t| t > now && self.character.state().in_combat == Some(true));
         resync
@@ -1520,6 +1684,7 @@ impl Session {
             .chain(self.executor.deadline())
             .chain(bot)
             .chain(engaged)
+            .chain(typed)
             .chain(self.ledger.deadline())
             .min()
     }

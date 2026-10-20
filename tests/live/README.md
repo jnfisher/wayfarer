@@ -183,6 +183,25 @@ Steps 1 to 4 of "fight" (the brain's store is `store.sqlite` in the run's direct
 
 The brains' logs are `NN-restart/brain.log` and `NN-restart/brain-2.log`.
 
+## Scenario "typing" (C-031, typing beside the bot)
+
+```sh
+scripts/live-check.sh --scenario typing
+```
+
+Steps 1 to 3 of "fight" (to the Arena, Start), then, from the check's own WebSocket connection
+(a UI, so the gateway forwards its lines to the brain while the bot plays):
+
+4. **The bot fighting**: its narration `Fight: ...` and `*Combat Engaged*` on the screen.
+5. **`st` beside the bot**: the status screen comes, and no "took over" or "Paused" notice: the
+   bot is still running.
+6. **`u` beside the bot**: "You took over ...", then "Paused: you took over", the bot paused,
+   and the character up the stairs on the Narrow Road (the Arena's way out is up, not north).
+7. **Stop**, **walk out** (already out), **rest by hand** if HP is low, **stopping the brain**,
+   and the gateway logs off.
+
+The brain's log is `NN-typing/brain.log`.
+
 ## Scenario "loop" (M2, generated loops)
 
 ```sh

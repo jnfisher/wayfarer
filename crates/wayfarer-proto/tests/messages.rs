@@ -254,6 +254,14 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
             },
             r#"{"type":"stats","session":"kasimir","runs":[{"started_at":"2026-10-19T12:00:00Z","minutes":2,"exp_per_hour":540,"kills":2,"deaths":0,"flees":0,"rests":1,"exp_gained":18}],"samples":[{"at":"2026-10-19T12:01:00Z","exp":355,"hp":30}]}"#,
         ),
+        (
+            ToGateway::InputHeld {
+                session: "kasimir".into(),
+                text: "a rat".into(),
+                reason: "no attack command while combat is engaged".into(),
+            },
+            r#"{"type":"input_held","session":"kasimir","text":"a rat","reason":"no attack command while combat is engaged"}"#,
+        ),
     ]
 }
 
@@ -426,6 +434,21 @@ fn to_client() -> Vec<(ToClient, &'static str)> {
             },
             r#"{"type":"logging_off","session":"kasimir"}"#,
         ),
+        (
+            ToClient::UserInput {
+                session: "kasimir".into(),
+                text: "a rat".into(),
+                from: "ui-3".into(),
+                force: true,
+            },
+            r#"{"type":"user_input","session":"kasimir","text":"a rat","from":"ui-3","force":true}"#,
+        ),
+        (
+            ToClient::KeysSent {
+                session: "kasimir".into(),
+            },
+            r#"{"type":"keys_sent","session":"kasimir"}"#,
+        ),
     ])
     .collect()
 }
@@ -469,16 +492,33 @@ fn to_gateway() -> Vec<(ToGateway, &'static str)> {
             },
             r#"{"type":"subscribe","sessions":["kasimir"]}"#,
         ),
+        (
+            ToGateway::UserInput {
+                session: "kasimir".into(),
+                text: "a rat".into(),
+                force: true,
+            },
+            r#"{"type":"user_input","session":"kasimir","text":"a rat","force":true}"#,
+        ),
     ]
     .into_iter()
     .chain(control_messages())
     .chain(brain_messages())
-    .chain([(
-        ToGateway::ReadyToLeave {
-            session: "kasimir".into(),
-        },
-        r#"{"type":"ready_to_leave","session":"kasimir"}"#,
-    )])
+    .chain([
+        (
+            ToGateway::ReadyToLeave {
+                session: "kasimir".into(),
+            },
+            r#"{"type":"ready_to_leave","session":"kasimir"}"#,
+        ),
+        (
+            ToGateway::Arbitrate {
+                session: "kasimir".into(),
+                on: true,
+            },
+            r#"{"type":"arbitrate","session":"kasimir","on":true}"#,
+        ),
+    ])
     .collect()
 }
 
@@ -557,6 +597,14 @@ fn optional_fields_may_be_left_out() {
                 state: Box::default(),
             },
             r#"{"type":"character","session":"kasimir","state":{}}"#,
+        ),
+        (
+            ToGateway::UserInput {
+                session: "kasimir".into(),
+                text: "st".into(),
+                force: false,
+            },
+            r#"{"type":"user_input","session":"kasimir","text":"st"}"#,
         ),
     ];
     for (msg, json) in cases {
@@ -654,8 +702,8 @@ fn families_say_who_may_send_what() {
             "resync" | "state_request" | "walk_to" | "walk_stop" | "map_request"
             | "bot_control" | "loops_request" | "walk_loop" | "stats_request" => Family::Control,
             "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
-            | "map_view" | "loops" | "stats" => Family::Brain,
-            "ready_to_leave" => Family::Leaving,
+            | "map_view" | "loops" | "stats" | "input_held" => Family::Brain,
+            "ready_to_leave" | "arbitrate" => Family::BrainToGateway,
             _ => Family::Gateway,
         };
         assert_eq!(family, want, "{}", msg.type_name());
@@ -667,7 +715,7 @@ fn families_say_who_may_send_what() {
                 assert_eq!(relayed.type_name(), name);
             }
             None => assert!(
-                matches!(family, Family::Gateway | Family::Leaving),
+                matches!(family, Family::Gateway | Family::BrainToGateway),
                 "{name}"
             ),
         }
@@ -678,8 +726,8 @@ fn families_say_who_may_send_what() {
     assert!(!Family::Control.allowed_from(ClientKind::Brain));
     assert!(Family::Brain.allowed_from(ClientKind::Brain));
     assert!(!Family::Brain.allowed_from(ClientKind::Ui));
-    assert!(Family::Leaving.allowed_from(ClientKind::Brain));
-    assert!(!Family::Leaving.allowed_from(ClientKind::Ui));
+    assert!(Family::BrainToGateway.allowed_from(ClientKind::Brain));
+    assert!(!Family::BrainToGateway.allowed_from(ClientKind::Ui));
 }
 
 #[test]

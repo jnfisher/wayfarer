@@ -88,6 +88,8 @@
   let loopsBySession = $state.raw<Record<string, Loops>>({});
   // The brain's last `stats` per session.
   let statsBySession = $state.raw<Record<string, Stats>>({});
+  /** The last line the brain held per session (`input_held`), until sent anyway or dismissed. */
+  let held = $state.raw<Record<string, { text: string; reason: string }>>({});
   // Sessions whose map has been asked for since the connection opened or the brain attached:
   // the brain sends a view by itself only when the believed room or the route changes.
   const mapAsked = new Set<string>();
@@ -252,6 +254,11 @@
       stats: (stats) => {
         statsBySession = { ...statsBySession, [stats.session]: stats };
       },
+      inputHeld: (id, text, reason) => {
+        held = { ...held, [id]: { text, reason } };
+        addNote(dev, "warning", `held: ${text} (${reason})`, id, Date.now());
+        devChanged();
+      },
       event: (id, e) => {
         addEvent(dev, id, e);
         devChanged();
@@ -375,6 +382,11 @@
           onfocus={() => (focused = i)}
           onhelp={toggleHelp}
           character={brain.attached ? (brain.characters[info.id] ?? {}) : null}
+          held={held[info.id] ?? null}
+          onheld={() => {
+            const { [info.id]: _, ...rest } = held;
+            held = rest;
+          }}
         />
       {:else}
         <p class="empty">

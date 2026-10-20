@@ -73,6 +73,8 @@ export interface GatewayEvents {
   loops?(loops: Loops): void;
   /** A character's last runs, for the stats tab. */
   stats?(stats: Stats): void;
+  /** A line the player typed was held by the brain (an attack while combat is engaged). */
+  inputHeld?(session: string, text: string, reason: string): void;
 }
 
 export interface GatewayOptions {
@@ -152,6 +154,11 @@ export class GatewayClient {
   /** Send a line of input; false when not connected. */
   sendLine(session: string, text: string): boolean {
     return this.send({ type: "input_line", session, text });
+  }
+
+  /** Send a line the brain held (`input_held`) anyway; false when not connected. */
+  sendAnyway(session: string, text: string): boolean {
+    return this.send({ type: "user_input", session, text, force: true });
   }
 
   /** Send raw key bytes; false when not connected. */
@@ -332,6 +339,9 @@ export class GatewayClient {
         break;
       case "stats":
         this.opts.events.stats?.(message);
+        break;
+      case "input_held":
+        this.opts.events.inputHeld?.(message.session, message.text, message.reason);
         break;
     }
   }

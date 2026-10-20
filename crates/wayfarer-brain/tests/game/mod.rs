@@ -331,8 +331,17 @@ impl Game {
                                 _ => None,
                             })
                             .collect();
+                        let sent: Vec<_> = self
+                            .seen
+                            .iter()
+                            .filter_map(|m| match m {
+                                ToGateway::InputLine { text, .. } => Some(text.as_str()),
+                                _ => None,
+                            })
+                            .collect();
                         panic!(
-                            "the brain sent {text:?}; the script wants {other:?}; it said {said:?}"
+                            "the brain sent {text:?}; the script wants {other:?}; it said {said:?}; \
+                             it sent {sent:?}"
                         )
                     }
                 };

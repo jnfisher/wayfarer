@@ -127,10 +127,12 @@ struct HubInner {
     next_id: AtomicU64,
 }
 
-/// The attached brain: its connection's outbox, where UIs' control messages go.
+/// The attached brain: its connection's outbox, where UIs' control messages go, and the
+/// sessions whose input it arbitrates (`arbitrate`).
 struct Brain {
     id: u64,
     out: mpsc::Sender<ToClient>,
+    arbitrated: HashSet<SessionId>,
 }
 
 /// Holds the brain's registration while its connection lives; dropping it detaches the brain.
@@ -267,7 +269,11 @@ impl Hub {
         let attached = self.inner.brain.send_if_modified(|brain| {
             let free = brain.is_none();
             if free {
-                *brain = Some(Brain { id, out });
+                *brain = Some(Brain {
+                    id,
+                    out,
+                    arbitrated: HashSet::new(),
+                });
             }
             free
         });
@@ -275,6 +281,31 @@ impl Hub {
             hub: self.clone(),
             id,
         })
+    }
+
+    /// The brain's outbox, if a brain is attached and arbitrates `session`'s input.
+    fn arbitrator(&self, session: &str) -> Option<mpsc::Sender<ToClient>> {
+        self.inner
+            .brain
+            .borrow()
+            .as_ref()
+            .filter(|b| b.arbitrated.contains(session))
+            .map(|b| b.out.clone())
+    }
+
+    /// The brain `id` arbitrates `session`'s input, or no longer does. Nobody is told: the
+    /// UIs' `brain_state` is about the attach alone.
+    fn arbitrate(&self, id: u64, session: SessionId, on: bool) {
+        self.inner.brain.send_if_modified(|brain| {
+            if let Some(b) = brain.as_mut().filter(|b| b.id == id) {
+                if on {
+                    b.arbitrated.insert(session);
+                } else {
+                    b.arbitrated.remove(&session);
+                }
+            }
+            false
+        });
     }
 
     /// The `refused` reason for a hello, or `None` to welcome it.
@@ -413,6 +444,10 @@ fn tokens_match(a: &str, b: &str) -> bool {
 struct Connection {
     hub: Hub,
     kind: ClientKind,
+    /// Numbers the connection: a UI is `ui-<id>` in `user_input`.
+    id: u64,
+    /// The brain registration this connection holds (a brain).
+    brain_id: Option<u64>,
     out: mpsc::Sender<ToClient>,
     /// The sessions this connection receives, each with its output forwarding task.
     subscribed: Vec<(SessionId, JoinHandle<()>)>,
@@ -489,6 +524,8 @@ impl Connection {
         let mut conn = Connection {
             hub: hub.clone(),
             kind,
+            id: hub.inner.next_id.fetch_add(1, Ordering::Relaxed),
+            brain_id: brain_guard.as_ref().map(|g| g.id),
             out,
             subscribed: Vec::new(),
             sessions: watch::channel(Vec::new()).0,
@@ -639,11 +676,21 @@ impl Connection {
         if family == Family::Gateway {
             return self.handle_own(msg).await;
         }
-        if let ToGateway::ReadyToLeave { session } = msg {
-            self.hub.inner.ready.send_modify(|ready| {
-                ready.insert(session);
-            });
-            return None;
+        match msg {
+            ToGateway::ReadyToLeave { session } => {
+                self.hub.inner.ready.send_modify(|ready| {
+                    ready.insert(session);
+                });
+                return None;
+            }
+            ToGateway::Arbitrate { session, on } => {
+                if let Some(id) = self.brain_id {
+                    tracing::info!(%session, on, "the brain arbitrates the session's input");
+                    self.hub.arbitrate(id, session, on);
+                }
+                return None;
+            }
+            _ => {}
         }
         let msg = msg
             .into_relayed()
@@ -673,6 +720,45 @@ impl Connection {
         }
     }
 
+    /// The brain's outbox when this is a UI and the brain arbitrates `session`.
+    fn ui_arbitrator(&self, session: &str) -> Option<mpsc::Sender<ToClient>> {
+        (self.kind == ClientKind::Ui)
+            .then(|| self.hub.arbitrator(session))
+            .flatten()
+    }
+
+    /// A line typed for `session`: to the brain as `user_input` if it arbitrates the session
+    /// and this is a UI, otherwise to the game.
+    async fn line(&self, session: SessionId, text: String, force: bool) -> Option<ToClient> {
+        let (session, text) = match self.ui_arbitrator(&session) {
+            Some(brain) => {
+                let msg = ToClient::UserInput {
+                    session,
+                    text,
+                    from: format!("ui-{}", self.id),
+                    force,
+                };
+                // A brain gone meanwhile: the line goes straight through after all.
+                match brain.send(msg).await {
+                    Ok(()) => return None,
+                    Err(mpsc::error::SendError(ToClient::UserInput { session, text, .. })) => {
+                        (session, text)
+                    }
+                    Err(_) => unreachable!("the message sent is a user_input"),
+                }
+            }
+            None => (session, text),
+        };
+        let gateway = self.hub.gateway();
+        gateway
+            .send_line(&session, &text)
+            .await
+            .err()
+            .map(|e| ToClient::Error {
+                message: e.to_string(),
+            })
+    }
+
     /// A message the gateway handles itself ([`Family::Gateway`]).
     async fn handle_own(&mut self, msg: ToGateway) -> Option<ToClient> {
         let gateway = self.hub.gateway().clone();
@@ -683,14 +769,24 @@ impl Connection {
             ToGateway::Hello { .. } => Some(ToClient::Error {
                 message: "already said hello".to_owned(),
             }),
-            // Input arbitration hooks in here once a bot plays (docs/plan/02-architecture.md):
-            // with a brain attached, a UI's line goes to the brain as `user_input`. No bot
-            // plays in M1, so every client's input goes straight to the game.
-            ToGateway::InputLine { session, text } => {
-                gateway.send_line(&session, &text).await.err().map(error)
-            }
+            // Input arbitration (docs/plan/02-architecture.md): a UI's line for a session the
+            // brain arbitrates goes to the brain as `user_input`, which decides when it goes;
+            // any other line (the brain's own included) goes straight to the game.
+            ToGateway::InputLine { session, text } => self.line(session, text, false).await,
+            ToGateway::UserInput {
+                session,
+                text,
+                force,
+            } => self.line(session, text, force).await,
+            // Keys always go straight through; the brain hears of them, to pause.
             ToGateway::InputKeys { session, bytes } => {
-                gateway.send_keys(&session, &bytes).await.err().map(error)
+                if let Err(e) = gateway.send_keys(&session, &bytes).await {
+                    return Some(error(e));
+                }
+                if let Some(brain) = self.ui_arbitrator(&session) {
+                    let _ = brain.send(ToClient::KeysSent { session }).await;
+                }
+                None
             }
             ToGateway::HistoryRequest {
                 session,

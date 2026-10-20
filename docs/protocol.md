@@ -104,14 +104,21 @@ send. Live output carries on after the gap; the client fetches the gap with `his
 |---|---|
 | `input_line {session, text}` | A line of input; the gateway adds the line ending |
 | `input_keys {session, bytes}` | Raw bytes (an array of 0–255), sent straight through and never line-buffered: the character editor, `Hit any key` |
+| `user_input {session, text, force?}` | A line as `input_line`, with `force: true` for the UI's `send anyway` of a line the brain held (`input_held`, below) |
 
 ```json
 {"type":"input_line","session":"kasimir","text":"look north"}
 {"type":"input_keys","session":"kasimir","bytes":[13]}
+{"type":"user_input","session":"kasimir","text":"a rat","force":true}
 ```
 
-Any client may send input, the brain included; it goes straight to the game. (Once a bot
-plays, a UI's input will go through the brain instead; not yet.)
+Any client may send input, the brain included. It goes straight to the game, except a UI's
+line for a session the brain **arbitrates** (its bot is running or paused, and it said so with
+`arbitrate`): that goes to the brain as `user_input`, and the brain decides when it goes and
+what the bot does meanwhile ([brain.md](brain.md) "Typing beside the bot"). Keys always go
+straight through; for an arbitrated session the brain is told (`keys_sent`) and pauses the bot.
+When the brain goes, every session's input goes straight through again at once; a new brain
+arbitrates nothing until it says so.
 
 ## The brain
 
@@ -128,6 +135,9 @@ typed line always comes after its `sent`. UIs never get `sent`.
 | `brain_lagged {missed}` | gateway → UI | The UI read too slowly and `missed` relayed brain messages were dropped for it. Recover with `state_request` |
 | `logging_off {session}` | gateway → brain | The gateway is stopping and is about to log this session off (sent only for a session in the realm). The brain stops playing the character and answers `ready_to_leave` |
 | `ready_to_leave {session}` | brain → gateway | The brain sends the session nothing more: the log-off may start. The gateway waits for it up to 30 s after `logging_off`, or until the brain goes; never relayed, and refused from a UI |
+| `arbitrate {session, on}` | brain → gateway | Whether the brain arbitrates the session's input: on while its bot runs or is paused, off when it stops. Never relayed, and refused from a UI |
+| `user_input {session, text, from, force?}` | gateway → brain | A line a UI typed (`input_line`, or `user_input` with `force`) for a session the brain arbitrates; the gateway sent nothing to the game. `from` names the UI's connection (`ui-3`). The brain's own `input_line` is never turned into one |
+| `keys_sent {session}` | gateway → brain | A UI's `input_keys` went to the game for a session the brain arbitrates |
 
 ```json
 {"type":"sent","session":"kasimir","seq":42,"text":"********"}
@@ -135,6 +145,9 @@ typed line always comes after its `sent`. UIs never get `sent`.
 {"type":"brain_lagged","missed":17}
 {"type":"logging_off","session":"kasimir"}
 {"type":"ready_to_leave","session":"kasimir"}
+{"type":"arbitrate","session":"kasimir","on":true}
+{"type":"user_input","session":"kasimir","text":"a rat","from":"ui-3","force":true}
+{"type":"keys_sent","session":"kasimir"}
 ```
 
 When the gateway stops, the brain's connection (and every UI's) stays open until every
@@ -156,6 +169,7 @@ to every UI. It relays by message type and never reads `fields` or `patch`.
 | `map_view {session, center, level, rooms, exits, route?}` | The rooms around the believed position, for the map panel (below) |
 | `loops {session, anchor, radius, doors, generated, megamud}` | The answer to a `loops_request`: the loops of the area (below) |
 | `stats {session, runs, samples}` | The answer to a `stats_request`: the character's last ten runs, newest first, and the newest run's samples (below) |
+| `input_held {session, text, reason}` | A line the player typed was not sent: it would break a rule while the bot plays (an attack while combat is engaged). The UI shows it with a `send anyway`, which sends `user_input` with `force` |
 
 ```json
 {"type":"event","session":"kasimir","seq":43,"line_no":88,"name":"you_hit","cat":"combat","fields":{"dmg":"1","target":"fat giant rat","verb":"punch"},"line":"You punch fat giant rat for 1 damage!"}
@@ -167,6 +181,7 @@ to every UI. It relays by message type and never reads `fields` or `patch`.
 {"type":"map_view","session":"kasimir","center":{"map":1,"room":2140},"level":0,"rooms":[{"map":1,"room":2140,"name":"Newhaven, Village Entrance","x":0,"y":0,"level":0,"spawns":false,"visited":true,"candidate":true,"collides":false},{"map":1,"room":2141,"name":"Newhaven, Weapons Shop","x":0,"y":-1,"level":0,"spawns":false,"kind":"shop","visited":false,"candidate":false,"collides":false}],"exits":[{"from":{"map":1,"room":2140},"to":{"map":1,"room":2141},"dir":"n","kind":"plain","one_way":false}],"route":[{"map":1,"room":2140},{"map":1,"room":2141}]}
 {"type":"loops","session":"kasimir","anchor":{"map":1,"room":2140},"radius":8,"doors":true,"generated":[{"id":"1:2140:8:doors:0","name":"Newhaven","stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1}],"path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"doors":1}],"megamud":[{"file":"EXAMPLE.mp","description":"Arena loop","author":"someone","path":[{"map":1,"room":2150},{"map":1,"room":2146},{"map":1,"room":2150}],"steps":2,"exact":2}]}
 {"type":"stats","session":"kasimir","runs":[{"started_at":"2026-10-19T12:00:00Z","minutes":2,"exp_per_hour":540,"kills":2,"deaths":0,"flees":0,"rests":1,"exp_gained":18}],"samples":[{"at":"2026-10-19T12:01:00Z","exp":355,"hp":30}]}
+{"type":"input_held","session":"kasimir","text":"a rat","reason":"no attack command while combat is engaged"}
 ```
 
 The character snapshot: every field is optional and left out until the brain knows it.
