@@ -1,0 +1,329 @@
+//! The store (docs/brain.md "Restarts" and "Statistics"): a brain with a store saves the bot's
+//! state on every change and counts each run; a second brain on the same store resumes the bot
+//! as the first left it. Against the fake gateway of `game/mod.rs`, in the Newhaven Arena, on
+//! a paused clock that the brain's wall clock follows ([`InstantClock`]).
+
+mod game;
+
+use std::path::Path;
+use std::time::UNIX_EPOCH;
+
+use game::arena::*;
+use game::*;
+use wayfarer_brain::{Brain, InstantClock, SAMPLE_EVERY, Store};
+use wayfarer_proto::{BotAction, BotState, RunSummary};
+use wayfarer_store::{BotRecord, EventKind};
+
+fn brain_on(path: &Path) -> Brain {
+    let (store, _) = Store::open(path).unwrap();
+    let clock = InstantClock::new(UNIX_EPOCH + Duration::from_secs(T0));
+    Brain::new(world(), Arc::new(clock), None).with_store(store)
+}
+
+/// `brain` attached in the Arena with `monsters`, the attach's re-sync done.
+async fn arena_brain(brain: Brain, monsters: &[&str]) -> (Game, Run) {
+    let (mut g, run) = Game::start_brain(SessionState::Realm, arena(monsters, 35), brain).await;
+    g.until(|m| matches!(m, ToGateway::MapView { .. }).then_some(()))
+        .await;
+    g.idle(Duration::from_secs(20)).await;
+    (g, run)
+}
+
+/// The store as the brain left it (opened again once the brain has gone).
+fn store_at(path: &Path) -> Store {
+    Store::open(path).unwrap().0
+}
+
+/// The narration so far: a resume is said before the catch-up's snapshot, which
+/// `Game::start_brain` has already read.
+fn said(g: &Game) -> Vec<String> {
+    g.seen
+        .iter()
+        .filter_map(|m| match m {
+            ToGateway::Notice { text, .. } | ToGateway::Warning { text, .. } => Some(text.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn assert_said(g: &Game, text: &str) {
+    let said = said(g);
+    assert!(said.iter().any(|s| s == text), "{said:?}");
+}
+
+impl Game {
+    async fn stats(&mut self) -> (Vec<RunSummary>, usize) {
+        self.send(ToClient::StatsRequest { session: ID.into() })
+            .await;
+        self.until(|m| match m {
+            ToGateway::Stats { runs, samples, .. } => Some((runs.clone(), samples.len())),
+            _ => None,
+        })
+        .await
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_restarted_brain_resumes_the_bot_paused_with_its_home_and_stop_clears_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+
+    // The first brain: Start, a kill, a sample, Pause.
+    let (mut g, run) = arena_brain(brain_on(&path), &["large giant rat"]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    g.round("The large giant rat lunges at you!", 33).await;
+    g.expect("look", arena(&[], 33));
+    g.output(&kill(33)).await;
+    g.narrated("Waiting here").await;
+    g.idle(SAMPLE_EVERY + Duration::from_secs(5)).await;
+    g.bot(BotAction::Pause).await;
+    g.narrated("Paused: asked to pause").await;
+    let (seen, _) = g.close(run).await;
+    let ui = as_ui_sees(&seen);
+    let r = ui.run.expect("the run on the snapshot");
+    assert_eq!((r.kills, r.exp_gained), (1, 9));
+    assert_eq!(r.run_started_at, "2026-10-19T12:00:20Z");
+
+    let store = store_at(&path);
+    let saved = store.bot(ID).unwrap().unwrap();
+    assert_eq!(saved.state, wayfarer_store::BotState::Paused);
+    assert_eq!(saved.home, Some(ARENA));
+    assert_eq!(saved.paused_reason.as_deref(), Some("asked to pause"));
+    let open = store
+        .open_run(ID)
+        .unwrap()
+        .expect("the run goes on while paused");
+    let events = store.events(open.id).unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(
+        (events[0].kind, events[0].value, events[0].room),
+        (EventKind::Kill, 9, Some(ARENA))
+    );
+    let samples = store.samples(open.id).unwrap();
+    assert_eq!(samples.len(), 1);
+    assert_eq!(samples[0].hp, Some(33));
+    drop(store);
+
+    // The second brain, on the same store: paused again, home and all, and it says so.
+    let (mut g, run) =
+        Game::start_brain(SessionState::Realm, arena(&[], 33), brain_on(&path)).await;
+    assert_said(
+        &g,
+        "Resumed paused (asked to pause): fighting in Newhaven, Arena (brain restarted)",
+    );
+    g.idle(Duration::from_secs(20)).await;
+    let (runs, samples) = g.stats().await;
+    assert_eq!(runs.len(), 1);
+    assert_eq!(
+        (
+            runs[0].kills,
+            runs[0].exp_gained,
+            runs[0].ended_at.as_deref()
+        ),
+        (1, 9, None)
+    );
+    assert_eq!(samples, 1);
+    // Resume: the re-sync, then on in the Arena.
+    g.bot(BotAction::Resume).await;
+    g.narrated("Resuming: re-syncing").await;
+    g.narrated("Waiting here").await;
+    g.bot(BotAction::Stop).await;
+    g.narrated("Stopped: asked to stop").await;
+    let (seen, _) = g.close(run).await;
+    let ui = as_ui_sees(&seen);
+    assert_eq!(ui.bot.unwrap().state, BotState::Stopped);
+    assert_eq!(ui.run, None);
+
+    let store = store_at(&path);
+    assert_eq!(
+        store.bot(ID).unwrap().unwrap().state,
+        wayfarer_store::BotState::Stopped
+    );
+    assert_eq!(store.open_run(ID).unwrap(), None);
+    let runs = store.runs(ID, 10).unwrap();
+    assert_eq!(runs.len(), 1, "the resumed run is the same run");
+    assert_eq!((runs[0].totals.kills, runs[0].totals.exp_gained), (1, 9));
+    assert!(runs[0].run.ended_at.is_some());
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_running_bot_resumes_running_and_fights() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let store = store_at(&path);
+    let rec = BotRecord {
+        home: Some(ARENA),
+        ..BotRecord::new(wayfarer_store::BotState::Running)
+    };
+    store.save_bot(ID, &rec, T0 as i64 - 600).unwrap();
+    let run = store.start_run(ID, T0 as i64 - 600, None).unwrap();
+    drop(store);
+
+    let (mut g, task) = Game::start_brain(
+        SessionState::Realm,
+        arena(&["large giant rat"], 35),
+        brain_on(&path),
+    )
+    .await;
+    assert_said(&g, "Resumed: fighting in Newhaven, Arena (brain restarted)");
+    // The attach's re-sync first, then the fight.
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    g.expect("look", arena(&[], 35));
+    g.output(&kill(35)).await;
+    g.narrated("Waiting here").await;
+    let (seen, played) = g.close(task).await;
+    assert_eq!(played, ["a rat", "look"]);
+    let r = as_ui_sees(&seen).run.expect("the run");
+    // The run that was open goes on: started ten minutes before this brain.
+    assert_eq!(r.run_started_at, "2026-10-19T11:50:00Z");
+    assert_eq!(r.kills, 1);
+    let store = store_at(&path);
+    assert_eq!(store.open_run(ID).unwrap().map(|r| r.id), Some(run.id));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_stored_loop_survives_and_its_stored_stops_win() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let store = store_at(&path);
+    // Not the stops this id makes now (as after a level-up).
+    let rec = BotRecord {
+        home: Some(ARENA),
+        loop_id: Some("1:2140:8:doors:0".into()),
+        loop_stops: vec![ARENA, BEYOND_ARENA],
+        stop_index: 1,
+        skip: vec![0],
+        ..BotRecord::new(wayfarer_store::BotState::Running)
+    };
+    store.save_bot(ID, &rec, T0 as i64).unwrap();
+    drop(store);
+
+    let (mut g, run) =
+        Game::start_brain(SessionState::Realm, arena(&[], 35), brain_on(&path)).await;
+    assert_said(
+        &g,
+        "Resumed: running loop 1:2140:8:doors:0 at stop 2/2 (brain restarted)",
+    );
+    let all = said(&g);
+    assert!(
+        all.iter().any(|s| s.contains("keeping the stored stops")),
+        "{all:?}"
+    );
+    g.narrated("Waiting here").await;
+    g.bot(BotAction::Pause).await;
+    g.narrated("Paused: asked to pause").await;
+    g.close(run).await;
+    let saved = store_at(&path).bot(ID).unwrap().unwrap();
+    assert_eq!(saved.state, wayfarer_store::BotState::Paused);
+    assert_eq!(
+        (
+            saved.loop_id,
+            saved.loop_stops,
+            saved.stop_index,
+            saved.skip
+        ),
+        (rec.loop_id, rec.loop_stops, 1, vec![0])
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn outside_the_realm_the_bot_is_not_resumed_and_its_run_ends() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let store = store_at(&path);
+    let rec = BotRecord::new(wayfarer_store::BotState::Running);
+    store.save_bot(ID, &rec, T0 as i64).unwrap();
+    store.start_run(ID, T0 as i64, None).unwrap();
+    drop(store);
+
+    let (g, run) =
+        Game::start_brain(SessionState::Menu, "Main menu: ".into(), brain_on(&path)).await;
+    assert_said(
+        &g,
+        "Not resuming the bot: the character is not in the realm",
+    );
+    g.close(run).await;
+    let store = store_at(&path);
+    assert_eq!(
+        store.bot(ID).unwrap().unwrap().state,
+        wayfarer_store::BotState::Stopped
+    );
+    assert_eq!(store.open_run(ID).unwrap(), None);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_stopped_bot_stays_stopped() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    store_at(&path)
+        .save_bot(ID, &BotRecord::new(wayfarer_store::BotState::Stopped), 0)
+        .unwrap();
+    let (g, run) = arena_brain(brain_on(&path), &["large giant rat"]).await;
+    let (seen, played) = g.close(run).await;
+    assert!(played.is_empty(), "{played:?}");
+    let said: Vec<_> = seen
+        .iter()
+        .filter_map(|m| match m {
+            ToGateway::Notice { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(!said.iter().any(|s| s.starts_with("Resumed")), "{said:?}");
+    assert_eq!(as_ui_sees(&seen).bot.unwrap().state, BotState::Stopped);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_run_counts_kills_and_ends_with_a_death() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let (mut g, run) = arena_brain(brain_on(&path), &["large giant rat"]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    g.expect("look", arena(&[], 30));
+    g.output(&kill(30)).await;
+    g.narrated("Waiting here").await;
+    g.idle(Duration::from_secs(5 * 60)).await;
+    g.output(&line("You have been killed!", -3)).await;
+    g.narrated("Stopped: the character was killed").await;
+    let (runs, samples) = g.stats().await;
+    let (seen, _) = g.close(run).await;
+    assert_eq!(as_ui_sees(&seen).run, None);
+    assert_eq!(runs.len(), 1);
+    let r = &runs[0];
+    assert_eq!((r.kills, r.deaths, r.exp_gained), (1, 1, 9));
+    assert!(r.ended_at.is_some());
+    assert_eq!(r.minutes, 5);
+    // 9 exp over five minutes and some seconds (the re-sync, the fight): 100 to 108 an hour.
+    assert!((100..=108).contains(&r.exp_per_hour), "{r:?}");
+    assert_eq!(samples, 5);
+    let store = store_at(&path);
+    let kinds: Vec<_> = store
+        .events(store.runs(ID, 1).unwrap()[0].run.id)
+        .unwrap()
+        .into_iter()
+        .map(|e| e.kind)
+        .collect();
+    assert_eq!(kinds, [EventKind::Kill, EventKind::Death]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn without_a_store_the_run_is_still_counted() {
+    let (mut g, run) = Game::start_with(SessionState::Realm, arena(&["large giant rat"], 35)).await;
+    g.idle(Duration::from_secs(20)).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    g.expect("look", arena(&[], 35));
+    g.output(&kill(35)).await;
+    g.narrated("Waiting here").await;
+    let (runs, samples) = g.stats().await;
+    let (seen, _) = g.close(run).await;
+    assert_eq!(as_ui_sees(&seen).run.map(|r| r.kills), Some(1));
+    assert_eq!(runs.len(), 1);
+    assert_eq!((runs[0].kills, runs[0].exp_gained), (1, 9));
+    assert_eq!(samples, 0);
+}

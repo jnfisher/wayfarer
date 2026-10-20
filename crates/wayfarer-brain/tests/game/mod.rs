@@ -9,6 +9,7 @@
 
 #![allow(dead_code)]
 
+pub mod arena;
 #[path = "../../../wayfarer-world/tests/common/mod.rs"]
 pub mod common;
 
@@ -27,6 +28,8 @@ pub use wayfarer_proto::{
 pub use wayfarer_world::{Key, WorldPack};
 
 pub const ID: &str = "aldric";
+/// The wall clock's start in the tests: 2026-10-19T12:00:00Z.
+pub const T0: u64 = 1_792_411_200;
 pub const PROMPT: &str = "\x1b[79D\x1b[K\x1b[0;37m[HP=35\x1b[0;37m]:";
 
 pub const VILLAGE_ENTRANCE: Key = (1, 2140);
@@ -158,10 +161,20 @@ impl Game {
 
     /// The same, for a history that need not show a room: no map view is waited for.
     pub async fn start_lost(state: SessionState, history: String) -> (Game, Run) {
+        let clock = FixedClock(UNIX_EPOCH + Duration::from_secs(T0));
+        let brain = Brain::new(world(), Arc::new(clock), None);
+        Game::start_brain(state, history, brain).await
+    }
+
+    /// `brain` attached to a session whose history is `history`, once the catch-up's whole
+    /// snapshot is out.
+    pub async fn start_brain(
+        state: SessionState,
+        history: String,
+        mut brain: Brain,
+    ) -> (Game, Run) {
         let (to_gateway, rx) = mpsc::channel(4096);
         let (tx, from_gateway) = mpsc::channel(4096);
-        let clock = FixedClock(UNIX_EPOCH + Duration::from_secs(1_792_411_200));
-        let mut brain = Brain::new(world(), Arc::new(clock), None);
         let run = tokio::spawn(async move {
             let mut link = ChannelLink::new(to_gateway, from_gateway);
             let result = brain.run(&mut link).await;

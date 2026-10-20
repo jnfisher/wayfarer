@@ -4,6 +4,7 @@ import type { Coins } from "./Coins";
 import type { Encumbrance } from "./Encumbrance";
 import type { ParseCounts } from "./ParseCounts";
 import type { Position } from "./Position";
+import type { RunStats } from "./RunStats";
 import type { Stats } from "./Stats";
 import type { Walking } from "./Walking";
 
@@ -68,4 +69,8 @@ walking?: Walking,
 /**
  * The bot (M2's "fight here"); absent without a world pack.
  */
-bot?: Bot, };
+bot?: Bot, 
+/**
+ * The bot's current run, from Start to Stop or a death; absent when there is none.
+ */
+run?: RunStats, };

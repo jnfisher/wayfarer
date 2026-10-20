@@ -9,7 +9,8 @@
 //! and dev (brain → UIs), control (UI → brain) and `sent` (gateway → brain); M2 adds walking
 //! and the map (`walk_to`, `walk_stop`, `map_request`, `map_view`, and the character's
 //! `position` and `walking`), the bot's first slice (`bot_control`, the character's `bot`), and loops (`loops_request`,
-//! `loops`, `walk_loop`); M3 adds the log-off handshake (`logging_off`, `ready_to_leave`). [`Family`] says who may send what. Adding a variant later bumps nothing; removing or changing one bumps
+//! `loops`, `walk_loop`); M3 adds the log-off handshake (`logging_off`, `ready_to_leave`) and
+//! statistics (the character's `run`, `stats_request`, `stats`). [`Family`] says who may send what. Adding a variant later bumps nothing; removing or changing one bumps
 //! [`PROTOCOL`].
 
 use std::path::Path;
@@ -156,6 +157,60 @@ pub struct CharacterState {
     /// The bot (M2's "fight here"); absent without a world pack.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bot: Option<Bot>,
+    /// The bot's current run, from Start to Stop or a death; absent when there is none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run: Option<RunStats>,
+}
+
+/// A run's numbers so far (`docs/plan/03-engine.md` section 2): recomputed on each event and
+/// every minute.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct RunStats {
+    /// When Start was pressed (RFC 3339).
+    pub run_started_at: String,
+    /// Exp gained over the wall time since Start (a minute at least).
+    pub exp_per_hour: u64,
+    pub kills: u64,
+    pub deaths: u64,
+    pub flees: u64,
+    pub rests: u64,
+    pub exp_gained: i64,
+}
+
+/// One of the last runs, in a `stats` message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct RunSummary {
+    /// RFC 3339.
+    pub started_at: String,
+    /// RFC 3339; absent while the run goes on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub ended_at: Option<String>,
+    /// The loop it ran (Task mode); absent for "fight here".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub loop_id: Option<String>,
+    /// Whole minutes from start to end (to now, while it goes on).
+    pub minutes: u64,
+    pub exp_per_hour: u64,
+    pub kills: u64,
+    pub deaths: u64,
+    pub flees: u64,
+    pub rests: u64,
+    pub exp_gained: i64,
+}
+
+/// The character's exp and HP at a moment of a run (every minute).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct ExpSample {
+    /// RFC 3339.
+    pub at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub exp: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub hp: Option<i32>,
 }
 
 /// Whether the bot is playing a character (`docs/plan/03-engine.md` section 5).
@@ -547,6 +602,11 @@ pub enum ToClient {
         generated: Vec<GeneratedLoop>,
         megamud: Vec<MegaMudLoop>,
     },
+    Stats {
+        session: SessionId,
+        runs: Vec<RunSummary>,
+        samples: Vec<ExpSample>,
+    },
 
     // From a UI, relayed to the brain.
     Resync {
@@ -588,6 +648,9 @@ pub enum ToClient {
     WalkLoop {
         session: SessionId,
         id: String,
+    },
+    StatsRequest {
+        session: SessionId,
     },
 
     /// To the brain only: a line went to the game, typed by a client or sent by a logon or
@@ -701,6 +764,8 @@ pub enum ToGateway {
     /// UI → brain: walk a generated loop once, from its stop nearest the character round to
     /// that stop again; `walk_stop` stops it, and `walk_to` replaces it.
     WalkLoop { session: SessionId, id: String },
+    /// UI → brain: send a `stats` message with the character's last runs.
+    StatsRequest { session: SessionId },
 
     /// Brain → UIs: one parsed event, as `wayfarer-parse` produced it, with the output `seq`
     /// its line came from. The gateway never reads `fields`.
@@ -773,6 +838,13 @@ pub enum ToGateway {
         generated: Vec<GeneratedLoop>,
         megamud: Vec<MegaMudLoop>,
     },
+    /// Brain → UIs: the answer to a `stats_request`: the last ten runs, newest first, and the
+    /// newest run's samples.
+    Stats {
+        session: SessionId,
+        runs: Vec<RunSummary>,
+        samples: Vec<ExpSample>,
+    },
 
     /// Brain → gateway: the answer to `logging_off`: the brain sends the session nothing more,
     /// and the log-off may start.
@@ -815,6 +887,7 @@ impl ToClient {
         "warning",
         "map_view",
         "loops",
+        "stats",
         "resync",
         "state_request",
         "walk_to",
@@ -823,6 +896,7 @@ impl ToClient {
         "bot_control",
         "loops_request",
         "walk_loop",
+        "stats_request",
         "sent",
         "brain_state",
         "brain_lagged",
@@ -848,6 +922,7 @@ impl ToClient {
             Self::Warning { .. } => "warning",
             Self::MapView { .. } => "map_view",
             Self::Loops { .. } => "loops",
+            Self::Stats { .. } => "stats",
             Self::Resync { .. } => "resync",
             Self::StateRequest { .. } => "state_request",
             Self::WalkTo { .. } => "walk_to",
@@ -856,6 +931,7 @@ impl ToClient {
             Self::BotControl { .. } => "bot_control",
             Self::LoopsRequest { .. } => "loops_request",
             Self::WalkLoop { .. } => "walk_loop",
+            Self::StatsRequest { .. } => "stats_request",
             Self::Sent { .. } => "sent",
             Self::BrainState { .. } => "brain_state",
             Self::BrainLagged { .. } => "brain_lagged",
@@ -875,6 +951,7 @@ impl ToClient {
             | Self::CharacterPatch { session, .. }
             | Self::MapView { session, .. }
             | Self::Loops { session, .. }
+            | Self::Stats { session, .. }
             | Self::Resync { session }
             | Self::WalkTo { session, .. }
             | Self::WalkStop { session }
@@ -882,6 +959,7 @@ impl ToClient {
             | Self::BotControl { session, .. }
             | Self::LoopsRequest { session, .. }
             | Self::WalkLoop { session, .. }
+            | Self::StatsRequest { session }
             | Self::Sent { session, .. }
             | Self::LoggingOff { session } => Some(session),
             Self::Notice { session, .. }
@@ -922,6 +1000,7 @@ impl ToGateway {
         "bot_control",
         "loops_request",
         "walk_loop",
+        "stats_request",
         "event",
         "character",
         "character_patch",
@@ -930,6 +1009,7 @@ impl ToGateway {
         "warning",
         "map_view",
         "loops",
+        "stats",
         "ready_to_leave",
     ];
 
@@ -949,6 +1029,7 @@ impl ToGateway {
             Self::BotControl { .. } => "bot_control",
             Self::LoopsRequest { .. } => "loops_request",
             Self::WalkLoop { .. } => "walk_loop",
+            Self::StatsRequest { .. } => "stats_request",
             Self::Event { .. } => "event",
             Self::Character { .. } => "character",
             Self::CharacterPatch { .. } => "character_patch",
@@ -957,6 +1038,7 @@ impl ToGateway {
             Self::Warning { .. } => "warning",
             Self::MapView { .. } => "map_view",
             Self::Loops { .. } => "loops",
+            Self::Stats { .. } => "stats",
             Self::ReadyToLeave { .. } => "ready_to_leave",
         }
     }
@@ -976,7 +1058,8 @@ impl ToGateway {
             | Self::MapRequest { .. }
             | Self::BotControl { .. }
             | Self::LoopsRequest { .. }
-            | Self::WalkLoop { .. } => Family::Control,
+            | Self::WalkLoop { .. }
+            | Self::StatsRequest { .. } => Family::Control,
             Self::Event { .. }
             | Self::Character { .. }
             | Self::CharacterPatch { .. }
@@ -984,7 +1067,8 @@ impl ToGateway {
             | Self::Notice { .. }
             | Self::Warning { .. }
             | Self::MapView { .. }
-            | Self::Loops { .. } => Family::Brain,
+            | Self::Loops { .. }
+            | Self::Stats { .. } => Family::Brain,
             Self::ReadyToLeave { .. } => Family::Leaving,
         }
     }
@@ -1012,6 +1096,7 @@ impl ToGateway {
                 doors,
             },
             Self::WalkLoop { session, id } => ToClient::WalkLoop { session, id },
+            Self::StatsRequest { session } => ToClient::StatsRequest { session },
             Self::Event {
                 session,
                 seq,
@@ -1071,6 +1156,15 @@ impl ToGateway {
                 doors,
                 generated,
                 megamud,
+            },
+            Self::Stats {
+                session,
+                runs,
+                samples,
+            } => ToClient::Stats {
+                session,
+                runs,
+                samples,
             },
             Self::Hello { .. }
             | Self::InputLine { .. }

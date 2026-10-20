@@ -37,6 +37,11 @@ pub async fn world_pack(binary: &Path, dir: &Path) -> Result<PathBuf, String> {
 pub struct Brain {
     child: Child,
     log: Arc<Mutex<Vec<String>>>,
+    /// How it was started, for [`Brain::restart`].
+    binary: PathBuf,
+    dir: PathBuf,
+    addr: String,
+    world: PathBuf,
 }
 
 impl Brain {
@@ -83,7 +88,31 @@ impl Brain {
             file,
             addr_tx,
         );
-        Ok(Self { child, log })
+        Ok(Self {
+            child,
+            log,
+            binary: binary.to_owned(),
+            dir: dir.to_owned(),
+            addr: addr.to_owned(),
+            world: world.to_owned(),
+        })
+    }
+
+    /// Stop it (SIGTERM) and start it again in the same directory, so on the same store,
+    /// logging to `dir/<label>.log`: how it exited, and the new brain.
+    pub async fn restart(self, label: &str) -> Result<(String, Self), String> {
+        let (binary, dir, addr, world) = (
+            self.binary.clone(),
+            self.dir.clone(),
+            self.addr.clone(),
+            self.world.clone(),
+        );
+        let (status, _) = self.stop().await?;
+        if !status.success() {
+            return Err(format!("the first brain exited with {status}"));
+        }
+        let again = Self::start(&binary, &dir, label, &addr, &world).await?;
+        Ok((format!("exited with {status}"), again))
     }
 
     /// Wait for it to exit by itself; its status and log.

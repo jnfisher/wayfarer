@@ -34,6 +34,7 @@ brain restarts without the characters.
 | `--world PATH` | `world.sqlite` in the data directory | The world pack. Missing, the brain stops at once and prints the `import-world` command that builds it |
 | `--token TOKEN` | the `gateway-token` file in the data directory | The gateway's token, as `wayfarer gateway --new-token` made it. A gateway on a loopback address checks none |
 | `--config PATH` | the user's data directory | The gateway's `wayfarer.toml`; its directory is the data directory |
+| `--store PATH` | `store.sqlite` in the data directory | The brain's store: each bot's state and the statistics ("What it keeps", below). `wayfarer serve` takes it too |
 
 The data directory is the gateway's: on macOS `~/Library/Application Support/wayfarer/`
 (`WAYFARER_DATA_DIR` in the dev scripts). Logs go to stderr (`RUST_LOG` sets the level): one
@@ -245,7 +246,9 @@ cannot win.
 - **Ctrl-C or SIGTERM** closes the WebSocket and exits. Nothing is sent to the game; the
   characters stay where they are. The UIs see `brain_state false`.
 - **Starting it again** attaches afresh: catch-up, a whole snapshot, a re-sync for every
-  session in the realm. The UIs see `brain_state true`.
+  session in the realm. The UIs see `brain_state true`. A bot the store has running or paused
+  is put back as it was, with its home and loop, once the catch-up is done ("Restarts",
+  below).
 - **A second brain** is refused by the gateway (`a brain is already attached`) and exits
   non-zero with that reason, as it does for a wrong token or another protocol version.
 - **The gateway goes away**: the brain retries with the web UI's backoff (half a second,
@@ -256,12 +259,55 @@ cannot win.
 
 ## What it keeps
 
-Nothing on disk. M1 has no plan, loop position, death pile or pause state to keep (John,
-2026-10-19), so a restarted brain rebuilds everything from the gateway's history and a
-re-sync; the bot's state is kept only while the brain runs (a restarted brain's bots are
-stopped). The store arrives with the first card that has state to keep across restarts (the
-bot's modes and plans, M2 onward); `docs/plan/03-engine.md` section 7 lists what it will
-hold.
+The character itself is rebuilt from the gateway's history and a re-sync. What the game cannot
+tell it is kept in the **store**, `store.sqlite` beside `wayfarer.toml` (`--store` to put it
+elsewhere): SQLite, one file, written as things change. It holds nothing the logs do not
+already show. A missing store is made; one that cannot be read (not SQLite, damaged, tables
+missing) is moved to `store.sqlite.corrupt` and made afresh, with a warning in the log; one
+written by a newer wayfarer is left alone and the brain runs without a store (and so resumes
+nothing after a restart).
+
+| Table | What |
+|---|---|
+| `bot_state` | Per session: the bot's state (`stopped`, `running`, `paused`), its home room, the loop it runs (`loop_id`, the stops as they were when it started, the stop it is at, the stops to skip; Task mode fills these), why it is paused, when it was saved |
+| `runs` | Per session: each run, from Start to Stop or a death, and its loop |
+| `events` | Per run: kills (the monster and the exp it gave), exp gained with no kill, deaths, flees, rests and level-ups, each with the time and the room |
+| `samples` | Per run: the character's exp and HP, once a minute |
+
+### Restarts
+
+The bot's state is saved on every change: start, stop, pause, resume, its home found, a loop
+stop reached. A brain that starts (the watcher, a crash, `scripts/dev/brain.sh`) reads it for
+each session as it first sees it and, once that session's catch-up is done:
+
+- **running** or **paused**: puts the bot back in that state with its home and loop, narrating
+  "Resumed: fighting in Newhaven, Arena (brain restarted)", "Resumed paused (you took over):
+  ..." or "Resumed: running loop Newhaven at stop 2/3 (brain restarted)"; the attach's re-sync
+  goes first, then a running bot decides as usual. Its run goes on (the same row: the run's
+  wall time includes the restart).
+- **stopped**: nothing; the bot stays stopped.
+- A session **not in the realm**: not resumed ("Not resuming the bot: the character is not in
+  the realm"); the bot is saved stopped and its run ends.
+
+A generated loop's id resolves against the character's level, so after a level-up it may make
+another loop or none. The stored stops win: the narration then names the loop by its id, with a
+warning that the id no longer makes the stored stops.
+
+### Statistics
+
+A run starts at Start and ends at Stop, a death, the session leaving the realm or the gateway
+logging it off; pauses and brain restarts are inside it. While a run is open the brain records
+what the game shows (not the catch-up's history, which a brain before it saw): a monster's
+death text is a kill, the `You gain N experience.` after it its exp; `You have been killed!` a
+death; `rest` starting a rest; the level going up a level-up. Flees come with Flee (C-028).
+Every minute it samples the character's exp and HP. Times come from the brain's clock, so a
+replay can run on a throwaway store and its recorded clock.
+
+The snapshot's `run` has the current run's numbers, recomputed on each event and sample:
+`exp_per_hour` is the exp gained over the wall time since Start (a minute at least, so a first
+kill is not thousands an hour), not since the last kill. `stats_request` answers with the last
+ten runs and the newest one's samples ([protocol.md](protocol.md)); the web UI's stats tab
+shows them ([web-ui.md](web-ui.md) "The stats").
 
 ## Not yet
 

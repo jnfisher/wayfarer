@@ -96,6 +96,7 @@ and `■` but no pause sign, so pause is `[║]`.
 | `loops`, under the map | The loops around the character: hover or pick one to draw it in yellow, `walk once` walks it |
 | `F10`, or `[►]` and `[■]` in the tile's header | Start the focused character's bot where it stands (fight what comes, rest when low), or stop it |
 | `F9`, or `[║]` and `[►]` in the tile's header | Pause or resume the focused character's bot; a line you type pauses it too |
+| `Alt+S`, or the `stats` button | Open the drawer on the stats of the focused character's runs: exp per hour, kills, deaths and flees, now and for the last runs; or close it (on a Mac, `Option`) |
 | `Alt+D`, or the `dev` button | Open the drawer on the dev panel: the focused character's events, unclassified lines and the brain; or close it (on a Mac, `Option`) |
 
 The `?` overlay shows these keys, what the state badges mean and where the data files live. It
@@ -124,11 +125,12 @@ is per browser until settings arrive (`docs/plan/04-settings.md`); it is not wri
 
 ## The drawer
 
-The map and the dev panel share one drawer on the right, a third of the window at most; the
-tiles refit beside it. Its title has the two tabs, `map` and `dev`, the focused character's
-name and a close button. `Alt+M` (on a Mac, `Option+M`) or the `map` button opens it on the
-map, and again closes it; `Alt+D` or the `dev` button does the same for the dev panel, and
-either key switches tabs when the drawer is open on the other. It follows the focused tile.
+The map, the stats and the dev panel share one drawer on the right, a third of the window at
+most; the tiles refit beside it. Its title has the three tabs, `map`, `stats` and `dev`, the
+focused character's name and a close button. `Alt+M` (on a Mac, `Option+M`) or the `map`
+button opens it on the map, and again closes it; `Alt+S` or the `stats` button and `Alt+D` or
+the `dev` button do the same for the stats and the dev panel, and each key switches tabs when
+the drawer is open on another. It follows the focused tile.
 It is closed by default; whether it is open, its tab and the dev panel's own tab are kept in
 the browser's `localStorage` under `wayfarer.dev`.
 
@@ -189,6 +191,18 @@ and works nothing out itself.
 The panel asks the brain for the view when it opens on a character, and again after a
 reconnect or when the brain re-attaches; after that the brain sends a new one whenever the
 believed room or the route changes. The view holds the rooms within 15 steps.
+
+## The stats
+
+How the focused character's bot is doing, measured by the brain ([brain.md](brain.md)
+"Statistics"). On top, the current run in large numbers: exp per hour (exp gained over the
+wall time since Start), kills, deaths, flees, rests and the exp gained; a run lasts from Start
+to Stop or a death, through pauses and brain restarts. Under them, a line of bars is the exp
+over the newest run, a bar a minute. Then the last ten runs as rows, newest first: when each
+started, its loop (`here` for "fight here"), minutes, exp per hour, kills, deaths and flees;
+the run still going is in cyan. The rows come from the brain's store (`stats_request`): asked
+for when the tab opens, when a run starts or ends, every minute while it is open, and on
+`refresh`.
 
 ## The dev panel
 

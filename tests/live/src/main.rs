@@ -9,7 +9,8 @@
 //! and checks its snapshot, its re-sync and that stopping it logs nobody off. `--scenario
 //! walk` (M2) has that brain walk the character to a room a few steps away and back, and
 //! `--scenario fight` walks it to the Newhaven Arena and starts the bot there;
-//! `--scenario under-attack` then stops the gateway while a monster is attacking.
+//! `--scenario under-attack` then stops the gateway while a monster is attacking;
+//! `--scenario restart` restarts the brain while the bot fights there, and checks it resumes.
 
 mod brain;
 mod claim;
@@ -66,12 +67,15 @@ enum Scenario {
     /// M2's generated loops: the Newhaven loop is listed, and `walk_loop` starts on it and is
     /// stopped before the Arena (its monsters would start a fight).
     Loop,
+    /// C-029: as "fight", but `wayfarer brain` is restarted while the bot runs; the new brain
+    /// resumes it running in the Arena, and `stats_request` shows the kills so far.
+    Restart,
 }
 
 fn usage() -> ! {
     eprintln!(
         "usage: wayfarer-live --wayfarer BIN --out DIR [--addr HOST:PORT] [--pool FILE] \
-         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack]\n(run it through \
+         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart]\n(run it through \
          scripts/live-check.sh)"
     );
     std::process::exit(2);
@@ -106,6 +110,7 @@ fn args() -> Args {
                     "fight" => Scenario::Fight,
                     "loop" => Scenario::Loop,
                     "under-attack" => Scenario::UnderAttack,
+                    "restart" => Scenario::Restart,
                     _ => usage(),
                 }
             }
@@ -487,7 +492,7 @@ async fn run(ctx: &mut Ctx, pool: &Pool) -> Result<String, String> {
         let ok = match fight_scenario(ctx, &mut gw, under_attack).await {
             Fought::UnderAttack(running) => {
                 let left = logoff_under_attack(ctx, gw).await;
-                let brain = stop_brain(ctx, running).await;
+                let brain = stop_brain(ctx, *running).await;
                 let again = log_on_again(ctx, fixture, true).await;
                 left && brain && again
             }
@@ -497,6 +502,15 @@ async fn run(ctx: &mut Ctx, pool: &Pool) -> Result<String, String> {
             }
         };
         return if ok { Ok(who) } else { Err(who) };
+    }
+    if ctx.args.scenario == Scenario::Restart {
+        let restarted = restart_scenario(ctx, &mut gw).await;
+        let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
+        return if restarted && logged_off {
+            Ok(who)
+        } else {
+            Err(who)
+        };
     }
     if ctx.args.scenario == Scenario::Loop {
         let looped = loop_scenario(ctx, &mut gw).await;
@@ -1109,7 +1123,7 @@ fn hp(c: &serde_json::Value) -> Option<(i64, i64)> {
 /// How the fight scenario ended.
 enum Fought {
     /// Fighting in the Arena with HP to spare, the brain still attached: stop the gateway now.
-    UnderAttack(brain::Brain),
+    UnderAttack(Box<brain::Brain>),
     /// Out of the Arena, the brain stopped; whether all of it went.
     Out(bool),
 }
@@ -1148,7 +1162,7 @@ async fn fight_scenario(ctx: &mut Ctx, gw: &mut Gateway, under_attack: bool) -> 
             .and_then(|r| r);
         ctx.record("a monster attacking, HP 60% or more", started, &ready);
         if ready.is_ok() {
-            return Fought::UnderAttack(running);
+            return Fought::UnderAttack(Box::new(running));
         }
     }
 
@@ -1173,6 +1187,151 @@ async fn fight_scenario(ctx: &mut Ctx, gw: &mut Gateway, under_attack: bool) -> 
     let brain = stop_brain(ctx, running).await;
     // With `under_attack`, its step was not reached: the scenario fails whatever else went.
     Fought::Out(brain && ok && stopped.is_ok() && out && rested && !under_attack)
+}
+
+/// The restart scenario, with the gateway in the realm: a brain; to the Arena; Start and a
+/// kill (or the bot stopping itself, which fails it); the brain restarted on the same store;
+/// the new brain resumes the bot running in the Arena; `stats_request` shows the kills so far;
+/// then as the fight scenario ends: Stop, out of the Arena, rest by hand, the brain stopped.
+async fn restart_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
+    use wayfarer_proto::BotAction;
+
+    let Some((running, start)) = placed_brain(ctx, gw, "restart").await else {
+        return false;
+    };
+    let mut ok = fight_in_the_arena(ctx, gw, start).await;
+    let kills = |c: &serde_json::Value| c["run"]["kills"].as_u64().unwrap_or(0);
+    let kills_before = kills(&gw.character);
+    let mut running = Some(running);
+    if ok && bot_field(&gw.character, "state") != Some("running") {
+        let why = bot_field(&gw.character, "narration")
+            .unwrap_or("")
+            .to_owned();
+        ctx.record(
+            "the bot runs before the restart",
+            Instant::now(),
+            &Err(format!("it is not running: {why}")),
+        );
+        ok = false;
+    }
+
+    // 5. Restart the brain while the bot runs: the new one resumes it in the Arena.
+    if ok {
+        let started = Instant::now();
+        let notices = gw.notices.len();
+        let brain = running.take().expect("the first brain");
+        let restarted = match brain.restart("brain-2").await {
+            Ok((how, again)) => {
+                running = Some(again);
+                ctx.record("stop the brain mid-run", started, &Ok(how));
+                Ok(())
+            }
+            Err(e) => {
+                ctx.record("stop the brain mid-run", started, &Err(e.clone()));
+                Err(e)
+            }
+        };
+        if restarted.is_ok() {
+            let started = Instant::now();
+            // The old brain's `brain_state false` first, so a stale `true` is not taken.
+            let _ = gw
+                .wait_for(Duration::from_secs(10), "brain_state false", |g| {
+                    (g.brain_attached == Some(false)
+                        || g.notices[notices..]
+                            .iter()
+                            .any(|n| n.starts_with("Resumed")))
+                    .then_some(())
+                })
+                .await;
+            let resumed = gw
+                .wait_for(
+                    Duration::from_secs(60),
+                    "the bot resumed in the Arena",
+                    |g| {
+                        let said = g.notices[notices..]
+                            .iter()
+                            .find(|n| n.starts_with("Resumed"))?;
+                        let room = believed(&g.character).map(|(k, _)| k);
+                        (g.brain_attached == Some(true)
+                            && bot_field(&g.character, "state") == Some("running")
+                            && room == Some(ARENA)
+                            && g.notices[notices..].iter().any(|n| n == "re-synced"))
+                        .then(|| format!("{said}; running in {}/{}", ARENA.0, ARENA.1))
+                    },
+                )
+                .await;
+            ctx.record(
+                "a restarted brain resumes the bot in the Arena",
+                started,
+                &resumed,
+            );
+            ok = resumed.is_ok();
+        } else {
+            ok = false;
+        }
+    }
+
+    // 6. `stats_request`: the run goes on, with the kills seen before the restart.
+    if ok {
+        let started = Instant::now();
+        let stats = match gw.stats_request().await {
+            Ok(()) => {
+                gw.wait_for(Duration::from_secs(10), "stats", |g| {
+                    let Some(wayfarer_proto::ToClient::Stats { runs, samples, .. }) = &g.stats
+                    else {
+                        return None;
+                    };
+                    let r = runs.first()?;
+                    Some(if r.ended_at.is_none() && r.kills >= kills_before {
+                        Ok(format!(
+                            "run since {}: {} kills, {} exp, {} exp/hr, {} samples, {} runs                              listed",
+                            r.started_at,
+                            r.kills,
+                            r.exp_gained,
+                            r.exp_per_hour,
+                            samples.len(),
+                            runs.len()
+                        ))
+                    } else {
+                        Err(format!(
+                            "the newest run: {r:?}; {kills_before} kills before the restart"
+                        ))
+                    })
+                })
+                .await
+                .and_then(|r| r)
+            }
+            Err(e) => Err(e),
+        };
+        ctx.record("stats_request shows the kills so far", started, &stats);
+        ok = stats.is_ok();
+    }
+
+    // Whatever happened: the bot stopped, out of the Arena, HP back, the brain stopped.
+    let started = Instant::now();
+    let stopped = match gw.bot(BotAction::Stop).await {
+        Ok(()) => {
+            gw.wait_for(Duration::from_secs(10), "the bot stopped", |g| {
+                (bot_field(&g.character, "state") != Some("running")
+                    && bot_field(&g.character, "state") != Some("paused"))
+                .then(|| {
+                    bot_field(&g.character, "narration")
+                        .unwrap_or("")
+                        .to_owned()
+                })
+            })
+            .await
+        }
+        Err(e) => Err(e),
+    };
+    ctx.record("stop the bot", started, &stopped);
+    let out = walk_out(ctx, gw).await;
+    let rested = rest_by_hand(ctx, gw).await;
+    let brain = match running {
+        Some(b) => stop_brain(ctx, b).await,
+        None => false,
+    };
+    ok && stopped.is_ok() && out && rested && brain
 }
 
 /// Steps 2 to 4 of the fight scenario: the walk there, Start, the fight.

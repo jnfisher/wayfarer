@@ -11,6 +11,7 @@ use wayfarer_parse::{GameTexts, Registry};
 use wayfarer_proto::{
     CharacterState, ClientKind, PROTOCOL, RoomKind, SessionInfo, ToClient, ToGateway, WorldPackInfo,
 };
+use wayfarer_store::Store;
 use wayfarer_world::{Key, MmLoop, Monsters, RoomGraph, WorldPack};
 
 use crate::clock::{Clock, rfc3339};
@@ -185,7 +186,8 @@ fn file_sha256(path: &Path) -> std::io::Result<String> {
 }
 
 /// The brain: every session's parser, character and re-sync, kept across attaches (a
-/// gateway that went away and came back). It keeps nothing on disk in M1.
+/// gateway that went away and came back). With a store ([`Brain::with_store`]) the bot's state
+/// and the runs' statistics are kept on disk, and a restarted brain resumes each bot.
 pub struct Brain {
     world: World,
     clock: Arc<dyn Clock>,
@@ -193,6 +195,7 @@ pub struct Brain {
     started_at: String,
     sessions: BTreeMap<String, Session>,
     attaches: u64,
+    store: Option<Arc<Mutex<Store>>>,
 }
 
 impl Brain {
@@ -206,7 +209,15 @@ impl Brain {
             started_at,
             sessions: BTreeMap::new(),
             attaches: 0,
+            store: None,
         }
+    }
+
+    /// Keep the bot's state and the statistics in `store`, and resume the bots it has running
+    /// or paused as their sessions are first seen.
+    pub fn with_store(mut self, store: Store) -> Self {
+        self.store = Some(Arc::new(Mutex::new(store)));
+        self
     }
 
     /// The character the brain has for `session`, if it knows the session.
@@ -293,6 +304,8 @@ impl Brain {
                         info,
                         self.world.registry.clone(),
                         self.world.atlas.clone(),
+                        self.store.clone(),
+                        self.clock.clone(),
                         now,
                     );
                     s.attach(info, now, out);
@@ -316,6 +329,7 @@ impl Brain {
                 if let Some(s) = self.sessions.get_mut(&session)
                     && s.history(chunks, out)
                 {
+                    s.resume(out);
                     s.publish(out);
                     s.send_map(out);
                 }
@@ -371,6 +385,10 @@ impl Brain {
                 Some(s) => s.walk_loop(&id, now, out),
                 None => out.push(no_session("walk_loop", &session)),
             },
+            ToClient::StatsRequest { session } => match self.sessions.get(&session) {
+                Some(s) => s.stats_request(out),
+                None => out.push(no_session("stats_request", &session)),
+            },
             ToClient::Resync { session } => match self.sessions.get_mut(&session) {
                 Some(s) => {
                     tracing::info!(%session, "re-sync asked for");
@@ -412,6 +430,8 @@ impl Brain {
                 });
                 tracing::info!(session = %s.id, "re-synced");
             }
+            // After every message and timer: the bot's state, if it changed, to the store.
+            s.persist(out);
         }
     }
 }

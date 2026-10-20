@@ -1684,6 +1684,7 @@ dependencies = [
  "wayfarer-gateway",
  "wayfarer-parse",
  "wayfarer-proto",
+ "wayfarer-store",
  "wayfarer-world",
 ]
 
@@ -1694,12 +1695,14 @@ dependencies = [
  "futures-util",
  "serde_json",
  "sha2",
+ "tempfile",
  "thiserror",
  "tokio",
  "tokio-tungstenite 0.30.0",
  "tracing",
  "wayfarer-parse",
  "wayfarer-proto",
+ "wayfarer-store",
  "wayfarer-world",
 ]
 
@@ -1761,6 +1764,14 @@ dependencies = [
  "serde_json",
  "thiserror",
  "ts-rs",
+]
+
+[[package]]
+name = "wayfarer-store"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "tempfile",
 ]
 
 [[package]]

@@ -5,12 +5,15 @@
   import Help from "./Help.svelte";
   import DevPanel from "./DevPanel.svelte";
   import MapPanel from "./MapPanel.svelte";
+  import StatsPanel from "./StatsPanel.svelte";
+  import { STATS_REFRESH_MS, type Stats } from "./lib/stats";
   import { PAUSE_KEY, START_KEY, botKeyAction } from "./lib/bot";
   import {
     DEV_PANEL_CODE,
     FOCUS_TILE_CODE,
     MAP_PANEL_CODE,
     RESET_LAYOUT_CODE,
+    STATS_PANEL_CODE,
     ZOOM_IN_KEYS,
     ZOOM_OUT_KEYS,
     ZOOM_RESET_KEYS,
@@ -75,6 +78,7 @@
 
   const DRAWER_BUTTONS: { panel: DrawerPanel; title: string }[] = [
     { panel: "map", title: "Map (Alt+M)" },
+    { panel: "stats", title: "Stats (Alt+S)" },
     { panel: "dev", title: "Dev panel (Alt+D)" },
   ];
 
@@ -82,6 +86,8 @@
   let mapViews = $state.raw<Record<string, MapView>>({});
   // The brain's last `loops` per session.
   let loopsBySession = $state.raw<Record<string, Loops>>({});
+  // The brain's last `stats` per session.
+  let statsBySession = $state.raw<Record<string, Stats>>({});
   // Sessions whose map has been asked for since the connection opened or the brain attached:
   // the brain sends a view by itself only when the believed room or the route changes.
   const mapAsked = new Set<string>();
@@ -91,6 +97,18 @@
     if (!devPrefs.open || devPrefs.panel !== "map" || !id || status !== "open" || !brain.attached) return;
     if (brain.characters[id]?.position?.room === undefined || mapAsked.has(id)) return;
     if (client.requestMap(id, MAP_RADIUS)) mapAsked.add(id);
+  });
+
+  // The stats tab asks for the focused character's runs when it opens, when a run starts or
+  // ends, and every minute while it stays open (the brain samples once a minute).
+  const runKey = $derived(focusedId ? (brain.characters[focusedId]?.run?.run_started_at ?? "none") : "");
+  $effect(() => {
+    const id = focusedId;
+    void runKey;
+    if (!devPrefs.open || devPrefs.panel !== "stats" || !id || status !== "open" || !brain.attached) return;
+    client.requestStats(id);
+    const timer = setInterval(() => client.requestStats(id), STATS_REFRESH_MS);
+    return () => clearInterval(timer);
   });
 
   /** Open (over the focused tile) or close the help overlay. */
@@ -231,6 +249,9 @@
       loops: (loops) => {
         loopsBySession = { ...loopsBySession, [loops.session]: loops };
       },
+      stats: (stats) => {
+        statsBySession = { ...statsBySession, [stats.session]: stats };
+      },
       event: (id, e) => {
         addEvent(dev, id, e);
         devChanged();
@@ -268,7 +289,7 @@
     }
   }
 
-  // Alt+M and Alt+D open the drawer on the map or dev panel; Alt+1..Alt+6 focus a tile; Ctrl +/-/0
+  // Alt+M, Alt+S and Alt+D open the drawer on the map, stats or dev panel; Alt+1..Alt+6 focus a tile; Ctrl +/-/0
   // zoom the focused one; F9 and F10 pause or resume, start or stop its bot. Captured before
   // xterm sees them.
   function onkeydown(e: KeyboardEvent) {
@@ -279,7 +300,8 @@
       if (id && action) client.botControl(id, action);
       return;
     }
-    const drawer: DrawerPanel | null = e.code === MAP_PANEL_CODE ? "map" : e.code === DEV_PANEL_CODE ? "dev" : null;
+    const drawer: DrawerPanel | null =
+      e.code === MAP_PANEL_CODE ? "map" : e.code === STATS_PANEL_CODE ? "stats" : e.code === DEV_PANEL_CODE ? "dev" : null;
     if (e.altKey && !e.ctrlKey && !e.metaKey && drawer) {
       e.preventDefault();
       toggleDrawer(devPrefs, drawer);
@@ -414,6 +436,14 @@
             loops={focusedId ? loopsBySession[focusedId] : undefined}
             onloops={(id, doors) => client.requestLoops(id, LOOP_RADIUS, doors)}
             onwalkloop={(id, loop) => client.walkLoop(id, loop)}
+          />
+        {:else if devPrefs.panel === "stats"}
+          <StatsPanel
+            session={sessions[focused]}
+            character={focusedId ? brain.characters[focusedId] : undefined}
+            stats={focusedId ? statsBySession[focusedId] : undefined}
+            attached={brain.attached}
+            onrefresh={(id) => client.requestStats(id)}
           />
         {:else}
           <DevPanel

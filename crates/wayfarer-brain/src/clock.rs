@@ -1,5 +1,6 @@
-//! Wall-clock time for the wire's timestamps (`started_at`, `synced_at`). Timers and timeouts
-//! use `tokio::time`, so tests pause them; this is only what the timestamps say.
+//! Wall-clock time for the wire's timestamps (`started_at`, `synced_at`) and the store's.
+//! Timers and timeouts use `tokio::time`, so tests pause them; this is only what the
+//! timestamps say.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -24,6 +25,29 @@ pub struct FixedClock(pub SystemTime);
 impl Clock for FixedClock {
     fn now(&self) -> SystemTime {
         self.0
+    }
+}
+
+/// Wall time that moves with tokio's clock from the moment it is made: on a paused test clock
+/// the minutes a test lets pass pass here too (tests, replay).
+#[derive(Debug, Clone, Copy)]
+pub struct InstantClock {
+    start: SystemTime,
+    at: tokio::time::Instant,
+}
+
+impl InstantClock {
+    pub fn new(start: SystemTime) -> Self {
+        Self {
+            start,
+            at: tokio::time::Instant::now(),
+        }
+    }
+}
+
+impl Clock for InstantClock {
+    fn now(&self) -> SystemTime {
+        self.start + self.at.elapsed()
     }
 }
 

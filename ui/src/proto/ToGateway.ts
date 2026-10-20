@@ -2,18 +2,20 @@
 import type { BotAction } from "./BotAction";
 import type { CharacterState } from "./CharacterState";
 import type { ClientKind } from "./ClientKind";
+import type { ExpSample } from "./ExpSample";
 import type { GeneratedLoop } from "./GeneratedLoop";
 import type { MapExit } from "./MapExit";
 import type { MapRoom } from "./MapRoom";
 import type { MegaMudLoop } from "./MegaMudLoop";
 import type { RoomKey } from "./RoomKey";
+import type { RunSummary } from "./RunSummary";
 import type { WorldPackInfo } from "./WorldPackInfo";
 
 /**
  * Client → gateway.
  */
-export type ToGateway = { "type": "hello", protocol: number, client: ClientKind, token?: string, } | { "type": "input_line", session: string, text: string, } | { "type": "input_keys", session: string, bytes: Array<number>, } | { "type": "history_request", session: string, after_seq?: number, before_seq?: number, max_chunks: number, } | { "type": "subscribe", sessions?: Array<string>, } | { "type": "resync", session: string, } | { "type": "state_request", session?: string, } | { "type": "walk_to", session: string, map: number, room: number, } | { "type": "walk_stop", session: string, } | { "type": "map_request", session: string, radius?: number, } | { "type": "bot_control", session: string, action: BotAction, } | { "type": "loops_request", session: string, anchor?: RoomKey, radius: number, doors?: boolean, } | { "type": "walk_loop", session: string, id: string, } | { "type": "event", session: string, seq: number, line_no: number, name: string, cat: string, fields: Record<string, unknown>, line: string, } | { "type": "character", session: string, state: CharacterState, } | { "type": "character_patch", session: string, patch: unknown, } | { "type": "brain_info", build: string, started_at: string, world_pack?: WorldPackInfo, } | { "type": "notice", session?: string, text: string, } | { "type": "warning", session?: string, text: string, } | { "type": "map_view", session: string, center: RoomKey, 
+export type ToGateway = { "type": "hello", protocol: number, client: ClientKind, token?: string, } | { "type": "input_line", session: string, text: string, } | { "type": "input_keys", session: string, bytes: Array<number>, } | { "type": "history_request", session: string, after_seq?: number, before_seq?: number, max_chunks: number, } | { "type": "subscribe", sessions?: Array<string>, } | { "type": "resync", session: string, } | { "type": "state_request", session?: string, } | { "type": "walk_to", session: string, map: number, room: number, } | { "type": "walk_stop", session: string, } | { "type": "map_request", session: string, radius?: number, } | { "type": "bot_control", session: string, action: BotAction, } | { "type": "loops_request", session: string, anchor?: RoomKey, radius: number, doors?: boolean, } | { "type": "walk_loop", session: string, id: string, } | { "type": "stats_request", session: string, } | { "type": "event", session: string, seq: number, line_no: number, name: string, cat: string, fields: Record<string, unknown>, line: string, } | { "type": "character", session: string, state: CharacterState, } | { "type": "character_patch", session: string, patch: unknown, } | { "type": "brain_info", build: string, started_at: string, world_pack?: WorldPackInfo, } | { "type": "notice", session?: string, text: string, } | { "type": "warning", session?: string, text: string, } | { "type": "map_view", session: string, center: RoomKey, 
 /**
  * The center's level: the floor the panel shows first.
  */
-level: number, rooms: Array<MapRoom>, exits: Array<MapExit>, route?: Array<RoomKey>, } | { "type": "loops", session: string, anchor: RoomKey, radius: number, doors: boolean, generated: Array<GeneratedLoop>, megamud: Array<MegaMudLoop>, } | { "type": "ready_to_leave", session: string, };
+level: number, rooms: Array<MapRoom>, exits: Array<MapExit>, route?: Array<RoomKey>, } | { "type": "loops", session: string, anchor: RoomKey, radius: number, doors: boolean, generated: Array<GeneratedLoop>, megamud: Array<MegaMudLoop>, } | { "type": "stats", session: string, runs: Array<RunSummary>, samples: Array<ExpSample>, } | { "type": "ready_to_leave", session: string, };

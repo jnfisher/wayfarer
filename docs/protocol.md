@@ -155,6 +155,7 @@ to every UI. It relays by message type and never reads `fields` or `patch`.
 | `warning {session?, text}` | Something wrong but not fatal |
 | `map_view {session, center, level, rooms, exits, route?}` | The rooms around the believed position, for the map panel (below) |
 | `loops {session, anchor, radius, doors, generated, megamud}` | The answer to a `loops_request`: the loops of the area (below) |
+| `stats {session, runs, samples}` | The answer to a `stats_request`: the character's last ten runs, newest first, and the newest run's samples (below) |
 
 ```json
 {"type":"event","session":"kasimir","seq":43,"line_no":88,"name":"you_hit","cat":"combat","fields":{"dmg":"1","target":"fat giant rat","verb":"punch"},"line":"You punch fat giant rat for 1 damage!"}
@@ -165,6 +166,7 @@ to every UI. It relays by message type and never reads `fields` or `patch`.
 {"type":"warning","text":"world pack not found; walking blind"}
 {"type":"map_view","session":"kasimir","center":{"map":1,"room":2140},"level":0,"rooms":[{"map":1,"room":2140,"name":"Newhaven, Village Entrance","x":0,"y":0,"level":0,"spawns":false,"visited":true,"candidate":true,"collides":false},{"map":1,"room":2141,"name":"Newhaven, Weapons Shop","x":0,"y":-1,"level":0,"spawns":false,"kind":"shop","visited":false,"candidate":false,"collides":false}],"exits":[{"from":{"map":1,"room":2140},"to":{"map":1,"room":2141},"dir":"n","kind":"plain","one_way":false}],"route":[{"map":1,"room":2140},{"map":1,"room":2141}]}
 {"type":"loops","session":"kasimir","anchor":{"map":1,"room":2140},"radius":8,"doors":true,"generated":[{"id":"1:2140:8:doors:0","name":"Newhaven","stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1}],"path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"doors":1}],"megamud":[{"file":"EXAMPLE.mp","description":"Arena loop","author":"someone","path":[{"map":1,"room":2150},{"map":1,"room":2146},{"map":1,"room":2150}],"steps":2,"exact":2}]}
+{"type":"stats","session":"kasimir","runs":[{"started_at":"2026-10-19T12:00:00Z","minutes":2,"exp_per_hour":540,"kills":2,"deaths":0,"flees":0,"rests":1,"exp_gained":18}],"samples":[{"at":"2026-10-19T12:01:00Z","exp":355,"hp":30}]}
 ```
 
 The character snapshot: every field is optional and left out until the brain knows it.
@@ -189,6 +191,7 @@ The character snapshot: every field is optional and left out until the brain kno
 | `kills` | Monster deaths seen since the brain attached |
 | `position` | `{map?, room?, candidates, title?}`: the room the brain believes the character is in (the lowest key among the candidates; absent when unknown), how many rooms fit what was seen (1 is certain), and the last room title seen. Absent without a world pack |
 | `bot` | `{state, mode, narration, reason?}`, with a world pack: `state` is `stopped` (the default), `running` or `paused`; `mode` is `idle`, `fight` or `recover`; `narration` is what it is doing ("Fight: large giant rat", "Recover: resting to 95% in Newhaven, Narrow Road", "Paused: you took over"); `reason` why it stopped or paused, when it did so itself or for the player ([brain.md](brain.md) "Fight here") |
+| `run` | `{run_started_at, exp_per_hour, kills, deaths, flees, rests, exp_gained}` while the bot has a run (from Start to Stop or a death; [brain.md](brain.md) "Statistics"): when it started (RFC 3339), exp gained over the wall time since then (a minute at least), and what the run has counted. Absent when there is none |
 | `walking` | `{to, name, steps_left, step, commands}` while a walk is in progress: the destination (`{map, room}`) and its name, the steps not yet confirmed, the step in progress from 1 (counted over the whole walk, replans included), and what the walker will type for each step left, the one in progress first (`n`, or a text exit's phrase such as `borrow skiff`; a closed door adds an `open` not listed). Absent when not walking |
 
 `hp` follows the prompt. Between prompts the brain also applies `You took 3 damage.` (lowered),
@@ -217,6 +220,13 @@ steps of `anchor` by exits the character may take (through doors unless `doors` 
 | `generated` | `[{id, name, stops, path, steps, doors}]`: closed circuits through the area's hunt rooms. `id` is what `walk_loop` takes. `stops` in walking order, each `{map, room, name, monsters, arena, lair, regen}` (the huntable monsters it spawns by name; `regen`: minutes nothing spawns after a kill, arenas exempt). `path`: every room passed, from the first stop back to it; `steps` and `doors` along it |
 | `megamud` | `[{file, description, author, path, steps, exact}]`: MegaMud's loops whose verification walk passes a room of the area, only those that walked to the end and closed in their start room. `path`: the rooms the walk passed; `steps` it checked, `exact` of them matching MegaMud's room id exactly. Empty unless the world pack was built with MegaMud's paths |
 
+The statistics of a character ([brain.md](brain.md) "Statistics"), from the brain's store:
+
+| Field | What |
+|---|---|
+| `runs` | `[{started_at, ended_at?, loop_id?, minutes, exp_per_hour, kills, deaths, flees, rests, exp_gained}]`: the last ten runs, newest first. `ended_at` is absent while the run goes on; `loop_id` names the loop it ran (absent for "fight here"); `minutes` are whole minutes from start to end (or to now) |
+| `samples` | `[{at, exp?, hp?}]`: the newest run's samples of the character's exp and HP, one a minute, oldest first |
+
 ### Control (UI → brain)
 
 Relayed to the brain. With no brain attached the gateway answers `error` `no brain attached`.
@@ -231,6 +241,7 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 | `bot_control {session, action}` | The bot ([brain.md](brain.md) "Fight here"): `start` (fight here: re-sync, then fight what comes and rest when low), `stop`, `pause` (after the action in flight) or `resume` (re-sync, then carry on) |
 | `loops_request {session, anchor?, radius, doors?}` | Send the `loops` of the area within `radius` steps of `anchor` (`{map, room}`; the believed room when left out), through doors unless `doors` is false |
 | `walk_loop {session, id}` | Walk a generated loop once ([brain.md](brain.md) "Loops"): to its stop nearest the character, round every other stop and back to that one, each leg a `walk_to`; `walk_stop` stops it and a `walk_to` replaces it |
+| `stats_request {session}` | Send a `stats` message: the character's last runs and the newest run's samples |
 
 ```json
 {"type":"resync","session":"kasimir"}
@@ -241,6 +252,7 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 {"type":"bot_control","session":"kasimir","action":"start"}
 {"type":"loops_request","session":"kasimir","radius":8}
 {"type":"walk_loop","session":"kasimir","id":"1:2140:8:doors:0"}
+{"type":"stats_request","session":"kasimir"}
 ```
 
 A UI that sends a brain message (`event`, `character`, ...), or a brain that sends a control
