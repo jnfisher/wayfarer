@@ -127,6 +127,8 @@ Cards don't repeat these:
 | [C-033](C-033-soak-scenario.md) | The timed run: `--scenario soak`: a character runs a loop for N minutes and the numbers come out | C | M | C-030, C-029 | |
 | [C-034](C-034-goto.md) | Go to: find a room, a place or a monster by name, walk there, stop one room short of a boss lair (added 2026-10-20 at John's request) | B | M | C-030 | |
 | [C-035](C-035-monster-lists.md) | Monster lists: never fight, flee from and avoid by name; a stalemate ends a fight; the gigantic black ooze is never fought (added 2026-10-20 after the M3 soak met it) | B | M | C-028, C-030, C-034 | review |
+| [C-036](C-036-megamud-loops.md) | Run a MegaMud loop as a task: the verified path's hunt rooms are the stops, its step actions become knowledge for the router and walker, the soak and the map panel can pick one (added 2026-10-20 at John's request) | B | L | C-030, C-037 | review |
+| [C-037](C-037-doors-hidden-exits-unreachable-stops.md) | Doors the character cannot open are not routed through; the walker searches for a hidden exit on its route; unreachable stops do not end a loop (added 2026-10-20 after the keep soak) | B | M | C-030, C-022 | |
 
 Tier: B Opus, C Sonnet. Size: S under half a day of agent time, M about a day, L two to three
 days.
