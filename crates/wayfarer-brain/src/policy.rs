@@ -11,8 +11,10 @@ use wayfarer_world::{
 
 use crate::brain::Atlas;
 
-// The thresholds of docs/plan/04-settings.md section 3 at their defaults. They are constants
-// in this slice; the settings replace them in M4.
+// The thresholds of docs/plan/04-settings.md section 3 at their defaults. The brain reads the
+// settings `health.flee_below_hp`, `health.rest_below_hp` and `health.rest_until_hp`
+// (`wayfarer-settings`); these are what it falls back to without a world pack, and the
+// defaults those settings declare.
 
 /// Recover takes control below this much HP (per cent of the maximum).
 pub const REST_BELOW: i32 = 80;

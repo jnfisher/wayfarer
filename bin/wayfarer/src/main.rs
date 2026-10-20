@@ -207,6 +207,33 @@ fn paths(config: Option<PathBuf>) -> Result<Paths, Box<dyn std::error::Error>> {
     })
 }
 
+/// The settings in force: `settings.toml` beside `beside` (the gateway's token file or
+/// credentials, so in the data directory), or the defaults when there is none
+/// (`docs/plan/04-settings.md`). A file that is not valid is an error, not a silent default.
+fn load_settings(beside: &std::path::Path) -> Result<wayfarer_settings::Settings, String> {
+    use wayfarer_settings::{Layer, Overrides, Settings};
+    let path = beside.with_file_name("settings.toml");
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Settings::default()),
+        Err(e) => return Err(format!("{}: {e}", path.display())),
+    };
+    let over = Overrides::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    let settings = Settings::resolve(&[(Layer::Mine, &over)])
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    tracing::info!(file = %path.display(), "settings loaded");
+    Ok(settings)
+}
+
+/// The world pack, with the settings in force.
+fn open_world(
+    path: &std::path::Path,
+    beside: &std::path::Path,
+) -> Result<World, Box<dyn std::error::Error>> {
+    let settings = load_settings(beside)?;
+    Ok(World::open(path)?.with_settings(settings))
+}
+
 fn init_tracing() {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -252,7 +279,7 @@ fn run_gateway(
             let hub = Hub::new(gateway, token.clone());
             let brain = match world_path {
                 Some(path) if path.is_file() => {
-                    let world = World::open(&path)?;
+                    let world = open_world(&path, &token_file)?;
                     tracing::info!(
                         build = wayfarer_brain::BUILD,
                         world = %path.display(),
@@ -310,7 +337,7 @@ fn run_brain(args: BrainArgs) -> Result<(), Box<dyn std::error::Error>> {
         .build()?
         .block_on(async {
             init_tracing();
-            let world = World::open(&world_path)?;
+            let world = open_world(&world_path, &paths.credentials)?;
             let mut brain = Brain::new(world, Arc::new(SystemClock), token);
             if let Some(store) = open_store(&store_path) {
                 brain = brain.with_store(store);

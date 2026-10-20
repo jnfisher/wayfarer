@@ -18,6 +18,20 @@ character's class, and everything else is one level down.
 - **Safe, unsurprising defaults.** MegaMud hung up the moment another player attacked, and
   logged off below 10% HP; both off here.
 
+## Status (2026-10-20)
+
+A first slice is built, in `crates/wayfarer-settings` (its README): section 1's declaration
+(key, label, help, kind, range, default, unit, tier, group, MegaMud name), section 2's layers
+(default, my defaults, server, character) with the source of each value, validation (ranges,
+types, the HP lines in order) and the TOML file holding only what differs. The brain reads
+five settings from `settings.toml` in the data directory, for all characters:
+`health.flee_below_hp`, `health.rest_below_hp`, `health.rest_until_hp`,
+`movement.search_limit` and `bot.passed_by_minutes` (`docs/brain.md` "Settings"). Not built
+yet: the forms and the essentials page, class and style presets, per-server and per-character
+files, narrating a change on the tile, applying a change to a running bot, the remote toggles,
+the docs page and the MegaMud import, and every setting in sections 3 and 4 other than those
+five.
+
 ## 1. Declared once
 
 Every setting is declared once in `wayfarer-settings`:

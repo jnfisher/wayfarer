@@ -1,0 +1,11 @@
+[package]
+name = "wayfarer-settings"
+description = "Settings declared once: keys, help, ranges and defaults, layers, validation and TOML (docs/plan/04-settings.md)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+toml = "1"

@@ -1684,6 +1684,7 @@ dependencies = [
  "wayfarer-gateway",
  "wayfarer-parse",
  "wayfarer-proto",
+ "wayfarer-settings",
  "wayfarer-store",
  "wayfarer-world",
 ]
@@ -1703,6 +1704,7 @@ dependencies = [
  "wayfarer-gateway",
  "wayfarer-parse",
  "wayfarer-proto",
+ "wayfarer-settings",
  "wayfarer-store",
  "wayfarer-world",
 ]
@@ -1765,6 +1767,13 @@ dependencies = [
  "serde_json",
  "thiserror",
  "ts-rs",
+]
+
+[[package]]
+name = "wayfarer-settings"
+version = "0.1.0"
+dependencies = [
+ "toml",
 ]
 
 [[package]]

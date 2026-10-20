@@ -584,6 +584,26 @@ against silvermere's oracle, `tests/fixtures/command-words/`) and sends it as it
   only a session whose realm state was lost meanwhile: one not in the realm any more, one
   that left and came back, or one whose output went by unseen.
 
+## Settings
+
+`settings.toml` in the data directory (beside `wayfarer.toml`) sets the values the bot used to
+have as constants, for every character. It holds only what differs from the defaults; a missing
+file means the defaults, and a file that is not valid stops the brain, saying what is
+wrong (an unknown key, a number out of its range, the HP lines out of order). `wayfarer brain`
+and `wayfarer serve` read it at start; a change needs a restart of the brain (the bot resumes).
+Declared in `wayfarer-settings` (`docs/plan/04-settings.md`, "Status"):
+
+| Key | Default | Range | What |
+|---|---|---|---|
+| `health.flee_below_hp` | 30 | 0–90 | Flee takes control below this per cent of the maximum HP |
+| `health.rest_below_hp` | 80 | 10–99 | Recover takes control below this per cent |
+| `health.rest_until_hp` | 95 | 20–100 | Recover rests until this per cent |
+| `movement.search_limit` | 300 | 1–1000 | Searches for a hidden exit before the walker gives it up |
+| `bot.passed_by_minutes` | 5 | 1–120 | How long a loop stop the bot passed by is left alone |
+
+The HP lines must run flee below < rest below <= rest until. `wayfarer brain --flee-below`
+(a test knob) overrides the flee line whatever the file says.
+
 ## What it keeps
 
 The character itself is rebuilt from the gateway's history and a re-sync. What the game cannot

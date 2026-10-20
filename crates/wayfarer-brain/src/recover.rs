@@ -10,7 +10,7 @@ use wayfarer_world::Key;
 
 use crate::executor::{Action, Expect, Outcome};
 use crate::modes::{Mode, Step, View};
-use crate::policy::{REST_BELOW, REST_TRIES, REST_UNTIL, REST_WAIT, RestAt, rest_at};
+use crate::policy::{REST_TRIES, REST_WAIT, RestAt, rest_at};
 
 /// Walks to a quiet room, and walks back, tried before giving up on each (a fight can stop a
 /// walk on the way).
@@ -56,11 +56,11 @@ impl Recover {
     }
 
     fn low(v: &View) -> bool {
-        v.hp.is_some_and(|hp| hp < REST_BELOW) || v.poisoned
+        v.hp.is_some_and(|hp| hp < v.rest_below()) || v.poisoned
     }
 
     fn rested(v: &View) -> bool {
-        !v.hp.is_some_and(|hp| hp < REST_UNTIL) && !v.poisoned
+        !v.hp.is_some_and(|hp| hp < v.rest_until()) && !v.poisoned
     }
 
     fn done(&mut self) {
@@ -77,7 +77,7 @@ impl Mode for Recover {
         }
         if Self::low(v) {
             return Some(match v.hp {
-                Some(hp) if hp < REST_BELOW => format!("HP {hp}%"),
+                Some(hp) if hp < v.rest_below() => format!("HP {hp}%"),
                 _ => "poisoned".to_owned(),
             });
         }
@@ -119,7 +119,7 @@ impl Mode for Recover {
         }
         if v.resting {
             self.rests = 0;
-            return Step::wait(format!("Recover: resting to {REST_UNTIL}% in {here}"));
+            return Step::wait(format!("Recover: resting to {}% in {here}", v.rest_until()));
         }
         // Every walk out was stopped on the way (a fight) and a quiet room is still near:
         // resting here goes against the quiet-room rule (`kb/pitfalls.md` 20, 24). Said once.
@@ -169,7 +169,10 @@ impl Mode for Recover {
             )
             .warning();
         }
-        Step::send(rest, format!("Recover: resting to {REST_UNTIL}% in {here}"))
+        Step::send(
+            rest,
+            format!("Recover: resting to {}% in {here}", v.rest_until()),
+        )
     }
 
     fn on_event(&mut self, ev: &GameEvent, now: Instant) {
