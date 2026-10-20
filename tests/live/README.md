@@ -281,6 +281,12 @@ the numbers are.
    The full event and notice streams are saved as `events.log` and `notices.log` in the run's
    `NN-soak` directory, each line with its seconds into the run.
 
+**The character.** A pool character, or any existing account the check has a password for:
+`--credentials FILE` may be a gateway `credentials.toml` (`[character.<id>] user, password`),
+and a `--char` that is not in the pool is looked up there by id, so `--char <id> --credentials
+"$WAYFARER_DATA_DIR/credentials.toml"` works on the rig without copying a password. Such a
+character is never signed up or created. The start room is wherever it is.
+
 **Safety.** A pool character may soak for ten minutes at most (the pool is for the short
 scenarios): longer, it refuses to start. Nothing is trained or spent. A death ends the run.
 

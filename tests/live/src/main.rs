@@ -347,8 +347,11 @@ async fn try_claim(ctx: &mut Ctx, fixture: &Fixture) -> Attempt<Gateway> {
             .await;
         let refused = match landed {
             Ok(Landed::Realm) => break (gw, false),
+            Ok(Landed::Creation) if fixture.is_external() => {
+                Attempt::Unusable("at character creation: not an existing character".into())
+            }
             Ok(Landed::Creation) => break (gw, true),
-            Ok(Landed::BadCredentials) if !signup => {
+            Ok(Landed::BadCredentials) if !signup && !fixture.is_external() => {
                 gw.stop().await;
                 signup = true;
                 continue;
@@ -2052,6 +2055,32 @@ fn answers(addr: &str) -> bool {
         .any(|a| std::net::TcpStream::connect_timeout(&a, Duration::from_secs(3)).is_ok())
 }
 
+/// The characters to try: the pool's (only `--char`'s, if given). For a soak, a `--char` that is
+/// not in the pool may instead be a login in the credentials file (a gateway `credentials.toml`,
+/// `[character.<id>] user, password`): an existing account, never signed up or created.
+fn pool_for(args: &Args) -> Result<Pool, String> {
+    let pool = Pool::load(&args.pool)?;
+    let named = args.only.as_deref();
+    if args.scenario != Scenario::Soak {
+        return pool.only(named);
+    }
+    let Some(name) = named else {
+        return pool.only(None);
+    };
+    pool.only(Some(name)).or_else(|not_pool| {
+        let passwords = Passwords::load(&args.credentials)?;
+        match passwords.character_user(name) {
+            Some(user) => Ok(Pool {
+                characters: vec![Fixture::external(user)],
+            }),
+            None => Err(format!(
+                "{not_pool}, and no [character.{name}] in {}",
+                args.credentials.display()
+            )),
+        }
+    })
+}
+
 fn main() -> ExitCode {
     let args = args();
     if !answers(&args.addr) {
@@ -2069,7 +2098,7 @@ fn main() -> ExitCode {
         eprintln!("live check: {:?} is not HOST:PORT", args.addr);
         return ExitCode::from(2);
     };
-    let pool = match Pool::load(&args.pool).and_then(|p| p.only(args.only.as_deref())) {
+    let pool = match pool_for(&args) {
         Ok(p) => p,
         Err(e) => {
             eprintln!("live check: {e}");
@@ -2077,7 +2106,10 @@ fn main() -> ExitCode {
         }
     };
     // The pool is for the short scenarios: a long soak is for a character of one's own.
-    if args.scenario == Scenario::Soak && args.soak.minutes > soak::POOL_MAX_MINUTES {
+    if args.scenario == Scenario::Soak
+        && args.soak.minutes > soak::POOL_MAX_MINUTES
+        && pool.characters.iter().any(|c| !c.is_external())
+    {
         eprintln!(
             "live check: {} is a pool character, and the pool is for runs of {} minutes or less",
             args.only.as_deref().unwrap_or("?"),

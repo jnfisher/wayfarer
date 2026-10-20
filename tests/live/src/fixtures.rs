@@ -58,7 +58,30 @@ impl Fixture {
     pub fn name(&self) -> String {
         let mut given = self.account.clone();
         given[..1].make_ascii_uppercase();
-        format!("{given} {}", self.family)
+        format!("{given} {}", self.family).trim_end().to_owned()
+    }
+
+    /// A character that is not the pool's: an existing account, whose password is in the
+    /// credentials file given (a gateway `credentials.toml`). Never signed up or created.
+    pub fn external(user: &str) -> Self {
+        Self {
+            account: user.to_owned(),
+            family: String::new(),
+            race: String::new(),
+            class: String::new(),
+            stats: Stats {
+                strength: 0,
+                intellect: 0,
+                willpower: 0,
+                agility: 0,
+                health: 0,
+                charm: 0,
+            },
+        }
+    }
+
+    pub fn is_external(&self) -> bool {
+        self.race.is_empty()
     }
 }
 
@@ -125,6 +148,24 @@ impl Pool {
 pub struct Passwords {
     #[serde(default)]
     account: BTreeMap<String, Entry>,
+    /// A gateway `credentials.toml`'s `[character.<id>] user, password`, read so that
+    /// `--credentials "$WAYFARER_DATA_DIR/credentials.toml"` works on the rig. Never written.
+    #[serde(default, skip_serializing)]
+    character: BTreeMap<String, Login>,
+}
+
+/// One of a gateway `credentials.toml`'s logins. `Debug` never shows the password.
+#[derive(Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Login {
+    user: String,
+    password: String,
+}
+
+impl std::fmt::Debug for Login {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Login {{ user: {:?}, password: ******** }}", self.user)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -143,8 +184,26 @@ impl Passwords {
         }
     }
 
+    /// The password for the BBS user id `account`: the live check's own, else a gateway
+    /// login for that user.
     pub fn get(&self, account: &str) -> Option<&str> {
-        self.account.get(account).map(|e| e.password.as_str())
+        self.account
+            .get(account)
+            .map(|e| e.password.as_str())
+            .or_else(|| {
+                self.character
+                    .values()
+                    .find(|l| l.user.eq_ignore_ascii_case(account))
+                    .map(|l| l.password.as_str())
+            })
+    }
+
+    /// The BBS user id of the gateway login for character `id` (any case).
+    pub fn character_user(&self, id: &str) -> Option<&str> {
+        self.character
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(id))
+            .map(|(_, l)| l.user.as_str())
     }
 
     pub fn set(&mut self, account: &str, password: String) {
@@ -260,6 +319,24 @@ mod tests {
             let mode = std::fs::metadata(&path).unwrap().permissions().mode();
             assert_eq!(mode & 0o777, 0o600);
         }
+    }
+
+    #[test]
+    fn a_gateway_credentials_file_gives_a_character_its_account_and_password() {
+        let text = "[character.hero]\nuser = \"heroacct\"\npassword = \"pw123456\"\n";
+        let p: Passwords = toml::from_str(text).unwrap();
+        assert_eq!(p.character_user("Hero"), Some("heroacct"));
+        assert_eq!(p.character_user("nobody"), None);
+        assert_eq!(p.get("heroacct"), Some("pw123456"));
+        assert!(!format!("{p:?}").contains("pw123456"));
+        // Saving writes only the check's own accounts, never the gateway's logins.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("out.toml");
+        p.save(&path).unwrap();
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("pw123456"));
+        let ext = Fixture::external("heroacct");
+        assert!(ext.is_external());
+        assert_eq!(ext.name(), "Heroacct");
     }
 
     #[test]
