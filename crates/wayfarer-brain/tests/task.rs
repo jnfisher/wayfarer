@@ -178,7 +178,10 @@ async fn two_rooms_in_one_chunk_confirm_both_pipelined_moves() {
     // Seen live: the game answered both `w`s before the brain read either, and both rooms came
     // in one chunk. Each move is confirmed by its own room, not by where the belief ended up.
     let (mut g, run) = ready_at(VILLAGE_ENTRANCE).await;
-    g.expect("w", format!("{}w\r\n{}", room(NARROW_PATH), room(NARROW_ROAD)));
+    g.expect(
+        "w",
+        format!("{}w\r\n{}", room(NARROW_PATH), room(NARROW_ROAD)),
+    );
     g.expect("w", NOTHING);
     g.expect("d", arena(&[], 35));
     g.run_loop(&[SMALL_CAVERN]).await;

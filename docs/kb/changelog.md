@@ -147,3 +147,7 @@
   rows from silvermere's command-word oracle (copied to `tests/fixtures/command-words/`):
   `IN` and `INV` are no command (`I` or `INVE`.. is INVENTORY; `EX` and `GO` likewise), and
   there are no SAY, YELL, TELEPATH or TIME command words [C, `LJNPARSE.C` via the oracle].
+- **2026-10-20**: From wayfarer wave 4 (C-030): `navigation.md` "Direction commands" gains
+  "Two at once": a second direction sent before the first's room has come is taken after it,
+  each move showing its own room and prompt in order, and both rooms can arrive in one read
+  [C, silvermere, the C-030 live check from the Newhaven Village Entrance].
