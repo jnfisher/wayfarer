@@ -146,8 +146,13 @@ progress (after the move in flight).
   sends `search <dir>` ("Searching for the hidden exit north") and waits for the answer: "You
   found an exit to the north!" and it moves; "You notice nothing different to the north." and
   it sends `look` (an exit found lately by someone else needs no search, so a search for it
-  finds nothing), moves if the exit shows, else searches once more; a second empty search
-  marks the exit refused for the session and plans again. A search needs light: in a room too dark to see the game answers
+  finds nothing), moves if the exit shows, else searches again. A search is a dice roll
+  (`max(3, perception - 15)` percent, perception being `(Int*5 + Will*2 + Cha)/8` plus race,
+  class and item bonuses), so it keeps searching until the exit is found: a `look` after the
+  first empty search and every fifth after, and "Still searching for the hidden exit north (10
+  tries)" every tenth. Only after `MAX_SEARCHES` (300) empty searches does it mark the exit
+  refused for the session and plan again. A fight, a flee or a stop ends the walk and so the
+  search; the next walk starts counting again. A search needs light: in a room too dark to see the game answers
   "The room is very dark - you can't see anything" and the walk stops ("too dark to search
   for the hidden exit north"; the bot does not light a torch yet). A found exit hides again after about five minutes (one step of 300
   fast ticks, `kb/navigation.md` "Hidden"), so the brain forgets it showing then and searches
