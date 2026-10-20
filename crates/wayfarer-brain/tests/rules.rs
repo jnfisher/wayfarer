@@ -136,6 +136,7 @@ async fn a_monster_to_flee_from_ends_the_stop_and_the_loop_goes_on_from_the_next
     g.narrated("Stop 1/3 Newhaven, Arena: leaving it for now")
         .await;
     g.narrated("Stop 2/3 cleared: nothing there").await;
+    g.freeze();
     g.bot(BotAction::Stop).await;
     g.narrated("Stopped: asked to stop").await;
     let (seen, played) = g.close(run).await;

@@ -217,8 +217,9 @@ async fn a_stored_loop_survives_and_its_stored_stops_win() {
     g.expect("n", room(BEYOND_ARENA));
     g.narrated("Loop 1:2140:8:doors:0: to stop 2/2 Dungeon, Entrance (one step, one door)")
         .await;
-    g.narrated("Waiting for respawns in Dungeon, Entrance")
+    g.narrated("Loop 1:2140:8:doors:0: stepping out of Dungeon, Entrance and back in")
         .await;
+    g.freeze();
     g.bot(BotAction::Pause).await;
     g.narrated("Paused: asked to pause").await;
     g.close(run).await;

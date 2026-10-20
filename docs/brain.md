@@ -466,8 +466,12 @@ stop it is at or walking to, and the stops it passes by.
 - **None ready** (every stop unticked, unreachable or passed by lately): with HP under 95% it
   rests first ("Waiting for respawns: resting first": Recover rests, in a quiet room if this one
   spawns, and walks back); then it waits where it is, "Waiting for respawns: next in 1 m", and
-  goes when the next stop is ready. A loop with a single stop, the character in it, waits there
-  and Fight takes what comes.
+  goes when the next stop is ready. An Arena the bot stands in waits there and Fight takes what
+  comes (its monsters come back at once). Any other stop that is the only one ready, the
+  character in it, is stepped out of and back into ("Loop X: stepping out of Y and back in"):
+  an instant-spawn lair (the cave worm in the sewers, the slime beast in the goblin caves)
+  spawns when a player enters, so a one-room loop is a walk out to a plain exit beside it (no
+  door, not a boss lair, a room that is no Lair first) and back. With no such exit it waits.
 - **On the way**: a monster Fight would attack in a room on the way, or one attacking, stops the
   leg after the moves in flight; Fight takes the character, and then Task walks on to the same
   stop from wherever it is. `*Combat Engaged*` stops it the same way. Flee and Recover work as in
