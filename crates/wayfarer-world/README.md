@@ -147,8 +147,9 @@ let monsters = Monsters::load(&pack)?;
   and, for doors, gates and key doors, the pack's `LockState`. `Node::spawns` says the spawn pass
   makes monsters there. `listed_exits`/`exits_fit` say what `Obvious exits` can show: Text and
   Remote Action never, Trap, Spell Trap, Timed and Hidden maybe (a found Hidden exit shows).
-- **`route`** (`route.rs`): Dijkstra, 1 per step, plus `Costs::spawn` (40) for entering a room
-  that spawns (the destination exempt) and `Costs::door` (2) per door. A `Traveller` carries the
+- **`route`** (`route.rs`): Dijkstra, 1 per step, plus `Costs::spawn` for entering a room that
+  spawns (the destination exempt; 0 by default, so the shortest route wins) and `Costs::door`
+  (1, the `open`) per door. A `Traveller` carries the
   level, class, race and evil points for gated exits (`None`: not checked), the exits refused
   this session (`blocked`), the Hidden exits `found`, and the `Category`s allowed beyond the
   default (Key, Spell, Item, Toll, Cast, Ability, every Hidden), and `no_doors` to take none.

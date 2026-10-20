@@ -6,7 +6,8 @@ use std::collections::{BTreeSet, BinaryHeap, HashMap, VecDeque};
 
 use crate::nav::{Category, Edge, ExitType, Gate, Key, LockState, RoomGraph};
 
-/// Extra costs on top of 1 per step.
+/// Extra costs on top of 1 per step. The default is the shortest route (John, 2026-10-19):
+/// no penalty for rooms that spawn monsters; a door costs one extra step, the `open`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Costs {
     /// Entering a room that spawns monsters (not the destination).
@@ -17,7 +18,7 @@ pub struct Costs {
 
 impl Default for Costs {
     fn default() -> Costs {
-        Costs { spawn: 40, door: 2 }
+        Costs { spawn: 0, door: 1 }
     }
 }
 
