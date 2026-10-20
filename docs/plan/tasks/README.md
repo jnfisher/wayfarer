@@ -126,6 +126,7 @@ Cards don't repeat these:
 | [C-032](C-032-replay.md) | Replay: play a recorded session back into the UI and the brain on its recorded clock; the CI replay layer | B | M | C-029, C-030, C-031 | |
 | [C-033](C-033-soak-scenario.md) | The timed run: `--scenario soak`: a character runs a loop for N minutes and the numbers come out | C | M | C-030, C-029 | |
 | [C-034](C-034-goto.md) | Go to: find a room, a place or a monster by name, walk there, stop one room short of a boss lair (added 2026-10-20 at John's request) | B | M | C-030 | |
+| [C-035](C-035-monster-lists.md) | Monster lists: never fight, flee from and avoid by name; a stalemate ends a fight; the gigantic black ooze is never fought (added 2026-10-20 after the M3 soak met it) | B | M | C-028, C-030, C-034 | review |
 
 Tier: B Opus, C Sonnet. Size: S under half a day of agent time, M about a day, L two to three
 days.
