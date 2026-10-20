@@ -93,6 +93,8 @@ pub enum Refused {
     },
     /// `open` on a locked door.
     Locked,
+    /// `search` in a room too dark to see: `The room is very dark - you can't see anything`.
+    TooDark,
     /// The game would not start the attack: the target is not here, the weapon does nothing
     /// to it, or another of the [`ATTACK_REFUSALS`].
     Target,
@@ -228,6 +230,7 @@ fn answer(expect: Expect, ev: &GameEvent) -> Option<Outcome> {
         (Expect::SearchResult, GameEvent::SearchResult { found, .. }) => {
             Some(Outcome::Confirmed(Confirmed::Search { found: *found }))
         }
+        (Expect::SearchResult, GameEvent::RoomDark) => Some(Outcome::Refused(Refused::TooDark)),
         (Expect::Prompt, GameEvent::Prompt { .. }) => Some(Outcome::Confirmed(Confirmed::Prompt)),
         (Expect::Engaged, GameEvent::CombatEngaged) => Some(Outcome::Confirmed(Confirmed::Engaged)),
         (Expect::Engaged, GameEvent::YouDoNotSee { .. } | GameEvent::NoEffect) => {

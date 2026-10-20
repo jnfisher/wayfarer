@@ -487,6 +487,11 @@ impl Walker {
                 w.searched = true;
                 Ok(Doing::Move)
             }
+            // No search without light (`kb/recovery.md` "Light and darkness").
+            (Doing::Search, Outcome::Refused(Refused::TooDark)) => Err(format!(
+                "too dark to search for the hidden exit {}",
+                dir_name(step.dir)
+            )),
             (Doing::Search, Outcome::Confirmed(Confirmed::Search { found: false })) => {
                 w.searches += 1;
                 if w.searches < MAX_SEARCHES {

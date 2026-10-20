@@ -480,3 +480,25 @@ async fn two_empty_searches_block_the_hidden_exit() {
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["search n", "search n"]);
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_search_in_the_dark_stops_the_walk() {
+    // `search` needs light: in a room too dark to see the game answers with the darkness line
+    // (as silvermere did in Newhaven's Secret Passage, C-037's live check).
+    let (mut g, run) = Game::start(SessionState::Realm, HIDDEN_KEEP).await;
+    found_north(&mut g).await;
+    g.idle(wayfarer_brain::HIDDEN_FOR + Duration::from_secs(1))
+        .await;
+    g.expect(
+        "search n",
+        says("The room is very dark - you can't see anything"),
+    );
+    g.walk_to(KEEP_WALL).await;
+    g.narrated("Searching for the hidden exit north").await;
+    assert_eq!(
+        g.narration().await,
+        "Stopped walking: too dark to search for the hidden exit north"
+    );
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["search n"]);
+}

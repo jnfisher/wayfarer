@@ -1317,13 +1317,29 @@ async fn screen_answer(gw: &mut Gateway, line: &str, answers: &[&str]) -> Result
     .await
 }
 
+/// `light torch` (the free starter torch, `kb/recovery.md`): whether one is lit now.
+async fn light_torch(gw: &mut Gateway) -> Result<String, String> {
+    let answers = [
+        "You lit the torch.",
+        "You already have something lit!",
+        "You don't have",
+        "You must recharge that",
+    ];
+    match screen_answer(gw, "light torch", &answers).await? {
+        0 | 1 => Ok(answers[0..2].join(" / ")),
+        i => Err(format!("no light: {}", answers[i])),
+    }
+}
+
 /// Before the brain: `look`, and if the room is too dark to see (the Secret Passage, where a
-/// run of this scenario may have ended), `search n` until found and go north.
+/// run of this scenario may have ended), light the torch (`search` needs light), `search n`
+/// until found and go north.
 async fn dark_out_by_hand(gw: &mut Gateway) -> Result<String, String> {
     const DARK: &str = "The room is very dark";
     if screen_answer(gw, "look", &["Obvious exits:", DARK]).await? == 0 {
         return Ok("no".to_owned());
     }
+    light_torch(gw).await?;
     for n in 1..=RESCUE_SEARCHES {
         let answers = [
             "You found an exit to the north!",
@@ -1358,10 +1374,14 @@ async fn hidden_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
     let Some((running, _)) = placed_brain(ctx, gw, "hidden", &[]).await else {
         return false;
     };
+    // The Secret Passage is very dark (-175): with no light the character cannot search there.
+    let started = Instant::now();
+    let lit = light_torch(gw).await;
+    ctx.record("light torch", started, &lit);
     let started = Instant::now();
     let there = walk_into(gw, SMALL_ALLEYWAY).await;
     ctx.record("walk to the Small Alleyway (1/405)", started, &there);
-    if there.is_err() {
+    if lit.is_err() || there.is_err() {
         stop_brain(ctx, running).await;
         return false;
     }
