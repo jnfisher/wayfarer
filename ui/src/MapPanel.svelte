@@ -8,6 +8,7 @@
     keyOf,
     loopText,
     roomAt,
+    stopTip,
     walkText,
     zoomAt,
     ZOOMS,
@@ -16,7 +17,7 @@
     type ViewState,
   } from "./lib/map";
   import { FONT_FAMILY } from "./lib/theme";
-  import type { CharacterState, MapRoom, SessionInfo } from "./proto";
+  import type { CharacterState, GeneratedLoop, LoopStop, MapRoom, RoomKey, SessionInfo } from "./proto";
 
   interface Props {
     /** The focused tile's session, which the panel follows. */
@@ -33,9 +34,12 @@
     onloops?: (session: string, doors: boolean) => void;
     /** Walk a generated loop once. */
     onwalkloop?: (session: string, id: string) => void;
+    /** Run a generated loop, passing by the stops in `skip` (the unticked ones). */
+    onrunloop?: (session: string, id: string, skip: RoomKey[]) => void;
   }
 
-  let { session, view, character, attached, onwalk, onstop, loops, onloops, onwalkloop }: Props = $props();
+  let { session, view, character, attached, onwalk, onstop, loops, onloops, onwalkloop, onrunloop }: Props =
+    $props();
 
   let canvas = $state<HTMLCanvasElement>();
   let width = $state(0);
@@ -68,6 +72,32 @@
     return m ? { path: m.path, stops: [] } : null;
   }
   const drawnLoop = $derived(loopShape(hoverLoop ?? pickedLoop));
+
+  // Running a loop: the bot's task, while it is not stopped. Its stops' ticks are the brain's;
+  // another loop's are kept here until it is run.
+  const task = $derived(character?.bot && character.bot.state !== "stopped" ? character.bot.task : undefined);
+  let unticked = $state<Record<string, string[]>>({});
+
+  function skipped(l: GeneratedLoop): string[] {
+    return task?.loop_id === l.id ? task.skip.map(keyOf) : (unticked[l.id] ?? []);
+  }
+
+  function skipOf(l: GeneratedLoop, keys: string[]): RoomKey[] {
+    return l.stops.filter((s) => keys.includes(keyOf(s))).map((s) => ({ map: s.map, room: s.room }));
+  }
+
+  /** Tick or untick a stop: for the loop the bot runs, the brain is told at once. */
+  function toggleStop(l: GeneratedLoop, s: LoopStop) {
+    const k = keyOf(s);
+    const was = skipped(l);
+    const now = was.includes(k) ? was.filter((x) => x !== k) : [...was, k];
+    unticked = { ...unticked, [l.id]: now };
+    if (session && task?.loop_id === l.id) onrunloop?.(session.id, l.id, skipOf(l, now));
+  }
+
+  function runLoop(l: GeneratedLoop) {
+    if (session) onrunloop?.(session.id, l.id, skipOf(l, skipped(l)));
+  }
   const loopsAround = $derived.by(() => {
     if (!loops) return "";
     const a = loops.anchor;
@@ -290,6 +320,23 @@
                 >
                 <span class="dim">{loopText(l)}</span>
                 <button class="walk" onclick={() => session && onwalkloop?.(session.id, l.id)}>walk once</button>
+                {#if task?.loop_id === l.id}
+                  <span class="running">running: stop {task.stop + 1}/{task.stops.length}</span>
+                {:else}
+                  <button class="run" onclick={() => runLoop(l)} title="Hunt round this loop: fight at each ticked stop">run</button>
+                {/if}
+                {#if pickedLoop === l.id || task?.loop_id === l.id}
+                  <ul class="stops" aria-label={`Stops of ${l.name}`}>
+                    {#each l.stops as s, i (keyOf(s))}
+                      <li class:at={task?.loop_id === l.id && task.stop === i}>
+                        <label title={stopTip(s)}>
+                          <input type="checkbox" checked={!skipped(l).includes(keyOf(s))} onchange={() => toggleStop(l, s)} />
+                          {i + 1}. {s.name}
+                        </label>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
               </li>
             {:else}
               <li class="dim">No hunt rooms in reach.</li>
@@ -391,6 +438,19 @@
   }
   .loops .toggle {
     color: var(--vga-lightgray);
+  }
+  .loops .run {
+    background: var(--vga-lightgreen);
+  }
+  .loops .running {
+    color: var(--vga-lightgreen);
+  }
+  .loops ul.stops {
+    flex-basis: 100%;
+    padding-left: 2ch;
+  }
+  .loops ul.stops li.at {
+    color: var(--vga-white);
   }
   label {
     display: flex;

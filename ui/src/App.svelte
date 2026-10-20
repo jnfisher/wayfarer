@@ -448,6 +448,7 @@
             loops={focusedId ? loopsBySession[focusedId] : undefined}
             onloops={(id, doors) => client.requestLoops(id, LOOP_RADIUS, doors)}
             onwalkloop={(id, loop) => client.walkLoop(id, loop)}
+            onrunloop={(id, loop, skip) => client.runLoop(id, loop, skip)}
           />
         {:else if devPrefs.panel === "stats"}
           <StatsPanel

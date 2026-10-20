@@ -186,10 +186,12 @@ describe("handshake", () => {
     expect(r.client.requestLoops("kasimir")).toBe(true);
     expect(r.client.requestLoops("kasimir", 99, false)).toBe(true);
     expect(r.client.walkLoop("kasimir", "1:2140:8:doors:0")).toBe(true);
-    expect(r.last().sent.slice(-3)).toEqual([
+    expect(r.client.runLoop("kasimir", "1:2140:8:doors:0", [{ map: 1, room: 2156 }])).toBe(true);
+    expect(r.last().sent.slice(-4)).toEqual([
       { type: "loops_request", session: "kasimir", radius: 8, doors: true },
       { type: "loops_request", session: "kasimir", radius: 30, doors: false },
       { type: "walk_loop", session: "kasimir", id: "1:2140:8:doors:0" },
+      { type: "run_loop", session: "kasimir", id: "1:2140:8:doors:0", skip: [{ map: 1, room: 2156 }] },
     ]);
   });
 

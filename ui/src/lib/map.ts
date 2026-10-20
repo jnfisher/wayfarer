@@ -4,7 +4,7 @@
 //
 // The brain lays the rooms out and plans the routes; this file only draws what it was sent.
 
-import type { GeneratedLoop, MapExit, MapRoom, RoomKey, RoomKind, ToClient, Walking } from "../proto";
+import type { GeneratedLoop, LoopStop, MapExit, MapRoom, RoomKey, RoomKind, ToClient, Walking } from "../proto";
 
 export type MapView = Extract<ToClient, { type: "map_view" }>;
 export type Loops = Extract<ToClient, { type: "loops" }>;
@@ -201,6 +201,13 @@ export function loopText(l: GeneratedLoop): string {
   const parts = [n(l.stops.length, "stop"), n(l.steps, "step")];
   if (l.doors > 0) parts.push(n(l.doors, "door"));
   return parts.join(", ");
+}
+
+/** A loop stop's tooltip: what spawns there, and how soon it is back after a kill. */
+export function stopTip(s: LoopStop): string {
+  const what = s.monsters.length > 0 ? s.monsters.join(", ") : "nothing listed";
+  const back = s.arena ? "arena: back at once" : `back ${s.regen > 0 ? s.regen : 5} m after a kill`;
+  return `${what}; ${s.lair ? "lair, " : ""}${back}`;
 }
 
 /** The route bar's line: the walker's commands still to type, `n, n, e, borrow skiff`. */
