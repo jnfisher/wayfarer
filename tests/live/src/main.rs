@@ -314,6 +314,12 @@ fn landed(g: &Gateway) -> Option<Landed> {
 /// saved its own.
 fn save_password(path: &Path, account: &str, password: &str) -> Result<(), String> {
     let mut p = Passwords::load(path)?;
+    if p.is_gateway_file() {
+        return Err(format!(
+            "{} is a gateway credentials.toml; the live check never writes to it (no password for {account})",
+            path.display()
+        ));
+    }
     p.set(account, password.to_owned());
     p.save(path).map_err(|e| format!("{}: {e}", path.display()))
 }
@@ -328,6 +334,13 @@ async fn try_claim(ctx: &mut Ctx, fixture: &Fixture) -> Attempt<Gateway> {
     // whose account was never made gets `Invalid Credentials`; then sign up with it.
     let (password, mut signup) = match saved {
         Some(p) => (p, false),
+        None if fixture.external => {
+            return Attempt::Unusable(format!(
+                "no password for {} in {}",
+                fixture.account,
+                ctx.args.credentials.display()
+            ));
+        }
         None => {
             let p = generate_password();
             if let Err(e) = save_password(&ctx.args.credentials, &fixture.account, &p) {
@@ -347,7 +360,14 @@ async fn try_claim(ctx: &mut Ctx, fixture: &Fixture) -> Attempt<Gateway> {
             .await;
         let refused = match landed {
             Ok(Landed::Realm) => break (gw, false),
+            Ok(Landed::Creation) if fixture.external => Attempt::Unusable(format!(
+                "account {} has no character; the live check creates pool characters only",
+                fixture.account
+            )),
             Ok(Landed::Creation) => break (gw, true),
+            Ok(Landed::BadCredentials) if fixture.external => {
+                Attempt::Unusable("bad credentials".into())
+            }
             Ok(Landed::BadCredentials) if !signup => {
                 gw.stop().await;
                 signup = true;
@@ -2069,15 +2089,29 @@ fn main() -> ExitCode {
         eprintln!("live check: {:?} is not HOST:PORT", args.addr);
         return ExitCode::from(2);
     };
+    // `--char` names a pool character, or an account of one's own whose password the
+    // credentials file holds (a gateway `credentials.toml`): logged on as it is.
     let pool = match Pool::load(&args.pool).and_then(|p| p.only(args.only.as_deref())) {
         Ok(p) => p,
-        Err(e) => {
-            eprintln!("live check: {e}");
-            return ExitCode::from(2);
-        }
+        Err(e) => match args.only.as_deref() {
+            Some(name)
+                if Passwords::load(&args.credentials)
+                    .ok()
+                    .is_some_and(|p| p.get(name).is_some()) =>
+            {
+                Pool {
+                    characters: vec![Fixture::external(name)],
+                }
+            }
+            _ => {
+                eprintln!("live check: {e}");
+                return ExitCode::from(2);
+            }
+        },
     };
+    let external = pool.characters.iter().all(|c| c.external);
     // The pool is for the short scenarios: a long soak is for a character of one's own.
-    if args.scenario == Scenario::Soak && args.soak.minutes > soak::POOL_MAX_MINUTES {
+    if args.scenario == Scenario::Soak && !external && args.soak.minutes > soak::POOL_MAX_MINUTES {
         eprintln!(
             "live check: {} is a pool character, and the pool is for runs of {} minutes or less",
             args.only.as_deref().unwrap_or("?"),

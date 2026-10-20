@@ -177,10 +177,11 @@ scripts/live-check.sh --scenario soak --char Thorgrim --minutes 30 --anchor 1:18
     --skip 1:1865 --credentials "$WAYFARER_DATA_DIR/credentials.toml"
 ```
 
-Not yet working: `--char` takes only pool characters until a follow-up lets `--credentials`
-be a gateway `credentials.toml` (`[character.<id>] user, password`); the commands above are
-the target. The check logs the character on through its own gateway, so stop Thorgrim's tile on the rig
-first (the server refuses a second logon to an account). Put the anchor in a quiet room: the
+`--char` takes a pool character, or an account of your own when `--credentials` is a gateway
+`credentials.toml` (`[character.<id>] user, password`): the check reads the password from it
+and never writes to it, and never signs up or creates such an account. The check logs the
+character on through its own gateway, so stop Thorgrim's tile on the rig first (the server
+refuses a second logon to an account). Put the anchor in a quiet room: the
 character is walked back to it at the end.
 
 A short smoke run on a pool character (three minutes in Newhaven, the Lairs unticked):

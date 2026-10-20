@@ -305,6 +305,12 @@ The brain's log is `NN-soak/brain.log`.
 so every card's worktree uses the same accounts (`WAYFARER_LIVE_CREDENTIALS` overrides the
 path). Never commit it.
 
+`--char NAME` may also name an account that is not in the pool when the credentials file
+(`--credentials`, or `WAYFARER_LIVE_CREDENTIALS`) is a gateway `credentials.toml` holding
+`[character.<id>] user = "NAME", password = "..."`: the check logs it on as it is, never
+signs it up or creates its character, and never writes to that file. This is how a character
+of one's own runs the `soak` scenario for longer than a pool character may.
+
 ## Logs
 
 Each run keeps everything under `target/live-check/<time>-<pid>/`, one directory per gateway
