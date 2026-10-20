@@ -440,6 +440,8 @@ async fn the_walker_searches_for_a_hidden_exit_that_has_hidden_again() {
         "search n",
         says("You notice nothing different to the north."),
     );
+    // Is it showing after all (found lately by someone else)? No.
+    g.expect("look", room(HIDDEN_KEEP));
     g.expect("search n", says("You found an exit to the north!"));
     g.expect("n", room(KEEP_WALL));
     g.walk_to(KEEP_WALL).await;
@@ -453,7 +455,7 @@ async fn the_walker_searches_for_a_hidden_exit_that_has_hidden_again() {
         ]
     );
     let (_, played) = g.close(run).await;
-    assert_eq!(played, ["search n", "search n", "n"]);
+    assert_eq!(played, ["search n", "look", "search n", "n"]);
 }
 
 #[tokio::test(start_paused = true)]
@@ -464,7 +466,10 @@ async fn two_empty_searches_block_the_hidden_exit() {
     found_north(&mut g).await;
     g.idle(wayfarer_brain::HIDDEN_FOR + Duration::from_secs(1))
         .await;
-    for _ in 0..wayfarer_brain::MAX_SEARCHES {
+    for n in 0..wayfarer_brain::MAX_SEARCHES {
+        if n > 0 {
+            g.expect("look", room(HIDDEN_KEEP));
+        }
         g.expect(
             "search n",
             says("You notice nothing different to the north."),
@@ -478,7 +483,7 @@ async fn two_empty_searches_block_the_hidden_exit() {
         "{stop}"
     );
     let (_, played) = g.close(run).await;
-    assert_eq!(played, ["search n", "search n"]);
+    assert_eq!(played, ["search n", "look", "search n"]);
 }
 
 #[tokio::test(start_paused = true)]
@@ -501,4 +506,40 @@ async fn a_search_in_the_dark_stops_the_walk() {
     );
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["search n"]);
+}
+
+/// The Hidden Keep as the game shows it with the hidden exit north found (by anyone, lately).
+fn keep_with_north_showing() -> String {
+    room(HIDDEN_KEEP).replace("Obvious exits: ", "Obvious exits: secret passage north, ")
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_empty_search_for_an_exit_already_showing_moves_on_after_a_look() {
+    // A search for an exit someone found lately finds nothing (it needs no search,
+    // `kb/navigation.md` "Hidden"); the look after it shows the exit, and the walker goes.
+    let (mut g, run) = Game::start(SessionState::Realm, HIDDEN_KEEP).await;
+    found_north(&mut g).await;
+    g.idle(wayfarer_brain::HIDDEN_FOR + Duration::from_secs(1))
+        .await;
+    g.expect(
+        "search n",
+        says("You notice nothing different to the north."),
+    );
+    g.expect("look", keep_with_north_showing());
+    g.expect("n", room(KEEP_WALL));
+    g.walk_to(KEEP_WALL).await;
+    g.narrated("Arrived: Darkwood Forest, Keep Wall").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["search n", "look", "n"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_hidden_exit_the_exits_line_shows_is_routed_through_without_a_search() {
+    // Found by someone else: the brain never searched, but the room lists it.
+    let (mut g, run) = Game::start_with(SessionState::Realm, keep_with_north_showing()).await;
+    g.expect("n", room(KEEP_WALL));
+    g.walk_to(KEEP_WALL).await;
+    g.narrated("Arrived: Darkwood Forest, Keep Wall").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["n"]);
 }

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# The live check: the M0 scenario (or `--scenario brain`, M1; `walk`, `fight` and `loop`, M2; `under-attack`, C-027; `restart`, C-029; `flee`, C-028; `typing`, C-031; `soak`, C-033; `goto`, C-034; `flee-from`, C-035; `hidden`, C-037) against the game server already
+# The live check: the M0 scenario (or `--scenario brain`, M1; `walk`, `fight` and `loop`, M2; `under-attack`, C-027; `restart`, C-029; `flee`, C-028; `typing`, C-031; `soak`, C-033; `goto`, C-034; `flee-from`, C-035; `hidden` and `rescue`, C-037) against the game server already
 # running on this machine (tests/live/README.md). Run it before pushing a change to the
 # gateway or the brain; paste the summary into the pull request. Never run in CI. It never starts, stops or resets the server.
 #
-#   scripts/live-check.sh [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart|flee|typing|soak|goto|flee-from|hidden]
+#   scripts/live-check.sh [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart|flee|typing|soak|goto|flee-from|hidden|rescue]
 #   scripts/live-check.sh --scenario soak --char NAME --minutes N [--anchor MAP:ROOM] [--radius R] [--skip MAP:ROOM ...] [--loop ID] [--flee-from NAME ...]
 #   scripts/live-check.sh --scenario flee-from [--flee-from NAME ...]
 #

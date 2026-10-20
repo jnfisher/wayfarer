@@ -81,6 +81,12 @@ Everything below is from `slow_update_character` (LJNBKGND.C:1555-1725), the med
   `LJNBKGND.C:1929-1985`
 - Policy: always carry a light; light it on entering a room darker than −150 or on seeing a
   darkness message; rebuy when it burns out. [C]
+- `search` needs sight too: in a room too dark to see it prints only the darkness line and
+  costs a tick, so a hidden exit out of a dark room cannot be found without a light (a pool
+  character with no torch was stuck in Newhaven's Secret Passage, `navigation.md` "Hidden").
+  Another player's light in the room counts. `light torch` with no torch carried is taken as
+  speech (`You say "light torch"`). [C, silvermere `movement/search.rs`,
+  `commands/inventory.rs`; live, wayfarer C-037, 2026-10-20]
 
 ## Death [C, observed 2026-10-13 with Thornwyn]
 - **Unconscious between 0 HP and `DEATHHP`** (sysop option; **−200 in this configuration**,

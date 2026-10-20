@@ -209,6 +209,7 @@ impl Position {
         self.exits = seen.exits;
         if let GameEvent::RoomExits { exits } = ev {
             self.doors_shown(exits);
+            self.hidden_shown(atlas);
         }
         if self.belief.certain()
             && let Some(k) = self.belief.best()
@@ -216,6 +217,21 @@ impl Position {
             self.visited.insert(k);
         }
         Some(seen)
+    }
+
+    /// The Hidden exits an exits line shows (found lately, by anyone: `secret passage south`)
+    /// are known to be there: routes may take them, and the walker moves through while they
+    /// show. When they were found is not known, so they are not counted as found.
+    fn hidden_shown(&mut self, atlas: &Atlas) {
+        let (Some(k), true, Some(shown)) = (self.belief.best(), self.belief.certain(), self.exits)
+        else {
+            return;
+        };
+        for e in atlas.graph.edges(k) {
+            if e.hidden() && shown.contains(e.dir) {
+                self.traveller.searchable.insert((k, e.dir));
+            }
+        }
     }
 
     /// The doors an exits line shows: open, or closed (locked or not: it does not say, so a

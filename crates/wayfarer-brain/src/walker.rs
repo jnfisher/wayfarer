@@ -72,6 +72,8 @@ enum Doing {
     Open,
     Bash,
     Search,
+    /// `look` after a search that found nothing: is the exit showing after all?
+    Recheck,
     Look,
 }
 
@@ -495,13 +497,17 @@ impl Walker {
             (Doing::Search, Outcome::Confirmed(Confirmed::Search { found: false })) => {
                 w.searches += 1;
                 if w.searches < MAX_SEARCHES {
-                    Ok(Doing::Search)
+                    // An exit found lately (by anyone) needs no search and finds nothing:
+                    // `look` to see whether it shows.
+                    Ok(Doing::Recheck)
                 } else {
                     pos.block(step.from, step.dir);
                     let why = format!("no hidden exit {} found", dir_name(step.dir));
                     w.replan(pos, atlas, &mut next, &why)
                 }
             }
+            // Showing: move; else search again (`after`, `Walk::first`).
+            (Doing::Recheck, Outcome::Confirmed(Confirmed::Room)) => Ok(Doing::Move),
             (Doing::Look, Outcome::Confirmed(Confirmed::Room)) => {
                 w.replan(pos, atlas, &mut next, "relocated")
             }
@@ -638,7 +644,7 @@ impl Walk {
             Doing::Search => Action::new(format!("search {dir}"), Expect::SearchResult),
             // `look`, not an empty line: an empty line redisplays the room only in statline
             // FULL modes (`kb/screen-parsing.md`).
-            Doing::Look => Action::new("look", Expect::RoomSeen),
+            Doing::Look | Doing::Recheck => Action::new("look", Expect::RoomSeen),
         }
     }
 

@@ -140,12 +140,16 @@ progress (after the move in flight).
   are nil for the character is given up at once, with no `bash`: "The door east is beyond my
   strength (needs more than 999)", the exit marked refused, the route planned again.
 - **Hidden exits**: a route takes a Hidden exit the character knows of: one it found this
-  session (a `search` of its own or the player's), or one a loop's path names. Arriving in the
-  room, if the exit is not in the room's `Obvious exits` and was not found in the last five
-  minutes, it sends `search <dir>` ("Searching for the hidden exit north") and waits for the
-  answer: "You found an exit to the north!" and it moves; "You notice nothing different to the
-  north." and it searches once more; a second empty search marks the exit refused for the
-  session and plans again. A found exit hides again after about five minutes (one step of 300
+  session (a `search` of its own or the player's), one an exits line showed (`secret passage
+  south`: found lately by anyone), or one a loop's path names. Arriving in the room, if the
+  exit is not in the room's `Obvious exits` and was not found in the last five minutes, it
+  sends `search <dir>` ("Searching for the hidden exit north") and waits for the answer: "You
+  found an exit to the north!" and it moves; "You notice nothing different to the north." and
+  it sends `look` (an exit found lately by someone else needs no search, so a search for it
+  finds nothing), moves if the exit shows, else searches once more; a second empty search
+  marks the exit refused for the session and plans again. A search needs light: in a room too dark to see the game answers
+  "The room is very dark - you can't see anything" and the walk stops ("too dark to search
+  for the hidden exit north"; the bot does not light a torch yet). A found exit hides again after about five minutes (one step of 300
   fast ticks, `kb/navigation.md` "Hidden"), so the brain forgets it showing then and searches
   again next time. A search costs two extra steps in the route. Moves are not pipelined through
   a hidden exit.
