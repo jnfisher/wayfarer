@@ -707,18 +707,19 @@ fn targets_are_hostile_attackers_first_and_never_skipped() {
         .map(String::from)
         .to_vec();
     let none = BTreeSet::new();
+    let rules = wayfarer_world::MonsterRules::defaults();
     assert_eq!(
-        policy::target(ms, &here, &[], &none),
+        policy::target(ms, &rules, &here, &[], &none, false),
         Some("large giant rat")
     );
     let attackers = vec!["fat giant rat".to_owned()];
     assert_eq!(
-        policy::target(ms, &here, &attackers, &none),
+        policy::target(ms, &rules, &here, &attackers, &none, false),
         Some("fat giant rat")
     );
     let skip: BTreeSet<String> = ["fat giant rat".to_owned()].into();
     assert_eq!(
-        policy::target(ms, &here, &attackers, &skip),
+        policy::target(ms, &rules, &here, &attackers, &skip, false),
         Some("large giant rat")
     );
     assert!(policy::is_one_of(

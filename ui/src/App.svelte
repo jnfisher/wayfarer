@@ -477,6 +477,7 @@
             stats={focusedId ? statsBySession[focusedId] : undefined}
             attached={brain.attached}
             onrefresh={(id) => client.requestStats(id)}
+            onrule={(id, pattern, rule) => client.setMonsterRule(id, pattern, rule)}
           />
         {:else}
           <DevPanel

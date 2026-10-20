@@ -255,6 +255,22 @@ pub enum GameEvent {
 
     CombatEngaged,
     CombatOff,
+    /// `you_hit`: the character's own blow did damage (`You smack giant rat for 4 damage!`).
+    /// `target` as shown, without an article.
+    YouHit {
+        target: String,
+        damage: i64,
+    },
+    /// `you_miss` (`You swipe at thin carrion beast!`) or `you_dodged` (`You swing at orc who
+    /// dodges your attack!`): the character's own swing did nothing.
+    YouMiss {
+        target: String,
+    },
+    /// `you_glance`: the character's own swing hit, but the target's armour took all the
+    /// damage (`Your swing at gigantic black ooze hits, but glances off its armour.`).
+    SwingGlanced {
+        target: String,
+    },
     /// `monster_death`: a monster's death text, with the monsters that text belongs to (one
     /// text can be several monsters'; the line does not say which).
     MonsterDeath {
@@ -519,6 +535,19 @@ impl GameEvent {
             "rest_sick" => G::TooSick,
             "combat_engaged" => G::CombatEngaged,
             "combat_off" => G::CombatOff,
+            "you_hit" => match int(ev, "dmg") {
+                Some(damage) => G::YouHit {
+                    target: monster_name(ev, "target"),
+                    damage,
+                },
+                None => G::Other(ev.clone()),
+            },
+            "you_miss" | "you_dodged" => G::YouMiss {
+                target: monster_name(ev, "target"),
+            },
+            "you_glance" => G::SwingGlanced {
+                target: monster_name(ev, "target"),
+            },
             "monster_death" => G::MonsterDeath {
                 monsters: match ev.field("monsters") {
                     Some(Value::List(v)) => v.clone(),

@@ -1,7 +1,8 @@
 //! Recover (docs/brain.md "Fight here"): rest when HP is low, out of a room that spawns
 //! monsters if a quiet one is near (`kb/pitfalls.md` 20, 24), until HP is back; then walk back
 //! to where the bot was started. A monster that attacks wakes it: Fight has the character until
-//! that fight is over, then Recover carries on.
+//! that fight is over, then Recover carries on. It does not walk back into a room where a
+//! monster to avoid or flee from was last seen (`rules.rs`): it waits until that is forgotten.
 
 use tokio::time::Instant;
 use wayfarer_parse::typed::{GameEvent, Rest};
@@ -80,7 +81,8 @@ impl Mode for Recover {
                 _ => "poisoned".to_owned(),
             });
         }
-        if self.active && (!Self::rested(v) || (self.away(v) && self.walks_back < WALKS)) {
+        let back = self.away(v) && self.walks_back < WALKS && self.shunned(v).is_none();
+        if self.active && (!Self::rested(v) || back) {
             return Some("not finished".to_owned());
         }
         None
@@ -94,6 +96,13 @@ impl Mode for Recover {
         self.active = true;
         let here = v.room_name(v.room);
         if Self::rested(v) {
+            if let Some((home, name)) = self.shunned(v) {
+                // Still active: it walks back once the sighting is forgotten.
+                return Step::wait(format!(
+                    "Recover: rested; not walking back to {}: {name} was last seen there",
+                    v.room_name(Some(home))
+                ));
+            }
             if self.away(v) && self.walks_back < WALKS {
                 self.walks_back += 1;
                 let home = self.home.expect("away from home");
@@ -197,6 +206,13 @@ impl Recover {
     /// waits where it is.
     pub fn stranded(&self, v: &View) -> bool {
         self.active && Self::rested(v) && self.away(v) && self.walks_back >= WALKS
+    }
+
+    /// Rested and away from home, and home is where a monster to avoid was last seen: the
+    /// home and the monster.
+    pub fn shunned<'a>(&self, v: &'a View) -> Option<(Key, &'a str)> {
+        let home = self.home.filter(|_| self.active && self.away(v))?;
+        v.shunned(home).map(|name| (home, name))
     }
 
     /// When a wait ends, for the clock to wake the bot.

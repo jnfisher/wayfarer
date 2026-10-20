@@ -7,7 +7,17 @@
 // for everything after the last `seq`.
 
 import { PROTOCOL } from "../proto";
-import type { BotAction, CharacterState, Chunk, RoomKey, SessionInfo, SessionState, ToClient, ToGateway } from "../proto";
+import type {
+  BotAction,
+  CharacterState,
+  Chunk,
+  MonsterRuleKind,
+  RoomKey,
+  SessionInfo,
+  SessionState,
+  ToClient,
+  ToGateway,
+} from "../proto";
 import { clampRadius, LOOP_RADIUS, type Loops, type MapView } from "./map";
 import { MIN_QUERY, type FoundMessage } from "./goto";
 import type { Stats } from "./stats";
@@ -213,6 +223,14 @@ export class GatewayClient {
    * unless `doors` is false. */
   requestLoops(session: string, radius = LOOP_RADIUS, doors = true): boolean {
     return this.send({ type: "loops_request", session, radius: clampRadius(radius), doors });
+  }
+
+  /** Set the player's monster rule for names holding `pattern` (any case), or remove it
+   * (`null`); the bot's `monster_rules` shows the result. False when not connected or the
+   * pattern is shorter than two characters. */
+  setMonsterRule(session: string, pattern: string, rule: MonsterRuleKind | null): boolean {
+    const p = pattern.trim();
+    return p.length >= 2 && this.send({ type: "set_monster_rule", session, pattern: p, rule });
   }
 
   /** Ask for the character's last runs (a `stats` answer); false when not connected. */

@@ -50,6 +50,8 @@ struct Args {
     only: Option<String>,
     scenario: Scenario,
     soak: soak::SoakArgs,
+    /// `--flee-from`: monsters the brain flees from on sight (`wayfarer brain --flee-from`).
+    flee_from: Vec<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -87,13 +89,18 @@ enum Scenario {
     /// C-034: go to: `find` the Arena from the Village Entrance and walk to it; `find` the
     /// Dungeon Entrance and say whether it is a boss lair.
     Goto,
+    /// C-035: as "fight", with the Arena's monsters as *flee from* (`--flee-from`, by default
+    /// [`ARENA_MONSTERS`]): at full HP the bot leaves the Arena on sight of one, and never
+    /// attacks it.
+    FleeFrom,
 }
 
 fn usage() -> ! {
     eprintln!(
         "usage: wayfarer-live --wayfarer BIN --out DIR [--addr HOST:PORT] [--pool FILE] \
-         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart|flee|typing|soak|goto]\n\
-         soak: --char NAME --minutes N [--anchor MAP:ROOM] [--radius R] [--skip MAP:ROOM ...] [--loop ID]\n\
+         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart|flee|typing|soak|goto|flee-from]\n\
+         soak: --char NAME --minutes N [--anchor MAP:ROOM] [--radius R] [--skip MAP:ROOM ...] [--loop ID] [--flee-from NAME ...]\n\
+         flee-from: [--flee-from NAME ...]\n\
          (run it through scripts/live-check.sh)"
     );
     std::process::exit(2);
@@ -110,6 +117,7 @@ fn args() -> Args {
         only: None,
         scenario: Scenario::M0,
         soak: soak::SoakArgs::default(),
+        flee_from: Vec::new(),
     };
     let mut it = std::env::args().skip(1);
     while let Some(flag) = it.next() {
@@ -134,6 +142,7 @@ fn args() -> Args {
                     "typing" => Scenario::Typing,
                     "soak" => Scenario::Soak,
                     "goto" => Scenario::Goto,
+                    "flee-from" => Scenario::FleeFrom,
                     _ => usage(),
                 }
             }
@@ -147,6 +156,7 @@ fn args() -> Args {
                 .skip
                 .push(soak::parse_room(&value()).unwrap_or_else(|| usage())),
             "--loop" => a.soak.loop_id = Some(value()),
+            "--flee-from" => a.flee_from.push(value()),
             _ => usage(),
         }
     }
@@ -565,6 +575,15 @@ async fn run(ctx: &mut Ctx, pool: &Pool) -> Result<String, String> {
         let soaked = soak::scenario(ctx, &mut gw).await;
         let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
         return if soaked && logged_off {
+            Ok(who)
+        } else {
+            Err(who)
+        };
+    }
+    if ctx.args.scenario == Scenario::FleeFrom {
+        let fled = flee_from_scenario(ctx, &mut gw).await;
+        let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
+        return if fled && logged_off {
             Ok(who)
         } else {
             Err(who)
@@ -2049,6 +2068,97 @@ async fn flee_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
     ctx.record("no death", started, &alive);
     let brain = stop_brain(ctx, running).await;
     ok && stopped.is_ok() && out && rested && alive.is_ok() && brain
+}
+
+/// The monsters of the Newhaven Arena the flee-from scenario flees from by default: the
+/// kobold thieves the fight scenario attacks, and the giant rats.
+const ARENA_MONSTERS: [&str; 2] = ["kobold thief", "giant rat"];
+
+/// `wayfarer brain` arguments for the monsters to flee from.
+fn flee_from_args(names: &[String]) -> Vec<String> {
+    names
+        .iter()
+        .flat_map(|n| ["--flee-from".to_owned(), n.clone()])
+        .collect()
+}
+
+/// The flee-from scenario, with the gateway in the realm: a brain fleeing on sight from the
+/// Arena's monsters; rest to full HP; to the Arena; Start; on sight of one (there, or when it
+/// comes): Flee, at full HP, with no attack sent; Safe. Then Stop, out of the Arena, the brain
+/// stopped. Whether all of it passed.
+async fn flee_from_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
+    use wayfarer_proto::BotAction;
+
+    let names: Vec<String> = if ctx.args.flee_from.is_empty() {
+        ARENA_MONSTERS.map(str::to_owned).to_vec()
+    } else {
+        ctx.args.flee_from.clone()
+    };
+    let extra = flee_from_args(&names);
+    let Some((running, start)) = placed_brain(ctx, gw, "flee-from", &extra).await else {
+        return false;
+    };
+    let mut ok = rest_to_full(ctx, gw).await;
+    let notices = gw.notices.len();
+    let seq = gw.last_seq();
+    ok = ok && fight_in_the_arena(ctx, gw, start, false).await;
+
+    // 5. On sight: Flee whatever the HP, and no attack (no `*Combat Engaged*` of its own).
+    if ok {
+        let started = Instant::now();
+        let fled = gw
+            .wait_for(FIGHT_TIMEOUT, "Flee on sight", |g| {
+                if bot_field(&g.character, "state") == Some("stopped") {
+                    let why = bot_field(&g.character, "narration").unwrap_or("");
+                    return Some(Err(format!("the bot stopped: {why}")));
+                }
+                if screen::plain(&g.text_after(seq)).contains("*Combat Engaged*") {
+                    return Some(Err("it attacked a monster to flee from".to_owned()));
+                }
+                let said = after(g, notices);
+                let from = said.iter().position(|n| n.contains("(flee from)"))?;
+                let safe = said[from..].iter().position(|n| n.starts_with("Safe in"))?;
+                let hp =
+                    hp(&g.character).map_or_else(String::new, |(h, m)| format!(" at {h}/{m} HP"));
+                Some(Ok(format!("{}{hp}", said[from..=from + safe].join("; "))))
+            })
+            .await
+            .and_then(|r| r);
+        ctx.record("on sight: flee, no attack", started, &fled);
+        ok = fled.is_ok();
+    }
+
+    let started = Instant::now();
+    let stopped = match gw.bot(BotAction::Stop).await {
+        Ok(()) => {
+            gw.wait_for(Duration::from_secs(10), "the bot stopped", |g| {
+                (bot_field(&g.character, "state") == Some("stopped")).then(|| {
+                    bot_field(&g.character, "narration")
+                        .unwrap_or("")
+                        .to_owned()
+                })
+            })
+            .await
+        }
+        Err(e) => Err(e),
+    };
+    ctx.record("stop the bot", started, &stopped);
+    let started = Instant::now();
+    let rules = gw.character["bot"]["monster_rules"]
+        .as_array()
+        .map_or(0, Vec::len);
+    let attacked = screen::plain(&gw.text_after(seq)).contains("*Combat Engaged*");
+    let clean = if attacked {
+        Err("it attacked a monster to flee from".to_owned())
+    } else {
+        Ok(format!(
+            "no attack sent; {rules} monster rules on the snapshot"
+        ))
+    };
+    ctx.record("never attacked", started, &clean);
+    let out = walk_out(ctx, gw).await;
+    let brain = stop_brain(ctx, running).await;
+    ok && stopped.is_ok() && clean.is_ok() && out && brain
 }
 
 /// Let a fight end by itself (stopping the bot does not stop auto-combat), then walk to the

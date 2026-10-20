@@ -158,9 +158,134 @@ impl Monsters {
     }
 }
 
+/// What the bot does about a monster, by name (docs/plan/04-settings.md "Monsters and
+/// players"; MegaMud's relationships, `kb/megamud-manual.md` 9.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MonsterRule {
+    /// Never attack it; fight back if it attacks.
+    NeverFight,
+    /// Leave the room as soon as it is seen, whatever the HP; fight only if there is no way
+    /// out and it attacks.
+    FleeFrom,
+    /// Do not walk through the room it was last seen in when there is another way.
+    Avoid,
+}
+
+/// The rules every character starts with, each with why. Settings (M4) layer over them.
+/// Full names only: a pattern matches any name that holds it, so `ooze` would also match the
+/// glittering ooze, which is fightable.
+pub const DEFAULT_RULES: &[(&str, MonsterRule, &str)] = &[(
+    "gigantic black ooze",
+    MonsterRule::FleeFrom,
+    // Monster 63: 2,500 HP, regenerates 500 a round, damage reduction 40. Every swing of a
+    // mid-level character glances off its armour: a fight that never ends (the M3 soak,
+    // 2026-10-20). MegaMud's manual uses it as the example of its Flee class.
+    "unfightable: its armour takes every blow and it regenerates 500 HP a round",
+)];
+
+/// Rules by monster name, matched as MegaMud does: a pattern matches a name that holds it, in
+/// any case, and the longest matching pattern wins.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MonsterRules {
+    /// Lower-cased patterns, longest first; one rule per pattern.
+    list: Vec<(String, MonsterRule)>,
+}
+
+impl MonsterRules {
+    /// Rules from `(pattern, rule)` pairs; a pattern given again (any case) replaces the rule
+    /// before it, so later layers win. Empty patterns are left out.
+    pub fn new<S: AsRef<str>>(pairs: impl IntoIterator<Item = (S, MonsterRule)>) -> Self {
+        let mut list: Vec<(String, MonsterRule)> = Vec::new();
+        for (pattern, rule) in pairs {
+            let pattern = pattern.as_ref().trim().to_lowercase();
+            if pattern.is_empty() {
+                continue;
+            }
+            match list.iter_mut().find(|(p, _)| *p == pattern) {
+                Some(entry) => entry.1 = rule,
+                None => list.push((pattern, rule)),
+            }
+        }
+        // Longest first; equal lengths in the order given.
+        list.sort_by_key(|(p, _)| std::cmp::Reverse(p.chars().count()));
+        MonsterRules { list }
+    }
+
+    /// The default list ([`DEFAULT_RULES`]).
+    pub fn defaults() -> Self {
+        MonsterRules::new(DEFAULT_RULES.iter().map(|&(p, r, _)| (p, r)))
+    }
+
+    /// The rule for a monster `name` as the game shows it (`large giant rat`), if one matches.
+    pub fn rule_for(&self, name: &str) -> Option<MonsterRule> {
+        let name = name.to_lowercase();
+        self.list
+            .iter()
+            .find(|(p, _)| name.contains(p.as_str()))
+            .map(|&(_, r)| r)
+    }
+
+    /// The patterns and their rules, longest first.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, MonsterRule)> {
+        self.list.iter().map(|(p, r)| (p.as_str(), *r))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_ooze_is_flee_from_by_default_and_only_by_its_full_name() {
+        let rules = MonsterRules::defaults();
+        assert_eq!(
+            rules.rule_for("gigantic black ooze"),
+            Some(MonsterRule::FleeFrom)
+        );
+        assert_eq!(
+            rules.rule_for("Gigantic Black Ooze"),
+            Some(MonsterRule::FleeFrom)
+        );
+        assert_eq!(
+            rules.rule_for("large gigantic black ooze"),
+            Some(MonsterRule::FleeFrom)
+        );
+        assert_eq!(rules.rule_for("ooze"), None);
+        assert_eq!(rules.rule_for("glittering ooze"), None);
+    }
+
+    #[test]
+    fn the_longest_matching_pattern_wins_in_any_case() {
+        let rules = MonsterRules::new([
+            ("rat", MonsterRule::Avoid),
+            ("Giant Rat", MonsterRule::NeverFight),
+            ("orc", MonsterRule::FleeFrom),
+        ]);
+        assert_eq!(
+            rules.rule_for("fat GIANT rat"),
+            Some(MonsterRule::NeverFight)
+        );
+        assert_eq!(rules.rule_for("rat"), Some(MonsterRule::Avoid));
+        assert_eq!(rules.rule_for("pirate"), Some(MonsterRule::Avoid));
+        assert_eq!(rules.rule_for("kobold"), None);
+        let lengths: Vec<usize> = rules.iter().map(|(p, _)| p.len()).collect();
+        assert_eq!(lengths, [9, 3, 3]);
+    }
+
+    #[test]
+    fn a_later_rule_for_the_same_pattern_replaces_the_earlier() {
+        let rules = MonsterRules::new([
+            ("gigantic black ooze", MonsterRule::FleeFrom),
+            ("GIGANTIC black ooze ", MonsterRule::NeverFight),
+            ("", MonsterRule::Avoid),
+        ]);
+        assert_eq!(rules.iter().count(), 1);
+        assert_eq!(
+            rules.rule_for("gigantic black ooze"),
+            Some(MonsterRule::NeverFight)
+        );
+        assert_eq!(rules.rule_for("anything"), None);
+    }
 
     fn monster(number: i64, name: &str, mon_type: i64, gen_index: i64) -> Monster {
         Monster {

@@ -2,7 +2,8 @@
 
 use rusqlite::Connection;
 use wayfarer_store::{
-    BotRecord, BotState, Error, Event, EventKind, Note, SCHEMA_VERSION, Sample, Store, Totals,
+    BotRecord, BotState, Error, Event, EventKind, Note, RuleRecord, SCHEMA_VERSION, Sample, Store,
+    Totals,
 };
 
 const T0: i64 = 1_792_411_200;
@@ -39,6 +40,20 @@ fn the_bot_state_round_trips_and_is_replaced() {
         stop_index: 1,
         skip: vec![0],
         paused_reason: Some("you took over".into()),
+        monster_rules: vec![
+            RuleRecord {
+                pattern: "gigantic black ooze".into(),
+                rule: "never_fight".into(),
+                source: "session".into(),
+                at: T0 - 60,
+            },
+            RuleRecord {
+                pattern: "giant rat".into(),
+                rule: "flee_from".into(),
+                source: "player".into(),
+                at: T0 - 30,
+            },
+        ],
     };
     store.save_bot("aldric", &paused, T0).unwrap();
     assert_eq!(store.bot("aldric").unwrap().as_ref(), Some(&paused));
@@ -224,4 +239,37 @@ fn an_unversioned_file_is_migrated_and_a_newer_one_left_alone() {
     let err = Store::open(&newer).unwrap_err();
     assert!(matches!(err, Error::Newer { .. }), "{err}");
     assert!(newer.is_file());
+}
+
+#[test]
+fn a_version_1_store_keeps_its_bot_and_gains_the_monster_rules() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    // Version 1 as C-029 wrote it, with a bot saved.
+    Connection::open(&path)
+        .unwrap()
+        .execute_batch(
+            "CREATE TABLE bot_state (
+                 session TEXT PRIMARY KEY, state TEXT NOT NULL, home_map INTEGER,
+                 home_room INTEGER, loop_id TEXT, loop_stops TEXT NOT NULL DEFAULT '[]',
+                 stop_index INTEGER NOT NULL DEFAULT 0, skip TEXT NOT NULL DEFAULT '[]',
+                 paused_reason TEXT, updated_at INTEGER NOT NULL);
+             CREATE TABLE runs (id INTEGER PRIMARY KEY, session TEXT NOT NULL,
+                 started_at INTEGER NOT NULL, ended_at INTEGER, loop_id TEXT);
+             CREATE TABLE events (id INTEGER PRIMARY KEY, run_id INTEGER NOT NULL, at INTEGER
+                 NOT NULL, kind TEXT NOT NULL, value INTEGER NOT NULL DEFAULT 0, detail TEXT,
+                 room_map INTEGER, room_room INTEGER);
+             CREATE TABLE samples (run_id INTEGER NOT NULL, at INTEGER NOT NULL, exp INTEGER,
+                 hp INTEGER);
+             INSERT INTO bot_state (session, state, home_map, home_room, updated_at)
+                 VALUES ('aldric', 'running', 1, 2150, 0);
+             PRAGMA user_version = 1;",
+        )
+        .unwrap();
+    let (store, note) = Store::open(&path).unwrap();
+    assert_eq!(note, None);
+    assert_eq!(store.version().unwrap(), SCHEMA_VERSION);
+    let bot = store.bot("aldric").unwrap().unwrap();
+    assert_eq!(bot.home, Some((1, 2150)));
+    assert!(bot.monster_rules.is_empty());
 }

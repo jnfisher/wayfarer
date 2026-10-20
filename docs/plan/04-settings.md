@@ -123,7 +123,7 @@ from MegaMud's dialogs (`kb/megamud.md`), the prototype and the KB:
 |---|---|
 | Health | heal period (minimum seconds between heals); regen spells before resting; cure poison, blindness and disease spells (or wait it out); ignore poison, blindness, confusion; pre-rest and post-rest commands |
 | Combat | pre-attack spell (once per monster); area spell when at least N monsters; casts per monster; stop casting once a round's damage exceeds X; run if the backstab fails; polite attacks (not when other players are here); most total monster exp to take on; break combat before running; run distance |
-| Monsters and players | per name: friend, avoid, enemy, flee from, never backstab, attack priority, spell overrides; matching by substring with longest names first |
+| Monsters and players | per name: friend, avoid, enemy, flee from, never backstab, attack priority, spell overrides; matching by substring with longest names first. C-035 brought *never fight*, *flee from* and *avoid* forward: wayfarer's default list (`DEFAULT_RULES` in `crates/wayfarer-world/src/monsters.rs`, the gigantic black ooze as *flee from*) is the seed of this group, with the session's (stalemates) and the player's rules over it (`docs/brain.md` "Monster rules") |
 | Upkeep | trainer choice; bank and keep-on-hand amount; items to sell, stash or never pick up; minimum stock of consumables (torches) |
 | Loot | per currency: collect, ignore or drop (copper and silver ignored by default); items to collect; don't become heavy or medium; collect only after combat |
 | Movement | sneak (and don't move unless sneaking); hide when idle; pick locks or bash doors, attempts; disarm traps, attempts; search for hidden exits; avoid rooms; run backwards along the loop when fleeing |

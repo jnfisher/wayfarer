@@ -4,7 +4,10 @@
 use std::collections::{BTreeSet, HashMap};
 use std::time::Duration;
 
-use wayfarer_world::{ExitType, Gate, Key, LockState, Monsters, Traveller, distances, huntable};
+use wayfarer_world::{
+    ExitType, Gate, Key, LockState, MonsterRule, MonsterRules, Monsters, Traveller, distances,
+    huntable,
+};
 
 use crate::brain::Atlas;
 
@@ -65,18 +68,38 @@ pub fn is_one_of(monsters: &Monsters, seen: &str, names: &[String]) -> bool {
 }
 
 /// What to attack: a hostile monster that is attacking the character first, else the first
-/// hostile one listed here; never one on the skip list.
+/// hostile one listed here; never one on the skip list. The monster rules (`rules`): one the
+/// bot must *never fight* is attacked only when it attacks, and one to *flee from* only when
+/// it attacks and the bot is `cornered` (there was no way out).
 pub fn target<'a>(
     monsters: &Monsters,
+    rules: &MonsterRules,
     here: &'a [String],
     attackers: &'a [String],
     skip: &BTreeSet<String>,
+    cornered: bool,
 ) -> Option<&'a str> {
-    attackers
+    let fightable = |n: &&str| !skip.contains(*n) && hostile(monsters, n);
+    let attacker = attackers
         .iter()
-        .chain(here)
         .map(String::as_str)
-        .find(|n| !skip.contains(*n) && hostile(monsters, n))
+        .filter(fightable)
+        .find(|n| cornered || rules.rule_for(n) != Some(MonsterRule::FleeFrom));
+    attacker.or_else(|| {
+        here.iter().map(String::as_str).filter(fightable).find(|n| {
+            !matches!(
+                rules.rule_for(n),
+                Some(MonsterRule::NeverFight | MonsterRule::FleeFrom)
+            )
+        })
+    })
+}
+
+/// The first monster here the bot must *flee from*, if any.
+pub fn flee_from<'a>(rules: &MonsterRules, here: &'a [String]) -> Option<&'a str> {
+    here.iter()
+        .map(String::as_str)
+        .find(|n| rules.rule_for(n) == Some(MonsterRule::FleeFrom))
 }
 
 /// Monsters come to the room: the spawn pass makes some there, or it holds a monster worth
@@ -204,6 +227,52 @@ mod tests {
         assert_eq!(hp_percent(Some(28), None), None);
         assert_eq!(hp_percent(None, Some(35)), None);
         assert_eq!(hp_percent(Some(1), Some(0)), None);
+    }
+
+    #[test]
+    fn the_rules_keep_some_monsters_from_being_attacked() {
+        let mk = |n: i64, name: &str| wayfarer_world::pack::Monster {
+            number: n,
+            name: name.into(),
+            level: 1,
+            exp: 9,
+            max_hp: 5,
+            mon_type: 6,
+            gen_index: 1,
+            alignment: 2,
+            raw: String::new(),
+        };
+        let monsters = Monsters::new(vec![mk(1, "giant rat"), mk(2, "kobold"), mk(3, "orc")]);
+        let rules = MonsterRules::new([
+            ("giant rat", MonsterRule::NeverFight),
+            ("orc", MonsterRule::FleeFrom),
+            ("kobold", MonsterRule::Avoid),
+        ]);
+        let none = BTreeSet::new();
+        let s = |v: &[&str]| v.iter().map(|n| (*n).to_owned()).collect::<Vec<_>>();
+        let here = s(&["fat giant rat", "orc", "kobold"]);
+        // Never fight and flee from are passed over; avoid is fought.
+        assert_eq!(
+            target(&monsters, &rules, &here, &[], &none, false),
+            Some("kobold")
+        );
+        // A never-fight monster that attacks is fought back; a flee-from one only cornered.
+        let rat = s(&["fat giant rat"]);
+        assert_eq!(
+            target(&monsters, &rules, &here[..1], &rat, &none, false),
+            Some("fat giant rat")
+        );
+        let orc = s(&["orc"]);
+        assert_eq!(
+            target(&monsters, &rules, &here[1..2], &orc, &none, false),
+            None
+        );
+        assert_eq!(
+            target(&monsters, &rules, &here[1..2], &orc, &none, true),
+            Some("orc")
+        );
+        assert_eq!(flee_from(&rules, &here), Some("orc"));
+        assert_eq!(flee_from(&rules, &rat), None);
     }
 
     #[test]

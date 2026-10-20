@@ -151,3 +151,8 @@
   "Two at once": a second direction sent before the first's room has come is taken after it,
   each move showing its own room and prompt in order, and both rooms can arrive in one read
   [C, silvermere, the C-030 live check from the Newhaven Village Entrance].
+- **2026-10-20**: From wayfarer wave 4 (C-035): `combat.md` new section "A fight that cannot be
+  won: the gigantic black ooze": the first-person glance line and how a round's swings arrive
+  [C, silvermere, the M3 soak], the ooze's numbers from `WCCKNMSR` (monster 63: 2,500 HP, 500
+  regenerated a round, damage reduction 40) [C], and the stalemate it makes with a mid-level
+  character [C live; I for the general rule].

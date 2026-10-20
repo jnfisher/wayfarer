@@ -31,6 +31,7 @@ mod modes;
 pub mod policy;
 mod position;
 mod recover;
+mod rules;
 mod session;
 mod stats;
 mod task;
@@ -39,8 +40,9 @@ mod walker;
 pub use brain::{Atlas, BUILD, Brain, BrainError, World};
 pub use character::{Character, apply_patch, merge_patch};
 pub use clock::{Clock, FixedClock, InstantClock, ReplayClock, Sleep, SystemClock, rfc3339};
-pub use fight::ATTACK_TRIES;
+pub use fight::{ATTACK_TRIES, ROUND_GAP, STALEMATE_ROUNDS};
 pub use link::{ChannelLink, ConnectError, Link, WsLink};
+pub use rules::AVOID_MEMORY;
 pub use session::{
     ANSWER_TIMEOUT, HISTORY_CHUNKS, IDLE, MAP_RADIUS, OWN_PATIENCE, RESYNC_COMMANDS,
 };

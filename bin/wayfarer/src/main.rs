@@ -83,6 +83,11 @@ struct BrainArgs {
     /// instead of 30, so the first blow sets a flee off.
     #[arg(long, hide = true, value_parser = clap::value_parser!(i32).range(1..=100))]
     flee_below: Option<i32>,
+    /// The bots flee on sight from monsters whose name holds NAME (any case), as if the player
+    /// had set *flee from* for it; repeatable. Use the full name: `ooze` also matches the
+    /// glittering ooze.
+    #[arg(long, value_name = "NAME")]
+    flee_from: Vec<String>,
 }
 
 #[derive(Args)]
@@ -313,6 +318,10 @@ fn run_brain(args: BrainArgs) -> Result<(), Box<dyn std::error::Error>> {
             if let Some(percent) = args.flee_below {
                 tracing::warn!(percent, "test knob: fleeing below {percent}% HP");
                 brain = brain.with_flee_below(percent);
+            }
+            if !args.flee_from.is_empty() {
+                tracing::info!(names = ?args.flee_from, "fleeing on sight from these monsters");
+                brain = brain.with_flee_from(args.flee_from.clone());
             }
             tracing::info!(
                 build = wayfarer_brain::BUILD,

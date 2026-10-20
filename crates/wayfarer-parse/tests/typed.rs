@@ -369,6 +369,40 @@ fn combat_and_rest() {
 }
 
 #[test]
+fn the_characters_own_swings() {
+    assert_eq!(
+        line("You punch fat giant rat for 2 damage!"),
+        [GameEvent::YouHit {
+            target: "fat giant rat".into(),
+            damage: 2
+        }]
+    );
+    assert_eq!(
+        line("You swing at carrion beast!"),
+        [GameEvent::YouMiss {
+            target: "carrion beast".into()
+        }]
+    );
+    assert_eq!(
+        line("You swing at dark monk who dodges your attack!"),
+        [GameEvent::YouMiss {
+            target: "dark monk".into()
+        }]
+    );
+    // The line of the M3 soak's stalemate, confirmed live 2026-10-20 (`kb/combat.md`).
+    assert_eq!(
+        line("Your swing at gigantic black ooze hits, but glances off its armour."),
+        [GameEvent::SwingGlanced {
+            target: "gigantic black ooze".into()
+        }]
+    );
+    assert_eq!(
+        example("you_glance"),
+        GameEvent::SwingGlanced { target: "Y".into() }
+    );
+}
+
+#[test]
 fn who_is_here_and_who_attacks() {
     let f = "capture-death-rebirth";
     assert_eq!(

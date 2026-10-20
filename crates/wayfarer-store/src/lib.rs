@@ -67,12 +67,21 @@ const MIGRATIONS: &[&str] = &[
          hp INTEGER
      );
      CREATE INDEX samples_run ON samples (run_id, at);",
+    // 2: the bot's monster rules, the session's and the player's (C-035).
+    "CREATE TABLE monster_rules (
+         session TEXT NOT NULL,
+         pattern TEXT NOT NULL,
+         rule TEXT NOT NULL,
+         source TEXT NOT NULL,
+         at INTEGER NOT NULL,
+         PRIMARY KEY (session, pattern, source)
+     );",
 ];
 
 /// The schema version this build writes.
 pub const SCHEMA_VERSION: u32 = MIGRATIONS.len() as u32;
 
-const TABLES: [&str; 4] = ["bot_state", "runs", "events", "samples"];
+const TABLES: [&str; 5] = ["bot_state", "runs", "events", "samples", "monster_rules"];
 
 #[derive(Debug)]
 pub enum Error {
@@ -198,6 +207,8 @@ pub struct BotRecord {
     pub skip: Vec<usize>,
     /// Why it is paused, when it is.
     pub paused_reason: Option<String>,
+    /// The monster rules the session learned and the player set, oldest first.
+    pub monster_rules: Vec<RuleRecord>,
 }
 
 impl BotRecord {
@@ -210,8 +221,20 @@ impl BotRecord {
             stop_index: 0,
             skip: Vec::new(),
             paused_reason: None,
+            monster_rules: Vec::new(),
         }
     }
+}
+
+/// A monster rule as stored: the brain's words for the rule and its source (`never_fight`,
+/// `session`); the store does not read them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuleRecord {
+    pub pattern: String,
+    pub rule: String,
+    pub source: String,
+    /// When it was made, Unix seconds.
+    pub at: i64,
 }
 
 /// What a run's events count.
@@ -439,10 +462,27 @@ impl Store {
                 .map(|i| usize::try_from(i).unwrap_or(0))
                 .collect(),
             paused_reason,
+            monster_rules: self.monster_rules(session)?,
         }))
     }
 
-    /// Save the bot's state for `session`, replacing what was there.
+    fn monster_rules(&self, session: &str) -> Result<Vec<RuleRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT pattern, rule, source, at FROM monster_rules WHERE session = ?1
+             ORDER BY at, rowid",
+        )?;
+        let rows = stmt.query_map([session], |r| {
+            Ok(RuleRecord {
+                pattern: r.get(0)?,
+                rule: r.get(1)?,
+                source: r.get(2)?,
+                at: r.get(3)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Save the bot's state for `session`, replacing what was there (its monster rules too).
     pub fn save_bot(&self, session: &str, bot: &BotRecord, at: i64) -> Result<()> {
         let stops: Vec<String> = bot
             .loop_stops
@@ -450,7 +490,9 @@ impl Store {
             .map(|(m, r)| format!("[{m},{r}]"))
             .collect();
         let skip: Vec<String> = bot.skip.iter().map(usize::to_string).collect();
-        self.conn.execute(
+        // The state and its rules together, or neither.
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
             "INSERT OR REPLACE INTO bot_state
                  (session, state, home_map, home_room, loop_id, loop_stops, stop_index, skip,
                   paused_reason, updated_at)
@@ -468,6 +510,15 @@ impl Store {
                 at,
             ],
         )?;
+        tx.execute("DELETE FROM monster_rules WHERE session = ?1", [session])?;
+        for r in &bot.monster_rules {
+            tx.execute(
+                "INSERT OR REPLACE INTO monster_rules (session, pattern, rule, source, at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![session, r.pattern, r.rule, r.source, r.at],
+            )?;
+        }
+        tx.commit()?;
         Ok(())
     }
 

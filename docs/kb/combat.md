@@ -301,6 +301,24 @@ LJNSPELL.C:48). Every timer runs 11 rounds.
 ## Fleeing
 - Below 30% HP in combat: leave by the first normal exit and rest. [C]
 
+## A fight that cannot be won: the gigantic black ooze
+- **The glance line**, first person, each swing whose damage the target's armour took
+  entirely: `Your swing at gigantic black ooze hits, but glances off its armour.` (the miss
+  verb, `hits, but glances off its armour.`), one line and a prompt per swing; a round's swings
+  come together, rounds 5 s apart. [C: live, silvermere, the M3 soak 2026-10-20, wayfarer
+  `tests/fixtures/ooze/`]
+- **The ooze** (monster 63, `WCCKNMSR`): 2,500 HP, regenerates 500 a round (`hpregen`),
+  damage reduction 40 (`dr`), magic resistance 70, 9,075 exp, chaotic evil, one alive at a
+  time and back an hour after its kill (`maxalive` 1, `regenhrs` 1), follows half the time
+  (`followpct` 50); it roams (no lair). [C: game data]
+- **Against a mid-level character** every swing glanced for 40 rounds and more; the ooze
+  mostly missed (`lunges at you!`) and hit for 1 to 12 (`crushes you with its incredible
+  bulk`), so HP never fell to a flee line and the fight never ended. MegaMud's manual uses it
+  as the example of its Flee class (`megamud-manual.md`). [C: live, same run]
+- A data rule does not pick it out (nearly every monster regenerates a tenth of its HP a
+  round); its damage reduction against the character's damage is what makes it unfightable,
+  which a count of rounds with no damage dealt detects. [I: wayfarer C-035]
+
 ## Choosing the attack (bash / attack / spell)
 - Options: `bash`, `a`, and each affordable single-target attack spell. If a heal spell is
   known, mana for two heals is held back.

@@ -255,6 +255,43 @@ pub struct Bot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub task: Option<Task>,
+    /// The monster rules it plays by: the defaults, what this session learned (a stalemate)
+    /// and what the player set (`set_monster_rule`). The longest pattern a name holds wins.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<MonsterRuleEntry>>", optional)]
+    pub monster_rules: Vec<MonsterRuleEntry>,
+}
+
+/// What the bot does about a monster, by name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum MonsterRuleKind {
+    /// Never attack it; fight back if it attacks.
+    NeverFight,
+    /// Leave the room as soon as it is seen, whatever the HP.
+    FleeFrom,
+    /// Keep out of the room it was last seen in when there is another way.
+    Avoid,
+}
+
+/// Where a monster rule comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum RuleSource {
+    /// wayfarer's own list.
+    Default,
+    /// The bot learned it this session: a fight that was a stalemate.
+    Session,
+    /// The player set it (`set_monster_rule`, or the brain's `--flee-from`).
+    Player,
+}
+
+/// One monster rule: a pattern matches a name that holds it, in any case.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct MonsterRuleEntry {
+    pub pattern: String,
+    pub rule: MonsterRuleKind,
+    pub source: RuleSource,
 }
 
 /// The loop the bot runs, and where it is on it.
@@ -767,6 +804,11 @@ pub enum ToClient {
         session: SessionId,
         query: String,
     },
+    SetMonsterRule {
+        session: SessionId,
+        pattern: String,
+        rule: Option<MonsterRuleKind>,
+    },
 
     /// To the brain only: a line went to the game, typed by a client or sent by a logon or
     /// log-off step; `seq` is the session's latest output `seq` at that moment. A password is
@@ -927,6 +969,14 @@ pub enum ToGateway {
     /// UI → brain: find rooms, well-known places and monsters whose name holds `query` (two
     /// characters or more, any case); the brain answers with `found`.
     Find { session: SessionId, query: String },
+    /// UI → brain: set the player's rule for monsters whose name holds `pattern` (any case),
+    /// or remove it (`rule` null). Stored with the bot's record; the bot's `monster_rules`
+    /// shows the result.
+    SetMonsterRule {
+        session: SessionId,
+        pattern: String,
+        rule: Option<MonsterRuleKind>,
+    },
 
     /// Brain → UIs: one parsed event, as `wayfarer-parse` produced it, with the output `seq`
     /// its line came from. The gateway never reads `fields`.
@@ -1082,6 +1132,7 @@ impl ToClient {
         "run_loop",
         "stats_request",
         "find",
+        "set_monster_rule",
         "sent",
         "brain_state",
         "brain_lagged",
@@ -1123,6 +1174,7 @@ impl ToClient {
             Self::RunLoop { .. } => "run_loop",
             Self::StatsRequest { .. } => "stats_request",
             Self::Find { .. } => "find",
+            Self::SetMonsterRule { .. } => "set_monster_rule",
             Self::Sent { .. } => "sent",
             Self::BrainState { .. } => "brain_state",
             Self::BrainLagged { .. } => "brain_lagged",
@@ -1148,6 +1200,7 @@ impl ToClient {
             | Self::InputHeld { session, .. }
             | Self::Found { session, .. }
             | Self::Find { session, .. }
+            | Self::SetMonsterRule { session, .. }
             | Self::Resync { session }
             | Self::WalkTo { session, .. }
             | Self::WalkStop { session }
@@ -1203,6 +1256,7 @@ impl ToGateway {
         "run_loop",
         "stats_request",
         "find",
+        "set_monster_rule",
         "event",
         "character",
         "character_patch",
@@ -1238,6 +1292,7 @@ impl ToGateway {
             Self::RunLoop { .. } => "run_loop",
             Self::StatsRequest { .. } => "stats_request",
             Self::Find { .. } => "find",
+            Self::SetMonsterRule { .. } => "set_monster_rule",
             Self::Event { .. } => "event",
             Self::Character { .. } => "character",
             Self::CharacterPatch { .. } => "character_patch",
@@ -1273,7 +1328,8 @@ impl ToGateway {
             | Self::WalkLoop { .. }
             | Self::RunLoop { .. }
             | Self::StatsRequest { .. }
-            | Self::Find { .. } => Family::Control,
+            | Self::Find { .. }
+            | Self::SetMonsterRule { .. } => Family::Control,
             Self::Event { .. }
             | Self::Character { .. }
             | Self::CharacterPatch { .. }
@@ -1325,6 +1381,15 @@ impl ToGateway {
             Self::RunLoop { session, id, skip } => ToClient::RunLoop { session, id, skip },
             Self::StatsRequest { session } => ToClient::StatsRequest { session },
             Self::Find { session, query } => ToClient::Find { session, query },
+            Self::SetMonsterRule {
+                session,
+                pattern,
+                rule,
+            } => ToClient::SetMonsterRule {
+                session,
+                pattern,
+                rule,
+            },
             Self::Event {
                 session,
                 seq,

@@ -95,6 +95,57 @@ describe("the stats tab", () => {
   });
 });
 
+describe("the monster rules", () => {
+  afterEach(cleanup);
+
+  const withRules: CharacterState = {
+    ...character,
+    bot: {
+      state: "running",
+      mode: "fight",
+      narration: "Fight: large giant rat",
+      monster_rules: [
+        { pattern: "gigantic black ooze", rule: "flee_from", source: "default" },
+        { pattern: "stone golem", rule: "never_fight", source: "session" },
+        { pattern: "giant rat", rule: "avoid", source: "player" },
+      ],
+    },
+  };
+
+  it("lists every rule; the player's can be removed and one added", async () => {
+    const onrule = vi.fn();
+    const { container } = render(StatsPanel, {
+      session,
+      character: withRules,
+      stats,
+      attached: true,
+      onrefresh: () => {},
+      onrule,
+    });
+    const listed = [...container.querySelectorAll(".rule")].map((r) =>
+      [...r.querySelectorAll("span")].map((s) => s.textContent!.trim()).join(" | "),
+    );
+    expect(listed).toEqual([
+      "flee from | gigantic black ooze | default",
+      "never fight | stone golem | session",
+      "avoid | giant rat | player",
+    ]);
+    // Only the player's rule has a remove button.
+    expect(screen.queryByRole("button", { name: "remove gigantic black ooze" })).toBeNull();
+    await fireEvent.click(screen.getByRole("button", { name: "remove giant rat" }));
+    expect(onrule).toHaveBeenLastCalledWith("a", "giant rat", null);
+    await fireEvent.input(screen.getByRole("textbox", { name: "monster name" }), {
+      target: { value: " fierce kobold thief " },
+    });
+    await fireEvent.change(screen.getByRole("combobox", { name: "rule" }), {
+      target: { value: "never_fight" },
+    });
+    await fireEvent.click(screen.getByRole("button", { name: "add" }));
+    expect(onrule).toHaveBeenLastCalledWith("a", "fierce kobold thief", "never_fight");
+    expect((screen.getByRole("textbox", { name: "monster name" }) as HTMLInputElement).value).toBe("");
+  });
+});
+
 describe("the stats helpers", () => {
   it("draws exp over time scaled to the highest gain", () => {
     expect(sparkline([])).toBe("");

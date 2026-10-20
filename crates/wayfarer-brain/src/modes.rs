@@ -3,7 +3,8 @@
 //! (with a loop to run), Idle. On every tick
 //! the highest mode that wants control gets it and says what to do next; the session sends its
 //! action through the executor (one in flight) or its walk through the walker, and hands the
-//! outcome back. Every change of what it is doing is narrated.
+//! outcome back. Every change of what it is doing is narrated. The monster rules (`rules.rs`)
+//! are a policy input the modes read from the [`View`], not a mode.
 
 use std::collections::HashMap;
 
@@ -11,7 +12,7 @@ use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
 use wayfarer_proto::{BotMode, BotState};
 use wayfarer_store::BotRecord;
-use wayfarer_world::{Key, LockState, Traveller};
+use wayfarer_world::{Key, LockState, MonsterRules, Traveller};
 
 use crate::brain::Atlas;
 use crate::executor::{Action, Outcome};
@@ -19,6 +20,7 @@ use crate::fight::Fight;
 use crate::flee::Flee;
 use crate::policy;
 use crate::recover::Recover;
+use crate::rules::Sightings;
 use crate::task::Task;
 use crate::walker::Say;
 
@@ -148,12 +150,21 @@ pub(crate) struct View<'a> {
     /// The doors as the game showed them this session.
     pub doors: &'a HashMap<(Key, u8), LockState>,
     pub presence: &'a Presence,
+    /// The monster rules.
+    pub rules: &'a MonsterRules,
+    /// Where the monsters to avoid were last seen.
+    pub sightings: &'a Sightings,
 }
 
 impl View<'_> {
     pub fn room_name(&self, k: Option<Key>) -> String {
         k.and_then(|k| self.atlas.graph.room(k))
             .map_or_else(|| "this room".to_owned(), |r| r.name.clone())
+    }
+
+    /// The monster to avoid last seen in room `k`, if one was: the bot keeps out.
+    pub fn shunned(&self, k: Key) -> Option<&str> {
+        self.sightings.at(k, self.now)
     }
 }
 
@@ -236,6 +247,8 @@ pub(crate) struct Bot {
     pausing: Option<String>,
     /// The loop it runs (Task mode).
     task: Option<Task>,
+    /// Monsters a stalemate gave up, for the session to make *never fight*.
+    learned: Vec<String>,
 }
 
 impl Bot {
@@ -268,6 +281,8 @@ impl Bot {
             narration: self.narration.clone(),
             reason: self.reason.clone(),
             task: self.task.as_ref().map(Task::snapshot),
+            // The session's: it keeps the rules.
+            monster_rules: Vec::new(),
         }
     }
 
@@ -329,10 +344,42 @@ impl Bot {
         self.acting == Some(BotMode::Task)
     }
 
-    /// Whether Fight would take the character here: a hostile monster it has not given up on,
-    /// or one attacking.
-    pub fn would_fight(&self, atlas: &Atlas, presence: &Presence) -> bool {
-        self.fight.would_fight(atlas, presence)
+    /// Whether Fight would take the character here: a monster it would attack, or one
+    /// attacking.
+    pub fn would_fight(&self, atlas: &Atlas, rules: &MonsterRules, presence: &Presence) -> bool {
+        self.fight.would_fight(atlas, rules, presence)
+    }
+
+    /// A monster to flee from is in the room (or a stalemate wants out), and Flee would take
+    /// control now: what the bot has in flight gives way, as for the flee line.
+    pub fn flee_urgent(
+        &self,
+        rules: &MonsterRules,
+        presence: &Presence,
+        room: Option<Key>,
+    ) -> bool {
+        self.active()
+            && self.acting != Some(BotMode::Flee)
+            && self.flee.sighted(rules, presence, room)
+    }
+
+    /// The monsters stalemates gave up since last asked: the session makes them *never
+    /// fight*.
+    pub fn take_learned(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.learned)
+    }
+
+    /// Fight gave up `name`: say so, and leave as Flee does.
+    fn stalemate(&mut self, name: String, says: &mut Vec<Say>) {
+        self.narrate(
+            format!("Stalemate: my swings do nothing to {name}; leaving"),
+            says,
+        );
+        if self.running() {
+            self.flee
+                .run_from(format!("Fleeing: stalemate with {name}"));
+        }
+        self.learned.push(name);
     }
 
     /// What the store keeps of the bot.
@@ -356,6 +403,8 @@ impl Bot {
                 .reason
                 .clone()
                 .filter(|_| self.state == BotState::Paused),
+            // The session's: it keeps the rules.
+            monster_rules: Vec::new(),
         }
     }
 
@@ -474,10 +523,14 @@ impl Bot {
         if let Some(t) = &mut self.task {
             t.on_event(ev, now);
         }
-        match ev {
-            GameEvent::YouKilled => self.stop("the character was killed", true),
-            _ => Vec::new(),
+        let mut says = Vec::new();
+        if let Some(name) = self.fight.take_stalemate() {
+            self.stalemate(name, &mut says);
         }
+        if let GameEvent::YouKilled = ev {
+            says.extend(self.stop("the character was killed", true));
+        }
+        says
     }
 
     /// A monster died (`name`, as the room showed it): Task counts it for the stop it is at.
@@ -526,6 +579,7 @@ impl Bot {
             .wake()
             .into_iter()
             .chain(self.flee.wake())
+            .chain(self.fight.wake())
             .chain(self.task.as_ref().and_then(|t| t.wake(now)))
             .min()
     }
@@ -542,6 +596,12 @@ impl Bot {
         if self.state != BotState::Running || self.pausing.is_some() {
             return (None, says);
         }
+        // A round of swings that is over counts now: it may be the stalemate's last.
+        self.fight.settle(v.now);
+        if let Some(name) = self.fight.take_stalemate() {
+            self.stalemate(name, &mut says);
+        }
+        self.fight.set_cornered(self.flee.trapped_in(v.room));
         if let Some(t) = &mut self.task {
             t.observe(v);
             // Recover rests from, and walks back to, the stop Task is at or walking to.
@@ -593,6 +653,12 @@ impl Bot {
                 BotMode::Idle if self.recover.stranded(v) => {
                     Step::wait("Rested; could not walk home, waiting here")
                 }
+                BotMode::Idle if let Some((home, name)) = self.recover.shunned(v) => {
+                    Step::wait(format!(
+                        "Waiting here: {name} was last seen in {}",
+                        v.room_name(Some(home))
+                    ))
+                }
                 BotMode::Idle => Step::wait("Waiting here"),
             };
             let finished = step.act.is_none()
@@ -608,6 +674,18 @@ impl Bot {
                 self.recover.after_flee();
             }
             self.narrate_as(step.narration, step.warn, &mut says);
+            // Away from (or cornered by) a monster it does not fight: the loop goes on from the
+            // next stop, and Recover walks there, not back.
+            if mode == BotMode::Flee
+                && self.flee.take_forced_done()
+                && let Some(t) = &mut self.task
+            {
+                t.move_on(v);
+                self.recover.set_home(t.home());
+                for note in t.take_notes() {
+                    self.narrate(note, &mut says);
+                }
+            }
             if step.act.is_none()
                 && let Some(why) = self
                     .flee
