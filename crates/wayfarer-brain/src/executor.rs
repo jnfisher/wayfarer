@@ -1,8 +1,11 @@
 //! The executor (docs/plan/03-engine.md section 3): an action is a command plus the events
 //! that confirm it and a timeout. One action is in flight per session; it goes at a prompt
 //! boundary in the realm (the session decides when that is), and it is done at the first
-//! prompt after its answer, or when its time runs out. The hard guards live here, so no mode
-//! can get round them.
+//! prompt after its answer, or when its time runs out. The one exception is a move along a
+//! known route: a second move may go *ahead* of the move in flight (pipelining), and each is
+//! answered by the rooms in the order they went; nothing but a move ever goes ahead of a move,
+//! so two non-move actions never overlap. The hard guards live here, so no mode can get round
+//! them.
 
 use std::time::Duration;
 
@@ -149,21 +152,77 @@ enum State {
     Idle,
     /// Waiting for a prompt boundary.
     Queued(Action),
-    InFlight {
-        action: Action,
-        deadline: Instant,
-        answer: Option<Outcome>,
-    },
+    InFlight(Flight),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct Flight {
+    action: Action,
+    deadline: Instant,
+    answer: Option<Outcome>,
+}
+
+impl Flight {
+    fn new(action: Action, now: Instant) -> Flight {
+        Flight {
+            deadline: now + action.timeout,
+            action,
+            answer: None,
+        }
+    }
+}
+
+/// A move sent ahead of the move in flight.
+#[derive(Debug, Clone, PartialEq)]
+enum Ahead {
+    /// To go as soon as the one before it has.
+    Queued(Action),
+    InFlight(Flight),
 }
 
 #[derive(Debug)]
 pub struct Executor {
     state: State,
+    ahead: Option<Ahead>,
 }
 
 impl Default for Executor {
     fn default() -> Self {
-        Executor { state: State::Idle }
+        Executor {
+            state: State::Idle,
+            ahead: None,
+        }
+    }
+}
+
+/// The answer `ev` gives an action expecting `expect`, if it is one.
+fn answer(expect: Expect, ev: &GameEvent) -> Option<Outcome> {
+    match (expect, ev) {
+        (Expect::RoomSeen, GameEvent::MoveRefused { reason }) => {
+            Some(Outcome::Refused(Refused::Move(*reason)))
+        }
+        (Expect::RoomSeen, GameEvent::DoorClosed { locked }) => {
+            Some(Outcome::Refused(Refused::DoorClosed { locked: *locked }))
+        }
+        (Expect::DoorOpened, GameEvent::DoorOpened) => {
+            Some(Outcome::Confirmed(Confirmed::DoorOpened))
+        }
+        (Expect::DoorOpened, GameEvent::OpenRefused) => Some(Outcome::Refused(Refused::Locked)),
+        (Expect::BashResult, GameEvent::BashResult { ok }) => {
+            Some(Outcome::Confirmed(Confirmed::Bash { ok: *ok }))
+        }
+        (Expect::BashResult, GameEvent::DoorOpened) => {
+            Some(Outcome::Confirmed(Confirmed::Bash { ok: true }))
+        }
+        (Expect::Prompt, GameEvent::Prompt { .. }) => Some(Outcome::Confirmed(Confirmed::Prompt)),
+        (Expect::Engaged, GameEvent::CombatEngaged) => Some(Outcome::Confirmed(Confirmed::Engaged)),
+        (Expect::Engaged, GameEvent::YouDoNotSee { .. } | GameEvent::NoEffect) => {
+            Some(Outcome::Refused(Refused::Target))
+        }
+        (Expect::Engaged, GameEvent::Other(e)) if ATTACK_REFUSALS.contains(&e.name.as_str()) => {
+            Some(Outcome::Refused(Refused::Target))
+        }
+        _ => None,
     }
 }
 
@@ -177,6 +236,26 @@ impl Executor {
         Ok(())
     }
 
+    /// Queue a move to go ahead of the move queued or in flight, without waiting for its
+    /// answer or a prompt (pipelining). Only a move ([`Expect::RoomSeen`]) goes ahead, only of
+    /// a move, and one at a time: whether it was taken.
+    pub fn submit_ahead(&mut self, action: Action, in_combat: Option<bool>) -> bool {
+        let first_moves = match &self.state {
+            State::Queued(a) => a.expect == Expect::RoomSeen,
+            State::InFlight(f) => f.action.expect == Expect::RoomSeen,
+            State::Idle => false,
+        };
+        if !first_moves
+            || self.ahead.is_some()
+            || action.expect != Expect::RoomSeen
+            || guard(&action.command, in_combat).is_err()
+        {
+            return false;
+        }
+        self.ahead = Some(Ahead::Queued(action));
+        true
+    }
+
     /// An action is queued or in flight.
     pub fn busy(&self) -> bool {
         self.state != State::Idle
@@ -184,9 +263,14 @@ impl Executor {
 
     pub fn in_flight(&self) -> Option<&Action> {
         match &self.state {
-            State::InFlight { action, .. } => Some(action),
+            State::InFlight(f) => Some(&f.action),
             _ => None,
         }
+    }
+
+    /// A move is queued or in flight ahead of the one in flight.
+    pub fn ahead(&self) -> bool {
+        self.ahead.is_some()
     }
 
     /// The queued action's command, now in flight: the caller sends it. Only at a prompt
@@ -197,106 +281,96 @@ impl Executor {
         };
         let action = action.clone();
         let command = action.command.clone();
-        self.state = State::InFlight {
-            deadline: now + action.timeout,
-            action,
-            answer: None,
-        };
+        self.state = State::InFlight(Flight::new(action, now));
         Some(command)
     }
 
-    /// An event from the game: the answer to the action in flight, if it is one. The first
-    /// answer counts.
-    pub fn event(&mut self, ev: &GameEvent) {
-        let State::InFlight { action, answer, .. } = &mut self.state else {
-            return;
-        };
-        if answer.is_some() {
-            return;
+    /// The move queued ahead, now in flight behind the one already in flight: the caller sends
+    /// it at once, prompt or not.
+    pub fn take_ahead(&mut self, now: Instant) -> Option<String> {
+        if !matches!(self.state, State::InFlight(_)) {
+            return None;
         }
-        *answer = match (action.expect, ev) {
-            (Expect::RoomSeen, GameEvent::MoveRefused { reason }) => {
-                Some(Outcome::Refused(Refused::Move(*reason)))
-            }
-            (Expect::RoomSeen, GameEvent::DoorClosed { locked }) => {
-                Some(Outcome::Refused(Refused::DoorClosed { locked: *locked }))
-            }
-            (Expect::DoorOpened, GameEvent::DoorOpened) => {
-                Some(Outcome::Confirmed(Confirmed::DoorOpened))
-            }
-            (Expect::DoorOpened, GameEvent::OpenRefused) => Some(Outcome::Refused(Refused::Locked)),
-            (Expect::BashResult, GameEvent::BashResult { ok }) => {
-                Some(Outcome::Confirmed(Confirmed::Bash { ok: *ok }))
-            }
-            (Expect::BashResult, GameEvent::DoorOpened) => {
-                Some(Outcome::Confirmed(Confirmed::Bash { ok: true }))
-            }
-            (Expect::Prompt, GameEvent::Prompt { .. }) => {
-                Some(Outcome::Confirmed(Confirmed::Prompt))
-            }
-            (Expect::Engaged, GameEvent::CombatEngaged) => {
-                Some(Outcome::Confirmed(Confirmed::Engaged))
-            }
-            (Expect::Engaged, GameEvent::YouDoNotSee { .. } | GameEvent::NoEffect) => {
-                Some(Outcome::Refused(Refused::Target))
-            }
-            (Expect::Engaged, GameEvent::Other(e))
-                if ATTACK_REFUSALS.contains(&e.name.as_str()) =>
-            {
-                Some(Outcome::Refused(Refused::Target))
-            }
-            _ => None,
+        let Some(Ahead::Queued(action)) = &self.ahead else {
+            return None;
         };
+        let action = action.clone();
+        let command = action.command.clone();
+        self.ahead = Some(Ahead::InFlight(Flight::new(action, now)));
+        Some(command)
+    }
+
+    /// The flight the game's next answer is for: the one in flight until it has its answer,
+    /// then the move ahead of it.
+    fn answering(&mut self) -> Option<&mut Flight> {
+        match (&mut self.state, &mut self.ahead) {
+            (State::InFlight(f), _) if f.answer.is_none() => Some(f),
+            (State::InFlight(_), Some(Ahead::InFlight(f))) if f.answer.is_none() => Some(f),
+            _ => None,
+        }
+    }
+
+    /// An event from the game: the answer to the action in flight, if it is one. The first
+    /// answer counts; once it has one, the next is the answer of the move ahead.
+    pub fn event(&mut self, ev: &GameEvent) {
+        if let Some(f) = self.answering() {
+            f.answer = answer(f.action.expect, ev);
+        }
     }
 
     /// A room was shown.
     pub fn room_seen(&mut self) {
-        if let State::InFlight {
-            action:
-                Action {
-                    expect: Expect::RoomSeen,
-                    ..
-                },
-            answer: answer @ None,
-            ..
-        } = &mut self.state
+        if let Some(f) = self.answering()
+            && f.action.expect == Expect::RoomSeen
         {
-            *answer = Some(Outcome::Confirmed(Confirmed::Room));
+            f.answer = Some(Outcome::Confirmed(Confirmed::Room));
         }
     }
 
     /// The action in flight is done: answered, and the prompt after the answer came; or its
-    /// time ran out.
+    /// time ran out. The move ahead of it, if any, is the one in flight now.
     pub fn finished(&mut self, at_prompt: bool, now: Instant) -> Option<(Action, Outcome)> {
-        let State::InFlight {
-            action,
-            deadline,
-            answer,
-        } = &self.state
-        else {
+        let State::InFlight(f) = &self.state else {
             return None;
         };
-        let outcome = match answer {
-            Some(a) if at_prompt => *a,
-            _ if now >= *deadline => answer.unwrap_or(Outcome::TimedOut),
+        // With the move ahead answered too, the prompt after the first answer has gone by.
+        let ahead_answered = matches!(&self.ahead, Some(Ahead::InFlight(a)) if a.answer.is_some());
+        let outcome = match f.answer {
+            Some(a) if at_prompt || ahead_answered => a,
+            _ if now >= f.deadline => f.answer.unwrap_or(Outcome::TimedOut),
             _ => return None,
         };
-        let action = action.clone();
-        self.state = State::Idle;
+        let action = f.action.clone();
+        self.state = match self.ahead.take() {
+            Some(Ahead::InFlight(f)) => State::InFlight(f),
+            Some(Ahead::Queued(a)) => State::Queued(a),
+            None => State::Idle,
+        };
         Some((action, outcome))
     }
 
     /// When the action in flight times out.
     pub fn deadline(&self) -> Option<Instant> {
-        match self.state {
-            State::InFlight { deadline, .. } => Some(deadline),
+        match &self.state {
+            State::InFlight(f) => Some(f.deadline),
             _ => None,
         }
     }
 
-    /// Forget the action (the session left the realm, the brain re-attached).
+    /// Forget the action (the session left the realm, the brain re-attached), and the move
+    /// ahead of it.
     pub fn cancel(&mut self) {
         self.state = State::Idle;
+        self.ahead = None;
+    }
+
+    /// Drop the move queued ahead if it has not gone yet: whether one was dropped.
+    pub fn drop_ahead(&mut self) -> bool {
+        if matches!(self.ahead, Some(Ahead::Queued(_))) {
+            self.ahead = None;
+            return true;
+        }
+        false
     }
 }
 

@@ -208,4 +208,9 @@ impl Recover {
     pub fn home(&self) -> Option<Key> {
         self.home
     }
+
+    /// Play from `home` from now on (Task mode: the stop it is at or walking to).
+    pub fn set_home(&mut self, home: Key) {
+        self.home = Some(home);
+    }
 }

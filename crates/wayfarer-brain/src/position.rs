@@ -3,7 +3,7 @@
 //! are planned for, with the exits the game refused this session, the doors it showed open,
 //! shut or locked, and the rooms visited.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use wayfarer_parse::typed::GameEvent;
 use wayfarer_proto::{CharacterState, ExitKind, MapExit, MapRoom, RoomKey, ToGateway};
@@ -40,8 +40,9 @@ pub(crate) struct Position {
     /// The doors and gates as the game showed them this session (an exits line, a move into a
     /// shut door, `open`, `bash`), over the pack's states, which a cold start locks.
     pub doors: HashMap<(Key, u8), LockState>,
-    /// A move that went to the game and whose room has not come yet.
-    moving: Option<String>,
+    /// Moves that went to the game and whose rooms have not come yet, oldest first: one, or
+    /// two with a move pipelined ahead of the first.
+    moving: VecDeque<String>,
     /// The direction of an `open` or `bash` that went to the game, until its answer.
     door_cmd: Option<u8>,
     /// A room title waiting for its exits.
@@ -60,10 +61,18 @@ impl Position {
                 .any(|&k| atlas.graph.edges(k).iter().any(|e| e.taken_by(text)))
     }
 
+    /// A move went to the game ahead of the one whose room has not come yet (pipelining): its
+    /// room comes after that one's.
+    pub fn sent_ahead(&mut self, text: &str) {
+        self.moving.push_back(text.trim().to_owned());
+    }
+
     /// A line went to the game (from the brain or the player).
     pub fn sent(&mut self, atlas: &Atlas, text: &str) {
         if self.is_move(atlas, text) {
-            self.moving = Some(text.trim().to_owned());
+            // A move that never got its room is forgotten: it went nowhere.
+            self.moving.clear();
+            self.moving.push_back(text.trim().to_owned());
         }
         let mut words = text.split_whitespace();
         if let (Some(verb), Some(dir), None) = (words.next(), words.next(), words.next())
@@ -106,11 +115,11 @@ impl Position {
                 dark: false,
             },
             GameEvent::MoveRefused { .. } => {
-                self.moving = None;
+                self.moving.pop_front();
                 return None;
             }
             GameEvent::DoorClosed { locked } => {
-                let dir = self.moving.take().and_then(|m| mm::direction(&m));
+                let dir = self.moving.pop_front().and_then(|m| mm::direction(&m));
                 let state = if *locked {
                     LockState::Locked
                 } else {
@@ -131,7 +140,7 @@ impl Position {
             }
             _ => return None,
         };
-        if let Some(cmd) = self.moving.take() {
+        if let Some(cmd) = self.moving.pop_front() {
             self.belief.moved(&atlas.graph, &cmd);
         }
         self.belief

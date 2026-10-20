@@ -143,6 +143,38 @@ pub struct Game {
     /// The commands the script answered, in order: the walker's (the re-sync's are answered
     /// with a bare prompt and left out).
     pub played: Vec<String>,
+    /// A move may go while another is in flight (Task's pipelined legs): one at most, and only
+    /// a direction.
+    pub pipelining: bool,
+    /// The moves that went while another was in flight.
+    pub ahead: Vec<String>,
+}
+
+/// A direction command, as a pipelined move is.
+pub fn is_direction(text: &str) -> bool {
+    [
+        "n",
+        "s",
+        "e",
+        "w",
+        "ne",
+        "nw",
+        "se",
+        "sw",
+        "u",
+        "d",
+        "north",
+        "south",
+        "east",
+        "west",
+        "northeast",
+        "northwest",
+        "southeast",
+        "southwest",
+        "up",
+        "down",
+    ]
+    .contains(&text)
 }
 
 impl Game {
@@ -191,6 +223,8 @@ impl Game {
             pending: VecDeque::new(),
             state,
             played: Vec::new(),
+            pipelining: false,
+            ahead: Vec::new(),
         };
         g.log.push(Chunk {
             seq: 1,
@@ -309,10 +343,17 @@ impl Game {
                 // two in flight.
                 tokio::time::sleep(Duration::from_millis(10)).await;
                 while let Ok(m) = self.rx.try_recv() {
-                    assert!(
-                        !matches!(m, ToGateway::InputLine { .. }),
-                        "{m:?} sent while {text:?} was in flight"
-                    );
+                    if let ToGateway::InputLine { text: next, .. } = &m {
+                        let waiting = self
+                            .pending
+                            .iter()
+                            .any(|p| matches!(p, ToGateway::InputLine { .. }));
+                        assert!(
+                            self.pipelining && !waiting && is_direction(text) && is_direction(next),
+                            "{m:?} sent while {text:?} was in flight"
+                        );
+                        self.ahead.push(next.clone());
+                    }
                     self.pending.push_back(m);
                 }
                 let answer = match self.script.front() {

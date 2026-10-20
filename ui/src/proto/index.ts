@@ -28,6 +28,7 @@ export type { RunSummary } from "./RunSummary";
 export type { SessionInfo } from "./SessionInfo";
 export type { SessionState } from "./SessionState";
 export type { Stats } from "./Stats";
+export type { Task } from "./Task";
 export type { ToClient } from "./ToClient";
 export type { ToGateway } from "./ToGateway";
 export type { Walking } from "./Walking";

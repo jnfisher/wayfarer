@@ -9,7 +9,7 @@
 //! and dev (brain → UIs), control (UI → brain) and `sent` (gateway → brain); M2 adds walking
 //! and the map (`walk_to`, `walk_stop`, `map_request`, `map_view`, and the character's
 //! `position` and `walking`), the bot's first slice (`bot_control`, the character's `bot`), and loops (`loops_request`,
-//! `loops`, `walk_loop`); M3 adds the log-off handshake (`logging_off`, `ready_to_leave`) and
+//! `loops`, `walk_loop`); M3 adds Task mode (`run_loop`, the bot's `task`), the log-off handshake (`logging_off`, `ready_to_leave`) and
 //! statistics (the character's `run`, `stats_request`, `stats`), and typing beside the bot
 //! (`user_input`, `keys_sent`, `arbitrate`, `input_held`). [`Family`] says who may send what.
 //! Adding a variant later bumps nothing; removing or changing one bumps [`PROTOCOL`].
@@ -235,6 +235,8 @@ pub enum BotMode {
     Fight,
     Recover,
     Flee,
+    /// Running a loop (`run_loop`): walking to its next stop, or waiting there for respawns.
+    Task,
 }
 
 /// What the bot is doing for a character.
@@ -248,6 +250,25 @@ pub struct Bot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub reason: Option<String>,
+    /// The loop it runs (`run_loop`), while it runs one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub task: Option<Task>,
+}
+
+/// The loop the bot runs, and where it is on it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct Task {
+    /// The loop's id, as `loops` listed it.
+    pub loop_id: String,
+    pub loop_name: String,
+    /// The stop it is at or walking to, from 0, an index into `stops`.
+    pub stop: u32,
+    /// The loop's stops, in walking order.
+    pub stops: Vec<RoomKey>,
+    /// The stops it passes by (unticked).
+    #[serde(default)]
+    pub skip: Vec<RoomKey>,
 }
 
 /// A `bot_control` request.
@@ -656,6 +677,13 @@ pub enum ToClient {
         session: SessionId,
         id: String,
     },
+    RunLoop {
+        session: SessionId,
+        id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        skip: Option<Vec<RoomKey>>,
+    },
     StatsRequest {
         session: SessionId,
     },
@@ -798,6 +826,18 @@ pub enum ToGateway {
     /// UI → brain: walk a generated loop once, from its stop nearest the character round to
     /// that stop again; `walk_stop` stops it, and `walk_to` replaces it.
     WalkLoop { session: SessionId, id: String },
+    /// UI → brain: run a generated loop (Task mode): walk to its nearest stop, then round its
+    /// stops in order, fighting at each, passing by those in `skip` and those whose respawn
+    /// delay has not passed; it replaces a running "fight here". Sent again for the loop
+    /// already running, it only changes `skip` (left out: none). `bot_control` stops, pauses
+    /// and resumes it.
+    RunLoop {
+        session: SessionId,
+        id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        skip: Option<Vec<RoomKey>>,
+    },
     /// UI → brain: send a `stats` message with the character's last runs.
     StatsRequest { session: SessionId },
 
@@ -944,6 +984,7 @@ impl ToClient {
         "bot_control",
         "loops_request",
         "walk_loop",
+        "run_loop",
         "stats_request",
         "sent",
         "brain_state",
@@ -982,6 +1023,7 @@ impl ToClient {
             Self::BotControl { .. } => "bot_control",
             Self::LoopsRequest { .. } => "loops_request",
             Self::WalkLoop { .. } => "walk_loop",
+            Self::RunLoop { .. } => "run_loop",
             Self::StatsRequest { .. } => "stats_request",
             Self::Sent { .. } => "sent",
             Self::BrainState { .. } => "brain_state",
@@ -1013,6 +1055,7 @@ impl ToClient {
             | Self::BotControl { session, .. }
             | Self::LoopsRequest { session, .. }
             | Self::WalkLoop { session, .. }
+            | Self::RunLoop { session, .. }
             | Self::StatsRequest { session }
             | Self::Sent { session, .. }
             | Self::LoggingOff { session }
@@ -1057,6 +1100,7 @@ impl ToGateway {
         "bot_control",
         "loops_request",
         "walk_loop",
+        "run_loop",
         "stats_request",
         "event",
         "character",
@@ -1089,6 +1133,7 @@ impl ToGateway {
             Self::BotControl { .. } => "bot_control",
             Self::LoopsRequest { .. } => "loops_request",
             Self::WalkLoop { .. } => "walk_loop",
+            Self::RunLoop { .. } => "run_loop",
             Self::StatsRequest { .. } => "stats_request",
             Self::Event { .. } => "event",
             Self::Character { .. } => "character",
@@ -1122,6 +1167,7 @@ impl ToGateway {
             | Self::BotControl { .. }
             | Self::LoopsRequest { .. }
             | Self::WalkLoop { .. }
+            | Self::RunLoop { .. }
             | Self::StatsRequest { .. } => Family::Control,
             Self::Event { .. }
             | Self::Character { .. }
@@ -1160,6 +1206,7 @@ impl ToGateway {
                 doors,
             },
             Self::WalkLoop { session, id } => ToClient::WalkLoop { session, id },
+            Self::RunLoop { session, id, skip } => ToClient::RunLoop { session, id, skip },
             Self::StatsRequest { session } => ToClient::StatsRequest { session },
             Self::Event {
                 session,

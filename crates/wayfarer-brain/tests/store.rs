@@ -212,7 +212,13 @@ async fn a_stored_loop_survives_and_its_stored_stops_win() {
         all.iter().any(|s| s.contains("keeping the stored stops")),
         "{all:?}"
     );
-    g.narrated("Waiting here").await;
+    // The loop goes on at its stored stop, the Dungeon Entrance; the Arena, its other stored
+    // stop, unticked.
+    g.expect("n", room(BEYOND_ARENA));
+    g.narrated("Loop 1:2140:8:doors:0: to stop 2/2 Dungeon, Entrance (one step, one door)")
+        .await;
+    g.narrated("Waiting for respawns in Dungeon, Entrance")
+        .await;
     g.bot(BotAction::Pause).await;
     g.narrated("Paused: asked to pause").await;
     g.close(run).await;
