@@ -1,15 +1,22 @@
 //! Where a character is: the position [`Belief`] over the room graph, fed by every room the
 //! game shows and every move sent (by the brain or the player), the [`Traveller`] its routes
 //! are planned for, with the exits the game refused this session, the doors it showed open,
-//! shut or locked, and the rooms visited.
+//! shut or locked, the hidden exits it found, and the rooms visited.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::time::Duration;
 
+use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
 use wayfarer_proto::{CharacterState, ExitKind, MapExit, MapRoom, RoomKey, ToGateway};
 use wayfarer_world::{Belief, DirSet, Key, LockState, SegmentKind, Traveller, layout, mm};
 
 use crate::brain::Atlas;
+
+/// How long a hidden exit found by a `search` shows: it hides again after one step of 300
+/// fast ticks, about five minutes (`kb/navigation.md` "Hidden"). After that the walker
+/// searches for it again.
+pub const HIDDEN_FOR: Duration = Duration::from_secs(5 * 60);
 
 /// A room as the game showed it: its title (when it was not lost behind a prompt), the
 /// directions of its `Obvious exits` (when that line came), or too dark to see.
@@ -35,11 +42,13 @@ pub(crate) struct Position {
     pub traveller: Traveller,
     /// The last room title seen.
     pub title: Option<String>,
+    /// The directions of the last room's `Obvious exits`; `None` when it showed none (dark, or
+    /// lost behind a prompt).
+    pub exits: Option<DirSet>,
     /// Rooms the character was certainly in since the brain started.
     pub visited: HashSet<Key>,
-    /// The doors and gates as the game showed them this session (an exits line, a move into a
-    /// shut door, `open`, `bash`), over the pack's states, which a cold start locks.
-    pub doors: HashMap<(Key, u8), LockState>,
+    /// When each hidden exit in the traveller's `found` was found.
+    found_at: BTreeMap<(Key, u8), Instant>,
     /// Moves that went to the game and whose rooms have not come yet, oldest first: one, or
     /// two with a move pipelined ahead of the first.
     moving: VecDeque<String>,
@@ -86,13 +95,51 @@ impl Position {
     /// The door `dir` of the room the character is sure to be in is in `state`.
     fn door(&mut self, dir: Option<u8>, state: LockState) {
         if let (Some(dir), Some(k), true) = (dir, self.belief.best(), self.belief.certain()) {
-            self.doors.insert((k, dir), state);
+            self.traveller.doors.insert((k, dir), state);
         }
     }
 
-    /// Read one typed event; the room, when this event completed one. A room seen moves the
-    /// belief through the move in flight first (if there was one), then narrows it.
-    pub fn event(&mut self, atlas: &Atlas, ev: &GameEvent) -> Option<RoomSeen> {
+    /// A hidden exit was found `now` in the room the character is sure to be in: it shows for
+    /// [`HIDDEN_FOR`], and is known to be there for the rest of the session.
+    fn found(&mut self, dir: &str, now: Instant) {
+        if let (Some(d), Some(k), true) = (
+            mm::direction(dir),
+            self.belief.best(),
+            self.belief.certain(),
+        ) {
+            let at = (k, d as u8);
+            self.traveller.found.insert(at);
+            self.traveller.searchable.insert(at);
+            self.found_at.insert(at, now);
+        }
+    }
+
+    /// Forget the hidden exits found [`HIDDEN_FOR`] ago or more: they have hidden again.
+    pub fn forget_hidden(&mut self, now: Instant) {
+        let gone: Vec<(Key, u8)> = self
+            .found_at
+            .iter()
+            .filter(|&(_, &at)| now.saturating_duration_since(at) >= HIDDEN_FOR)
+            .map(|(&k, _)| k)
+            .collect();
+        for at in gone {
+            self.found_at.remove(&at);
+            self.traveller.found.remove(&at);
+        }
+    }
+
+    /// Whether exit `dir` of `room` shows now: in the last exits line, if the character is
+    /// sure to be there, or found less than [`HIDDEN_FOR`] ago.
+    pub fn showing(&self, room: Key, dir: u8) -> bool {
+        self.traveller.found.contains(&(room, dir))
+            || (self.belief.certain()
+                && self.belief.best() == Some(room)
+                && self.exits.is_some_and(|e| e.contains(dir)))
+    }
+
+    /// Read one typed event at `now`; the room, when this event completed one. A room seen
+    /// moves the belief through the move in flight first (if there was one), then narrows it.
+    pub fn event(&mut self, atlas: &Atlas, ev: &GameEvent, now: Instant) -> Option<RoomSeen> {
         let seen = match ev {
             GameEvent::RoomTitle { title } => {
                 self.title_pending = Some(title.clone());
@@ -138,6 +185,17 @@ impl Position {
                 self.door(dir, LockState::Locked);
                 return None;
             }
+            GameEvent::SearchResult { found: true, dir } => {
+                self.found(dir, now);
+                return None;
+            }
+            // The status screen's picklocks skill: the odds of picking a lock.
+            GameEvent::StatusStat { stats } => {
+                if let Some((_, n)) = stats.iter().find(|(label, _)| label == "Picklocks") {
+                    self.traveller.picklocks = Some(*n);
+                }
+                return None;
+            }
             _ => return None,
         };
         if let Some(cmd) = self.moving.pop_front() {
@@ -148,6 +206,7 @@ impl Position {
         if seen.title.is_some() {
             self.title.clone_from(&seen.title);
         }
+        self.exits = seen.exits;
         if let GameEvent::RoomExits { exits } = ev {
             self.doors_shown(exits);
         }
@@ -170,12 +229,13 @@ impl Position {
                 continue;
             };
             let at = (k, d as u8);
+            let doors = &mut self.traveller.doors;
             match e.state.as_deref() {
                 Some("open") => {
-                    self.doors.insert(at, LockState::Open);
+                    doors.insert(at, LockState::Open);
                 }
-                Some("closed") if self.doors.get(&at) == Some(&LockState::Open) => {
-                    self.doors.remove(&at);
+                Some("closed") if doors.get(&at) == Some(&LockState::Open) => {
+                    doors.remove(&at);
                 }
                 _ => {}
             }
@@ -194,8 +254,11 @@ impl Position {
         self.traveller.blocked.insert((from, dir));
     }
 
-    /// Plan for the character as the model knows it: level, class and race.
-    pub fn refresh(&mut self, atlas: &Atlas, c: &CharacterState) {
+    /// Plan for the character as the model knows it at `now`: level, class, race and strength;
+    /// the hidden exits found long enough ago have hidden again.
+    pub fn refresh(&mut self, atlas: &Atlas, c: &CharacterState, now: Instant) {
+        self.forget_hidden(now);
+        self.traveller.strength = c.stats.as_ref().and_then(|s| s.strength).map(i64::from);
         self.traveller.level = c.level.map(i64::from);
         self.traveller.class = c.class.as_ref().and_then(|n| atlas.classes.get(n).copied());
         self.traveller.race = c.race.as_ref().and_then(|n| atlas.races.get(n).copied());

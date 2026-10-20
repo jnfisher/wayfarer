@@ -3,7 +3,7 @@
 
 mod game;
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::UNIX_EPOCH;
 
 use game::arena::*;
@@ -412,7 +412,7 @@ fn a_follow_text_is_read_as_one() {
 
 // `flee_exits`, on the world pack.
 
-fn exits(room: Key, doors: &HashMap<(Key, u8), LockState>) -> Vec<Candidate> {
+fn exits(room: Key, doors: &BTreeMap<(Key, u8), LockState>) -> Vec<Candidate> {
     policy::flee_exits(&atlas(), Some(room), true, &BTreeSet::new(), doors)
 }
 
@@ -429,12 +429,12 @@ const U: u8 = 8;
 #[test]
 fn from_the_arena_up_is_first_and_the_door_only_when_known_open() {
     // The Arena's north door to the Dungeon is locked in the pack (a cold start): up alone.
-    let none = HashMap::new();
+    let none = BTreeMap::new();
     let up = exits(ARENA, &none);
     assert_eq!(dirs(&up), [(U, NARROW_ROAD)]);
     assert_eq!((up[0].door, up[0].quiet), (None, true));
     // Seen open: after up, as a door to a room that spawns.
-    let open = HashMap::from([((ARENA, N), LockState::Open)]);
+    let open = BTreeMap::from([((ARENA, N), LockState::Open)]);
     let both = exits(ARENA, &open);
     assert_eq!(dirs(&both), [(U, NARROW_ROAD), (N, BEYOND_ARENA)]);
     assert_eq!(
@@ -449,7 +449,7 @@ fn from_the_arena_up_is_first_and_the_door_only_when_known_open() {
         dirs(&policy::flee_exits(&a, Some(ARENA), true, &blocked, &open)),
         [(N, BEYOND_ARENA)]
     );
-    let locked = HashMap::from([((ARENA, N), LockState::Locked)]);
+    let locked = BTreeMap::from([((ARENA, N), LockState::Locked)]);
     assert!(policy::flee_exits(&a, Some(ARENA), true, &blocked, &locked).is_empty());
 }
 
@@ -457,7 +457,7 @@ fn from_the_arena_up_is_first_and_the_door_only_when_known_open() {
 fn from_the_narrow_path_a_plain_exit_to_a_quiet_room_not_protected_first() {
     // Every exit is plain and quiet; the Spell Shop and the General Store are protected rooms
     // (refused while in combat), so the Village Entrance and the Narrow Road come first.
-    let c = exits(NARROW_PATH, &HashMap::new());
+    let c = exits(NARROW_PATH, &BTreeMap::new());
     assert_eq!(
         dirs(&c),
         [
@@ -473,18 +473,18 @@ fn from_the_narrow_path_a_plain_exit_to_a_quiet_room_not_protected_first() {
 #[test]
 fn from_the_narrow_road_never_the_gated_healer() {
     // West to the Healer is a level-gated exit: never a candidate. Down to the Arena spawns.
-    let c = exits(NARROW_ROAD, &HashMap::new());
+    let c = exits(NARROW_ROAD, &BTreeMap::new());
     assert_eq!(dirs(&c), [(E, NARROW_PATH), (N, (1, 2147)), (9, ARENA)]);
     assert!(!c[2].quiet);
 }
 
 #[test]
 fn from_a_dead_end_its_one_exit_even_into_a_room_that_spawns() {
-    let c = exits(SMALL_CAVERN, &HashMap::new());
+    let c = exits(SMALL_CAVERN, &BTreeMap::new());
     assert_eq!(dirs(&c), [(S, BEYOND_ARENA)]);
     assert!(!c[0].quiet);
     assert_eq!(
-        dirs(&exits(WEAPONS_SHOP, &HashMap::new())),
+        dirs(&exits(WEAPONS_SHOP, &BTreeMap::new())),
         [(S, VILLAGE_ENTRANCE)]
     );
 }
@@ -492,7 +492,7 @@ fn from_a_dead_end_its_one_exit_even_into_a_room_that_spawns() {
 #[test]
 fn not_sure_of_the_room_no_candidate() {
     let a = atlas();
-    let none = HashMap::new();
+    let none = BTreeMap::new();
     assert!(policy::flee_exits(&a, Some(ARENA), false, &BTreeSet::new(), &none).is_empty());
     assert!(policy::flee_exits(&a, None, true, &BTreeSet::new(), &none).is_empty());
 }

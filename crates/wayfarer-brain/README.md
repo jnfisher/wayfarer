@@ -45,8 +45,11 @@ brain.run(&mut link).await?;                             // Ok when the gateway 
   for typing beside the bot (`Session::user_input`: talk goes between the bot's actions, an act
   pauses it, an attack while engaged is held). The executor's attack guard uses it too.
 - **`position.rs`**: the `Belief` fed by every room seen and every move sent, the `Traveller`
-  with the exits refused this session, the rooms visited, and the `map_view`.
-- **`walker.rs`**: the route and the per-step policy (doors, refusals, relocation, stops), and
+  with the exits refused this session, the door states shown, strength and picklocks, the
+  hidden exits found (forgotten as showing after `HIDDEN_FOR`), the last exits line, the rooms
+  visited, and the `map_view`.
+- **`walker.rs`**: the route and the per-step policy (doors, a door beyond the character given
+  up with no `bash`, `search` before a hidden exit not showing, refusals, relocation, stops), and
   pipelining on a walk started with `start_with(.., pipelined)`: `Next::ahead` proposes the
   next plain move, the session sends it if the moment allows (`went_ahead`), and a step that
   goes wrong voids it and replans once its answer is in. With `short` (`walk_to`'s
@@ -57,7 +60,7 @@ brain.run(&mut link).await?;                             // Ok when the gateway 
   (`wayfarer_world::Finder`, built once per brain), from the believed room with the
   character's `Traveller`.
 - **Loops** (`session.rs`): `loops_request` makes an area's loops with `wayfarer_world::loops`
-  (cached per anchor, radius, level and doors); `walk_loop` is a `walk_to` per stop, on to the
+  (cached per anchor, radius, level, strength, picklocks and doors); `walk_loop` is a `walk_to` per stop, on to the
   next when the walker says it arrived.
 - **The bot** (`modes.rs`): running, paused or stopped, `Presence` (who is in the room), and the
   mode stack, each mode `wants`, `step`, `on_event` and `outcome`: `flee.rs`, `recover.rs`,
@@ -70,7 +73,9 @@ brain.run(&mut link).await?;                             // Ok when the gateway 
 - **`task.rs`**: Task mode: the loop, the stop cursor, when each stop was cleared, the skip set;
   it asks the walker for each leg and hands the stop to Fight and Recover as home.
   `stop_ready(now, cleared_at, regen, is_arena)` and `ready_in` are the respawn rule
-  (`STOCK_REGEN`, `STOP_QUIET`, `LEG_TRIES`). `TaskLoop` is what the store keeps of it.
+  (`STOCK_REGEN`, `STOP_QUIET`, `LEG_TRIES`). Stops no route reaches are passed by each round
+  without a leg and do not count towards `GIVE_UPS`; none reachable stops the bot. `TaskLoop`
+  is what the store keeps of it.
 - **`Atlas`** (`brain.rs`): the `RoomGraph`, room kinds, class and race numbers, the
   `Monsters` and MegaMud's verified loops, loaded once
   per brain and shared by its sessions; `World` keeps the `WorldPack` open beside it.
@@ -98,7 +103,8 @@ in flight; nothing while paused or stopped; the log-off under attack; determinis
 the nearest stop with moves pipelined, a fight, on through the door, an unticked stop and a
 not-ready one passed by, the wait for a respawn on the paused clock, a rest before the wait,
 a wrong room voiding the move ahead, combat and a hostile monster on the way, pause and
-resume at the same stop, unticking the stop it walks to, stop, a brain restart going on to
+resume at the same stop, unticking the stop it walks to, stops behind a door that would not
+bash open passed by each round, the bot stopping when none can be reached, stop, a brain restart going on to
 the same stop, determinism, and never an attack while engaged. `tests/loops.rs`: the Newhaven loops, `walk_loop` round the stops and back, from the
 nearest stop, and its stops. `tests/store.rs`: a second brain on the same store resumes the bot
 paused with its home and the same run, a running bot resumes and fights, a stored loop's fields

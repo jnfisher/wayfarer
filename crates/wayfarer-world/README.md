@@ -148,10 +148,14 @@ let monsters = Monsters::load(&pack)?;
   makes monsters there. `listed_exits`/`exits_fit` say what `Obvious exits` can show: Text and
   Remote Action never, Trap, Spell Trap, Timed and Hidden maybe (a found Hidden exit shows).
 - **`route`** (`route.rs`): Dijkstra, 1 per step, plus `Costs::spawn` for entering a room that
-  spawns (the destination exempt; 0 by default, so the shortest route wins) and `Costs::door`
-  (1, the `open`) per door. A `Traveller` carries the
-  level, class, race and evil points for gated exits (`None`: not checked), the exits refused
-  this session (`blocked`), the Hidden exits `found`, and the `Category`s allowed beyond the
+  spawns (the destination exempt; 0 by default, so the shortest route wins), `Costs::door`
+  (1, the `open`) per door, times `ceil(100 / odds)` for a locked door (`Costs::door_cost`),
+  and `Costs::hidden` (2, the `search`) per Hidden exit not showing. A `Traveller` carries the
+  level, class, race and evil points for gated exits (`None`: not checked), strength and
+  picklocks (a locked Door or Gate opens on `Str + exitpar2` or `picklocks + exitpar2` out of
+  100: `lock_odds`, `door_odds`; nil odds leave it out), the door states the game showed
+  (`doors`, over the pack's), the exits refused this session (`blocked`), the Hidden exits
+  showing (`found`) and known (`searchable`), and the `Category`s allowed beyond the
   default (Key, Spell, Item, Toll, Cast, Ability, every Hidden), and `no_doors` to take none.
   Remote Action exits are never walked. `distances` is a breadth-first search to a radius;
   `route_within` keeps a route inside a set of rooms.

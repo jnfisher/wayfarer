@@ -7,17 +7,27 @@
 //! confirms its move in order. When the first goes wrong (a room that disagrees, a refusal, a
 //! door) the move ahead has gone already: its confirmation is void, and once its answer is in
 //! the walker plans again from wherever the belief puts the character.
+//!
+//! A locked door the character cannot open (its odds nil, [`Traveller::lock_odds`]) is given
+//! up at once, with no `bash`. A route through a Hidden exit not showing in the room's exits
+//! line searches for it first (`search <dir>`), up to [`MAX_SEARCHES`] times.
+//!
+//! [`Traveller::lock_odds`]: wayfarer_world::Traveller::lock_odds
 
 use wayfarer_parse::typed::Refusal;
 use wayfarer_proto::{BossLair, RoomKey, Walking};
-use wayfarer_world::{Belief, Key, Route, mm, route, route_within};
+use wayfarer_world::{Belief, ExitType, Key, Route, Step, mm, route, route_within};
 
 use crate::brain::Atlas;
 use crate::executor::{Action, Confirmed, Expect, Outcome, Refused};
+use crate::flee::dir_name;
 use crate::position::Position;
 
 /// `bash` commands sent at one locked door before the walker gives up on it.
 pub const MAX_BASHES: u32 = 3;
+/// `search` commands for one hidden exit that find nothing before the walker blocks it for the
+/// session.
+pub const MAX_SEARCHES: u32 = 2;
 /// "No exit" answers in one walk: the first relocates (look, then replan), the second stops.
 pub const MAX_RELOCATIONS: u32 = 2;
 /// Routes planned again in one walk before it gives up (the prototype's five attempts).
@@ -61,6 +71,7 @@ enum Doing {
     Move,
     Open,
     Bash,
+    Search,
     Look,
 }
 
@@ -75,6 +86,10 @@ struct Walk {
     /// Moves confirmed over the whole walk.
     confirmed: u32,
     bashes: u32,
+    /// `search` commands at the step in progress that found nothing.
+    searches: u32,
+    /// The step in progress's hidden exit was found by a search: move.
+    searched: bool,
     relocations: u32,
     replans: u32,
     /// Rooms that were not the one the route expected.
@@ -124,6 +139,28 @@ fn room_name(atlas: &Atlas, k: Key) -> String {
         .graph
         .room(k)
         .map_or_else(|| format!("{}/{}", k.0, k.1), |r| r.name.clone())
+}
+
+/// Why the locked door of `step` is beyond the character, if its odds are nil: "The door east
+/// is beyond my strength (needs more than 250)".
+fn hopeless(pos: &Position, atlas: &Atlas, step: &Step) -> Option<String> {
+    let e = atlas
+        .graph
+        .edges(step.from)
+        .iter()
+        .find(|e| e.dir == step.dir && e.door.is_some())?;
+    (pos.traveller.lock_odds(e) == Some(0)).then(|| {
+        let what = if e.kind == ExitType::Gate {
+            "gate"
+        } else {
+            "door"
+        };
+        format!(
+            "The {what} {} is beyond my strength (needs more than {})",
+            dir_name(step.dir),
+            -e.params[1]
+        )
+    })
 }
 
 fn plural(n: usize, one: &str) -> String {
@@ -289,6 +326,8 @@ impl Walker {
             doing: Doing::Move,
             confirmed: 0,
             bashes: 0,
+            searches: 0,
+            searched: false,
             relocations: 0,
             replans: 0,
             drifts: 0,
@@ -297,7 +336,8 @@ impl Walker {
             ahead: false,
             void: None,
         };
-        next.action = Some(w.send(Doing::Move));
+        let doing = w.first(pos, &mut next);
+        next.action = Some(w.send(doing));
         next.ahead = w.propose_ahead(pos);
         next.route_changed = true;
         self.walk = Some(w);
@@ -372,6 +412,8 @@ impl Walker {
                     w.next += 1;
                     w.confirmed += 1;
                     w.bashes = 0;
+                    w.searches = 0;
+                    w.searched = false;
                     advanced = true;
                     if w.next == w.route.len() {
                         let (arrival, to) = (w.arrival(), w.to);
@@ -397,7 +439,17 @@ impl Walker {
                 Ok(Doing::Open)
             }
             (Doing::Move, Outcome::Refused(Refused::DoorClosed { locked: true }))
-            | (Doing::Open, Outcome::Refused(Refused::Locked)) => Ok(Doing::Bash),
+            | (Doing::Open, Outcome::Refused(Refused::Locked)) => match hopeless(pos, atlas, &step)
+            {
+                // No `bash` at a door the character can never open.
+                Some(why) => {
+                    next.notice(why);
+                    pos.block(step.from, step.dir);
+                    let door = format!("the door {} cannot be opened", dir_name(step.dir));
+                    w.replan(pos, atlas, &mut next, &door)
+                }
+                None => Ok(Doing::Bash),
+            },
             (Doing::Move, Outcome::Refused(Refused::Move(Refusal::NoExit))) => {
                 // Pitfall 34: the believed position is wrong. Look, and plan again from
                 // where the game says the character is.
@@ -429,6 +481,20 @@ impl Walker {
                 } else {
                     pos.block(step.from, step.dir);
                     w.replan(pos, atlas, &mut next, "the door would not bash open")
+                }
+            }
+            (Doing::Search, Outcome::Confirmed(Confirmed::Search { found: true })) => {
+                w.searched = true;
+                Ok(Doing::Move)
+            }
+            (Doing::Search, Outcome::Confirmed(Confirmed::Search { found: false })) => {
+                w.searches += 1;
+                if w.searches < MAX_SEARCHES {
+                    Ok(Doing::Search)
+                } else {
+                    pos.block(step.from, step.dir);
+                    let why = format!("no hidden exit {} found", dir_name(step.dir));
+                    w.replan(pos, atlas, &mut next, &why)
                 }
             }
             (Doing::Look, Outcome::Confirmed(Confirmed::Room)) => {
@@ -480,6 +546,10 @@ impl Walker {
                 next
             }
             Ok(doing) => {
+                let doing = match doing {
+                    Doing::Move => w.first(pos, &mut next),
+                    other => other,
+                };
                 next.action = Some(w.send(doing));
                 next.ahead = w.propose_ahead(pos);
                 next
@@ -510,14 +580,29 @@ impl Walk {
         }
     }
 
+    /// What to do first at the step in progress: search for its hidden exit when it is not
+    /// showing (not in the room's exits line, not found lately), else move.
+    fn first(&self, pos: &Position, next: &mut Next) -> Doing {
+        let s = &self.route[self.next];
+        if s.exit_type != ExitType::Hidden || self.searched || pos.showing(s.from, s.dir) {
+            return Doing::Move;
+        }
+        if self.searches == 0 {
+            next.notice(format!("Searching for the hidden exit {}", dir_name(s.dir)));
+        }
+        Doing::Search
+    }
+
     /// The move of the step after the one in progress, to go ahead of it: on a pipelined walk,
     /// with the belief sure of the room, both steps plain moves (a direction, no door), the step
     /// in progress a move, and the walk not stopping.
     fn propose_ahead(&self, pos: &Position) -> Option<Action> {
         let plain = |i: usize| {
-            self.route
-                .get(i)
-                .filter(|s| s.door.is_none() && mm::direction(&s.command).is_some())
+            self.route.get(i).filter(|s| {
+                s.door.is_none()
+                    && s.exit_type != ExitType::Hidden
+                    && mm::direction(&s.command).is_some()
+            })
         };
         if !self.pipelined
             || self.ahead
@@ -545,6 +630,7 @@ impl Walk {
                 self.bashes += 1;
                 Action::new(format!("bash {dir}"), Expect::BashResult)
             }
+            Doing::Search => Action::new(format!("search {dir}"), Expect::SearchResult),
             // `look`, not an empty line: an empty line redisplays the room only in statline
             // FULL modes (`kb/screen-parsing.md`).
             Doing::Look => Action::new("look", Expect::RoomSeen),
@@ -580,6 +666,8 @@ impl Walk {
             ));
         };
         self.bashes = 0;
+        self.searches = 0;
+        self.searched = false;
         next.route_changed = true;
         if !r.is_empty() {
             next.notice(format!("Replanned ({why}): {}", describe(&r)));

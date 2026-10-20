@@ -6,7 +6,7 @@
 //! outcome back. Every change of what it is doing is narrated. The monster rules (`rules.rs`)
 //! are a policy input the modes read from the [`View`], not a mode.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
@@ -148,7 +148,7 @@ pub(crate) struct View<'a> {
     pub certain: bool,
     pub traveller: &'a Traveller,
     /// The doors as the game showed them this session.
-    pub doors: &'a HashMap<(Key, u8), LockState>,
+    pub doors: &'a BTreeMap<(Key, u8), LockState>,
     pub presence: &'a Presence,
     /// The monster rules.
     pub rules: &'a MonsterRules,

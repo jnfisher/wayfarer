@@ -7,10 +7,21 @@ use regex::Regex;
 static ESCAPE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\x1b\[[0-9;?]*[A-Za-z]").unwrap());
 static CURSOR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\x1b\[(\d+);(\d+)[fH]").unwrap());
 static ITEM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[(\d+)\]\s+([A-Za-z-]+)").unwrap());
+static ERASED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[^\x08]\x08").unwrap());
 
 /// `text` without its ANSI escapes.
 pub fn plain(text: &str) -> String {
     ESCAPE.replace_all(text, "").into_owned()
+}
+
+/// `text` as a terminal shows it: no ANSI escapes, and backspaces applied (the game's direction
+/// names carry a letter and a backspace, `sN\x08outh`).
+pub fn shown(text: &str) -> String {
+    let mut s = plain(text);
+    while ERASED.is_match(&s) {
+        s = ERASED.replace_all(&s, "").into_owned();
+    }
+    s
 }
 
 /// The last cursor position set in `text` (`ESC[row;colf`), which in the character editor
@@ -37,6 +48,12 @@ mod tests {
     #[test]
     fn escapes_are_removed() {
         assert_eq!(plain("\x1b[1;37mUsername:\x1b[0m "), "Username: ");
+    }
+
+    #[test]
+    fn backspaces_are_applied() {
+        assert_eq!(shown("to the sN\x08outh."), "to the south.");
+        assert_eq!(shown("ab\x08\x08c"), "c");
     }
 
     #[test]

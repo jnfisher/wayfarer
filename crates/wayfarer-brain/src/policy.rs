@@ -1,7 +1,7 @@
 //! The bot's policies (docs/plan/03-engine.md section 4): pure functions of the state, the
 //! world pack and the constants below, with no clock and nothing sent.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
 use wayfarer_world::{
@@ -167,7 +167,7 @@ pub fn flee_exits(
     room: Option<Key>,
     certain: bool,
     blocked: &BTreeSet<(Key, u8)>,
-    doors: &HashMap<(Key, u8), LockState>,
+    doors: &BTreeMap<(Key, u8), LockState>,
 ) -> Vec<Candidate> {
     let Some(from) = room.filter(|_| certain) else {
         return Vec::new();

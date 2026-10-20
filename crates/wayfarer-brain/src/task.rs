@@ -9,16 +9,22 @@
 //! Task is below Flee, Recover and Fight: it has control only when none of them wants it. It
 //! asks the walker for each leg ([`Step::walk`]); a fight on the way stops the leg (the
 //! session sees to that), and Task walks on from wherever it is once the fight is over.
+//!
+//! A stop no route reaches from where the character is (behind a door it cannot open, a
+//! hidden exit it does not know) is passed by for the round without a leg, and tried again
+//! the next round; it does not count towards [`GIVE_UPS`]. With no ticked stop reachable at
+//! all, the bot stops itself.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::time::Duration;
 
 use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
-use wayfarer_world::{Key, route};
+use wayfarer_world::{Category, Key, Traveller, distances, route};
 
 use crate::brain::Atlas;
 use crate::executor::{Action, Outcome};
+use crate::flee::dir_name;
 use crate::modes::{Mode, Step, View};
 use crate::policy::{REST_UNTIL, hostile};
 use crate::walker::describe;
@@ -51,6 +57,53 @@ pub fn ready_in(now: Instant, cleared_at: Option<Instant>, regen: i64, is_arena:
     let minutes = if regen > 0 { regen } else { STOCK_REGEN };
     let delay = Duration::from_secs(u64::try_from(minutes).unwrap_or(0) * 60);
     (cleared + delay).saturating_duration_since(now)
+}
+
+/// Why no route reaches `to` from `from`: the first exit the traveller may not take on the way
+/// a traveller with no strength, no refusals and every hidden exit would go.
+fn why_unreachable(v: &View, from: Key, to: Key) -> String {
+    let g = &v.atlas.graph;
+    let t = v.traveller;
+    let mut open = Traveller {
+        strength: None,
+        picklocks: None,
+        blocked: BTreeSet::new(),
+        ..t.clone()
+    };
+    open.allow.insert(Category::Hidden);
+    let room = |k: Key| {
+        g.room(k)
+            .map_or_else(|| format!("{}/{}", k.0, k.1), |r| r.name.clone())
+    };
+    let stuck = route(g, from, to, &open).and_then(|r| {
+        r.into_iter().find_map(|s| {
+            let e = g
+                .edges(s.from)
+                .iter()
+                .find(|e| e.dir == s.dir && e.to == s.to)?;
+            (!t.can_take(e)).then(|| (e.clone(), room(s.from)))
+        })
+    });
+    let Some((e, at)) = stuck else {
+        return "no route known".to_owned();
+    };
+    let dir = dir_name(e.dir);
+    let door = if e.kind == wayfarer_world::ExitType::Gate {
+        "gate"
+    } else {
+        "door"
+    };
+    if t.door_odds(&e) == Some(0) {
+        format!("the {door} {dir} of {at} cannot be opened")
+    } else if e.door.is_some() && t.blocked.contains(&(e.from, e.dir)) {
+        format!("the {door} {dir} of {at} would not open")
+    } else if t.blocked.contains(&(e.from, e.dir)) {
+        format!("the exit {dir} of {at} was refused")
+    } else if e.hidden() {
+        format!("the hidden exit {dir} of {at} is not known")
+    } else {
+        "no route known".to_owned()
+    }
 }
 
 /// Whole minutes, rounded up: "3 m".
@@ -117,6 +170,8 @@ pub(crate) struct Task {
     notes: Vec<String>,
     /// Waiting for respawns with HP to top up: Recover rests first.
     rest: bool,
+    /// The last "skipping unreachable stops" line said, so it is said once until it changes.
+    unreachable_said: Option<String>,
 }
 
 impl Task {
@@ -157,6 +212,7 @@ impl Task {
             tries: 0,
             notes: Vec::new(),
             rest: false,
+            unreachable_said: None,
         }
     }
 
@@ -344,16 +400,56 @@ impl Task {
         )
     }
 
+    /// The ticked stops no route reaches from the character's room (none when the room is
+    /// unknown), said once while they and the reason stay the same: "Skipping 31 stops it
+    /// cannot reach this round: the door east of Darkwood Forest, Hidden Keep cannot be
+    /// opened".
+    fn unreachable(&mut self, v: &View) -> BTreeSet<usize> {
+        let Some(from) = v.room else {
+            return BTreeSet::new();
+        };
+        let reach: HashMap<Key, u32> = distances(&v.atlas.graph, from, u32::MAX, v.traveller);
+        let out: BTreeSet<usize> = (0..self.stops.len())
+            .filter(|i| !self.skip.contains(i) && !reach.contains_key(&self.stops[*i].key))
+            .collect();
+        let Some(&first) = out.first() else {
+            self.unreachable_said = None;
+            return out;
+        };
+        let stops = match out.len() {
+            1 => "one stop".to_owned(),
+            n => format!("{n} stops"),
+        };
+        let why = why_unreachable(v, from, self.stops[first].key);
+        let text = format!("Skipping {stops} it cannot reach this round: {why}");
+        if self.unreachable_said.as_ref() != Some(&text) {
+            self.notes.push(text.clone());
+            self.unreachable_said = Some(text);
+        }
+        out
+    }
+
     /// The stop at `index` is cleared (or was waited at): on to the next stop in loop order that
     /// is ticked and ready; with none, rest if HP is short, else wait here.
     fn next_leg(&mut self, v: &View) -> Step {
         let n = self.stops.len();
+        let unreachable = self.unreachable(v);
+        if !unreachable.is_empty() && unreachable.len() + self.skip.len() == n {
+            self.gave_up = Some(format!(
+                "loop {}: none of its stops can be reached from here",
+                self.name
+            ));
+            return Step::wait(format!("Loop {}: no stop can be reached", self.name));
+        }
         let mut notes = Vec::new();
         for k in 1..=n {
             let j = (self.index + k) % n;
             let s = &self.stops[j];
             if self.skip.contains(&j) {
                 notes.push(format!("Skipping {} (unticked)", s.name));
+                continue;
+            }
+            if unreachable.contains(&j) {
                 continue;
             }
             let wait = self.ready_in(v.now, j);
@@ -480,6 +576,10 @@ impl Mode for Task {
                 let step = self.next_leg(v);
                 self.notes.insert(0, text);
                 return step;
+            }
+            if self.unreachable(v).contains(&self.index) {
+                // No route there now: passed by this round, not a failed leg.
+                return self.next_leg(v);
             }
             return self.leg(v, self.index);
         }

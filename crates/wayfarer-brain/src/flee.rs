@@ -33,7 +33,7 @@ fn to_flee<'a>(rules: &MonsterRules, p: &'a Presence) -> Option<&'a str> {
 }
 
 /// The long name of direction `d`: `north`, `up`.
-fn dir_name(d: u8) -> &'static str {
+pub(crate) fn dir_name(d: u8) -> &'static str {
     const LONG: [&str; 10] = [
         "north",
         "south",
