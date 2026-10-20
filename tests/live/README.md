@@ -332,6 +332,46 @@ a character, then:
 
 The brain's log is `NN-flee-from/brain.log`.
 
+## Scenario "hidden" (C-037, hidden exits)
+
+```sh
+scripts/live-check.sh --scenario hidden
+```
+
+Newhaven's Small Alleyway (1/405) has a Hidden exit south to a Secret Passage (1/452), a
+run of fifteen rooms too dark to see (light -175) whose only other way out is a Hidden exit
+north at its far end. `search` needs sight (`docs/kb/recovery.md`), so the character carries a
+lit torch. It claims and logs on a character, then:
+
+1. **Not in the dark**: `look` by hand; if the room is too dark to see (a run that ended in
+   the passage), light a torch and `search n` until found, then `n`. With no torch it keeps
+   trying for 12 minutes, for a rescuer's light (below).
+2. **The world pack** and **a brain**, as in "walk"; **a lit torch**: `light torch`, or with
+   none carried, the free one from the General Store (1/2145).
+3. **To the Small Alleyway**; **`search s` by hand** until "You found an exit to the south!"
+   (the texts as the brain parsed them); **`look`**: the exits line lists `secret passage
+   south`.
+4. **`walk_to` the Secret Passage** through it with no search (found and showing); **`search n`
+   by hand** there; **back** with no search.
+5. **Five and a half minutes after the find**, `look` (is the exit still listed?) and
+   **`walk_to` the Secret Passage and back**, the walker searching first each way ("Searching
+   for the hidden exit south"); two empty searches that block the exit pass too (the walker's
+   own outcome). If the walk back fails, the character searches its way out by hand.
+6. **Stopping the brain**, then the gateway logs off as in M0.
+
+## Scenario "rescue" (C-037, a character stuck in the dark)
+
+```sh
+scripts/live-check.sh --char Waychecka --scenario hidden &   # the one in the passage, first
+scripts/live-check.sh --char Waycheckb --scenario rescue
+```
+
+A character in the Secret Passage with no light cannot search its way out. The rescuer gets
+a lit torch (step 2 above), finds the hidden exit south of the Small Alleyway, walks into the
+passage and stays eight minutes; another player's light counts for everyone in the room, so
+the stuck character's `search n` (step 1 above) finds the exit. Then the rescuer searches
+north by hand and walks back out.
+
 ## The test-character pool
 
 `fixtures.toml` lists the characters: account, family name, race, class and the stat totals

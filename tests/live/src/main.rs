@@ -93,12 +93,18 @@ enum Scenario {
     /// [`ARENA_MONSTERS`]): at full HP the bot leaves the Arena on sight of one, and never
     /// attacks it.
     FleeFrom,
+    /// C-037: a hidden exit: `search` for the one south of Newhaven's Small Alleyway by hand,
+    /// walk through it, and once it has hidden again let the walker search for it.
+    Hidden,
+    /// C-037: take a lit torch into the dark Secret Passage and stay a while, so a character
+    /// left there with no light (`--scenario hidden`, started first) can search its way out.
+    Rescue,
 }
 
 fn usage() -> ! {
     eprintln!(
         "usage: wayfarer-live --wayfarer BIN --out DIR [--addr HOST:PORT] [--pool FILE] \
-         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart|flee|typing|soak|goto|flee-from]\n\
+         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart|flee|typing|soak|goto|flee-from|hidden|rescue]\n\
          soak: --char NAME --minutes N [--anchor MAP:ROOM] [--radius R] [--skip MAP:ROOM ...] [--loop ID] [--flee-from NAME ...]\n\
          flee-from: [--flee-from NAME ...]\n\
          (run it through scripts/live-check.sh)"
@@ -143,6 +149,8 @@ fn args() -> Args {
                     "soak" => Scenario::Soak,
                     "goto" => Scenario::Goto,
                     "flee-from" => Scenario::FleeFrom,
+                    "hidden" => Scenario::Hidden,
+                    "rescue" => Scenario::Rescue,
                     _ => usage(),
                 }
             }
@@ -617,6 +625,24 @@ async fn run(ctx: &mut Ctx, pool: &Pool) -> Result<String, String> {
         let looped = loop_scenario(ctx, &mut gw).await;
         let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
         return if looped && logged_off {
+            Ok(who)
+        } else {
+            Err(who)
+        };
+    }
+    if ctx.args.scenario == Scenario::Rescue {
+        let went = rescue_scenario(ctx, &mut gw).await;
+        let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
+        return if went && logged_off {
+            Ok(who)
+        } else {
+            Err(who)
+        };
+    }
+    if ctx.args.scenario == Scenario::Hidden {
+        let went = hidden_scenario(ctx, &mut gw).await;
+        let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
+        return if went && logged_off {
             Ok(who)
         } else {
             Err(who)
@@ -1175,6 +1201,384 @@ async fn goto_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
     });
     ctx.record("find \"dungeon\"", started, &found);
     ok &= found.is_ok();
+
+    stop_brain(ctx, running).await && ok
+}
+
+/// Newhaven's Small Alleyway: a Hidden exit south to a Secret Passage, the hidden exit nearest
+/// the Village Entrance (8 steps). The way back from the passage (dark) is a Hidden exit north.
+const SMALL_ALLEYWAY: (i64, i64) = (1, 405);
+const SECRET_PASSAGE: (i64, i64) = (1, 452);
+/// `search <dir>` typed by hand before the scenario gives up on finding an exit.
+const SEARCHES: u32 = 15;
+/// The same, to get the character out of the dark Secret Passage at the end.
+const RESCUE_SEARCHES: u32 = 40;
+/// How long after a find to look again: wayfarer-brain's `HIDDEN_FOR` (five minutes, when a
+/// found exit hides again) and half a minute.
+const HIDDEN_AGAIN: Duration = Duration::from_secs(5 * 60 + 30);
+
+/// Type `line` and wait for the game's answer as the brain parsed it (the screen's direction
+/// names carry a letter and a backspace): the first event after it named in `answers`, as its
+/// index there and the line.
+async fn typed_answer(
+    gw: &mut Gateway,
+    line: &str,
+    answers: &[&str],
+) -> Result<(usize, String), String> {
+    let from = gw.events.len();
+    gw.send_line(line).await?;
+    gw.wait_for(
+        Duration::from_secs(10),
+        &format!("the answer to `{line}`"),
+        |g| {
+            g.events[from..].iter().find_map(|e| {
+                let i = answers.iter().position(|a| *a == e.name)?;
+                Some((i, e.line.clone()))
+            })
+        },
+    )
+    .await
+}
+
+/// `search <dir>` by hand until the game says it found the exit, up to `tries` times; none when
+/// the exits line shows it already.
+async fn search_by_hand(gw: &mut Gateway, dir: &str, tries: u32) -> Result<String, String> {
+    // A search for an exit already showing (found lately, by anyone) finds nothing: `look`
+    // first.
+    let long = match dir {
+        "n" => "north",
+        "s" => "south",
+        d => d,
+    };
+    let (_, line) = typed_answer(gw, "look", &["room_exits"]).await?;
+    if line.contains(long) {
+        return Ok(format!("already showing, no search: {line}"));
+    }
+    let mut nothing = None;
+    for n in 1..=tries {
+        let answers = ["search_found_exit", "search_nothing_dir"];
+        match typed_answer(gw, &format!("search {dir}"), &answers).await? {
+            (0, line) => {
+                let before = nothing.as_deref().unwrap_or("none");
+                return Ok(format!("{line:?} on search {n}; before it: {before:?}"));
+            }
+            (_, line) => nothing = Some(line),
+        }
+    }
+    Err(format!("nothing found in {tries} searches"))
+}
+
+/// `look`: the room's exits line, and whether it lists `dir`.
+async fn exits_listing(gw: &mut Gateway, dir: &str) -> Result<String, String> {
+    let (_, line) = typed_answer(gw, "look", &["room_exits"]).await?;
+    let listed = line.contains(dir);
+    Ok(format!(
+        "{line} ({dir} {})",
+        if listed { "listed" } else { "not listed" }
+    ))
+}
+
+/// `walk_to` `to` and wait for "Arrived: ..." with the position there; unlike [`walk`], the room
+/// may be dark (no title shown). The walk's narration, or the warning that ended it.
+async fn walk_into(gw: &mut Gateway, to: (i64, i64)) -> Result<String, String> {
+    let (notices, warnings) = (gw.notices.len(), gw.warnings.len());
+    gw.walk_to(to.0, to.1).await?;
+    gw.wait_for(WALK_TIMEOUT, "\"Arrived: ...\" there", |g| {
+        if let Some(w) = g.warnings[warnings..].first() {
+            return Some(Err(w.clone()));
+        }
+        let new = &g.notices[notices..];
+        let arrived = new.iter().any(|n| n.starts_with("Arrived: "));
+        let at = believed(&g.character).map(|(k, _)| k);
+        (arrived && at == Some(to)).then(|| Ok(new.join("; ")))
+    })
+    .await?
+}
+
+/// A walk through a hidden exit found moments ago: no search on the way.
+async fn walk_through_found(gw: &mut Gateway, to: (i64, i64)) -> Result<String, String> {
+    let said = walk_into(gw, to).await?;
+    if said.contains("Searching") {
+        return Err(format!("searched for an exit found moments ago: {said}"));
+    }
+    Ok(said)
+}
+
+/// A walk through a hidden exit that has hidden again: the walker searches first. Two empty
+/// searches block it for the session, the walker's own outcome and not a fault: `Ok(false)`.
+async fn walk_searching(
+    gw: &mut Gateway,
+    to: (i64, i64),
+    dir: &str,
+) -> (Result<String, String>, bool) {
+    let notices = gw.notices.len();
+    let went = walk_into(gw, to).await;
+    let said = gw.notices[notices..].join("; ");
+    let searched = said.contains(&format!("Searching for the hidden exit {dir}"));
+    match went {
+        Ok(n) if searched => (Ok(format!("searched, then through: {n}")), true),
+        Ok(n) => (Err(format!("walked through without a search: {n}")), true),
+        Err(w) if searched && w.contains(&format!("no hidden exit {dir} found")) => (
+            Ok(format!("two empty searches, blocked: {said}; {w}")),
+            false,
+        ),
+        Err(w) => (Err(w), false),
+    }
+}
+
+/// Type `line` (no brain attached) and wait for the screen after it to show one of `answers`:
+/// its index.
+async fn screen_answer(gw: &mut Gateway, line: &str, answers: &[&str]) -> Result<usize, String> {
+    let seq = gw.last_seq();
+    gw.send_line(line).await?;
+    gw.wait_for(
+        Duration::from_secs(10),
+        &format!("the answer to `{line}`"),
+        |g| {
+            let shown = screen::shown(&g.text_after(seq));
+            answers.iter().position(|a| shown.contains(a))
+        },
+    )
+    .await
+}
+
+/// `light torch` (the free starter torch, `kb/recovery.md`): whether one is lit now.
+async fn light_torch(gw: &mut Gateway) -> Result<String, String> {
+    let answers = [
+        "You lit the torch.",
+        "You already have something lit!",
+        // No torch carried: the game takes the line for speech.
+        "You say \"light torch\"",
+        "You must recharge that",
+    ];
+    match screen_answer(gw, "light torch", &answers).await? {
+        i @ (0 | 1) => Ok(answers[i].to_owned()),
+        2 => Err("no torch".to_owned()),
+        i => Err(format!("no light: {}", answers[i])),
+    }
+}
+
+/// Newhaven's General Store: a torch for nothing (`kb/economy.md` "Free starter gear").
+const GENERAL_STORE: (i64, i64) = (1, 2145);
+
+/// A lit torch, with the brain attached: light the one carried, else walk to the General
+/// Store, `buy torch` and light that.
+async fn torch_lit(gw: &mut Gateway) -> Result<String, String> {
+    match light_torch(gw).await {
+        Err(e) if e == "no torch" => {}
+        lit => return lit,
+    }
+    walk(gw, GENERAL_STORE).await?;
+    gw.send_line("buy torch").await?;
+    let lit = light_torch(gw).await?;
+    Ok(format!("bought one at the General Store; {lit}"))
+}
+
+/// How long a character in the dark with no light keeps trying `search n`, waiting for
+/// another's light (`--scenario rescue`).
+const DARK_WAIT: Duration = Duration::from_secs(12 * 60);
+
+/// Before the brain: `look`, and if the room is too dark to see (the Secret Passage, where a
+/// run of this scenario may have ended), light the torch (`search` needs light), `search n`
+/// until found and go north. With no torch, `search n` is tried every few seconds for
+/// [`DARK_WAIT`], for a rescuer's light (`--scenario rescue` with another pool character).
+async fn dark_out_by_hand(gw: &mut Gateway) -> Result<String, String> {
+    const DARK: &str = "The room is very dark";
+    if screen_answer(gw, "look", &["Obvious exits:", DARK]).await? == 0 {
+        return Ok("no".to_owned());
+    }
+    let lit = light_torch(gw).await;
+    let until = Instant::now() + DARK_WAIT;
+    let mut n = 0;
+    while Instant::now() < until && n < RESCUE_SEARCHES {
+        let answers = [
+            "You found an exit to the north!",
+            "You notice nothing different to the north.",
+            DARK,
+        ];
+        match screen_answer(gw, "search n", &answers).await? {
+            0 => {
+                screen_answer(gw, "n", &["Small Alleyway"]).await?;
+                return Ok(format!(
+                    "was in the dark ({}): found north on search {}, out",
+                    lit.as_deref().unwrap_or("no torch"),
+                    n + 1
+                ));
+            }
+            1 => n += 1,
+            _ => {
+                // Too dark to search: wait for a light.
+                let _ = gw
+                    .wait_for(Duration::from_secs(5), "", |_| None::<()>)
+                    .await;
+            }
+        }
+    }
+    Err(format!(
+        "in the dark ({}): not out after {n} searches",
+        lit.err().unwrap_or_default()
+    ))
+}
+
+/// How long the rescuer's light stays in the Secret Passage.
+const RESCUE_STAY: Duration = Duration::from_secs(8 * 60);
+
+/// The rescue (C-037's live check left a pool character in the dark Secret Passage with no
+/// light, and `search` needs light): this character takes a lit torch into the passage, stays
+/// [`RESCUE_STAY`] while the other (`--scenario hidden`, started first) searches its way out by
+/// the light, and comes back out. Whether it got back out.
+async fn rescue_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
+    let started = Instant::now();
+    let out = dark_out_by_hand(gw).await;
+    ctx.record("not in a dark room (else out by hand)", started, &out);
+    if out.is_err() {
+        return false;
+    }
+    let Some((running, _)) = placed_brain(ctx, gw, "rescue", &[]).await else {
+        return false;
+    };
+    let started = Instant::now();
+    let lit = torch_lit(gw).await;
+    ctx.record("a lit torch", started, &lit);
+    let mut ok = lit.is_ok();
+    if ok {
+        let started = Instant::now();
+        let there = walk_into(gw, SMALL_ALLEYWAY).await;
+        ctx.record("walk to the Small Alleyway (1/405)", started, &there);
+        ok = there.is_ok();
+    }
+    if ok {
+        let started = Instant::now();
+        let found = search_by_hand(gw, "s", RESCUE_SEARCHES).await;
+        ctx.record("search s by hand until found", started, &found);
+        ok = found.is_ok();
+    }
+    if ok {
+        let started = Instant::now();
+        let into = walk_into(gw, SECRET_PASSAGE).await;
+        ctx.record("into the Secret Passage (1/452)", started, &into);
+        ok = into.is_ok();
+    }
+    if ok {
+        let started = Instant::now();
+        let _ = gw.wait_for(RESCUE_STAY, "", |_| None::<()>).await;
+        let stayed = format!("{} s", started.elapsed().as_secs());
+        ctx.record("stay with the light", started, &Ok(stayed));
+        let started = Instant::now();
+        let found = search_by_hand(gw, "n", RESCUE_SEARCHES).await;
+        ctx.record("search n by hand", started, &found);
+        let started = Instant::now();
+        let back = walk_into(gw, SMALL_ALLEYWAY).await;
+        ctx.record("back out to the Small Alleyway", started, &back);
+        ok = found.is_ok() && back.is_ok();
+    }
+    stop_brain(ctx, running).await && ok
+}
+
+/// The hidden-exit scenario, with the gateway in the realm: a brain; to the Small Alleyway;
+/// `search s` by hand until the exit is found (the game's texts) and `look` (listed?);
+/// `walk_to` the Secret Passage through it with no search (found and showing); there `search n`
+/// by hand and back the same way; once [`HIDDEN_AGAIN`] has passed, `look` (listed?) and
+/// `walk_to` the Secret Passage and back again, the walker searching first each way; the
+/// character never left in the dark passage (searched out by hand if the walker gave up); the
+/// brain stopped. Whether all of it went.
+async fn hidden_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
+    // A run that ended in the dark passage left the character where the brain cannot place
+    // it: out by hand first.
+    let started = Instant::now();
+    let out = dark_out_by_hand(gw).await;
+    ctx.record("not in a dark room (else out by hand)", started, &out);
+    if out.is_err() {
+        return false;
+    }
+    let Some((running, _)) = placed_brain(ctx, gw, "hidden", &[]).await else {
+        return false;
+    };
+    // The Secret Passage is very dark (-175): with no light the character cannot search there.
+    let started = Instant::now();
+    let lit = torch_lit(gw).await;
+    ctx.record("a lit torch", started, &lit);
+    let started = Instant::now();
+    let there = walk_into(gw, SMALL_ALLEYWAY).await;
+    ctx.record("walk to the Small Alleyway (1/405)", started, &there);
+    if lit.is_err() || there.is_err() {
+        stop_brain(ctx, running).await;
+        return false;
+    }
+
+    // South by hand, through, north by hand, back.
+    let started = Instant::now();
+    let found = search_by_hand(gw, "s", SEARCHES).await;
+    let found_at = Instant::now();
+    ctx.record("search s by hand until found", started, &found);
+    let mut ok = found.is_ok();
+    let mut in_passage = false;
+    if ok {
+        let started = Instant::now();
+        let listed = exits_listing(gw, "south").await;
+        ctx.record("look once found", started, &listed);
+        let started = Instant::now();
+        let through = walk_through_found(gw, SECRET_PASSAGE).await;
+        ctx.record("walk_to the Secret Passage (1/452)", started, &through);
+        ok = through.is_ok();
+        in_passage = ok;
+    }
+    if ok {
+        let started = Instant::now();
+        let found = search_by_hand(gw, "n", SEARCHES).await;
+        ctx.record("search n by hand in the passage", started, &found);
+        ok = found.is_ok();
+    }
+    if ok {
+        let started = Instant::now();
+        let back = walk_through_found(gw, SMALL_ALLEYWAY).await;
+        ctx.record("walk back to the Small Alleyway", started, &back);
+        ok = back.is_ok();
+        in_passage = !ok;
+    }
+
+    // Hidden again after five minutes: not listed, and the walker searches each way.
+    if ok {
+        tokio::time::sleep(HIDDEN_AGAIN.saturating_sub(found_at.elapsed())).await;
+        let started = Instant::now();
+        let secs = found_at.elapsed().as_secs();
+        let listed = exits_listing(gw, "south")
+            .await
+            .map(|s| format!("{secs} s after the find: {s}"));
+        ctx.record("look once it has hidden again", started, &listed);
+        let started = Instant::now();
+        let (went, through) = walk_searching(gw, SECRET_PASSAGE, "south").await;
+        ctx.record(
+            "walk_to the Secret Passage, the walker searching",
+            started,
+            &went,
+        );
+        ok = went.is_ok();
+        if through {
+            let started = Instant::now();
+            let (back, out) = walk_searching(gw, SMALL_ALLEYWAY, "north").await;
+            ctx.record("walk back, the walker searching", started, &back);
+            ok &= back.is_ok();
+            in_passage = !out;
+        }
+    }
+
+    // Never left in the dark passage: out by hand.
+    if in_passage {
+        let started = Instant::now();
+        let out = match search_by_hand(gw, "n", RESCUE_SEARCHES).await {
+            Ok(_) => {
+                gw.send_line("n").await.ok();
+                gw.wait_for(Duration::from_secs(10), "the Small Alleyway", |g| {
+                    let at = believed(&g.character).map(|(k, _)| k);
+                    (at == Some(SMALL_ALLEYWAY)).then(|| "out by hand".to_owned())
+                })
+                .await
+            }
+            Err(e) => Err(e),
+        };
+        ctx.record("out of the Secret Passage by hand", started, &out);
+    }
 
     stop_brain(ctx, running).await && ok
 }

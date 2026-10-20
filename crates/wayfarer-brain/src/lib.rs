@@ -42,11 +42,12 @@ pub use character::{Character, apply_patch, merge_patch};
 pub use clock::{Clock, FixedClock, InstantClock, ReplayClock, Sleep, SystemClock, rfc3339};
 pub use fight::{ATTACK_TRIES, ROUND_GAP, STALEMATE_ROUNDS};
 pub use link::{ChannelLink, ConnectError, Link, WsLink};
+pub use position::HIDDEN_FOR;
 pub use rules::AVOID_MEMORY;
 pub use session::{
     ANSWER_TIMEOUT, HISTORY_CHUNKS, IDLE, MAP_RADIUS, OWN_PATIENCE, RESYNC_COMMANDS,
 };
 pub use stats::{SAMPLE_EVERY, STATS_RUNS};
 pub use task::{GIVE_UPS, LEG_TRIES, STOCK_REGEN, STOP_QUIET, ready_in, stop_ready};
-pub use walker::{MAX_BASHES, MAX_RELOCATIONS, MAX_REPLANS};
+pub use walker::{MAX_BASHES, MAX_RELOCATIONS, MAX_REPLANS, MAX_SEARCHES};
 pub use wayfarer_store::Store;

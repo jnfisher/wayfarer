@@ -10,7 +10,7 @@ use std::path::Path;
 
 use game::arena::*;
 use game::*;
-use wayfarer_brain::{Brain, GIVE_UPS, InstantClock, LEG_TRIES, Store};
+use wayfarer_brain::{Brain, GIVE_UPS, InstantClock, LEG_TRIES, MAX_BASHES, Store};
 use wayfarer_proto::{BotAction, BotMode, BotState};
 
 const NEWHAVEN_LOOP: &str = "1:2140:8:doors:0";
@@ -506,6 +506,65 @@ async fn an_arena_it_cannot_get_to_waits_its_delay_and_the_bot_stops_after_three
         "{:?}",
         notices(&seen)
     );
+    let b = bot(&seen);
+    assert_eq!((b.state, b.task), (BotState::Stopped, None));
+}
+
+#[tokio::test(start_paused = true)]
+async fn stops_it_cannot_reach_are_passed_by_each_round_without_giving_up() {
+    // The Arena's door north will not bash open: the Dungeon Entrance and the Small Cavern
+    // behind it are passed by, said once, and the Arena goes round on its own. No give-up.
+    let (mut g, run) = ready_with(arena(&[], 35)).await;
+    g.expect("look", arena(&[], 35));
+    g.expect("n", says("The door is closed!"));
+    for _ in 0..MAX_BASHES {
+        g.expect("bash n", says("Your attempts to bash through fail!"));
+    }
+    g.run_loop(&[]).await;
+    let skipping = "Skipping 2 stops it cannot reach this round: the door north of Newhaven, \
+                    Arena would not open";
+    let said = g.narrated("Waiting for respawns in Newhaven, Arena").await;
+    assert!(said.iter().any(|s| s == skipping), "{said:?}");
+    // Round two: a rat comes in, is fought and killed; the stops behind the door are passed by
+    // again without a word.
+    g.expect("a rat", line(ENGAGED, 35));
+    g.expect("look", arena(&[], 35));
+    g.output(&arena(&["large giant rat"], 35)).await;
+    g.narrated("Fight: large giant rat").await;
+    g.output(&kill(35)).await;
+    let said = g.narrated("Waiting for respawns in Newhaven, Arena").await;
+    assert!(
+        said.iter()
+            .any(|s| s == "Stop 1/3 cleared: 1 large giant rat"),
+        "{said:?}"
+    );
+    assert!(
+        !said.iter().any(|s| s.starts_with("Skipping 2")),
+        "{said:?}"
+    );
+    g.idle(Duration::from_secs(30 * 60)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played[2..6], ["n", "bash n", "bash n", "bash n"]);
+    assert_eq!(bot(&seen).state, BotState::Running);
+    assert!(!notices(&seen).iter().any(|s| s.starts_with("Stopped:")));
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_bot_stops_at_once_when_no_stop_can_be_reached() {
+    // The Arena unticked; the door to the other two will not bash open: one walked leg, and
+    // the bot stops itself (not after three give-ups).
+    let (mut g, run) = ready_with(arena(&[], 35)).await;
+    g.expect("look", arena(&[], 35));
+    g.expect("n", says("The door is closed!"));
+    for _ in 0..MAX_BASHES {
+        g.expect("bash n", says("Your attempts to bash through fail!"));
+    }
+    g.run_loop(&[ARENA]).await;
+    let why = "Stopped: loop Newhaven: none of its stops can be reached from here";
+    g.narrated(why).await;
+    g.idle(Duration::from_secs(30 * 60)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played[2..], ["n", "bash n", "bash n", "bash n"]);
     let b = bot(&seen);
     assert_eq!((b.state, b.task), (BotState::Stopped, None));
 }

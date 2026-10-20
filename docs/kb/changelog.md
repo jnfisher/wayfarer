@@ -156,3 +156,12 @@
   [C, silvermere, the M3 soak], the ooze's numbers from `WCCKNMSR` (monster 63: 2,500 HP, 500
   regenerated a round, damage reduction 40) [C], and the stalemate it makes with a mid-level
   character [C live; I for the general rule].
+- **2026-10-20**: From wayfarer wave 4 (C-037): `navigation.md` "Hidden": the search texts as
+  silvermere sends them, the exits line after a find (`secret passage south`) and the exit
+  hidden again 330 s later, that a search for an exit found lately (still showing) finds
+  nothing, that a search needs sight (in a room too dark to see it prints only the darkness
+  line), and that Newhaven's Secret Passage (1/452 to 1/750, light -175) has no way out but its
+  two Hidden exits [C, silvermere `movement/search.rs`; live, C-037 live check]. `recovery.md`:
+  `search` needs light, another player's light counts (a second character with a torch got a
+  stuck one out), and `light torch` with no torch carried is taken as speech [C, silvermere;
+  live].

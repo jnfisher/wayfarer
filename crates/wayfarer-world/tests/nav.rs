@@ -483,3 +483,111 @@ fn spawn_pools_and_huntable_monsters() {
     assert!(rats.iter().any(|m| m.number == 1), "{rats:?}");
     assert!(rats.iter().all(|m| m.name == "giant rat"));
 }
+
+/// The Hidden Keep in the Darkwood Forest (9:724): east, a Door locked with `exitpar2` -250
+/// into the courtyard; north, a Hidden exit to the Keep Wall (the way MegaMud's `Ftrehkep.mp`
+/// takes, along the wall and up a tree).
+const HIDDEN_KEEP: Key = (9, 724);
+const COURTYARD_DOOR: Key = (9, 798);
+const KEEP_WALL: Key = (9, 725);
+
+#[test]
+fn a_locked_door_is_routed_through_only_by_a_character_who_can_open_it() {
+    let (_, g) = graph();
+    let t = |strength: Option<i64>, picklocks: Option<i64>| Traveller {
+        strength,
+        picklocks,
+        ..Traveller::default()
+    };
+    let door = g.edge(HIDDEN_KEEP, 2).unwrap();
+    assert_eq!(
+        (door.kind, door.door, door.params[1]),
+        (ExitType::Door, Some(LockState::Locked), -250)
+    );
+    // Str 97: 97 - 250 never opens it, and there is no other way in.
+    let weak = t(Some(97), None);
+    assert_eq!(weak.door_odds(door), Some(0));
+    assert_eq!(route(&g, HIDDEN_KEEP, COURTYARD_DOOR, &weak), None);
+    // Str 300: one step, the door.
+    let strong = t(Some(300), None);
+    assert_eq!(strong.door_odds(door), Some(50));
+    let r = route(&g, HIDDEN_KEEP, COURTYARD_DOOR, &strong).unwrap();
+    assert_eq!(commands(&r), ["e"]);
+    assert_eq!(r[0].door, Some(LockState::Locked));
+    // Picking counts too, and the better of the two wins.
+    assert_eq!(t(Some(97), Some(260)).door_odds(door), Some(10));
+    assert_eq!(t(Some(97), Some(0)).door_odds(door), Some(0));
+    // Strength unknown: not checked.
+    assert_eq!(t(None, None).door_odds(door), None);
+    assert!(route(&g, HIDDEN_KEEP, COURTYARD_DOOR, &t(None, None)).is_some());
+    // Seen open this session: no odds to it.
+    let mut open = weak.clone();
+    open.doors.insert((HIDDEN_KEEP, 2), LockState::Open);
+    assert_eq!(open.door_odds(door), None);
+    assert_eq!(
+        commands(&route(&g, HIDDEN_KEEP, COURTYARD_DOOR, &open).unwrap()),
+        ["e"]
+    );
+    // The same door shut but not locked opens with `open`, whatever the strength.
+    let mut shut = weak.clone();
+    shut.doors.insert((HIDDEN_KEEP, 2), LockState::Closed);
+    let r = route(&g, HIDDEN_KEEP, COURTYARD_DOOR, &shut).unwrap();
+    assert_eq!(
+        (commands(&r), r[0].door),
+        (vec!["e"], Some(LockState::Closed))
+    );
+}
+
+#[test]
+fn a_door_the_pack_has_shut_or_open_routes_regardless_of_strength() {
+    // The fixture export has no door shut but unlocked (state 1); the Flaming Chamber's east
+    // door is open in it, with `exitpar2` -999.
+    let (_, g) = graph();
+    let door = g.edge((17, 2978), 2).unwrap();
+    assert_eq!((door.door, door.params[1]), (Some(LockState::Open), -999));
+    let weak = Traveller {
+        strength: Some(10),
+        ..Traveller::default()
+    };
+    assert_eq!(weak.lock_odds(door), Some(0));
+    assert_eq!(weak.door_odds(door), None);
+    let mut shut_edge = door.clone();
+    shut_edge.door = Some(LockState::Closed);
+    assert_eq!(weak.door_odds(&shut_edge), None);
+    assert!(weak.can_take(door) && weak.can_take(&shut_edge));
+    let r = route(&g, door.from, door.to, &weak).unwrap();
+    assert_eq!(
+        (commands(&r), r[0].door),
+        (vec!["e"], Some(LockState::Open))
+    );
+    // Once the game showed it locked, it is left out.
+    let mut locked = weak.clone();
+    locked
+        .doors
+        .insert((door.from, door.dir), LockState::Locked);
+    assert_eq!(locked.door_odds(door), Some(0));
+    assert!(!locked.can_take(door));
+}
+
+#[test]
+fn a_hidden_exit_known_to_the_traveller_is_routed_through() {
+    let (_, g) = graph();
+    let north = g.edge(HIDDEN_KEEP, 0).unwrap();
+    assert_eq!((north.kind, north.to), (ExitType::Hidden, KEEP_WALL));
+    let weak = Traveller {
+        strength: Some(97),
+        ..Traveller::default()
+    };
+    assert!(!weak.can_take(north));
+    let mut found = weak.clone();
+    found.found.insert((HIDDEN_KEEP, 0));
+    let r = route(&g, HIDDEN_KEEP, COURTYARD_DOOR, &found).unwrap();
+    assert_eq!(r[0].command, "n");
+    assert_eq!(r[0].exit_type, ExitType::Hidden);
+    eprintln!("into the keep: {:?}", commands(&r));
+    // Known but not showing: the same way, at the search's cost.
+    let mut known = weak.clone();
+    known.searchable.insert((HIDDEN_KEEP, 0));
+    let r2 = route(&g, HIDDEN_KEEP, COURTYARD_DOOR, &known).unwrap();
+    assert_eq!(commands(&r2), commands(&r));
+}

@@ -220,3 +220,43 @@ fn megamud_loops_through_the_area_are_verified_ones() {
     assert_eq!(listed, ["ARENA.mp"]);
     assert!(loops.iter().filter(|l| verified(&l.path)).count() == 2);
 }
+
+/// The Hidden Keep in the Darkwood Forest: its east door into the courtyard is locked with
+/// `exitpar2` -250 (the 2026-10-20 keep soak).
+const HIDDEN_KEEP: Key = (9, 724);
+
+fn strength(s: i64) -> Traveller {
+    Traveller {
+        strength: Some(s),
+        ..Traveller::default()
+    }
+}
+
+#[test]
+fn a_doors_loop_has_no_stop_behind_a_door_the_character_cannot_open() {
+    let (g, m) = world();
+    let area = Area {
+        anchor: HIDDEN_KEEP,
+        radius: 8,
+    };
+    let (weak, strong) = (strength(97), strength(300));
+    let stops = |t: &Traveller| -> BTreeSet<Key> {
+        generate(&g, &m, area, t)
+            .iter()
+            .flat_map(|l| l.rooms.clone())
+            .collect()
+    };
+    let reach = area.rooms(&g, &weak);
+    let (weak_stops, strong_stops) = (stops(&weak), stops(&strong));
+    assert!(!weak_stops.is_empty());
+    assert!(
+        weak_stops.iter().all(|k| reach.contains_key(k)),
+        "{weak_stops:?}"
+    );
+    // The courtyard: stops with Str 300 that Str 97 cannot get to.
+    let courtyard: Vec<&Key> = strong_stops
+        .iter()
+        .filter(|k| !reach.contains_key(k))
+        .collect();
+    assert!(!courtyard.is_empty(), "{strong_stops:?}");
+}

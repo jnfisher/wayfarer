@@ -117,16 +117,42 @@ progress (after the move in flight).
 
 - **The route**: the cheapest from the believed room for the character's level, class and race
   (as the model knows them): the shortest route, through rooms that spawn monsters as readily
-  as any other (a setting later), avoiding only the exits the game refused this session. Narrated: "Walking to Newhaven,
+  as any other (a setting later), avoiding the exits the game refused this session and the
+  locked doors the character cannot open. Narrated: "Walking to Newhaven,
   Arena: 3 steps" (", one door" when there are doors). No route, or an unknown position: a
   warning, and nothing is sent.
+- **Locked doors and the character**: a door or gate counts as the game last showed it this
+  session, else as the pack has it. A locked one is in a route only if the character can open
+  it: a bash opens it on `Str + exitpar2` out of 100, a pick on `picklocks + exitpar2` (with
+  picklocks above 0), `kb/navigation.md` "Door / Gate"; with both nil it is left out (the Hidden
+  Keep's courtyard door, `exitpar2` -250, needs a strength over 250). Strength and picklocks come
+  from the status screen (`st`); unknown, a locked door is not checked. A shut door that is not
+  locked opens with `open` and is always passable. A locked door costs one extra step per
+  expected try, `ceil(100 / odds)`: two at 90 %, five at 20 %, so a sure way round of a few
+  more steps wins. Another character with more strength may get through the same door.
 - **One step at a time**: each move goes at a prompt, in the realm, and only once the room the
   last one led to has been seen and is the one the route expected. One line is in flight at a
   time: a re-sync waits for the walk's action and the walk for a re-sync command. A room that is
   not the one expected replans from the belief once; a second time stops the walk.
 - **Doors**: `The door is Closed!` (shut) sends `open <dir>`, then the move again. `The door is
   closed!` (locked), or `The door is locked.` after `open`, sends `bash <dir>`, at most three
-  times; then the exit is marked refused and the route planned again.
+  times; then the exit is marked refused and the route planned again. A locked door whose odds
+  are nil for the character is given up at once, with no `bash`: "The door east is beyond my
+  strength (needs more than 999)", the exit marked refused, the route planned again.
+- **Hidden exits**: a route takes a Hidden exit the character knows of: one it found this
+  session (a `search` of its own or the player's), one an exits line showed (`secret passage
+  south`: found lately by anyone), or one a loop's path names. Arriving in the room, if the
+  exit is not in the room's `Obvious exits` and was not found in the last five minutes, it
+  sends `search <dir>` ("Searching for the hidden exit north") and waits for the answer: "You
+  found an exit to the north!" and it moves; "You notice nothing different to the north." and
+  it sends `look` (an exit found lately by someone else needs no search, so a search for it
+  finds nothing), moves if the exit shows, else searches once more; a second empty search
+  marks the exit refused for the session and plans again. A search needs light: in a room too dark to see the game answers
+  "The room is very dark - you can't see anything" and the walk stops ("too dark to search
+  for the hidden exit north"; the bot does not light a torch yet). A found exit hides again after about five minutes (one step of 300
+  fast ticks, `kb/navigation.md` "Hidden"), so the brain forgets it showing then and searches
+  again next time. A search costs two extra steps in the route. Moves are not pipelined through
+  a hidden exit.
 - **Refusals** (level, alignment, class or race, not permitted, a spell or item needed, a toll
   not covered, a timed exit): the exit is marked refused for the session and the route planned
   again, at most five times a walk.
@@ -189,8 +215,9 @@ can watch the route, and runs one ("Running a loop", below).
 `loops_request {session, anchor?, radius, doors?}` answers with `loops` (`docs/protocol.md`):
 
 - **The area**: the rooms within `radius` steps (at most 30) of `anchor`, the believed room
-  by default, by exits the character may take: a gated exit outside its level, class or race
-  leaves what is behind it out, and with `doors: false` so does every door.
+  by default, by exits the character may take: a gated exit outside its level, class or race,
+  or a locked door it cannot open ("Walking"), leaves what is behind it out, and with
+  `doors: false` so does every door.
 - **Hunt rooms**: the area's rooms whose spawn pool (`genmonster`, or the room's `mongroup`
   within its `minlevel`..`maxlevel`, plus its `specmon`; only Normal, Arena and Lair rooms
   spawn) holds a monster worth hunting (evil, not an NPC, worth exp). A shop whose pool is its
@@ -208,7 +235,8 @@ can watch the route, and runs one ("Running a loop", below).
 - **MegaMud's loops** through the area: those whose verification walk passes one of its rooms,
   only ever ones that walked to the end and closed in their start room. None unless the world
   pack was built with MegaMud's paths.
-- Made once per anchor, radius, level and doors for the session, so asking again is cheap.
+- Made once per anchor, radius, level, strength, picklocks and doors for the session, so asking
+  again is cheap.
 
 `walk_loop {session, id}` walks a generated loop once: a `walk_to` to its stop nearest the
 character, then to each stop in turn, and back to that first one. Narrated: "Walking loop
@@ -403,6 +431,15 @@ stop it is at or walking to, and the stops it passes by.
   too (no delay after a kill, but its `regendelay` or the stock five minutes after a pass-by). Three stops passed by in a row, with no stop reached and nothing
   killed between, and the bot stops itself with a warning ("Stopped: loop Newhaven: could not
   get to a stop 3 times in a row").
+- **Stops it cannot reach**: a ticked stop no route reaches from where the character is (behind
+  a door it cannot open or that would not bash open, past a hidden exit it does not know) is
+  passed by this round with no leg, and does not count towards the three above: those are
+  for walks that keep failing. It is tried again next round (a door seen open, an exit found).
+  The first round that skips them says how many and why, once while that stays the same:
+  "Skipping 2 stops it cannot reach this round: the door north of Newhaven, Arena would not
+  open" (or "... cannot be opened", "the hidden exit north of ... is not known"). With no ticked
+  stop reachable at all the bot stops itself at once: "Stopped: loop Newhaven: none of its
+  stops can be reached from here".
 - **Pipelining**: on a leg, with the belief sure of the room and the character known to be out of
   combat, the next plain move (a direction, no door on it or on the move in flight) goes ahead
   of the move in flight, as MegaMud ran paths: two moves in flight at most, each confirmed by

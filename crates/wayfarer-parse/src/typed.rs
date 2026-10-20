@@ -220,6 +220,13 @@ pub enum GameEvent {
     BashResult {
         ok: bool,
     },
+    /// The answer to `search <dir>`: `search_found_exit` (`You found an exit to the north!`)
+    /// or `search_nothing_dir` (`You notice nothing different to the north.`). `dir` as the
+    /// game names it: `north`, ..., `up` (`upwards`, `above you`), `down`.
+    SearchResult {
+        found: bool,
+        dir: String,
+    },
 
     /// `room_also_here`: who else is in the room, as listed. `players` are the capitalised
     /// single words (a named monster looks the same: check the monster names); `monsters` the
@@ -497,6 +504,16 @@ impl GameEvent {
             "door_locked" => G::OpenRefused,
             "bash_ok" => G::BashResult { ok: true },
             "bash_fail" => G::BashResult { ok: false },
+            "search_found_exit" | "search_nothing_dir" => G::SearchResult {
+                found: ev.name == "search_found_exit",
+                dir: match ev.text("dir") {
+                    Some(d) if !d.is_empty() => d.to_ascii_lowercase(),
+                    _ if ev.line.contains("upwards") || ev.line.contains("above you") => {
+                        "up".to_owned()
+                    }
+                    _ => "down".to_owned(),
+                },
+            },
             name if Refusal::of(name).is_some() => G::MoveRefused {
                 reason: Refusal::of(name).expect("a refusal"),
             },

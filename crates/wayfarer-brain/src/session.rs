@@ -59,12 +59,15 @@ pub const HISTORY_CHUNKS: u32 = 2000;
 pub const MAX_LOOP_RADIUS: u32 = 30;
 
 /// What the generated loops of an area depend on: the anchor, the radius, the character's
-/// level (the gated exits) and whether doors are taken.
+/// level (the gated exits), strength and picklocks (the locked doors it can open) and whether
+/// doors are taken.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct LoopsKey {
     anchor: Key,
     radius: u32,
     level: Option<i64>,
+    strength: Option<i64>,
+    picklocks: Option<i64>,
     doors: bool,
 }
 
@@ -75,8 +78,8 @@ fn loop_id(k: &LoopsKey, index: usize) -> String {
     format!("{}:{}:{}:{doors}:{index}", k.anchor.0, k.anchor.1, k.radius)
 }
 
-/// An `id` back to its area (at `level`) and the loop's index in it.
-fn parse_loop_id(id: &str, level: Option<i64>) -> Option<(LoopsKey, usize)> {
+/// An `id` back to its area (for the traveller `t`) and the loop's index in it.
+fn parse_loop_id(id: &str, t: &Traveller) -> Option<(LoopsKey, usize)> {
     let mut it = id.split(':');
     let map = it.next()?.parse().ok()?;
     let room = it.next()?.parse().ok()?;
@@ -93,7 +96,9 @@ fn parse_loop_id(id: &str, level: Option<i64>) -> Option<(LoopsKey, usize)> {
     let key = LoopsKey {
         anchor: (map, room),
         radius,
-        level,
+        level: t.level,
+        strength: t.strength,
+        picklocks: t.picklocks,
         doors,
     };
     Some((key, index))
@@ -570,7 +575,7 @@ impl Session {
                 *answered = true;
             }
             if let Some(atlas) = &self.atlas
-                && self.position.event(atlas, &typed).is_some()
+                && self.position.event(atlas, &typed, now).is_some()
             {
                 self.executor
                     .room_seen_in(Some(self.position.belief.clone()));
@@ -825,8 +830,9 @@ impl Session {
     /// id, with a notice that the stored stops are kept (a level-up can change what a generated
     /// id names).
     fn loop_name(&mut self, atlas: &Atlas, t: &TaskLoop, out: &mut Vec<ToGateway>) -> String {
-        self.position.refresh(atlas, &self.character.snapshot());
-        let found = parse_loop_id(&t.id, self.position.traveller.level)
+        self.position
+            .refresh(atlas, &self.character.snapshot(), self.clock.instant());
+        let found = parse_loop_id(&t.id, &self.position.traveller)
             .filter(|(k, _)| atlas.graph.contains(k.anchor))
             .and_then(|(k, i)| self.generated(atlas, k).get(i).cloned());
         match found {
@@ -1259,7 +1265,8 @@ impl Session {
         if self.executor.in_flight().is_none() {
             self.cancel(out);
         }
-        self.position.refresh(&atlas, &self.character.snapshot());
+        self.position
+            .refresh(&atlas, &self.character.snapshot(), self.clock.instant());
         self.start_walk(&atlas, to, stop_short.unwrap_or(true), out);
         self.drive(now, out);
         self.flush_views(out);
@@ -1275,6 +1282,8 @@ impl Session {
             return;
         }
         self.walk_after = None;
+        self.position
+            .refresh(atlas, &self.character.snapshot(), self.clock.instant());
         let next = self
             .walker
             .start_with(&mut self.position, atlas, to, busy, false, short);
@@ -1359,11 +1368,14 @@ impl Session {
             return;
         }
         let radius = radius.min(MAX_LOOP_RADIUS);
-        self.position.refresh(&atlas, &self.character.snapshot());
+        self.position
+            .refresh(&atlas, &self.character.snapshot(), self.clock.instant());
         let key = LoopsKey {
             anchor,
             radius,
             level: self.position.traveller.level,
+            strength: self.position.traveller.strength,
+            picklocks: self.position.traveller.picklocks,
             doors,
         };
         let generated = self.generated(&atlas, key);
@@ -1404,6 +1416,8 @@ impl Session {
         }
         let t = Traveller {
             level: key.level,
+            strength: key.strength,
+            picklocks: key.picklocks,
             ..self.loop_traveller(key.doors)
         };
         let area = Area {
@@ -1525,8 +1539,9 @@ impl Session {
 
     /// The generated loop `id` names, at the character's level now.
     fn find_loop(&mut self, atlas: &Atlas, id: &str) -> Option<GeneratedLoop> {
-        self.position.refresh(atlas, &self.character.snapshot());
-        parse_loop_id(id, self.position.traveller.level)
+        self.position
+            .refresh(atlas, &self.character.snapshot(), self.clock.instant());
+        parse_loop_id(id, &self.position.traveller)
             .filter(|(k, _)| atlas.graph.contains(k.anchor))
             .and_then(|(k, i)| self.generated(atlas, k).get(i).cloned())
     }
@@ -1808,7 +1823,8 @@ impl Session {
         let Some(atlas) = self.atlas.clone() else {
             return;
         };
-        self.position.refresh(&atlas, &self.character.snapshot());
+        self.position
+            .refresh(&atlas, &self.character.snapshot(), self.clock.instant());
         let in_combat = self.combat(now);
         let c = self.character.state();
         let view = View {
@@ -1824,7 +1840,7 @@ impl Session {
             room: self.position.best(),
             certain: self.position.belief.certain(),
             traveller: &self.position.traveller,
-            doors: &self.position.doors,
+            doors: &self.position.traveller.doors,
             presence: &self.presence,
             rules: self.rules.rules(),
             sightings: &self.sightings,
@@ -1928,7 +1944,11 @@ impl Session {
                     let says = self.bot.outcome(&action, outcome);
                     self.say(says, out);
                     if let Some((to, short)) = self.walk_after.take() {
-                        self.position.refresh(&atlas, &self.character.snapshot());
+                        self.position.refresh(
+                            &atlas,
+                            &self.character.snapshot(),
+                            self.clock.instant(),
+                        );
                         self.start_walk(&atlas, to, short, out);
                     }
                 }
@@ -1937,7 +1957,8 @@ impl Session {
                         // The move that went ahead is in flight now: the walker's still.
                         self.owner = Some(Owner::Walker);
                     }
-                    self.position.refresh(&atlas, &self.character.snapshot());
+                    self.position
+                        .refresh(&atlas, &self.character.snapshot(), self.clock.instant());
                     let seen = self.executor.take_belief();
                     let next = self.walker.outcome(
                         &mut self.position,

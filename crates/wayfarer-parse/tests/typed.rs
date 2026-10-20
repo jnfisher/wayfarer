@@ -303,6 +303,31 @@ fn moves_and_doors() {
         line("Your attempts to bash through fail!"),
         [GameEvent::BashResult { ok: false }]
     );
+    for (text, found, dir) in [
+        ("You found an exit to the north!", true, "north"),
+        ("You found an exit upwards!", true, "up"),
+        ("You found an exit downwards!", true, "down"),
+        (
+            "You notice nothing different to the southwest.",
+            false,
+            "southwest",
+        ),
+        ("You notice nothing different above you.", false, "up"),
+        ("You notice nothing different below you.", false, "down"),
+        // As silvermere sent it (C-037 live check): a letter and a backspace in the name.
+        (
+            "You notice nothing different to the sN\x08outh.",
+            false,
+            "south",
+        ),
+    ] {
+        let dir = dir.to_owned();
+        assert_eq!(
+            line(text),
+            [GameEvent::SearchResult { found, dir }],
+            "{text}"
+        );
+    }
     for (text, reason) in [
         (
             "You have progressed too far to go through this exit!",
