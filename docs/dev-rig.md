@@ -131,10 +131,24 @@ gateway keeps the characters logged in meanwhile; the UIs see `brain_state false
 and the brain re-syncs each character when it attaches. Install the watcher once with `cargo
 install cargo-watch` or `brew install cargo-watch` (a developer tool, not part of the build).
 
+### The world pack
+
 The brain needs the world pack in the data directory. Both `scripts/dev/gateway.sh` and
 `scripts/dev/brain.sh` build it from `tests/fixtures/world` if it is missing, so either may go
-first. To rebuild it by hand: `wayfarer import-world --export tests/fixtures/world --out
-"$WAYFARER_DATA_DIR/world.sqlite"`.
+first. They add **MegaMud's path set** (Winterhawk's paths: 1,957 paths, 195 of them loops, 183
+verified against the stock world) when the zip is at hand: `$WAYFARER_MEGAMUD`, else
+mmud-exploration's `reference/megamud/MegaMUD_v2.0_Alpha_-_With_Paths.zip` beside this
+checkout. Without it the pack has no MegaMud loops and the map panel lists only generated
+ones. The same files are published as "Winterhawk's Paths Files Only v2.0" on mudinfo.net.
+
+The scripts never rebuild an existing pack. To rebuild it by hand, with the gateway and the
+brain stopped:
+
+```sh
+wayfarer import-world --export tests/fixtures/world \
+  --megamud ../mmud-exploration/reference/megamud/MegaMUD_v2.0_Alpha_-_With_Paths.zip \
+  --out "$WAYFARER_DATA_DIR/world.sqlite"
+```
 
 Without the watcher, `wayfarer brain` by hand does the same once. A release runs both in one
 process instead, `wayfarer serve` ([brain.md](brain.md#running-it)); the dev rig keeps them
