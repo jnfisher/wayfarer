@@ -9,7 +9,7 @@
 //! and dev (brain → UIs), control (UI → brain) and `sent` (gateway → brain); M2 adds walking
 //! and the map (`walk_to`, `walk_stop`, `map_request`, `map_view`, and the character's
 //! `position` and `walking`), the bot's first slice (`bot_control`, the character's `bot`), and loops (`loops_request`,
-//! `loops`, `walk_loop`). [`Family`] says who may send what. Adding a variant later bumps nothing; removing or changing one bumps
+//! `loops`, `walk_loop`); M3 adds the log-off handshake (`logging_off`, `ready_to_leave`). [`Family`] says who may send what. Adding a variant later bumps nothing; removing or changing one bumps
 //! [`PROTOCOL`].
 
 use std::path::Path;
@@ -425,6 +425,8 @@ pub enum Family {
     /// From the brain, relayed to the UIs: events, state and dev (`event`, `character`,
     /// `character_patch`, `brain_info`, `notice`, `warning`).
     Brain,
+    /// From the brain, handled by the gateway: `ready_to_leave`.
+    Leaving,
 }
 
 impl Family {
@@ -433,7 +435,7 @@ impl Family {
         match self {
             Self::Gateway => true,
             Self::Control => client == ClientKind::Ui,
-            Self::Brain => client == ClientKind::Brain,
+            Self::Brain | Self::Leaving => client == ClientKind::Brain,
         }
     }
 }
@@ -606,6 +608,12 @@ pub enum ToClient {
     BrainLagged {
         missed: u64,
     },
+    /// To the brain only: the gateway is about to log the session off (it is stopping). The
+    /// brain stops playing the character and answers `ready_to_leave`; the gateway waits for
+    /// that (30 s at most, or until the brain goes) before it sends the first log-off step.
+    LoggingOff {
+        session: SessionId,
+    },
 }
 
 /// Client → gateway.
@@ -765,6 +773,10 @@ pub enum ToGateway {
         generated: Vec<GeneratedLoop>,
         megamud: Vec<MegaMudLoop>,
     },
+
+    /// Brain → gateway: the answer to `logging_off`: the brain sends the session nothing more,
+    /// and the log-off may start.
+    ReadyToLeave { session: SessionId },
 }
 
 /// Why a received message could not be decoded. The receiver reports it (an `error` reply)
@@ -814,6 +826,7 @@ impl ToClient {
         "sent",
         "brain_state",
         "brain_lagged",
+        "logging_off",
     ];
 
     /// This message's `type`.
@@ -846,6 +859,7 @@ impl ToClient {
             Self::Sent { .. } => "sent",
             Self::BrainState { .. } => "brain_state",
             Self::BrainLagged { .. } => "brain_lagged",
+            Self::LoggingOff { .. } => "logging_off",
         }
     }
 
@@ -868,7 +882,8 @@ impl ToClient {
             | Self::BotControl { session, .. }
             | Self::LoopsRequest { session, .. }
             | Self::WalkLoop { session, .. }
-            | Self::Sent { session, .. } => Some(session),
+            | Self::Sent { session, .. }
+            | Self::LoggingOff { session } => Some(session),
             Self::Notice { session, .. }
             | Self::Warning { session, .. }
             | Self::StateRequest { session } => session.as_deref(),
@@ -915,6 +930,7 @@ impl ToGateway {
         "warning",
         "map_view",
         "loops",
+        "ready_to_leave",
     ];
 
     /// This message's `type`.
@@ -941,6 +957,7 @@ impl ToGateway {
             Self::Warning { .. } => "warning",
             Self::MapView { .. } => "map_view",
             Self::Loops { .. } => "loops",
+            Self::ReadyToLeave { .. } => "ready_to_leave",
         }
     }
 
@@ -968,11 +985,13 @@ impl ToGateway {
             | Self::Warning { .. }
             | Self::MapView { .. }
             | Self::Loops { .. } => Family::Brain,
+            Self::ReadyToLeave { .. } => Family::Leaving,
         }
     }
 
     /// A [`Family::Control`] or [`Family::Brain`] message as the gateway relays it, unchanged;
-    /// `None` for a message the gateway handles itself.
+    /// `None` for a message the gateway handles itself ([`Family::Gateway`],
+    /// [`Family::Leaving`]).
     pub fn into_relayed(self) -> Option<ToClient> {
         Some(match self {
             Self::Resync { session } => ToClient::Resync { session },
@@ -1057,7 +1076,8 @@ impl ToGateway {
             | Self::InputLine { .. }
             | Self::InputKeys { .. }
             | Self::HistoryRequest { .. }
-            | Self::Subscribe { .. } => return None,
+            | Self::Subscribe { .. }
+            | Self::ReadyToLeave { .. } => return None,
         })
     }
 

@@ -195,7 +195,7 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
 
   | Mode | Wants control when | Does |
   |---|---|---|
-  | Recover | HP below 80% (or poisoned) and not fighting; or a rest it began is not finished | Rests: in this room if nothing spawns here; else walks (through the walker, each step confirmed) to the nearest room within 5 steps where nothing spawns, and rests there; else rests here anyway. `rest` again when the next prompt lacks `(Resting)` (three times, then a 30 s wait; `You are too sick to rest!` waits 30 s too). Rested at 95%, it walks back home |
+  | Recover | HP below 80% (or poisoned) and not fighting; or a rest it began is not finished | Rests: in this room if nothing spawns here; else walks (through the walker, each step confirmed) to the nearest room within 5 steps where nothing spawns, and rests there; else rests here anyway. `rest` again when the next prompt lacks `(Resting)` (three times, then a 30 s wait; `You are too sick to rest!` waits 30 s too). Rested at 95%, it walks back home. Each walk is tried twice (a fight can stop one): after two walks out that were stopped it rests where it is, against the quiet-room rule, and says so with a warning ("Recover: resting in Newhaven, Arena though it spawns: 2 walks to a quiet room were stopped"); after two walks home that were stopped it waits where it rested: "Rested; could not walk home, waiting here" |
   | Fight | Engaged; or a monster worth fighting is here | Picks one that is attacking the character first, else the first listed; sends `a <its last word>` once and lets auto-combat run. After `*Combat Off*` or a kill it looks (`look`) and picks the next. A target the game refuses (`You do not see rat here!`, `Your weapon has no effect`) is left alone for the rest of the session. Never leaves the room |
   | Idle | Otherwise | Sends nothing: "Waiting here" |
 
@@ -204,10 +204,17 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
   when the spawn pass makes monsters there or it holds one worth fighting; a room the position
   is not sure of counts as spawning. A shopkeeper's room is quiet.
 - **Engaged** comes from `*Combat Engaged*` and `*Combat Off*`. Auto-combat can also end without
-  a word (pitfall 42): 12 s with none of the character's own blows and it counts as over. A
-  monster's blows are not the character's: one attacking a character that is not fighting
-  back is fought at once. Before the brain has seen either, the character counts as engaged
-  until 12 s pass without its blows.
+  a word (pitfall 42): 12 s with none of the character's own blows and it counts as over, and
+  the snapshot's `in_combat` turns `false`. Knocked down (`You are smashed to the ground!`)
+  the character has no blows until it rises (`Slightly dazed you get back onto your feet.`):
+  that is not quiet time, and the 12 s start again when it rises. A monster's blows are not
+  the character's: one attacking a character that is not fighting back is fought at once.
+  Before the brain has seen either, the character counts as engaged until 12 s pass without
+  its blows.
+- **Players** are never fought, and a player in the room is not an attacker, even when a line
+  of theirs reads like a monster's blow, unless a PvP line says so (`Bob moves to attack
+  you!`, `Bob just attacked <the character>!`). So a player standing in the room does not
+  keep Recover from resting.
 - **A monster that attacks while resting** wakes the bot: Fight takes the character (in the
   quiet room, if it is there), then Recover carries on and walks home when rested. One that
   arrives and doesn't attack leaves the rest alone.
@@ -229,6 +236,12 @@ cannot win.
 
 ## Stopping, restarting, the gateway going away
 
+- **The gateway stops** (it logs every character off): before each log-off it sends
+  `logging_off`; the brain stops that character's bot ("Stopped: the gateway is logging off"),
+  stops a walk after the move in flight, sends nothing more to it (no re-sync either) and
+  answers `ready_to_leave` at once. From C-028 it flees a fight first. The brain stays
+  attached while the gateway logs off (the retried `x`s come as `sent`), then the gateway
+  closes the connection.
 - **Ctrl-C or SIGTERM** closes the WebSocket and exits. Nothing is sent to the game; the
   characters stay where they are. The UIs see `brain_state false`.
 - **Starting it again** attaches afresh: catch-up, a whole snapshot, a re-sync for every

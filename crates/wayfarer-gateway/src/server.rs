@@ -6,7 +6,8 @@
 //! No TLS: remote access goes through SSH or Tailscale. On a loopback bind the handshake's
 //! token is not checked; on any other bind the gateway will not start without one.
 
-use std::future::IntoFuture;
+use std::collections::HashSet;
+use std::future::{Future, IntoFuture};
 use std::io;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -36,6 +37,8 @@ const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
 const OUTBOX: usize = 256;
 /// Brain messages a UI may fall behind by before it is told `brain_lagged`.
 const RELAY: usize = 1024;
+/// How long a session's log-off waits for the brain's `ready_to_leave` after `logging_off`.
+pub const LEAVE_PATIENCE: Duration = Duration::from_secs(30);
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServerError {
@@ -118,6 +121,8 @@ struct HubInner {
     relay: broadcast::Sender<ToClient>,
     /// Turns `true` when the hub stops, so every connection ends.
     stopping: watch::Sender<bool>,
+    /// The sessions the brain has said `ready_to_leave` for since their `logging_off`.
+    ready: watch::Sender<HashSet<SessionId>>,
     /// Numbers brain registrations, so a guard clears only its own.
     next_id: AtomicU64,
 }
@@ -157,6 +162,7 @@ impl Hub {
                 brain: watch::channel(None).0,
                 relay: broadcast::channel(RELAY).0,
                 stopping: watch::channel(false).0,
+                ready: watch::channel(HashSet::new()).0,
                 next_id: AtomicU64::new(0),
             }),
         }
@@ -166,9 +172,76 @@ impl Hub {
         &self.inner.gateway
     }
 
-    /// End every connection, and any made later. [`serve`] does this when it stops.
+    /// End every connection, and any made later. [`serve`] does this when it stops, once
+    /// every session has logged off ([`Hub::shutdown_unless`]).
     pub fn stop(&self) {
         self.inner.stopping.send_replace(true);
+    }
+
+    /// Log every session off and then end every connection. Each session in the realm is
+    /// announced to the brain first (`logging_off`) and its log-off waits for the brain's
+    /// `ready_to_leave`, up to [`LEAVE_PATIENCE`] or until the brain goes
+    /// ([`Gateway::shutdown_after`]); the brain's connection, like the UIs', stays open until
+    /// every log-off has finished or given up. If `now` completes first, what is left is
+    /// closed at once ([`Gateway::shutdown_now`]).
+    pub async fn shutdown_unless(&self, now: impl Future<Output = ()>) {
+        let gateway = self.gateway().clone();
+        let hub = self.clone();
+        let logoff = gateway.shutdown_after(move |id| {
+            let hub = hub.clone();
+            async move { hub.ready_to_leave(id).await }
+        });
+        tokio::select! {
+            () = logoff => {}
+            () = now => {
+                tracing::warn!("closing every session at once");
+                gateway.shutdown_now().await;
+            }
+        }
+        self.stop();
+    }
+
+    /// Tell the brain that `session` is about to be logged off, and wait for its
+    /// `ready_to_leave` (at most [`LEAVE_PATIENCE`]), or for it to go. At once with no brain.
+    async fn ready_to_leave(&self, session: SessionId) {
+        let Some((id, out)) = self
+            .inner
+            .brain
+            .borrow()
+            .as_ref()
+            .map(|b| (b.id, b.out.clone()))
+        else {
+            return;
+        };
+        self.inner.ready.send_modify(|ready| {
+            ready.remove(&session);
+        });
+        let mut ready = self.inner.ready.subscribe();
+        let mut brain = self.inner.brain.subscribe();
+        tracing::info!(%session, "asking the brain to get ready to leave");
+        let answer = async {
+            if out
+                .send(ToClient::LoggingOff {
+                    session: session.clone(),
+                })
+                .await
+                .is_err()
+            {
+                return "the brain has gone";
+            }
+            tokio::select! {
+                _ = ready.wait_for(|r| r.contains(&session)) => "the brain is ready",
+                _ = brain.wait_for(|b| b.as_ref().is_none_or(|b| b.id != id)) => "the brain has gone",
+            }
+        };
+        match tokio::time::timeout(LEAVE_PATIENCE, answer).await {
+            Ok(why) => tracing::info!(%session, "{why}: logging off"),
+            Err(_) => tracing::warn!(
+                %session,
+                "no ready_to_leave from the brain within {} s: logging off anyway",
+                LEAVE_PATIENCE.as_secs()
+            ),
+        }
     }
 
     /// Attach a client over a pair of channels instead of a WebSocket: send its `hello` first,
@@ -233,9 +306,9 @@ pub async fn bind(addr: SocketAddr) -> Result<TcpListener, ServerError> {
         })
 }
 
-/// Serve `hub` on `listener` until the first item of `stops`, then stop accepting, end the
-/// connections ([`Hub::stop`]) and log every session off ([`Gateway::shutdown`]); a second
-/// item closes what is left at once ([`Gateway::shutdown_now`]). The binary passes
+/// Serve `hub` on `listener` until the first item of `stops`, then stop accepting, log every
+/// session off, the brain asked first, and end the connections ([`Hub::shutdown_unless`]); a
+/// second item closes what is left at once ([`Gateway::shutdown_now`]). The binary passes
 /// [`crate::stop_signals`].
 pub async fn serve(
     listener: TcpListener,
@@ -245,7 +318,8 @@ pub async fn serve(
 ) -> Result<(), ServerError> {
     let mut stops = std::pin::pin!(stops);
     let mut stopped = hub.inner.stopping.subscribe();
-    let gateway = hub.gateway().clone();
+    // Stop accepting as soon as the first stop comes; the connections stay until the hub stops.
+    let (closing, mut closed) = watch::channel(false);
     let state = AppState {
         hub: hub.clone(),
         ui_dir: Arc::from(options.ui_dir.as_path()),
@@ -258,19 +332,30 @@ pub async fn serve(
         .with_state(state);
     let server = axum::serve(listener, app)
         .with_graceful_shutdown(async move {
-            let _ = stopped.wait_for(|stopped| *stopped).await;
+            tokio::select! {
+                _ = stopped.wait_for(|stopped| *stopped) => {}
+                _ = closed.wait_for(|closed| *closed) => {}
+            }
         })
         .into_future();
     let mut server = std::pin::pin!(server);
-    let result = tokio::select! {
-        result = &mut server => result,
+    let ended = tokio::select! {
+        result = &mut server => Some(result),
         () = next_or_never(&mut stops) => {
             tracing::info!("stopping: logging every character off (stop again to close at once)");
-            hub.stop();
-            server.await
+            None
         }
     };
-    gateway.shutdown_unless(next_or_never(&mut stops)).await;
+    closing.send_replace(true);
+    let logoff = hub.shutdown_unless(next_or_never(&mut stops));
+    let result = match ended {
+        Some(result) => {
+            logoff.await;
+            result
+        }
+        // The server finishes once the hub has stopped and its connections have ended.
+        None => tokio::join!(server, logoff).0,
+    };
     result.map_err(|source| ServerError::Io {
         path: PathBuf::from("<server>"),
         source,
@@ -553,6 +638,12 @@ impl Connection {
         }
         if family == Family::Gateway {
             return self.handle_own(msg).await;
+        }
+        if let ToGateway::ReadyToLeave { session } = msg {
+            self.hub.inner.ready.send_modify(|ready| {
+                ready.insert(session);
+            });
+            return None;
         }
         let msg = msg
             .into_relayed()

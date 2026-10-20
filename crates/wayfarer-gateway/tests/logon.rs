@@ -672,3 +672,297 @@ async fn the_brain_hears_each_step_sent_with_the_password_masked() {
     assert!(sent[0].0 >= 1);
     assert!(sent.windows(2).all(|w| w[0].0 <= w[1].0), "{sent:?}");
 }
+
+/// A monster's blow during the meditation (`exit_interrupted`), before the prompt that follows.
+const INTERRUPTED: &str = "x\r\nYou will exit after a period of silent meditation.\r\n.\r\n..\r\nThe giant rat bites you for 2 damage!\r\nYour meditation has been interrupted - you may not exit now!\r\n";
+
+/// The rest of a log-off from the realm once `x` has gone: the meditation, the menus.
+async fn leave(game: &mut Fake) {
+    game.say(
+        "x\r\nYou will exit after a period of silent meditation.\r\n......\r\n\r\n[MAJORMUD]: ",
+    )
+    .await;
+    for prompt in [
+        "X\r\n\r\nMain Menu\r\nMake your selection (X to exit): ",
+        "X\r\n\r\nAre you sure (Y/N, or R to re-logon)? ",
+    ] {
+        assert_eq!(game.line().await, "X");
+        game.say(prompt).await;
+    }
+    assert_eq!(game.line().await, "Y");
+    game.say("Y\r\n\r\nOk, thanks for calling!\r\n").await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_interrupted_log_off_sends_x_again_at_the_next_prompt() {
+    let mut rig = Rig::new();
+    rig.gw.open(ID).unwrap();
+    let mut game = rig.accept().await;
+    game.log_on().await;
+    rig.states_until(ID, Realm).await;
+    let gw = rig.gw.clone();
+    let closing = tokio::spawn(async move { gw.close(ID).await });
+    assert_eq!(game.line().await, "x");
+    for _ in 0..3 {
+        game.say(INTERRUPTED).await;
+        // Not before the prompt.
+        game.quiet().await;
+        game.say("[HP=31]:").await;
+        assert_eq!(game.line().await, "x");
+    }
+    leave(&mut game).await;
+    drop(game);
+    closing.await.unwrap().unwrap();
+    assert_eq!(rig.gw.state(ID).unwrap(), Closed);
+    assert_eq!(rig.gw.reason(ID).unwrap(), None);
+    assert_eq!(
+        rig.sent(ID),
+        b"Aldric\r********\rM\rE\rx\rx\rx\rx\rX\rX\rY\r"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_log_off_interrupted_every_time_is_dropped_after_twenty_retries_and_says_so() {
+    let mut rig = Rig::new();
+    rig.gw.open(ID).unwrap();
+    let mut game = rig.accept().await;
+    game.log_on().await;
+    rig.states_until(ID, Realm).await;
+    let gw = rig.gw.clone();
+    let closing = tokio::spawn(async move { gw.close(ID).await });
+    // The first `x` and twenty more, each interrupted a few seconds in.
+    for _ in 0..21 {
+        assert_eq!(game.line().await, "x");
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        game.say(INTERRUPTED).await;
+        game.say("[HP=31]:").await;
+    }
+    game.closed().await;
+    closing.await.unwrap().unwrap();
+    assert_eq!(rig.gw.state(ID).unwrap(), Closed);
+    assert_eq!(
+        rig.gw.reason(ID).unwrap().as_deref(),
+        Some("dropped in the realm: the log-off was interrupted every time")
+    );
+    let xs = rig.sent(ID).iter().filter(|&&b| b == b'x').count();
+    assert_eq!(xs, 21);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_log_off_that_times_out_in_the_realm_says_the_character_was_dropped() {
+    let mut rig = Rig::new();
+    rig.gw.open(ID).unwrap();
+    let mut game = rig.accept().await;
+    game.log_on().await;
+    rig.states_until(ID, Realm).await;
+    let started = Instant::now();
+    let gw = rig.gw.clone();
+    let closing = tokio::spawn(async move { gw.close(ID).await });
+    assert_eq!(game.line().await, "x");
+    // A retry does not restart the step's timeout: it runs from the first `x`.
+    tokio::time::sleep(Duration::from_secs(100)).await;
+    game.say(INTERRUPTED).await;
+    game.say("[HP=31]:").await;
+    assert_eq!(game.line().await, "x");
+    game.closed().await;
+    closing.await.unwrap().unwrap();
+    assert_eq!(started.elapsed().as_secs(), 240);
+    assert_eq!(
+        rig.gw.reason(ID).unwrap().as_deref(),
+        Some("dropped in the realm: the log-off timed out")
+    );
+}
+
+/// `serve` with a brain attached over channels, and the stops that drive it.
+struct Served {
+    hub: Hub,
+    stop: mpsc::UnboundedSender<()>,
+    server: tokio::task::JoinHandle<Result<(), wayfarer_gateway::ServerError>>,
+    brain: mpsc::Sender<ToGateway>,
+    heard: mpsc::Receiver<ToClient>,
+}
+
+async fn serve_with_brain(rig: &Rig) -> Served {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let options = ServerOptions {
+        ui_dir: rig.dir.path().join("no-ui-here"),
+    };
+    let (stop, stops) = mpsc::unbounded_channel();
+    let stops = futures_util::stream::unfold(stops, |mut stops| async move {
+        stops.recv().await.map(|()| ((), stops))
+    });
+    let hub = Hub::new(rig.gw.clone(), None);
+    let (brain, mut heard) = hub.connect();
+    brain
+        .send(ToGateway::Hello {
+            protocol: PROTOCOL,
+            client: ClientKind::Brain,
+            token: None,
+        })
+        .await
+        .unwrap();
+    assert!(matches!(heard.recv().await, Some(ToClient::Welcome { .. })));
+    let server = tokio::spawn(serve(listener, hub.clone(), options, stops));
+    Served {
+        hub,
+        stop,
+        server,
+        brain,
+        heard,
+    }
+}
+
+/// The brain's next message that `want` picks.
+async fn hear<T>(heard: &mut mpsc::Receiver<ToClient>, want: impl Fn(ToClient) -> Option<T>) -> T {
+    loop {
+        let msg = tokio::time::timeout(PATIENCE, heard.recv())
+            .await
+            .expect("a message for the brain")
+            .expect("the brain's connection is open");
+        if let Some(t) = want(msg) {
+            return t;
+        }
+    }
+}
+
+fn logging_off(msg: ToClient) -> Option<String> {
+    match msg {
+        ToClient::LoggingOff { session } => Some(session),
+        _ => None,
+    }
+}
+
+fn sent_line(msg: ToClient) -> Option<String> {
+    match msg {
+        ToClient::Sent { text, .. } => Some(text),
+        _ => None,
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn stopping_asks_the_brain_first_and_keeps_it_attached_until_the_log_off_is_over() {
+    let mut rig = Rig::new();
+    rig.gw.open(ID).unwrap();
+    let mut game = rig.accept().await;
+    game.log_on().await;
+    rig.states_until(ID, Realm).await;
+    let mut s = serve_with_brain(&rig).await;
+
+    s.stop.send(()).unwrap();
+    assert_eq!(hear(&mut s.heard, logging_off).await, ID);
+    // Nothing goes to the game until the brain is ready.
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    game.quiet().await;
+    let ready = Instant::now();
+    s.brain
+        .send(ToGateway::ReadyToLeave { session: ID.into() })
+        .await
+        .unwrap();
+    assert_eq!(game.line().await, "x");
+    assert_eq!(ready.elapsed(), Duration::ZERO);
+    // The brain still hears the session while it logs off, the retry too.
+    assert_eq!(hear(&mut s.heard, sent_line).await, "x");
+    game.say(INTERRUPTED).await;
+    game.say("[HP=31]:").await;
+    assert_eq!(game.line().await, "x");
+    assert_eq!(hear(&mut s.heard, sent_line).await, "x");
+    leave(&mut game).await;
+    assert_eq!(hear(&mut s.heard, sent_line).await, "X");
+    drop(game);
+    // Then its connection closes, and the server is done.
+    while tokio::time::timeout(PATIENCE, s.heard.recv())
+        .await
+        .unwrap()
+        .is_some()
+    {}
+    s.server.await.unwrap().unwrap();
+    assert_eq!(rig.gw.state(ID).unwrap(), Closed);
+    assert_eq!(rig.gw.reason(ID).unwrap(), None);
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_log_off_waits_thirty_seconds_for_a_silent_brain_and_not_for_one_that_leaves() {
+    // Silent: `x` goes 30 s after the stop.
+    let mut rig = Rig::new();
+    rig.gw.open(ID).unwrap();
+    let mut game = rig.accept().await;
+    game.log_on().await;
+    rig.states_until(ID, Realm).await;
+    let mut s = serve_with_brain(&rig).await;
+    let started = Instant::now();
+    s.stop.send(()).unwrap();
+    hear(&mut s.heard, logging_off).await;
+    assert_eq!(game.line().await, "x");
+    assert_eq!(started.elapsed().as_secs(), 30);
+    leave(&mut game).await;
+    drop(game);
+    s.server.await.unwrap().unwrap();
+
+    // Gone: `x` goes as soon as the brain's connection ends.
+    let mut rig = Rig::new();
+    rig.gw.open(ID).unwrap();
+    let mut game = rig.accept().await;
+    game.log_on().await;
+    rig.states_until(ID, Realm).await;
+    let mut s = serve_with_brain(&rig).await;
+    s.stop.send(()).unwrap();
+    hear(&mut s.heard, logging_off).await;
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    let left = Instant::now();
+    drop(s.brain);
+    assert_eq!(game.line().await, "x");
+    assert_eq!(left.elapsed(), Duration::ZERO);
+    leave(&mut game).await;
+    drop(game);
+    s.server.await.unwrap().unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn only_sessions_in_the_realm_are_announced_and_a_ui_may_not_answer() {
+    let mut rig = rig(&["kasimir", "brenna"], true, Options::default());
+    rig.gw.open("kasimir").unwrap();
+    let mut kasimir = rig.accept().await;
+    kasimir.log_on().await;
+    rig.states_until("kasimir", Realm).await;
+    // Brenna is not connected: nothing to log off, nothing to ask.
+    let mut s = serve_with_brain(&rig).await;
+
+    let (ui, mut to_ui) = s.hub.connect();
+    ui.send(ToGateway::Hello {
+        protocol: PROTOCOL,
+        client: ClientKind::Ui,
+        token: None,
+    })
+    .await
+    .unwrap();
+    ui.send(ToGateway::ReadyToLeave {
+        session: "kasimir".into(),
+    })
+    .await
+    .unwrap();
+    let refused = hear(&mut to_ui, |msg| match msg {
+        ToClient::Error { message } => Some(message),
+        _ => None,
+    })
+    .await;
+    assert_eq!(refused, "a UI may not send \"ready_to_leave\"");
+
+    s.stop.send(()).unwrap();
+    assert_eq!(hear(&mut s.heard, logging_off).await, "kasimir");
+    // The UI's answer did not count.
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    kasimir.quiet().await;
+    s.brain
+        .send(ToGateway::ReadyToLeave {
+            session: "kasimir".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(kasimir.line().await, "x");
+    leave(&mut kasimir).await;
+    drop(kasimir);
+    while let Some(msg) = s.heard.recv().await {
+        assert_eq!(logging_off(msg), None, "nothing for brenna");
+    }
+    s.server.await.unwrap().unwrap();
+}

@@ -16,32 +16,47 @@ use crate::policy::{self, STOP_BELOW};
 use crate::recover::Recover;
 use crate::walker::Say;
 
-/// Who is in the room, as the game has shown it: the monsters of the last `Also here:`, with
-/// the arrivals, departures and deaths since; and those that attacked the character since.
+/// Who is in the room, as the game has shown it: the monsters and players of the last `Also
+/// here:`, with the arrivals, departures and deaths since; and those that attacked the
+/// character since. A player is an attacker only once a PvP line says so (`pvp`).
 #[derive(Debug, Default)]
 pub(crate) struct Presence {
     pub here: Vec<String>,
     pub attackers: Vec<String>,
-    /// The room being shown: its `Also here:` monsters until its exits come.
-    shown: Option<Vec<String>>,
+    /// The players of the last `Also here:`.
+    players: Vec<String>,
+    /// Players a PvP line showed attacking the character.
+    pvp: Vec<String>,
+    /// The room being shown: its `Also here:` monsters and players until its exits come.
+    shown: Option<(Vec<String>, Vec<String>)>,
 }
 
 impl Presence {
     pub fn event(&mut self, atlas: &Atlas, ev: &GameEvent) {
         match ev {
-            GameEvent::RoomTitle { .. } => self.shown = Some(Vec::new()),
-            GameEvent::AlsoHere { monsters, .. } => match &mut self.shown {
-                Some(shown) => shown.clone_from(monsters),
-                None => self.here.clone_from(monsters),
+            GameEvent::RoomTitle { .. } => self.shown = Some(Default::default()),
+            GameEvent::AlsoHere { monsters, players } => match &mut self.shown {
+                Some(shown) => *shown = (monsters.clone(), players.clone()),
+                None => {
+                    self.here.clone_from(monsters);
+                    self.players.clone_from(players);
+                }
             },
             GameEvent::RoomExits { .. } | GameEvent::RoomDark | GameEvent::Prompt { .. } => {
-                if let Some(shown) = self.shown.take() {
-                    self.here = shown;
+                if let Some((here, players)) = self.shown.take() {
+                    self.here = here;
+                    self.players = players;
                     // A new room, or this one shown again: who attacked is here or gone.
-                    let here = &self.here;
-                    self.attackers.retain(|a| here.contains(a));
+                    let (here, players) = (&self.here, &self.players);
+                    self.pvp.retain(|p| players.contains(p));
+                    let pvp = &self.pvp;
+                    self.attackers
+                        .retain(|a| here.contains(a) || pvp.contains(a));
                 }
             }
+            // A player's blow can read like a monster's: not an attack without a PvP line.
+            GameEvent::AttackedBy { name }
+                if self.is_player(atlas, name) && !self.pvp.contains(name) => {}
             GameEvent::MonsterArrives { name } => self.here.push(name.clone()),
             GameEvent::MonsterLeaves { name } => {
                 remove_first(&mut self.here, |n| n == name);
@@ -66,6 +81,29 @@ impl Presence {
             }
             _ => {}
         }
+    }
+}
+
+impl Presence {
+    /// A PvP line showed `who` attacking the character (`attacks_you` from a player, or
+    /// `pvp_attacked` naming the character).
+    pub fn pvp(&mut self, who: &str) {
+        if !self.pvp.iter().any(|p| p == who) {
+            self.pvp.push(who.to_owned());
+        }
+    }
+
+    /// Whether `name` is a player's: one listed as a player in the room (or that name and
+    /// more: a blow's pattern can take the verb in, `Bob swings`), or a single capitalised
+    /// word no monster is called; never a monster's name.
+    pub fn is_player(&self, atlas: &Atlas, name: &str) -> bool {
+        let listed = |p: &String| {
+            name.strip_prefix(p.as_str())
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with(' '))
+        };
+        let looks = self.players.iter().any(listed)
+            || (!name.contains(' ') && name.starts_with(|c: char| c.is_ascii_uppercase()));
+        looks && atlas.monsters.by_name(name).is_empty()
     }
 }
 
@@ -108,11 +146,13 @@ pub(crate) enum Do {
     Walk(Key),
 }
 
-/// A mode's decision: what to do (nothing, to wait), and the narration.
+/// A mode's decision: what to do (nothing, to wait), and the narration, said as a warning
+/// when `warn`.
 #[derive(Debug)]
 pub(crate) struct Step {
     pub act: Option<Do>,
     pub narration: String,
+    pub warn: bool,
 }
 
 impl Step {
@@ -120,6 +160,7 @@ impl Step {
         Step {
             act: None,
             narration: narration.into(),
+            warn: false,
         }
     }
 
@@ -127,6 +168,7 @@ impl Step {
         Step {
             act: Some(Do::Send(action)),
             narration: narration.into(),
+            warn: false,
         }
     }
 
@@ -134,7 +176,13 @@ impl Step {
         Step {
             act: Some(Do::Walk(to)),
             narration: narration.into(),
+            warn: false,
         }
+    }
+
+    /// The narration is a warning: the mode is doing something its rules advise against.
+    pub fn warning(self) -> Step {
+        Step { warn: true, ..self }
     }
 }
 
@@ -185,8 +233,16 @@ impl Bot {
     }
 
     fn narrate(&mut self, text: String, says: &mut Vec<Say>) {
+        self.narrate_as(text, false, says);
+    }
+
+    fn narrate_as(&mut self, text: String, warn: bool, says: &mut Vec<Say>) {
         if text != self.narration {
-            says.push(Say::Notice(text.clone()));
+            says.push(if warn {
+                Say::Warning(text.clone())
+            } else {
+                Say::Notice(text.clone())
+            });
             self.narration = text;
         }
     }
@@ -342,13 +398,16 @@ impl Bot {
             let step = match mode {
                 BotMode::Recover => self.recover.step(v),
                 BotMode::Fight => self.fight.step(v),
+                BotMode::Idle if self.recover.stranded(v) => {
+                    Step::wait("Rested; could not walk home, waiting here")
+                }
                 BotMode::Idle => Step::wait("Waiting here"),
             };
             let finished = step.act.is_none() && mode == BotMode::Recover && !self.recover.busy();
             if step.act.is_some() {
                 self.acting = Some(mode);
             }
-            self.narrate(step.narration, &mut says);
+            self.narrate_as(step.narration, step.warn, &mut says);
             if !finished {
                 return (step.act, says);
             }

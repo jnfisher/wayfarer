@@ -25,6 +25,9 @@ pub const PRESETS: [(&str, &str); 2] = [
 const STEP_TIMEOUT: Duration = Duration::from_secs(30);
 /// A log-off step's timeout when the script does not give one.
 const LOGOFF_TIMEOUT: Duration = Duration::from_secs(20);
+/// How many times a log-off step is sent again after a `retry_on` text, when the script does
+/// not say.
+const LOGOFF_RETRIES: u32 = 20;
 /// How much recent text a window keeps; prompts are short, the text before them can be long.
 const WINDOW_BYTES: usize = 16 << 10;
 
@@ -76,8 +79,15 @@ pub struct FailureSpec {
 pub struct LogoffSpec {
     pub at: Option<String>,
     pub send: String,
-    /// Seconds to wait for the next step's `at` (or, after the last, for the server to close).
+    /// Seconds to wait for the next step's `at` (or, after the last, for the server to close),
+    /// from the step's first send: its retries included.
     pub timeout: Option<u64>,
+    /// Texts that mean "not yet" (`meditation has been interrupted`): the step is sent again
+    /// at its place's next prompt.
+    #[serde(default)]
+    pub retry_on: Vec<String>,
+    /// How many times the step may be sent again (20 if not given).
+    pub retries: Option<u32>,
 }
 
 impl ScriptSpec {
@@ -154,6 +164,8 @@ pub struct LogoffStep {
     pub at: Option<Pattern>,
     pub send: String,
     pub timeout: Duration,
+    pub retry_on: Vec<Pattern>,
+    pub retries: u32,
 }
 
 /// A checked logon script.
@@ -248,6 +260,12 @@ impl Script {
                     at,
                     send: l.send.clone(),
                     timeout: secs(l.timeout, LOGOFF_TIMEOUT),
+                    retry_on: l
+                        .retry_on
+                        .iter()
+                        .map(|r| Pattern::parse(r))
+                        .collect::<Result<_, _>>()?,
+                    retries: l.retries.unwrap_or(LOGOFF_RETRIES),
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
@@ -471,12 +489,29 @@ impl Tracker {
     }
 }
 
+/// What the log-off runner wants done.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LogoffAction {
+    /// The next step's place showed: send its line. Its timeout runs from here.
+    Send(String),
+    /// The step was answered "not yet" and its place showed again: send it again, retry
+    /// `retry` of `of`. The step's timeout keeps running.
+    Retry { send: String, retry: u32, of: u32 },
+    /// "Not yet" once more with no retries left: the log-off has failed.
+    GiveUp,
+}
+
 /// Runs a script's log-off steps from where the session is.
 #[derive(Debug)]
 pub struct Logoff {
     script: Arc<Script>,
     /// The step sent last.
     sent: usize,
+    /// Its retries so far.
+    retries: u32,
+    /// It was answered "not yet": its place's prompt is awaited to send it again.
+    again: bool,
+    gave_up: bool,
     window: Window,
 }
 
@@ -492,28 +527,77 @@ impl Logoff {
         let logoff = Self {
             script,
             sent: first,
+            retries: 0,
+            again: false,
+            gave_up: false,
             window: Window::default(),
         };
         Some((logoff, send))
     }
 
-    /// Feed decoded text; returns the lines to send, in order.
-    pub fn feed(&mut self, text: &str) -> Vec<String> {
-        self.window.push(text);
-        let mut sends = Vec::new();
-        while let Some(next) = self.script.logoff.get(self.sent + 1) {
-            let at = next
-                .at
-                .as_ref()
-                .expect("Script checks every later step has `at`");
-            let Some(end) = at.first_end(&self.window.text) else {
-                break;
-            };
-            self.window.consume(end);
-            self.sent += 1;
-            sends.push(next.send.clone());
+    /// Feed decoded text; returns what to do, in order. Nothing more after
+    /// [`LogoffAction::GiveUp`].
+    pub fn feed(&mut self, text: &str) -> Vec<LogoffAction> {
+        let mut actions = Vec::new();
+        if self.gave_up {
+            return actions;
         }
-        sends
+        self.window.push(text);
+        loop {
+            let script = Arc::clone(&self.script);
+            let step = &script.logoff[self.sent];
+            let hay = self.window.text.as_str();
+            if self.again {
+                // The step's own place: the realm prompt for the first step.
+                let place = step.at.as_ref().unwrap_or(&script.realm);
+                let Some(end) = place.first_end(hay) else {
+                    break;
+                };
+                self.window.consume(end);
+                self.again = false;
+                self.retries += 1;
+                actions.push(LogoffAction::Retry {
+                    send: step.send.clone(),
+                    retry: self.retries,
+                    of: step.retries,
+                });
+                continue;
+            }
+            let next = script.logoff.get(self.sent + 1).map(|next| {
+                let at = next
+                    .at
+                    .as_ref()
+                    .expect("Script checks every later step has `at`");
+                (at.first_end(hay), next)
+            });
+            let not_yet = step.retry_on.iter().filter_map(|r| r.first_end(hay)).min();
+            match (next, not_yet) {
+                // Whichever came first.
+                (Some((Some(end), next)), n) if n.is_none_or(|n| end < n) => {
+                    self.window.consume(end);
+                    self.sent += 1;
+                    self.retries = 0;
+                    actions.push(LogoffAction::Send(next.send.clone()));
+                }
+                (_, Some(end)) => {
+                    self.window.consume(end);
+                    if self.retries >= step.retries {
+                        self.gave_up = true;
+                        actions.push(LogoffAction::GiveUp);
+                        break;
+                    }
+                    self.again = true;
+                }
+                _ => break,
+            }
+        }
+        actions
+    }
+
+    /// Whether the log-off is still at the realm (its first step), where hanging up drops the
+    /// character in the realm.
+    pub fn in_realm(&self) -> bool {
+        self.script.logoff[self.sent].at.is_none()
     }
 
     /// How long to wait, from the last line sent, for the next step's place (or the close).
@@ -561,7 +645,10 @@ mod tests {
             let s = Script::preset(name).unwrap();
             assert_eq!(s.steps.len(), 4, "{name}");
             assert_eq!(s.logoff.len(), 4, "{name}");
-            assert_eq!(s.logoff[0].timeout, Duration::from_secs(90));
+            assert_eq!(s.logoff[0].timeout, Duration::from_secs(240));
+            assert_eq!(s.logoff[0].retries, 20, "{name}");
+            assert_eq!(s.logoff[0].retry_on.len(), 1, "{name}");
+            assert!(s.logoff[1..].iter().all(|l| l.retry_on.is_empty()));
         }
         assert!(
             Script::preset("nope")
@@ -780,23 +867,35 @@ mod tests {
         assert_eq!(t.feed("[HP=3]:"), Some(Place::Realm));
     }
 
+    fn send(line: &str) -> LogoffAction {
+        LogoffAction::Send(line.to_owned())
+    }
+
+    /// The game's answer to a blow during the meditation (`exit_interrupted`).
+    const INTERRUPTED: &str = "\r\nThe kobold thief stabs you for 3 damage!\r\n...Your meditation has been interrupted - you may not exit now!\r\n";
+
     #[test]
     fn logoff_from_the_realm_and_from_the_menus() {
         let s = preset("mbbsemu");
         let (mut l, first) = Logoff::start(Arc::clone(&s), Place::Realm).unwrap();
         assert_eq!(first, "x");
-        assert_eq!(l.timeout(), Duration::from_secs(90));
+        assert!(l.in_realm());
+        assert_eq!(l.timeout(), Duration::from_secs(240));
         assert!(
             l.feed("You will exit after a period of silent meditation.\r\n....")
                 .is_empty()
         );
-        assert_eq!(l.feed("\r\n[MAJORMUD]: "), ["X"]);
+        assert_eq!(l.feed("\r\n[MAJORMUD]: "), [send("X")]);
+        assert!(!l.in_realm());
         assert_eq!(l.timeout(), Duration::from_secs(20));
         assert_eq!(
             l.feed("Main Menu\r\nMake your selection (X to exit): "),
-            ["X"]
+            [send("X")]
         );
-        assert_eq!(l.feed("Are you sure (Y/N, or R to re-logon)? "), ["Y"]);
+        assert_eq!(
+            l.feed("Are you sure (Y/N, or R to re-logon)? "),
+            [send("Y")]
+        );
         assert_eq!(l.timeout(), Duration::from_secs(10));
         assert!(l.feed("Ok, thanks for calling!").is_empty());
 
@@ -804,10 +903,92 @@ mod tests {
         assert_eq!(first, "X");
         assert_eq!(
             l.feed("Make your selection (X to exit): Are you sure"),
-            ["X", "Y"]
+            [send("X"), send("Y")]
         );
         let (_, first) = Logoff::start(Arc::clone(&s), Place::Menu(3)).unwrap();
         assert_eq!(first, "Y");
+    }
+
+    #[test]
+    fn an_interrupted_meditation_is_tried_again_at_the_next_prompt() {
+        let s = preset("silvermere");
+        let (mut l, _) = Logoff::start(Arc::clone(&s), Place::Realm).unwrap();
+        // The prompt before the interruption does not count; the one after it does.
+        assert!(
+            l.feed("You will exit after a period of silent meditation.\r\n.\r\n[HP=30/30]:")
+                .is_empty()
+        );
+        for retry in 1..=3 {
+            assert!(l.feed(INTERRUPTED).is_empty(), "waits for the prompt");
+            assert_eq!(
+                l.feed("[HP=27/30]:"),
+                [LogoffAction::Retry {
+                    send: "x".into(),
+                    retry,
+                    of: 20
+                }]
+            );
+        }
+        // The interruption and the prompt in one piece of text, split anywhere.
+        let both = format!("{INTERRUPTED}[HP=24/30]: ");
+        assert_eq!(
+            l.feed(&both),
+            [LogoffAction::Retry {
+                send: "x".into(),
+                retry: 4,
+                of: 20
+            }]
+        );
+        assert!(l.in_realm());
+        // Then it goes: the menus as before, the retries forgotten.
+        assert_eq!(
+            l.feed("You will exit after a period of silent meditation.\r\n...\r\n[MAJORMUD]: "),
+            [send("X")]
+        );
+        assert!(
+            l.feed(INTERRUPTED).is_empty(),
+            "only the realm step retries"
+        );
+    }
+
+    #[test]
+    fn a_log_off_interrupted_every_time_gives_up_after_its_retries() {
+        let spec = ScriptSpec::parse(
+            "realm = 'R>'\n[[step]]\nexpect = 'a'\nsend = '1'\n\
+             [[logoff]]\nsend = 'x'\nretry_on = ['not yet', 're:wait \\d']\nretries = 2\n\
+             [[logoff]]\nat = 'M>'\nsend = 'X'\n",
+        )
+        .unwrap();
+        let s = Arc::new(Script::build(None, Some(&spec)).unwrap().unwrap());
+        assert_eq!(s.logoff[0].retries, 2);
+        let (mut l, _) = Logoff::start(s, Place::Realm).unwrap();
+        let retry = |retry| LogoffAction::Retry {
+            send: "x".into(),
+            retry,
+            of: 2,
+        };
+        assert_eq!(l.feed("not yet\r\nR>"), [retry(1)]);
+        assert_eq!(l.feed("wait 5\r\nR>"), [retry(2)]);
+        assert_eq!(l.feed("not yet\r\n"), [LogoffAction::GiveUp]);
+        assert!(l.feed("R> not yet R> M>").is_empty(), "finished");
+        // Without `retries` a step has 20; without `retry_on`, none are needed.
+        let spec = ScriptSpec::parse(
+            "realm = 'R>'\n[[step]]\nexpect = 'a'\nsend = '1'\n\
+             [[logoff]]\nsend = 'x'\nretry_on = ['not yet']\n",
+        )
+        .unwrap();
+        let s = Script::build(None, Some(&spec)).unwrap().unwrap();
+        assert_eq!(s.logoff[0].retries, 20);
+        let bad = ScriptSpec::parse(
+            "realm = 'R>'\n[[step]]\nexpect = 'a'\nsend = '1'\n\
+             [[logoff]]\nsend = 'x'\nretry_on = ['']\n",
+        )
+        .unwrap();
+        assert!(
+            Script::build(None, Some(&bad))
+                .unwrap_err()
+                .contains("empty")
+        );
     }
 
     #[test]

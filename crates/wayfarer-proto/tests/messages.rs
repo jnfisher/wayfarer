@@ -390,6 +390,12 @@ fn to_client() -> Vec<(ToClient, &'static str)> {
             ToClient::BrainLagged { missed: 17 },
             r#"{"type":"brain_lagged","missed":17}"#,
         ),
+        (
+            ToClient::LoggingOff {
+                session: "kasimir".into(),
+            },
+            r#"{"type":"logging_off","session":"kasimir"}"#,
+        ),
     ])
     .collect()
 }
@@ -437,6 +443,12 @@ fn to_gateway() -> Vec<(ToGateway, &'static str)> {
     .into_iter()
     .chain(control_messages())
     .chain(brain_messages())
+    .chain([(
+        ToGateway::ReadyToLeave {
+            session: "kasimir".into(),
+        },
+        r#"{"type":"ready_to_leave","session":"kasimir"}"#,
+    )])
     .collect()
 }
 
@@ -613,6 +625,7 @@ fn families_say_who_may_send_what() {
             | "bot_control" | "loops_request" | "walk_loop" => Family::Control,
             "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
             | "map_view" | "loops" => Family::Brain,
+            "ready_to_leave" => Family::Leaving,
             _ => Family::Gateway,
         };
         assert_eq!(family, want, "{}", msg.type_name());
@@ -623,7 +636,10 @@ fn families_say_who_may_send_what() {
                 assert_ne!(family, Family::Gateway);
                 assert_eq!(relayed.type_name(), name);
             }
-            None => assert_eq!(family, Family::Gateway, "{name}"),
+            None => assert!(
+                matches!(family, Family::Gateway | Family::Leaving),
+                "{name}"
+            ),
         }
     }
     assert!(Family::Gateway.allowed_from(ClientKind::Ui));
@@ -632,6 +648,8 @@ fn families_say_who_may_send_what() {
     assert!(!Family::Control.allowed_from(ClientKind::Brain));
     assert!(Family::Brain.allowed_from(ClientKind::Brain));
     assert!(!Family::Brain.allowed_from(ClientKind::Ui));
+    assert!(Family::Leaving.allowed_from(ClientKind::Brain));
+    assert!(!Family::Leaving.allowed_from(ClientKind::Ui));
 }
 
 #[test]

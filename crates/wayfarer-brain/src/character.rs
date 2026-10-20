@@ -268,6 +268,11 @@ impl Character {
     }
 
     /// Mark the snapshot as reflecting output `seq`.
+    /// The fight lapsed without a word from the game (the session's quiet rule).
+    pub fn combat_lapsed(&mut self) {
+        self.state.in_combat = Some(false);
+    }
+
     pub fn set_updated_seq(&mut self, seq: u64) {
         self.state.updated_seq = Some(seq);
     }

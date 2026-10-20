@@ -79,8 +79,9 @@ systemctl --user enable --now wayfarer
 | stop (logs everyone off) | `systemctl --user stop wayfarer` |
 | restart | `systemctl --user restart wayfarer` |
 
-A stop sends SIGTERM; the gateway logs each character off cleanly (waiting up to 120 s) and
-exits, and `TimeoutStopSec=150` keeps systemd waiting that long. The game punishes dropping a
+A stop sends SIGTERM; the gateway logs each character off cleanly (waiting up to 360 s: a
+character under attack may need many tries) and exits, and `TimeoutStopSec=390` keeps systemd
+waiting that long. The game punishes dropping a
 character in the realm, so don't `kill -9` it.
 
 Then open `http://100.x.y.z:7373` from another machine on the tailnet, enter the token, and

@@ -387,6 +387,14 @@ impl Brain {
                 }
                 out.push(self.brain_info());
             }
+            ToClient::LoggingOff { session } => {
+                tracing::info!(%session, "the gateway is logging the character off");
+                if let Some(s) = self.sessions.get_mut(&session) {
+                    s.logging_off(out);
+                }
+                // C-028 flees first when the character is attacked.
+                out.push(ToGateway::ReadyToLeave { session });
+            }
             ToClient::Error { message } => tracing::warn!("the gateway says: {message}"),
             other => tracing::debug!("ignored: {:?}", other.type_name()),
         }

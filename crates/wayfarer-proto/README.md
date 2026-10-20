@@ -46,6 +46,7 @@ Gateway → client:
 {"type":"sent","session":"kasimir","seq":42,"text":"********"}
 {"type":"brain_state","attached":true}
 {"type":"brain_lagged","missed":17}
+{"type":"logging_off","session":"kasimir"}
 ```
 
 Client → gateway:
@@ -80,3 +81,9 @@ Brain → gateway → UIs (the same JSON both ways):
 ```
 
 The control messages above are relayed to the brain the same way.
+
+Brain → gateway (the answer to `logging_off`, never relayed):
+
+```json
+{"type":"ready_to_leave","session":"kasimir"}
+```

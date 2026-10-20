@@ -27,7 +27,8 @@ pub struct Options {
     pub read_buffer: usize,
     /// Reconnect a lost session with backoff (5 s, 10 s, 30 s, then every 60 s).
     pub reconnect: bool,
-    /// How long [`Gateway::shutdown`] waits for the log-offs before it closes what is left.
+    /// How long [`Gateway::shutdown`] waits for the log-offs before it closes what is left:
+    /// the brain's 30 s to get ready, the realm step's 240 s of retries and the menus.
     pub logoff_patience: Duration,
 }
 
@@ -38,7 +39,7 @@ impl Default for Options {
             subscriber_capacity: 1024,
             read_buffer: 4096,
             reconnect: true,
-            logoff_patience: Duration::from_secs(120),
+            logoff_patience: Duration::from_secs(360),
         }
     }
 }
@@ -246,9 +247,28 @@ impl Gateway {
     }
 
     /// Log every session off, all at once, and wait for them; after
-    /// [`Options::logoff_patience`] (120 s) close what is left at once.
+    /// [`Options::logoff_patience`] (360 s) close what is left at once.
     pub async fn shutdown(&self) {
-        let all = self.each(|gateway, id| async move { gateway.close(&id).await });
+        self.shutdown_after(|_| async {}).await;
+    }
+
+    /// [`Gateway::shutdown`], each session in the realm first waiting for `ready(id)` (the
+    /// brain getting the character ready to leave); the patience covers the wait too.
+    pub async fn shutdown_after<F, Fut>(&self, ready: F)
+    where
+        F: Fn(String) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        let ready = Arc::new(ready);
+        let all = self.each(move |gateway, id| {
+            let ready = Arc::clone(&ready);
+            async move {
+                if gateway.state(&id)? == SessionState::Realm {
+                    ready(id.clone()).await;
+                }
+                gateway.close(&id).await
+            }
+        });
         if tokio::time::timeout(self.inner.logoff_patience, all)
             .await
             .is_err()

@@ -240,9 +240,13 @@ pub(crate) struct Session {
     /// The loop being walked once.
     loop_walk: Option<LoopWalk>,
     /// When the character's own auto-combat last showed (`*Combat Engaged*`, its blows), or
-    /// the brain attached: for how long it has been quiet, since auto-combat can end without a
-    /// word (`kb/pitfalls.md` 42).
+    /// the brain attached, or it got up after being knocked down: for how long it has been
+    /// quiet, since auto-combat can end without a word (`kb/pitfalls.md` 42).
     last_combat: Instant,
+    /// Knocked down (`smashed_you`) and not up yet (`rises`): no blows, but not quiet either.
+    down: bool,
+    /// The gateway is logging the character off (`logging_off`): nothing more is sent.
+    leaving: bool,
 }
 
 /// The events of the character's own auto-combat: its engaging and its blows, hits, misses,
@@ -282,6 +286,8 @@ impl Session {
             loops: HashMap::new(),
             loop_walk: None,
             last_combat: now,
+            down: false,
+            leaving: false,
             id: info.id.clone(),
             state: info.state,
             parser: Parser::new(registry.clone()),
@@ -309,6 +315,8 @@ impl Session {
         self.last_sent = now;
         self.buffer.clear();
         self.last_combat = now;
+        self.down = false;
+        self.leaving = false;
         // An answer to the action in flight may have gone by unseen.
         self.cancel(out);
         let next = self.walker.abandon("the brain re-attached");
@@ -349,6 +357,8 @@ impl Session {
         self.state = state;
         if state != SessionState::Realm {
             self.synced = false;
+            self.leaving = false;
+            self.down = false;
             // Nothing in flight will be answered now.
             self.cancel(out);
             let says = self.bot.stop("the session left the realm", true);
@@ -487,6 +497,18 @@ impl Session {
             if OWN_COMBAT.contains(&ev.name.as_str()) {
                 self.last_combat = now;
             }
+            match ev.name.as_str() {
+                "smashed_you" => self.down = true,
+                // `Slightly dazed you get back onto your feet.`: the quiet clock starts again.
+                "rises" if ev.text("who").is_none_or(str::is_empty) => {
+                    self.down = false;
+                    self.last_combat = now;
+                }
+                _ => {}
+            }
+            if let Some(who) = self.pvp_attacker(ev) {
+                self.presence.pvp(&who);
+            }
             if let Some(atlas) = &self.atlas {
                 self.presence.event(atlas, &typed);
                 let says = self.bot.event(&typed, now);
@@ -524,6 +546,44 @@ impl Session {
                 idle: typed,
             };
         }
+    }
+
+    /// The player a PvP line shows attacking the character: `X moves to attack you!` from a
+    /// player, or `X just attacked <the character>!`.
+    fn pvp_attacker(&self, ev: &Event) -> Option<String> {
+        let who = ev.text("who")?.trim();
+        let me = self.character.state().name.as_deref().unwrap_or_default();
+        let first = me.split_whitespace().next().unwrap_or_default();
+        let attacked = match ev.name.as_str() {
+            "attacks_you" => true,
+            // `v2` is the other way round: `X just dodged an attack from <victim>.`
+            "pvp_attacked" => ["v1", "v3"].iter().any(|v| {
+                ev.text(v)
+                    .is_some_and(|v| !first.is_empty() && v.trim() == first)
+            }),
+            _ => false,
+        };
+        let player = !who.contains(' ') && who.starts_with(|c: char| c.is_ascii_uppercase());
+        (attacked && player).then(|| who.to_owned())
+    }
+
+    /// `logging_off`: the gateway is about to log the character off. The bot stops, a walk
+    /// stops after the move in flight, an action not sent yet is dropped, and nothing more
+    /// goes to the game (a re-sync included) while the session is in the realm. The caller
+    /// answers `ready_to_leave`.
+    pub fn logging_off(&mut self, out: &mut Vec<ToGateway>) {
+        self.leaving = true;
+        let says = self.bot.stop("the gateway is logging off", false);
+        self.say(says, out);
+        self.bot_held(out);
+        if self.walker.walking() {
+            self.stop_walk("the gateway is logging off", out);
+        }
+        if self.executor.in_flight().is_none() {
+            self.cancel(out);
+        }
+        self.resync = Resync::Off;
+        self.flush_views(out);
     }
 
     /// A line went to the game (the gateway's `sent`).
@@ -970,13 +1030,16 @@ impl Session {
     /// before either (which the executor's guard takes as engaged).
     fn combat(&self, now: Instant) -> Option<bool> {
         let c = self.character.state();
-        if c.in_combat == Some(false)
-            || c.resting == Some(true)
-            || now >= self.last_combat + COMBAT_QUIET
-        {
+        if c.in_combat == Some(false) || c.resting == Some(true) || self.quiet(now) {
             return Some(false);
         }
         c.in_combat
+    }
+
+    /// The character's own auto-combat has been quiet for [`COMBAT_QUIET`]; knocked down is
+    /// never quiet (its blows stop until it rises).
+    fn quiet(&self, now: Instant) -> bool {
+        !self.down && now >= self.last_combat + COMBAT_QUIET
     }
 
     /// The bot decides, if it is running and the game is at a prompt with nothing in flight.
@@ -1118,6 +1181,7 @@ impl Session {
         self.bot_tick(now, out);
         if self.state == SessionState::Realm
             && self.live()
+            && !self.leaving
             && self.at_prompt
             && !matches!(self.resync, Resync::Waiting { .. })
             && let Some(cmd) = self.executor.take_ready(now)
@@ -1196,7 +1260,7 @@ impl Session {
 
     /// When [`Session::step`] next has something to do, if a timer must wake it.
     pub fn deadline(&self) -> Option<Instant> {
-        if self.state != SessionState::Realm || !self.live() {
+        if self.state != SessionState::Realm || !self.live() || self.leaving {
             return None;
         }
         let resync = match self.resync {
@@ -1210,22 +1274,30 @@ impl Session {
         // The bot decides again when the game has been quiet long enough for a fight to have
         // lapsed, or when a wait of Recover's ends.
         let now = Instant::now();
-        let bot = [Some(self.last_combat + COMBAT_QUIET), self.bot.wake()]
+        let lapse = (!self.down).then_some(self.last_combat + COMBAT_QUIET);
+        let bot = [lapse, self.bot.wake()]
             .into_iter()
             .flatten()
             .filter(|&t| t > now && self.bot.running() && !self.executor.busy());
+        // The snapshot's `in_combat` goes false when the fight lapses.
+        let engaged = lapse.filter(|&t| t > now && self.character.state().in_combat == Some(true));
         resync
             .into_iter()
             .chain(self.executor.deadline())
             .chain(bot)
+            .chain(engaged)
             .min()
     }
 
     /// Move the executor and the re-sync on: an action whose time ran out, the next re-sync
     /// command if its moment has come, an answer that has not come.
     pub fn step(&mut self, now: Instant, out: &mut Vec<ToGateway>) -> Progress {
-        if self.state != SessionState::Realm || !self.live() {
+        if self.state != SessionState::Realm || !self.live() || self.leaving {
             return Progress::None;
+        }
+        if self.character.state().in_combat == Some(true) && self.quiet(now) {
+            tracing::debug!(session = %self.id, "the fight lapsed: quiet for {COMBAT_QUIET:?}");
+            self.character.combat_lapsed();
         }
         if let Resync::Waiting {
             step,

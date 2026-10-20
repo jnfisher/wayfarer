@@ -41,7 +41,11 @@ retry = true
 
 [[logoff]]
 send = "x"
-timeout = 90 # the character meditates silently before it leaves
+# A blow during the six-tick meditation interrupts it (`kb/recovery.md` "Leaving the realm"):
+# `x` again at the next prompt, up to `retries` times. The timeout covers them all.
+retry_on = ["meditation has been interrupted"]
+retries = 20
+timeout = 240
 
 [[logoff]]
 at = "[MAJORMUD]:"
