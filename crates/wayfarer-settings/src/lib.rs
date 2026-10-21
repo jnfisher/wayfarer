@@ -362,13 +362,16 @@ impl std::error::Error for FileError {}
 /// below it (the class and style presets, then the defaults).
 pub fn starter_toml(scope: &str) -> String {
     let mut out = format!(
-        "# Settings for {scope}. Every line is commented out: uncomment one to change it.\n\
+        "# Settings for {scope}. Every setting is commented out: remove the `# ` before one to\n\
+         # change it (the [group] lines are already live).\n\
          # What is not set here comes from the layers below (character > server > settings.toml\n\
          # > class and style presets > defaults). `wayfarer settings` shows each value and where it\n\
          # came from. Restart the brain after editing.\n"
     );
     for group in [Group::Health, Group::Movement, Group::Bot, Group::Spells] {
-        out.push_str(&format!("\n# [{}]\n", group.table()));
+        // The header is live (an empty table sets nothing), so an uncommented line under it is
+        // in the right table.
+        out.push_str(&format!("\n[{}]\n", group.table()));
         for s in CATALOGUE.iter().filter(|s| s.group == group) {
             let name = s.key.split_once('.').map_or(s.key, |(_, n)| n);
             let range = match s.kind {
@@ -1058,9 +1061,7 @@ mod tests {
         }
         assert!(Overrides::parse(&text).unwrap().is_empty());
         // Uncommented, a line works.
-        let on = text
-            .replace("# [spells]", "[spells]")
-            .replace("# heal = \"auto\"", "heal = \"off\"");
+        let on = text.replace("# heal = \"auto\"", "heal = \"off\"");
         assert_eq!(
             Overrides::parse(&on).unwrap().get("spells.heal"),
             Some(Value::Choice("off"))
