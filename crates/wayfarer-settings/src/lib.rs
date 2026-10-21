@@ -61,6 +61,7 @@ pub enum Group {
     Health,
     Movement,
     Bot,
+    Spells,
 }
 
 impl Group {
@@ -70,6 +71,7 @@ impl Group {
             Group::Health => "health",
             Group::Movement => "movement",
             Group::Bot => "bot",
+            Group::Spells => "spells",
         }
     }
 }
@@ -193,6 +195,72 @@ pub const CATALOGUE: &[Setting] = &[
         unit: "seconds",
         tier: Tier::Advanced,
         group: Group::Bot,
+        megamud: None,
+    },
+    Setting {
+        key: "health.rest_mana_below",
+        label: "Rest for mana below",
+        help: "A caster with attack spells rests between fights when mana is below this per cent of the maximum (never in a room that spawns monsters, and not before it has finished with the HP).",
+        kind: Kind::Int { min: 0, max: 90 },
+        default: Value::Int(30),
+        unit: "%",
+        tier: Tier::Essential,
+        group: Group::Health,
+        megamud: Some("Mana Rest If Below"),
+    },
+    Setting {
+        key: "health.rest_mana_until",
+        label: "Rest for mana until",
+        help: "Keep resting until mana is back to this per cent of the maximum.",
+        kind: Kind::Int { min: 20, max: 100 },
+        default: Value::Int(90),
+        unit: "%",
+        tier: Tier::Essential,
+        group: Group::Health,
+        megamud: Some("Mana Rest Until"),
+    },
+    Setting {
+        key: "spells.attack",
+        label: "Attack spells",
+        help: "Auto: a caster fights with its best attack spell it can pay for, and with weapons when the mana is short. Off: weapons only.",
+        kind: Kind::Choice(&["auto", "off"]),
+        default: Value::Choice("auto"),
+        unit: "",
+        tier: Tier::Essential,
+        group: Group::Spells,
+        megamud: None,
+    },
+    Setting {
+        key: "spells.attack_mana_above",
+        label: "Cast attack spells while mana is above",
+        help: "Below this per cent of the maximum mana a fight is fought with weapons, keeping what is left for healing.",
+        kind: Kind::Int { min: 0, max: 90 },
+        default: Value::Int(15),
+        unit: "%",
+        tier: Tier::Advanced,
+        group: Group::Spells,
+        megamud: None,
+    },
+    Setting {
+        key: "spells.heal",
+        label: "Healing spells",
+        help: "Auto: a character with a healing spell casts it on itself between fights, before it rests, and in a fight below the line next. Off: it only rests.",
+        kind: Kind::Choice(&["auto", "off"]),
+        default: Value::Choice("auto"),
+        unit: "",
+        tier: Tier::Essential,
+        group: Group::Spells,
+        megamud: None,
+    },
+    Setting {
+        key: "spells.heal_in_combat_below_hp",
+        label: "Heal in a fight below",
+        help: "In a fight, cast a healing spell when HP is below this per cent of the maximum. Casting ends the swing for that round, so keep it close to the flee line; below the flee line it never happens, since fleeing comes first.",
+        kind: Kind::Int { min: 10, max: 90 },
+        default: Value::Int(50),
+        unit: "%",
+        tier: Tier::Advanced,
+        group: Group::Spells,
         megamud: None,
     },
 ];
@@ -530,7 +598,7 @@ impl Overrides {
     /// The file text: only these values, grouped, with the label as a comment.
     pub fn to_toml(&self) -> String {
         let mut out = String::new();
-        for group in [Group::Health, Group::Movement, Group::Bot] {
+        for group in [Group::Health, Group::Movement, Group::Bot, Group::Spells] {
             let mut rows = CATALOGUE
                 .iter()
                 .filter(|s| s.group == group)
