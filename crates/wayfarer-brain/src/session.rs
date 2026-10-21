@@ -1138,7 +1138,10 @@ impl Session {
             self.send_straight(text, out);
             return;
         }
-        let kind = classify(&text).kind;
+        let mut kind = classify(&text).kind;
+        if kind == Kind::Unknown && self.is_chat(&text) {
+            kind = Kind::Talk;
+        }
         tracing::info!(session = %self.id, %text, ?kind, force, "typed beside the bot");
         let line = TypedLine {
             text,
@@ -1158,6 +1161,16 @@ impl Session {
         self.typed.push_back(line);
         self.drive(now, out);
         self.flush_views(out);
+    }
+
+    /// A line the game's parser does not take (`heya`) that cannot be a Text exit's phrase from
+    /// where the character is: the position is sure and no exit of the room is taken by it.
+    /// Such a line is talk to the room, not an act, so it pauses nothing. With the position in
+    /// doubt it may be an exit's phrase, so it stays an act.
+    fn is_chat(&self, text: &str) -> bool {
+        self.atlas.as_ref().is_some_and(|atlas| {
+            self.position.belief.certain() && !self.position.is_move(atlas, text)
+        })
     }
 
     /// Not sent: an attack while combat is engaged (or not known to be over) would restart the

@@ -79,6 +79,26 @@ async fn talk_goes_at_the_next_prompt_and_the_bot_keeps_fighting() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_line_that_is_no_command_and_no_exit_phrase_is_talk_and_pauses_nothing() {
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 35).await;
+    g.narrated("Waiting here").await;
+    g.expect("heya", at_hp(&arena(&[], 35), 35));
+    g.user_input("heya", false).await;
+    g.idle(Duration::from_secs(5)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "heya"]);
+    let said = notices(&seen);
+    assert!(
+        !said
+            .iter()
+            .any(|n| n.contains("took over") || n.starts_with("Paused")),
+        "{said:?}"
+    );
+    assert_eq!(bot(&seen).state, BotState::Running);
+}
+
+#[tokio::test(start_paused = true)]
 async fn talk_typed_while_the_bots_action_is_in_flight_goes_after_its_answer() {
     let (mut g, run) = in_arena(&["large giant rat"]).await;
     start(&mut g, &["large giant rat"], 35).await;
