@@ -271,6 +271,22 @@ can watch the route, and runs one ("Running a loop", below).
   kill plus the hours; a boss it never saw die "should be up". It is a guess, since other
   players kill bosses too, and information only: a loop does not wait for a boss or plan
   around one, it walks through the room and fights what is there.
+- **Custom loops.** A loop the player makes from another: a name and the stops in order, kept in
+  the store (`custom_loops`, schema version 4) and listed in `loops` as `custom` for the
+  areas they have a stop in. `save_loop {name, base?, stops}` makes or changes one (the id is
+  `custom:` and a slug of the name, so the same name again replaces it; every room must exist,
+  1 to 300 stops); `delete_loop {id}` forgets one. `run_loop` and `walk_loop` take its id like
+  any other, and run it like a generated loop: the nearest ticked stop first, then round the
+  stops in the order saved, legs routed by the router. The hidden exits of every verified
+  MegaMud path are ones the loop's traveller searches for, so a stop behind one is reached (a
+  stop no route reaches is passed by each round, as in "Running a loop"). A stop need not
+  spawn anything; a boss's lair shows `bosses` ("Boss status" above). The path in the list is the
+  route the loop would take, stop to stop and back. The web UI makes one from the picked loop
+  (a name, and rooms found in the go box put in after a stop), and the live check does the
+  same (`--save-as NAME --add-stop MAP:ROOM@N`, `tests/live/README.md`). Example: Bandit Keep's
+  stops with Leo the Quick's Elaborate Bedroom (9:870, 15 steps and seven doors beyond the
+  Living Quarters, behind the hidden exit west of 9:819 that `Hkepleoq.mp` searches) put in
+  after the last Living Quarters stop: "Hidden Keep with Leo the Quick".
 
 `walk_loop {session, id}` walks a loop once (a generated loop's id, or a MegaMud loop's file):
 a `walk_to` to its stop nearest the
@@ -619,6 +635,7 @@ nothing after a restart).
 | `bot_state` | Per session: the bot's state (`stopped`, `running`, `paused`), its home room, the loop it runs (`loop_id`, the stops as they were when it started, the stop it is at, the stops to skip; Task mode fills these), why it is paused, when it was saved |
 | `monster_rules` | Per session: the monster rules the session learned and the player set, each with its pattern, rule, source and when it was made (schema version 2) |
 | `boss_kills` | Per session and boss: when the character last killed it (schema version 3), for "should be up" |
+| `custom_loops` | The loops the player made: id, name, the stops in order, the loop it was made from (schema version 4) |
 | `runs` | Per session: each run, from Start to Stop or a death, and its loop |
 | `events` | Per run: kills (the monster and the exp it gave), exp gained with no kill, deaths, flees, rests and level-ups, each with the time and the room |
 | `samples` | Per run: the character's exp and HP, once a minute |

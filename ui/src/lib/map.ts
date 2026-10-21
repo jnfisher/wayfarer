@@ -195,6 +195,31 @@ export function describeRoom(view: MapView, room: MapRoom): string[] {
   return lines;
 }
 
+/** A room staged to go into a loop the player is making, and the stop it goes after. */
+export interface StagedStop {
+  map: number;
+  room: number;
+  name: string;
+  /** After the loop's stop this many (1-based, as listed; 0 puts it first); the end when null. */
+  after: number | null;
+}
+
+/**
+ * The loop's stops with the staged rooms put in, as `save_loop` takes them. Each goes after the
+ * stop it names, counted in the loop as listed, so adding one does not shift another; several
+ * after the same stop keep their order; a number past the end, or none, is the end.
+ */
+export function insertStops(base: RoomKey[], adds: StagedStop[]): RoomKey[] {
+  const key = (s: StagedStop): RoomKey => ({ map: s.map, room: s.room });
+  const after = (n: number) => adds.filter((a) => a.after === n).map(key);
+  const out: RoomKey[] = after(0);
+  base.forEach((stop, i) => {
+    out.push({ map: stop.map, room: stop.room }, ...after(i + 1));
+  });
+  out.push(...adds.filter((a) => a.after === null || a.after > base.length).map(key));
+  return out;
+}
+
 /** A generated loop's size: `3 stops, 4 steps, 1 door`. */
 export function loopText(l: GeneratedLoop): string {
   const n = (k: number, one: string) => `${k} ${one}${k === 1 ? "" : "s"}`;

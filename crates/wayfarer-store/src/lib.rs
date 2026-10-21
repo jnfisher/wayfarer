@@ -83,18 +83,27 @@ const MIGRATIONS: &[&str] = &[
          killed_at INTEGER NOT NULL,
          PRIMARY KEY (session, monster)
      );",
+    // 4: loops the player made (custom loops): a name and the stops in order.
+    "CREATE TABLE custom_loops (
+         id TEXT PRIMARY KEY,
+         name TEXT NOT NULL,
+         stops TEXT NOT NULL,
+         based_on TEXT,
+         updated_at INTEGER NOT NULL
+     );",
 ];
 
 /// The schema version this build writes.
 pub const SCHEMA_VERSION: u32 = MIGRATIONS.len() as u32;
 
-const TABLES: [&str; 6] = [
+const TABLES: [&str; 7] = [
     "bot_state",
     "runs",
     "events",
     "samples",
     "monster_rules",
     "boss_kills",
+    "custom_loops",
 ];
 
 #[derive(Debug)]
@@ -249,6 +258,16 @@ pub struct RuleRecord {
     pub source: String,
     /// When it was made, Unix seconds.
     pub at: i64,
+}
+
+/// A loop the player made: the stops in order, and the loop it was made from, if any.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomLoop {
+    /// `custom:` and a slug of the name: what `run_loop` names it by.
+    pub id: String,
+    pub name: String,
+    pub stops: Vec<Key>,
+    pub based_on: Option<String>,
 }
 
 /// What a run's events count.
@@ -494,6 +513,62 @@ impl Store {
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Keep a custom loop, replacing the one with its id.
+    pub fn save_custom_loop(&self, l: &CustomLoop, at: i64) -> Result<()> {
+        let stops: Vec<String> = l.stops.iter().map(|(m, r)| format!("[{m},{r}]")).collect();
+        self.conn.execute(
+            "INSERT OR REPLACE INTO custom_loops (id, name, stops, based_on, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                l.id,
+                l.name,
+                format!("[{}]", stops.join(",")),
+                l.based_on,
+                at
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// The custom loops, by name.
+    pub fn custom_loops(&self) -> Result<Vec<CustomLoop>> {
+        let mut q = self
+            .conn
+            .prepare("SELECT id, name, stops, based_on FROM custom_loops ORDER BY name, id")?;
+        let rows = q.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, Option<String>>(3)?,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, name, stops, based_on) = row?;
+            let flat = ints(&stops)?;
+            out.push(CustomLoop {
+                id,
+                name,
+                stops: flat
+                    .chunks(2)
+                    .filter(|c| c.len() == 2)
+                    .map(|c| (c[0], c[1]))
+                    .collect(),
+                based_on,
+            });
+        }
+        Ok(out)
+    }
+
+    /// Forget the custom loop `id`; whether there was one.
+    pub fn delete_custom_loop(&self, id: &str) -> Result<bool> {
+        Ok(self
+            .conn
+            .execute("DELETE FROM custom_loops WHERE id = ?1", params![id])?
+            > 0)
     }
 
     /// A boss (by its lower-case name) the character killed at `at`, unix seconds: kept for the

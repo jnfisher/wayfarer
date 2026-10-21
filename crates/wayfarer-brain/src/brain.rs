@@ -487,6 +487,22 @@ impl Brain {
                 }
                 None => out.push(no_session("run_loop", &session)),
             },
+            ToClient::SaveLoop {
+                session,
+                name,
+                base,
+                stops,
+            } => match self.sessions.get_mut(&session) {
+                Some(s) => {
+                    let stops = stops.into_iter().map(|k| (k.map, k.room)).collect();
+                    s.save_loop(&name, base, stops, out);
+                }
+                None => out.push(no_session("save_loop", &session)),
+            },
+            ToClient::DeleteLoop { session, id } => match self.sessions.get_mut(&session) {
+                Some(s) => s.delete_loop(&id, out),
+                None => out.push(no_session("delete_loop", &session)),
+            },
             ToClient::SetMonsterRule {
                 session,
                 pattern,

@@ -249,6 +249,18 @@ export class GatewayClient {
     return this.send({ type: "run_loop", session, id, skip });
   }
 
+  /** Make or change a custom loop: `name`, and the `stops` in order, made from the loop
+   * `base`. The same name again replaces it. False when not connected or the name is blank. */
+  saveLoop(session: string, name: string, base: string | undefined, stops: RoomKey[]): boolean {
+    const n = name.trim();
+    return n.length > 0 && stops.length > 0 && this.send({ type: "save_loop", session, name: n, base, stops });
+  }
+
+  /** Delete a custom loop (`custom:...`); false when not connected. */
+  deleteLoop(session: string, id: string): boolean {
+    return this.send({ type: "delete_loop", session, id });
+  }
+
   private send(message: ToGateway): boolean {
     if (!this.welcomed || !this.socket || this.socket.readyState !== OPEN) return false;
     this.socket.send(JSON.stringify(message));

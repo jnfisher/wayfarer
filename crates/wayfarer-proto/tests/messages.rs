@@ -261,8 +261,9 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                     runnable: true,
                     reason: None,
                 }],
+                custom: vec![],
             },
-            r#"{"type":"loops","session":"kasimir","anchor":{"map":1,"room":2140},"radius":8,"doors":true,"generated":[{"id":"1:2140:8:doors:0","name":"Newhaven","stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0,"bosses":[]},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1,"bosses":[]}],"path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"doors":1}],"megamud":[{"file":"NARNLOO2.mp","description":"Newhaven Arena","author":"Spork ZSpoon","path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"exact":2,"stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0,"bosses":[]},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1,"bosses":[]}],"runnable":true}]}"#,
+            r#"{"type":"loops","session":"kasimir","anchor":{"map":1,"room":2140},"radius":8,"doors":true,"generated":[{"id":"1:2140:8:doors:0","name":"Newhaven","stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0,"bosses":[]},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1,"bosses":[]}],"path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"doors":1}],"megamud":[{"file":"NARNLOO2.mp","description":"Newhaven Arena","author":"Spork ZSpoon","path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"exact":2,"stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0,"bosses":[]},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1,"bosses":[]}],"runnable":true}],"custom":[]}"#,
         ),
         (
             ToGateway::Stats {
@@ -392,6 +393,22 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
                 session: "kasimir".into(),
             },
             r#"{"type":"stats_request","session":"kasimir"}"#,
+        ),
+        (
+            ToGateway::SaveLoop {
+                session: "kasimir".into(),
+                name: "Hidden Keep with Leo the Quick".into(),
+                base: Some("HKEPLOOP.mp".into()),
+                stops: vec![RoomKey { map: 9, room: 749 }, RoomKey { map: 9, room: 870 }],
+            },
+            r#"{"type":"save_loop","session":"kasimir","name":"Hidden Keep with Leo the Quick","base":"HKEPLOOP.mp","stops":[{"map":9,"room":749},{"map":9,"room":870}]}"#,
+        ),
+        (
+            ToGateway::DeleteLoop {
+                session: "kasimir".into(),
+                id: "custom:hidden-keep-with-leo-the-quick".into(),
+            },
+            r#"{"type":"delete_loop","session":"kasimir","id":"custom:hidden-keep-with-leo-the-quick"}"#,
         ),
         (
             ToGateway::Find {
@@ -807,7 +824,7 @@ fn families_say_who_may_send_what() {
         let want = match msg.type_name() {
             "resync" | "state_request" | "walk_to" | "walk_stop" | "map_request"
             | "bot_control" | "loops_request" | "walk_loop" | "run_loop" | "stats_request"
-            | "find" | "set_monster_rule" => Family::Control,
+            | "save_loop" | "delete_loop" | "find" | "set_monster_rule" => Family::Control,
             "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
             | "map_view" | "loops" | "stats" | "input_held" | "found" => Family::Brain,
             "ready_to_leave" | "arbitrate" => Family::BrainToGateway,

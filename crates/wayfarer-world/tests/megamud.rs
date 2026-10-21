@@ -50,11 +50,12 @@ fn find<'a>(m: &'a Mm, file: &str) -> &'a MmLoop {
 }
 
 #[test]
-fn the_fixture_has_nine_paths_and_no_waypoints() {
+fn the_fixture_has_eleven_paths_and_no_waypoints() {
     let m = mm();
-    assert_eq!(m.pack.paths().unwrap().len(), 9);
+    assert_eq!(m.pack.paths().unwrap().len(), 11);
     assert!(m.pack.waypoints().unwrap().is_empty());
-    // The eight loops all verify; Ftrehkep.mp goes from one place to another.
+    // The eight loops all verify; Ftrehkep.mp, Hkepleoq.mp and Leoqhkep.mp go from one place
+    // to another.
     let files: Vec<&str> = m.loops.iter().map(|l| l.path.file.as_str()).collect();
     assert_eq!(
         files,
@@ -154,11 +155,24 @@ fn the_way_into_the_keep_searches_north_and_climbs_a_tree() {
     let m = mm();
     let k = PathKnowledge::load(&m.pack, &m.graph).unwrap();
     // Every path whose walk reached its end.
-    assert_eq!(k.len(), 9);
+    assert_eq!(k.len(), 11);
     assert_eq!(
         k.hidden_exits("Ftrehkep.mp"),
         BTreeSet::from([(HIDDEN_KEEP, NORTH)])
     );
+    // The way to Leo the Quick's room searches west at 9:819 and back east at 9:864; every
+    // verified path's hidden exits together are what a custom loop's traveller may search for.
+    const WEST: u8 = 3;
+    const EAST: u8 = 2;
+    assert_eq!(
+        k.hidden_exits("Hkepleoq.mp"),
+        BTreeSet::from([((9, 819), WEST)])
+    );
+    assert_eq!(
+        k.hidden_exits("Leoqhkep.mp"),
+        BTreeSet::from([((9, 864), EAST)])
+    );
+    assert!(k.all_hidden_exits().contains(&((9, 819), WEST)));
     let search = k
         .exits("Ftrehkep.mp")
         .iter()

@@ -67,6 +67,27 @@ pub struct Loop {
     pub spawns: usize,
 }
 
+/// Any room as a loop's stop: what it spawns that is worth hunting (nothing, for a room a player
+/// adds to a loop that spawns nothing), and whether it is an arena or a lair. `None` for a
+/// room the world does not have.
+pub fn stop_room(graph: &RoomGraph, monsters: &Monsters, key: Key) -> Option<HuntRoom> {
+    let room = graph.room(key)?;
+    let found: Vec<(i64, String)> = monsters
+        .spawn_pool(room)
+        .into_iter()
+        .filter(|m| huntable(m))
+        .map(|m| (m.number, m.name.clone()))
+        .collect();
+    Some(HuntRoom {
+        key,
+        name: room.name.clone(),
+        monsters: found,
+        is_arena: room.room_type == ROOM_ARENA,
+        is_lair: room.room_type == ROOM_LAIR,
+        regen: room.regen_delay,
+    })
+}
+
 /// The area's hunt rooms, in key order.
 pub fn hunt_rooms(
     graph: &RoomGraph,

@@ -224,3 +224,21 @@ same: 15,700 exp (31.4k/hr, 122 kills, 6 rests, 40 waits for respawns, longest g
 the clock, 15,800 exp (31.6k/hr, 124 kills, 0 rests, 0 waits, longest gap 8.5 s) without. What
 limits exp per hour on that loop is the supply of monsters, not the walk. One run of each is a
 sample, not a verdict: a run starts with every room stocked.
+
+### A custom loop: the Bandit Keep with Leo the Quick
+
+A loop of the player's own, made from Bandit Keep by adding Leo the Quick's Elaborate Bedroom
+(9:870) after the last Living Quarters stop (32). Leo is a boss (240 HP, 10,000 exp, Hit 80, back
+about two hours after a kill); his room is 15 steps and seven doors beyond the Living Quarters,
+behind a hidden exit the walker searches for. A short run, to see that the loop closes:
+
+```sh
+scripts/live-check.sh --scenario soak --char Thorgrim --minutes 15 --loop HKEPLOOP.mp \
+    --anchor 9:750 --save-as "Hidden Keep with Leo the Quick" --add-stop 9:870@32 \
+    --credentials "$WAYFARER_DATA_DIR/credentials.toml"
+```
+
+The loop is kept in the store, so it is in the web UI's loops list under "My loops" afterwards
+(run it from there, or `--loop custom:hidden-keep-with-leo-the-quick`). Watch for: the walk to
+Leo's room ("Searching for the hidden exit west", doors bashed), the fight, the way back out to
+stop 33, and the next lap starting at stop 1. The stop's tooltip says whether Leo should be up.

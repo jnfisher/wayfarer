@@ -2,8 +2,8 @@
 
 use rusqlite::Connection;
 use wayfarer_store::{
-    BotRecord, BotState, Error, Event, EventKind, Note, RuleRecord, SCHEMA_VERSION, Sample, Store,
-    Totals,
+    BotRecord, BotState, CustomLoop, Error, Event, EventKind, Note, RuleRecord, SCHEMA_VERSION,
+    Sample, Store, Totals,
 };
 
 const T0: i64 = 1_792_411_200;
@@ -307,4 +307,48 @@ fn boss_kills_are_kept_per_session_and_the_latest_wins() {
         store.boss_kills("kasimir").unwrap(),
         [("leo the quick".to_owned(), T0 + 9)]
     );
+}
+
+#[test]
+fn custom_loops_round_trip_keep_their_order_and_are_replaced_by_id() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let (store, _) = Store::open(&path).unwrap();
+    assert!(store.custom_loops().unwrap().is_empty());
+    let keep = CustomLoop {
+        id: "custom:hidden-keep-with-leo".into(),
+        name: "Hidden Keep with Leo".into(),
+        stops: vec![(9, 749), (9, 870), (9, 750)],
+        based_on: Some("HKEPLOOP.mp".into()),
+    };
+    let other = CustomLoop {
+        id: "custom:a".into(),
+        name: "A".into(),
+        stops: vec![(1, 2150)],
+        based_on: None,
+    };
+    store.save_custom_loop(&keep, T0).unwrap();
+    store.save_custom_loop(&other, T0).unwrap();
+    drop(store);
+    // Kept across a reopen, by name; the order of the stops is the order saved.
+    let (store, _) = Store::open(&path).unwrap();
+    assert_eq!(store.custom_loops().unwrap(), [other.clone(), keep.clone()]);
+    // The same id again replaces it.
+    let longer = CustomLoop {
+        stops: vec![(9, 749), (9, 870), (9, 750), (9, 751)],
+        ..keep.clone()
+    };
+    store.save_custom_loop(&longer, T0 + 5).unwrap();
+    assert_eq!(store.custom_loops().unwrap(), [other, longer]);
+    assert!(
+        store
+            .delete_custom_loop("custom:hidden-keep-with-leo")
+            .unwrap()
+    );
+    assert!(
+        !store
+            .delete_custom_loop("custom:hidden-keep-with-leo")
+            .unwrap()
+    );
+    assert_eq!(store.custom_loops().unwrap().len(), 1);
 }

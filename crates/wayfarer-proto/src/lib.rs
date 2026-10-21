@@ -755,6 +755,9 @@ pub enum ToClient {
         doors: bool,
         generated: Vec<GeneratedLoop>,
         megamud: Vec<MegaMudLoop>,
+        /// The loops the player made (`save_loop`) with a stop in the area, by name.
+        #[serde(default)]
+        custom: Vec<GeneratedLoop>,
     },
     Stats {
         session: SessionId,
@@ -825,6 +828,18 @@ pub enum ToClient {
     },
     StatsRequest {
         session: SessionId,
+    },
+    SaveLoop {
+        session: SessionId,
+        name: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        base: Option<String>,
+        stops: Vec<RoomKey>,
+    },
+    DeleteLoop {
+        session: SessionId,
+        id: String,
     },
     Find {
         session: SessionId,
@@ -993,6 +1008,20 @@ pub enum ToGateway {
     },
     /// UI → brain: send a `stats` message with the character's last runs.
     StatsRequest { session: SessionId },
+    /// UI → brain: make or change a custom loop: `name` and the `stops` in order (the loop it
+    /// was made from, `base`, is kept for reference). The id is `custom:` and a slug of the name,
+    /// so saving the same name again replaces the loop. The brain answers with a notice, and the
+    /// loop is in the next `loops` message's `custom`. `run_loop` and `walk_loop` take its id.
+    SaveLoop {
+        session: SessionId,
+        name: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        base: Option<String>,
+        stops: Vec<RoomKey>,
+    },
+    /// UI → brain: delete a custom loop (`custom:...`).
+    DeleteLoop { session: SessionId, id: String },
     /// UI → brain: find rooms, well-known places and monsters whose name holds `query` (two
     /// characters or more, any case); the brain answers with `found`.
     Find { session: SessionId, query: String },
@@ -1075,6 +1104,9 @@ pub enum ToGateway {
         doors: bool,
         generated: Vec<GeneratedLoop>,
         megamud: Vec<MegaMudLoop>,
+        /// The loops the player made (`save_loop`) with a stop in the area, by name.
+        #[serde(default)]
+        custom: Vec<GeneratedLoop>,
     },
     /// Brain → UIs: the answer to a `stats_request`: the last ten runs, newest first, and the
     /// newest run's samples.
@@ -1158,6 +1190,8 @@ impl ToClient {
         "walk_loop",
         "run_loop",
         "stats_request",
+        "save_loop",
+        "delete_loop",
         "find",
         "set_monster_rule",
         "sent",
@@ -1200,6 +1234,8 @@ impl ToClient {
             Self::WalkLoop { .. } => "walk_loop",
             Self::RunLoop { .. } => "run_loop",
             Self::StatsRequest { .. } => "stats_request",
+            Self::SaveLoop { .. } => "save_loop",
+            Self::DeleteLoop { .. } => "delete_loop",
             Self::Find { .. } => "find",
             Self::SetMonsterRule { .. } => "set_monster_rule",
             Self::Sent { .. } => "sent",
@@ -1237,6 +1273,8 @@ impl ToClient {
             | Self::WalkLoop { session, .. }
             | Self::RunLoop { session, .. }
             | Self::StatsRequest { session }
+            | Self::SaveLoop { session, .. }
+            | Self::DeleteLoop { session, .. }
             | Self::Sent { session, .. }
             | Self::LoggingOff { session }
             | Self::UserInput { session, .. }
@@ -1282,6 +1320,8 @@ impl ToGateway {
         "walk_loop",
         "run_loop",
         "stats_request",
+        "save_loop",
+        "delete_loop",
         "find",
         "set_monster_rule",
         "event",
@@ -1318,6 +1358,8 @@ impl ToGateway {
             Self::WalkLoop { .. } => "walk_loop",
             Self::RunLoop { .. } => "run_loop",
             Self::StatsRequest { .. } => "stats_request",
+            Self::SaveLoop { .. } => "save_loop",
+            Self::DeleteLoop { .. } => "delete_loop",
             Self::Find { .. } => "find",
             Self::SetMonsterRule { .. } => "set_monster_rule",
             Self::Event { .. } => "event",
@@ -1355,6 +1397,8 @@ impl ToGateway {
             | Self::WalkLoop { .. }
             | Self::RunLoop { .. }
             | Self::StatsRequest { .. }
+            | Self::SaveLoop { .. }
+            | Self::DeleteLoop { .. }
             | Self::Find { .. }
             | Self::SetMonsterRule { .. } => Family::Control,
             Self::Event { .. }
@@ -1407,6 +1451,18 @@ impl ToGateway {
             Self::WalkLoop { session, id } => ToClient::WalkLoop { session, id },
             Self::RunLoop { session, id, skip } => ToClient::RunLoop { session, id, skip },
             Self::StatsRequest { session } => ToClient::StatsRequest { session },
+            Self::SaveLoop {
+                session,
+                name,
+                base,
+                stops,
+            } => ToClient::SaveLoop {
+                session,
+                name,
+                base,
+                stops,
+            },
+            Self::DeleteLoop { session, id } => ToClient::DeleteLoop { session, id },
             Self::Find { session, query } => ToClient::Find { session, query },
             Self::SetMonsterRule {
                 session,
@@ -1469,6 +1525,7 @@ impl ToGateway {
                 doors,
                 generated,
                 megamud,
+                custom,
             } => ToClient::Loops {
                 session,
                 anchor,
@@ -1476,6 +1533,7 @@ impl ToGateway {
                 doors,
                 generated,
                 megamud,
+                custom,
             },
             Self::Stats {
                 session,

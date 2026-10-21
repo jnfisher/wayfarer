@@ -24,6 +24,7 @@ mod brain;
 pub mod character;
 mod clock;
 pub mod commands;
+mod custom;
 pub mod executor;
 mod fight;
 mod flee;

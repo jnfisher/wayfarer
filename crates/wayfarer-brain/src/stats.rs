@@ -9,7 +9,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tokio::time::Instant;
 use wayfarer_proto::{ExpSample, RunStats, RunSummary};
-use wayfarer_store::{BotRecord, BotState, Event, EventKind, Run, Sample, Store, Totals};
+use wayfarer_store::{
+    BotRecord, BotState, CustomLoop, Event, EventKind, Run, Sample, Store, Totals,
+};
 use wayfarer_world::Key;
 
 use crate::clock::{Clock, rfc3339};
@@ -60,6 +62,8 @@ pub(crate) struct Ledger {
     next_sample: Option<Instant>,
     /// Bosses killed since the brain attached, by lower-case name (the store has the rest).
     bosses: std::collections::BTreeMap<String, i64>,
+    /// Custom loops made since the brain attached, by id (the store has the rest).
+    custom: std::collections::BTreeMap<String, CustomLoop>,
 }
 
 impl Ledger {
@@ -74,6 +78,7 @@ impl Ledger {
             stats: None,
             next_sample: None,
             bosses: std::collections::BTreeMap::new(),
+            custom: std::collections::BTreeMap::new(),
         };
         ledger.saved = ledger.with(|s, id| s.bot(id)).flatten();
         ledger
@@ -116,6 +121,40 @@ impl Ledger {
         let at = self.now();
         self.bosses.insert(name.to_lowercase(), at);
         self.with(|s, id| s.boss_killed(id, name, at));
+    }
+
+    /// Keep a custom loop, replacing the one with its id.
+    pub fn save_custom_loop(&mut self, l: CustomLoop) {
+        let at = self.now();
+        self.with(|s, _| s.save_custom_loop(&l, at));
+        self.custom.insert(l.id.clone(), l);
+    }
+
+    /// Forget a custom loop (by id, any case); whether there was one.
+    pub fn delete_custom_loop(&mut self, id: &str) -> bool {
+        let found = self
+            .custom_loops()
+            .into_iter()
+            .find(|c| c.id.eq_ignore_ascii_case(id));
+        let Some(c) = found else { return false };
+        self.custom.remove(&c.id);
+        self.with(|s, _| s.delete_custom_loop(&c.id));
+        true
+    }
+
+    /// The custom loops, by name: the store's, and those made since the brain attached over
+    /// them.
+    pub fn custom_loops(&self) -> Vec<CustomLoop> {
+        let mut loops: std::collections::BTreeMap<String, CustomLoop> = self
+            .with(|s, _| s.custom_loops())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|c| (c.id.clone(), c))
+            .collect();
+        loops.extend(self.custom.clone());
+        let mut loops: Vec<CustomLoop> = loops.into_values().collect();
+        loops.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.id.cmp(&b.id)));
+        loops
     }
 
     /// The bosses the character killed, by lower-case name, with when (unix seconds): the

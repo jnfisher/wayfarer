@@ -105,7 +105,7 @@ fn usage() -> ! {
     eprintln!(
         "usage: wayfarer-live --wayfarer BIN --out DIR [--addr HOST:PORT] [--pool FILE] \
          [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart|flee|typing|soak|goto|flee-from|hidden|rescue]\n\
-         soak: --char NAME --minutes N [--anchor MAP:ROOM] [--radius R] [--skip MAP:ROOM ...] [--loop ID] [--flee-from NAME ...]\n\
+         soak: --char NAME --minutes N [--anchor MAP:ROOM] [--radius R] [--skip MAP:ROOM ...] [--loop ID] [--flee-from NAME ...] [--save-as NAME [--add-stop MAP:ROOM[@N] ...]]\n\
          flee-from: [--flee-from NAME ...]\n\
          (run it through scripts/live-check.sh)"
     );
@@ -164,6 +164,11 @@ fn args() -> Args {
                 .skip
                 .push(soak::parse_room(&value()).unwrap_or_else(|| usage())),
             "--loop" => a.soak.loop_id = Some(value()),
+            "--save-as" => a.soak.save_as = Some(value()),
+            "--add-stop" => a
+                .soak
+                .add_stops
+                .push(soak::parse_add_stop(&value()).unwrap_or_else(|| usage())),
             "--flee-from" => a.flee_from.push(value()),
             _ => usage(),
         }

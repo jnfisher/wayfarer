@@ -16,8 +16,8 @@ use wayfarer_proto::{
     BotAction, CharacterState, Chunk, Found, FoundKind, FoundRoom, GeneratedLoop, LoopStop,
     MegaMudLoop, RoomKey, SessionId, SessionInfo, SessionState, ToGateway,
 };
-use wayfarer_store::{BotRecord, BotState, EventKind, Store};
-use wayfarer_world::loops::{Area, circuits, hunt_rooms, megamud_through};
+use wayfarer_store::{BotRecord, BotState, CustomLoop, EventKind, Store};
+use wayfarer_world::loops::{Area, circuits, hunt_rooms, megamud_through, stop_room};
 use wayfarer_world::{self as world, HuntRoom, Key, MmLoop, PlaceKind, Reach, Traveller, route};
 
 use crate::boss::boss_status;
@@ -25,6 +25,7 @@ use crate::brain::Atlas;
 use crate::character::{Character, merge_patch};
 use crate::clock::Clock;
 use crate::commands::{Kind, classify};
+use crate::custom;
 use crate::executor::{Action, Executor, Guard};
 use crate::modes::{Bot, Do, Presence, View};
 use crate::policy::{COMBAT_QUIET, hp_percent};
@@ -1454,10 +1455,19 @@ impl Session {
             .collect();
         let mut generated = generated.as_ref().clone();
         let mut megamud: Vec<MegaMudLoop> = megamud;
+        // The player's own loops with a stop in the area.
+        let mut custom: Vec<GeneratedLoop> = self
+            .ledger
+            .custom_loops()
+            .iter()
+            .filter(|c| c.stops.iter().any(|k| area.contains_key(k)))
+            .map(|c| self.custom_as_loop(&atlas, c))
+            .collect();
         for stops in generated
             .iter_mut()
             .map(|l| &mut l.stops)
             .chain(megamud.iter_mut().map(|l| &mut l.stops))
+            .chain(custom.iter_mut().map(|l| &mut l.stops))
         {
             self.mark_bosses(&atlas, stops);
         }
@@ -1468,6 +1478,7 @@ impl Session {
             doors,
             generated,
             megamud,
+            custom,
         });
     }
 
@@ -1583,6 +1594,100 @@ impl Session {
         wire
     }
 
+    /// `save_loop`: keep a custom loop, a name and its stops in order (made from `base`, a
+    /// loop's id, if the player started from one). The same name again replaces it.
+    pub fn save_loop(
+        &mut self,
+        name: &str,
+        base: Option<String>,
+        stops: Vec<Key>,
+        out: &mut Vec<ToGateway>,
+    ) {
+        let Some(atlas) = self.atlas.clone() else {
+            out.push(self.warning("save_loop: the brain has no world pack"));
+            return;
+        };
+        let (name, id) = match custom::name_and_id(name) {
+            Ok(x) => x,
+            Err(why) => {
+                out.push(self.warning(&format!("save_loop: {why}")));
+                return;
+            }
+        };
+        if stops.is_empty() || stops.len() > custom::STOPS_MAX {
+            out.push(self.warning(&format!(
+                "save_loop: a loop has 1 to {} stops, not {}",
+                custom::STOPS_MAX,
+                stops.len()
+            )));
+            return;
+        }
+        if let Some(k) = stops.iter().find(|k| !atlas.graph.contains(**k)) {
+            out.push(self.warning(&format!("save_loop: no room {}/{}", k.0, k.1)));
+            return;
+        }
+        let replaced = self
+            .ledger
+            .custom_loops()
+            .iter()
+            .any(|c| c.id.eq_ignore_ascii_case(&id));
+        self.ledger.save_custom_loop(CustomLoop {
+            id: id.clone(),
+            name: name.clone(),
+            stops: stops.clone(),
+            based_on: base,
+        });
+        let n = stops.len();
+        out.push(self.notice(&format!(
+            "{} loop {name} ({n} stop{}): {id}",
+            if replaced { "Changed" } else { "Saved" },
+            if n == 1 { "" } else { "s" }
+        )));
+    }
+
+    /// `delete_loop`: forget a custom loop.
+    pub fn delete_loop(&mut self, id: &str, out: &mut Vec<ToGateway>) {
+        if !custom::is_custom(id) || !self.ledger.delete_custom_loop(id) {
+            out.push(self.warning(&format!("delete_loop: no custom loop {id:?}")));
+            return;
+        }
+        out.push(self.notice(&format!("Deleted loop {id}")));
+    }
+
+    /// A custom loop as the wire has a loop: its stops as the world knows them, and the path
+    /// the loop would take round them (hidden exits of every verified path counted), the first
+    /// stop to the last and back.
+    fn custom_as_loop(&self, atlas: &Atlas, c: &CustomLoop) -> GeneratedLoop {
+        let rooms: Vec<HuntRoom> = c
+            .stops
+            .iter()
+            .filter_map(|&k| stop_room(&atlas.graph, &atlas.monsters, k))
+            .collect();
+        let mut t = self.loop_traveller(true);
+        t.searchable.extend(atlas.knowledge.all_hidden_exits());
+        let keys: Vec<Key> = rooms.iter().map(|h| h.key).collect();
+        let (mut path, mut steps, mut doors) = (Vec::new(), 0u32, 0u32);
+        if let Some(&first) = keys.first() {
+            path.push(room_key(first));
+            for (i, &a) in keys.iter().enumerate() {
+                let b = keys[(i + 1) % keys.len()];
+                for s in route(&atlas.graph, a, b, &t).unwrap_or_default() {
+                    path.push(room_key(s.to));
+                    steps += 1;
+                    doors += u32::from(s.door.is_some());
+                }
+            }
+        }
+        GeneratedLoop {
+            id: c.id.clone(),
+            name: c.name.clone(),
+            stops: rooms.iter().map(loop_stop).collect(),
+            path,
+            steps,
+            doors,
+        }
+    }
+
     /// `walk_loop`: walk a generated loop once, from its stop nearest the character round to
     /// that stop again, a `walk_to` per stop.
     pub fn walk_loop(&mut self, id: &str, now: Instant, out: &mut Vec<ToGateway>) {
@@ -1667,6 +1772,18 @@ impl Session {
         if let Some(l) = mm_loop(atlas, id) {
             self.learn_path(atlas);
             return Some(mm_as_loop(l));
+        }
+        if custom::is_custom(id)
+            && let Some(c) = self
+                .ledger
+                .custom_loops()
+                .into_iter()
+                .find(|c| c.id.eq_ignore_ascii_case(id))
+        {
+            // The hidden exits the verified paths go through are ones to search for (Leo the
+            // Quick's room is behind one).
+            self.learn_path(atlas);
+            return Some(self.custom_as_loop(atlas, &c));
         }
         parse_loop_id(id, &self.position.traveller)
             .filter(|(k, _)| atlas.graph.contains(k.anchor))
