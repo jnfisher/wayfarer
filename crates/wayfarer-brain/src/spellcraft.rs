@@ -34,9 +34,7 @@ impl Spellbook {
 
     #[cfg(test)]
     pub fn from_defs(defs: Vec<SpellDef>) -> Spellbook {
-        let (attacks, heals) = defs
-            .into_iter()
-            .partition(|d| d.kind == SpellKind::Attack);
+        let (attacks, heals) = defs.into_iter().partition(|d| d.kind == SpellKind::Attack);
         Spellbook { attacks, heals }
     }
 

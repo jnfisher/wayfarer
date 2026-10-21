@@ -229,10 +229,7 @@ fn answers(step: usize, ev: &GameEvent) -> bool {
                 | G::StatusStat { .. }
         ),
         1 => matches!(ev, G::ExpScreen { .. }),
-        4 => matches!(
-            ev,
-            G::SpellsHeader | G::SpellRow { .. } | G::SpellsNone
-        ),
+        4 => matches!(ev, G::SpellsHeader | G::SpellRow { .. } | G::SpellsNone),
         2 => matches!(
             ev,
             G::Inventory { .. } | G::Wealth { .. } | G::Encumbrance { .. }

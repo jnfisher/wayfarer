@@ -77,7 +77,8 @@ line when it starts and attaches, one per re-sync. Nothing the player types is l
 ## The re-sync
 
 A re-sync asks the game for what the model may lack: `st`, `exp`, `i`, then `look` (not an
-empty line, which redisplays the room only in statline FULL modes, `kb/screen-parsing.md`).
+empty line, which redisplays the room only in statline FULL modes, `kb/screen-parsing.md`),
+and for a character that casts, `spells` ("Spells", below).
 They are the "talk and look" kind of command (`docs/plan/03-engine.md` section 6).
 
 - **When**: for a session in the realm that has not been re-synced since the brain attached;
@@ -352,7 +353,7 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
   below 60%, rest until 85%, flee below 25%, three rooms of fleeing, a 1.5 s watch for a
   follower, a quiet room within 5 steps (`crates/wayfarer-brain/src/policy.rs`).
 
-Not in this slice: coins and loot, healing spells and healers, bash and the other attacks,
+Not in this slice: coins and loot, healers (spells are in "Spells", below), bash and the other attacks,
 "guard while paused" (paused means nothing is sent, Flee included), and a fight the bot thinks
 it cannot win.
 
@@ -719,6 +720,43 @@ The snapshot's `run` has the current run's numbers, recomputed on each event and
 kill is not thousands an hour), not since the last kill. `stats_request` answers with the last
 ten runs and the newest one's samples ([protocol.md](protocol.md)); the web UI's stats tab
 shows them ([web-ui.md](web-ui.md) "The stats").
+
+## Spells
+
+A character whose class has magery (the pack's class record: Paladin, Cleric, Priest, Missionary,
+Bard, Gypsy, Warlock, Mage, Druid, Ranger, Mystic) gets one more re-sync command, `spells`, after
+`look`. Its rows (level, mana, short name, name) are matched to the pack's spells for the class
+(same magery, magery level at or below the class's): single-target attacks (type 0, target 0, 4
+or 8, ability 17) and self-castable heals (type 3, target 1, 2 or 6, ability 18) are the
+spellbook; buffs, light and area spells are left out, and a Warrior's re-sync is unchanged. The
+mana cost is the game's own, from the screen. The list is read again at every re-sync, so a
+scroll read since is found the next time.
+
+- **Attacks.** Fight sends `<short> <word>` instead of `a <word>` when `spells.attack` is `auto`,
+  the mana is above `spells.attack_mana_above` (15%) and an attack is affordable: the one with the
+  highest average damage at the character's level (`minval + mininc*L/minlvls` to `maxval +
+  maxinc*L/maxlvls`, `L` held to the level cap), the cheaper of two equal. Out of combat the
+  spell engages and auto-combat casts it every round (`kb/spells.md`); when the mana runs short
+  the game falls back to melee itself. A cast the game refuses (`You do not have enough mana`,
+  `You have already cast a spell this round!`) is not the target's fault: the fight uses the
+  weapon for 12 s.
+- **Heals between fights.** Recover casts the cheapest heal that covers the HP that are missing
+  (else the strongest it can pay for) while HP is below `health.rest_below_hp`, one per 6 s (a
+  round is 5 s), at most six per rest, before it walks to a quiet room and rests: a Cleric at
+  57% heals itself instead of waiting several minutes. Resting is still how it reaches
+  `health.rest_until_hp`. `spells.heal` `off` makes it only rest.
+- **Heals in a fight.** Below `spells.heal_in_combat_below_hp` (50%) Fight casts a heal instead
+  of waiting, once per 6 s. The cast ends auto-combat (`*Combat Off*`); Fight looks and engages
+  again. The flee line wins when it is higher (Flee is the higher mode), so the setting only
+  matters above it.
+- **Mana rests.** A character that casts what it has rests when mana is below
+  `health.rest_mana_below` (30%), to `health.rest_mana_until` (90%), on the same rules as an HP
+  rest (a quiet room if one is near, a rest started is finished). With both spell settings `off`
+  mana is ignored.
+- **Not done.** Buffs (blur, bless), light, area spells, cures, healing other players, spells
+  that need a target the bot does not pick (a Thief's backstab is not a spell), and the
+  Witchunter's no-cast rule are later slices. The average damage is the KB's formula; whether
+  one spell beats another against resistances is not modelled.
 
 ## Not yet
 

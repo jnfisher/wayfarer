@@ -633,7 +633,14 @@ fn the_spell_list_and_the_casting_refusals() {
         }
     );
     assert!(
-        matches!(got[2], GameEvent::SpellRow { level: 3, mana: 12, .. }),
+        matches!(
+            got[2],
+            GameEvent::SpellRow {
+                level: 3,
+                mana: 12,
+                ..
+            }
+        ),
         "{got:?}"
     );
     assert_eq!(example("spells_none"), GameEvent::SpellsNone);

@@ -13,9 +13,7 @@ use wayfarer_proto::{
 };
 use wayfarer_settings::{Settings, SettingsDir};
 use wayfarer_store::Store;
-use wayfarer_world::{
-    Finder, Key, MmLoop, Monsters, PathKnowledge, RoomGraph, Spells, WorldPack,
-};
+use wayfarer_world::{Finder, Key, MmLoop, Monsters, PathKnowledge, RoomGraph, Spells, WorldPack};
 
 use crate::clock::{Clock, rfc3339};
 use crate::link::Link;

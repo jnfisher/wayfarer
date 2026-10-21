@@ -64,7 +64,11 @@ impl SpellDef {
             level
         };
         let at = |(base, inc, lvls): (i64, i64, i64)| {
-            if lvls > 0 { base + inc * l / lvls } else { base }
+            if lvls > 0 {
+                base + inc * l / lvls
+            } else {
+                base
+            }
         };
         let hi = at(self.max);
         let lo = at(self.min).min(hi);
