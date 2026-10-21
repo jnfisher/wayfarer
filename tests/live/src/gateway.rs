@@ -287,6 +287,25 @@ impl Gateway {
         .await
     }
 
+    /// `save_loop`: a custom loop `name` of `stops` in order, made from `base`.
+    pub async fn save_loop(
+        &mut self,
+        name: &str,
+        base: Option<&str>,
+        stops: &[(i64, i64)],
+    ) -> Result<(), String> {
+        self.send(ToGateway::SaveLoop {
+            session: SESSION.into(),
+            name: name.into(),
+            base: base.map(str::to_owned),
+            stops: stops
+                .iter()
+                .map(|&(map, room)| wayfarer_proto::RoomKey { map, room })
+                .collect(),
+        })
+        .await
+    }
+
     /// `walk_stop`.
     pub async fn walk_stop(&mut self) -> Result<(), String> {
         self.send(ToGateway::WalkStop {

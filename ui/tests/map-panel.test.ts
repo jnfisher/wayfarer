@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import MapPanel from "../src/MapPanel.svelte";
 import type { FoundMessage } from "../src/lib/goto";
@@ -101,6 +101,7 @@ const loops: Loops = {
       reason: "nothing to hunt on it",
     },
   ],
+  custom: [],
 };
 
 describe("the map panel", () => {
@@ -382,5 +383,60 @@ describe("the go box", () => {
       },
     });
     expect(screen.getByText("one room short of Large Wooden Room (boss: minotaur chieftain)")).toBeTruthy();
+  });
+});
+
+describe("the player's own loops", () => {
+  const mine: Loops = {
+    ...loops,
+    custom: [
+      {
+        id: "custom:gate-plus",
+        name: "Gate plus",
+        stops: [stop(11, "Road"), stop(12, "Lair"), stop(13, "Extra")],
+        path: [
+          { map: 1, room: 11 },
+          { map: 1, room: 12 },
+          { map: 1, room: 13 },
+          { map: 1, room: 11 },
+        ],
+        steps: 3,
+        doors: 0,
+      },
+    ],
+  };
+
+  it("lists them under My loops; run, walk once and delete act on the loop", async () => {
+    const onsaveloop = vi.fn();
+    const ondeleteloop = vi.fn();
+    const { onrunloop, onwalkloop } = mount({ character: here, loops: mine, onsaveloop, ondeleteloop });
+    await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
+    expect(screen.getByText("My loops")).toBeTruthy();
+    const list = within(screen.getByRole("list", { name: "My loops" }));
+    expect(list.getByRole("button", { name: "Gate plus" })).toBeTruthy();
+    await fireEvent.click(list.getByRole("button", { name: "walk once" }));
+    expect(onwalkloop).toHaveBeenCalledWith("aria", "custom:gate-plus");
+    await fireEvent.click(list.getByRole("button", { name: "run" }));
+    expect(onrunloop).toHaveBeenCalledWith("aria", "custom:gate-plus", []);
+    await fireEvent.click(list.getByRole("button", { name: "delete" }));
+    expect(ondeleteloop).toHaveBeenCalledWith("aria", "custom:gate-plus");
+  });
+
+  it("makes a loop from the one picked: needs a name, keeps its stops and says what it was made from", async () => {
+    const onsaveloop = vi.fn();
+    mount({ character: here, loops: mine, onsaveloop });
+    await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
+    // Nothing picked, nothing to make from.
+    expect(screen.queryByRole("textbox", { name: "Name for your loop" })).toBeNull();
+    await fireEvent.click(screen.getByRole("button", { name: "Gate" }));
+    const save = screen.getByRole("button", { name: /save as my loop/ }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    await fireEvent.input(screen.getByRole("textbox", { name: "Name for your loop" }), { target: { value: "Gate again" } });
+    expect(save.disabled).toBe(false);
+    await fireEvent.click(save);
+    expect(onsaveloop).toHaveBeenCalledWith("aria", "Gate again", "1:10:8:doors:0", [
+      { map: 1, room: 11 },
+      { map: 1, room: 12 },
+    ]);
   });
 });

@@ -19,6 +19,12 @@ pub struct SoakArgs {
     /// A generated loop's id or a MegaMud loop's file (`Mwodloop.mp`); the first generated
     /// loop listed when absent.
     pub loop_id: Option<String>,
+    /// Save the loop as a custom loop of this name first (`--save-as`), with the stops of
+    /// `add_stops` added, and run that.
+    pub save_as: Option<String>,
+    /// `--add-stop MAP:ROOM[@N]`: a room added after the loop's stop N (counted in the loop as
+    /// listed; 0 puts it first); at the end when there is no `@N`.
+    pub add_stops: Vec<((i64, i64), Option<usize>)>,
 }
 
 impl Default for SoakArgs {
@@ -29,6 +35,8 @@ impl Default for SoakArgs {
             radius: 8,
             skip: Vec::new(),
             loop_id: None,
+            save_as: None,
+            add_stops: Vec::new(),
         }
     }
 }
@@ -40,6 +48,37 @@ pub const POOL_MAX_MINUTES: u64 = 10;
 pub fn parse_room(text: &str) -> Option<(i64, i64)> {
     let (map, room) = text.split_once(':')?;
     Some((map.trim().parse().ok()?, room.trim().parse().ok()?))
+}
+
+/// `MAP:ROOM` or `MAP:ROOM@N`: a room to add after the loop's stop N (1-based, as listed; 0
+/// puts it first).
+pub fn parse_add_stop(text: &str) -> Option<((i64, i64), Option<usize>)> {
+    match text.split_once('@') {
+        Some((room, after)) => Some((parse_room(room)?, Some(after.trim().parse().ok()?))),
+        None => Some((parse_room(text)?, None)),
+    }
+}
+
+/// `base` with the rooms of `adds` put in: each after the stop it names (counted in `base`, so
+/// the numbers do not shift as others are added), several after the same stop in the order
+/// given, a number past the end or none at the end.
+pub fn insert_stops(base: &[(i64, i64)], adds: &[((i64, i64), Option<usize>)]) -> Vec<(i64, i64)> {
+    let after = |n: usize| {
+        adds.iter()
+            .filter(move |(_, a)| *a == Some(n))
+            .map(|&(k, _)| k)
+    };
+    let mut out: Vec<(i64, i64)> = after(0).collect();
+    for (i, &stop) in base.iter().enumerate() {
+        out.push(stop);
+        out.extend(after(i + 1));
+    }
+    out.extend(
+        adds.iter()
+            .filter(|(_, a)| a.is_none_or(|n| n > base.len()))
+            .map(|&(k, _)| k),
+    );
+    out
 }
 
 /// How long the session has gone without a prompt, the longest stretch so far.
@@ -223,6 +262,21 @@ pub async fn scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
             .map(|(_, _, s)| s.clone())
             .map_err(Clone::clone),
     );
+    // `--save-as`: the picked loop with the rooms of `--add-stop` put in, saved under a name,
+    // and that is what runs.
+    let picked = match (picked, &soak.save_as) {
+        (Ok((base, _, note)), Some(name)) => {
+            let started = Instant::now();
+            let saved = save_custom(gw, &base, name, &soak.add_stops).await;
+            ctx.record(
+                &format!("save_loop {name:?}"),
+                started,
+                &saved.as_ref().map(|(_, n)| n.clone()).map_err(Clone::clone),
+            );
+            saved.map(|(id, n)| (id, name.clone(), format!("{note}; {n}")))
+        }
+        (picked, _) => picked,
+    };
     let mut ok = picked.is_ok();
     let mut tally = Tally::default();
     let mut ended_early = None;
@@ -363,6 +417,61 @@ async fn pick_loop(
         })
     })
     .await?
+}
+
+/// The stops of loop `id` in the last `loops` message, a generated loop's or a MegaMud loop's.
+fn base_stops(gw: &Gateway, id: &str) -> Option<Vec<(i64, i64)>> {
+    let wayfarer_proto::ToClient::Loops {
+        generated, megamud, ..
+    } = gw.loops.as_ref()?
+    else {
+        return None;
+    };
+    let stops = generated
+        .iter()
+        .find(|l| l.id == id)
+        .map(|l| &l.stops)
+        .or_else(|| {
+            megamud
+                .iter()
+                .find(|m| m.file.eq_ignore_ascii_case(id))
+                .map(|m| &m.stops)
+        })?;
+    Some(stops.iter().map(|s| (s.map, s.room)).collect())
+}
+
+/// Save a custom loop `name` from loop `base` with `adds` put in, and the id the brain made
+/// for it (the end of its notice: "Saved loop X (N stops): custom:x") with that notice.
+async fn save_custom(
+    gw: &mut Gateway,
+    base: &str,
+    name: &str,
+    adds: &[((i64, i64), Option<usize>)],
+) -> Result<(String, String), String> {
+    let stops = insert_stops(
+        &base_stops(gw, base).ok_or_else(|| format!("no stops listed for {base}"))?,
+        adds,
+    );
+    let (notices, warnings) = (gw.notices.len(), gw.warnings.len());
+    gw.save_loop(name, Some(base), &stops).await?;
+    let note = gw
+        .wait_for(Duration::from_secs(10), "the loop saved", |g| {
+            if let Some(w) = g.warnings[warnings..].first() {
+                return Some(Err(w.clone()));
+            }
+            g.notices[notices..]
+                .iter()
+                .find(|n| n.starts_with("Saved loop") || n.starts_with("Changed loop"))
+                .map(|n| Ok(n.clone()))
+        })
+        .await??;
+    let id = note
+        .rsplit(": ")
+        .next()
+        .filter(|id| id.starts_with("custom:"))
+        .ok_or_else(|| format!("no loop id in {note:?}"))?
+        .to_owned();
+    Ok((id, note))
 }
 
 /// `(lines, unclassified)` from the snapshot's parse counts.
@@ -527,6 +636,45 @@ mod tests {
 
     fn fields(v: serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
         v.as_object().unwrap().clone()
+    }
+
+    #[test]
+    fn a_room_to_add_names_the_stop_it_goes_after() {
+        assert_eq!(parse_add_stop("9:870"), Some(((9, 870), None)));
+        assert_eq!(parse_add_stop("9:870@32"), Some(((9, 870), Some(32))));
+        assert_eq!(parse_add_stop(" 9:870 @ 0 "), Some(((9, 870), Some(0))));
+        assert_eq!(parse_add_stop("9:870@x"), None);
+        assert_eq!(parse_add_stop("870@3"), None);
+    }
+
+    #[test]
+    fn rooms_are_put_in_after_the_stops_they_name() {
+        let base = [(1, 1), (1, 2), (1, 3)];
+        let x = (9, 870);
+        let y = (9, 871);
+        assert_eq!(insert_stops(&base, &[]), base);
+        assert_eq!(
+            insert_stops(&base, &[(x, Some(2))]),
+            [(1, 1), (1, 2), x, (1, 3)]
+        );
+        assert_eq!(
+            insert_stops(&base, &[(x, Some(0))]),
+            [x, (1, 1), (1, 2), (1, 3)]
+        );
+        assert_eq!(
+            insert_stops(&base, &[(x, None)]),
+            [(1, 1), (1, 2), (1, 3), x]
+        );
+        assert_eq!(
+            insert_stops(&base, &[(x, Some(99))]),
+            [(1, 1), (1, 2), (1, 3), x]
+        );
+        // Counted in the loop as listed, so adding one does not shift the other; two after the
+        // same stop keep the order given.
+        assert_eq!(
+            insert_stops(&base, &[(x, Some(1)), (y, Some(1)), ((9, 872), Some(3))]),
+            [(1, 1), x, y, (1, 2), (1, 3), (9, 872)]
+        );
     }
 
     #[test]

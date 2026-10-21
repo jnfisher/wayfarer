@@ -1,6 +1,6 @@
 # Provenance
 
-Nine files of the 2.0 path set (Winterhawk's, public, from mudinfo.net) from MegaMud's
+Eleven files of the 2.0 path set (Winterhawk's, public, from mudinfo.net) from MegaMud's
 `Default/` directory, for the MegaMud loop tests (card C-036); the rest of MegaMud's data
 stays out of the repository. Copied on 2026-10-20, byte for byte, from `MegaMUD_v2.0_Alpha_-_With_Paths.zip` (SHA-256
 `9e0bab9dee62ee0f8f46f3ee0f041ae41335a293da240901ac375100a473d21d`) in
@@ -22,3 +22,5 @@ paths adds its own subdirectory.
 | `Default/Bosploop.mp` | "Oasis Loop": nothing on it to hunt | `45bd1f0ee94f83e85a2a279668d1d0c56f9fe8e2018fb9dcb8a0aea62ba8b37b` |
 | `Default/CRSTLOOP.mp` | "Mummy Loop": through a level 10-only exit | `ff2612d7c6631cb34051fbec59ca500ede3a83ce95c7beda85abd9faa213bab9` |
 | `Default/VLEFLOOP.mp` | "Giant Efreetis": two hidden exits, `se[search se]` and `nw[search nw]` | `35eeaff6e2cb54cba2247472a3ca04f8434519996c23024bd02167ec120fe7e4` |
+| `Default/Hkepleoq.mp` | Hidden Keep to Leo the Quick's room: `w[search w]` at 9:819 (a hidden exit), then the hallway to the Elaborate Bedroom (custom-loop tests) | `e985d7e87c73d19356c33ea5ab14375c7dd4493b9c1dcbae34d86e78617acaf5` |
+| `Default/Leoqhkep.mp` | Leo the Quick's room back to the Hidden Keep: `e[search e]` at 9:864 | `5eaa5ff3defbe0c655362ff7acfecb317856f71294c42ab0fae20e74624dde31` |

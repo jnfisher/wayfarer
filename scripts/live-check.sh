@@ -4,7 +4,7 @@
 # gateway or the brain; paste the summary into the pull request. Never run in CI. It never starts, stops or resets the server.
 #
 #   scripts/live-check.sh [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart|flee|typing|soak|goto|flee-from|hidden|rescue]
-#   scripts/live-check.sh --scenario soak --char NAME --minutes N [--anchor MAP:ROOM] [--radius R] [--skip MAP:ROOM ...] [--loop ID] [--flee-from NAME ...]
+#   scripts/live-check.sh --scenario soak --char NAME --minutes N [--anchor MAP:ROOM] [--radius R] [--skip MAP:ROOM ...] [--loop ID] [--flee-from NAME ...] [--save-as NAME [--add-stop MAP:ROOM[@N] ...]]
 #   scripts/live-check.sh --scenario flee-from [--flee-from NAME ...]
 #
 # WAYFARER_LIVE_ADDR: the server (default 127.0.0.1:2323).

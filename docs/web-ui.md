@@ -223,6 +223,14 @@ and works nothing out itself.
   large giant rat").
 
   ![The loops list under the map, the Newhaven loop picked: the Arena and two Lairs, numbered, on level -1](images/web-ui-map-loops.png)
+- **Your own loops**: with a loop picked, "Make a loop from X" takes a name and **save as my
+  loop**, which keeps a copy of the loop's stops under that name; to change it first, find a room
+  in the go box (`Alt+G`), press **add to loop** on its row, and give the number of the stop it
+  goes after (empty: the end). Saved loops are listed under **My loops** with **walk once**,
+  **run**, ticks on their stops like any loop, and **delete**. Saving the same name again
+  replaces the loop. Example: pick Bandit Keep, find "leo", add Elaborate Bedroom after the
+  last Living Quarters stop, save as "Hidden Keep with Leo the Quick", run ([brain.md](brain.md)
+  "Custom loops").
 - **Without a brain** the panel says so and draws nothing; with a brain but no known position
   (no world pack, or the room did not match) it says `position unknown: re-sync or look`.
 

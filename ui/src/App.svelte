@@ -469,6 +469,8 @@
             onloops={(id, doors) => client.requestLoops(id, LOOP_RADIUS, doors)}
             onwalkloop={(id, loop) => client.walkLoop(id, loop)}
             onrunloop={(id, loop, skip) => client.runLoop(id, loop, skip)}
+            onsaveloop={(id, name, base, stops) => client.saveLoop(id, name, base, stops)}
+            ondeleteloop={(id, loop) => client.deleteLoop(id, loop)}
           />
         {:else if devPrefs.panel === "stats"}
           <StatsPanel

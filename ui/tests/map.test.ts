@@ -5,6 +5,7 @@ import {
   COLOURS,
   describeRoom,
   drawMap,
+  insertStops,
   loopText,
   minutesText,
   stopTip,
@@ -335,5 +336,26 @@ describe("a loop stop's tooltip", () => {
   it("copes with a brain that sends no bosses", () => {
     const { bosses: _bosses, ...old } = stop;
     expect(stopTip(old as unknown as typeof stop)).toBe("minotaur chieftain; lair, back 5 m after a kill");
+  });
+});
+
+describe("making a loop from another", () => {
+  const base = [k(1), k(2), k(3)];
+  const room = (n: number, after: number | null) => ({ map: 9, room: n, name: `Room ${n}`, after });
+  const at = (...rooms: number[]) => rooms.map((r) => (r < 100 ? k(r) : { map: 9, room: r }));
+
+  it("keeps the loop as it was when nothing is added", () => {
+    expect(insertStops(base, [])).toEqual(base);
+  });
+
+  it("puts a room in after the stop it names, first, or last", () => {
+    expect(insertStops(base, [room(870, 2)])).toEqual(at(1, 2, 870, 3));
+    expect(insertStops(base, [room(870, 0)])).toEqual(at(870, 1, 2, 3));
+    expect(insertStops(base, [room(870, null)])).toEqual(at(1, 2, 3, 870));
+    expect(insertStops(base, [room(870, 99)])).toEqual(at(1, 2, 3, 870));
+  });
+
+  it("counts in the loop as listed, so adding one does not shift another", () => {
+    expect(insertStops(base, [room(870, 1), room(871, 1), room(872, 3)])).toEqual(at(1, 870, 871, 2, 3, 872));
   });
 });

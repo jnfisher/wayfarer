@@ -10,6 +10,7 @@
     DEFAULT_ZOOM,
     describeRoom,
     drawMap,
+    insertStops,
     keyOf,
     loopText,
     roomAt,
@@ -19,6 +20,7 @@
     ZOOMS,
     type Loops,
     type MapView,
+    type StagedStop,
     type ViewState,
   } from "./lib/map";
   import { centreOn, FIND_DEBOUNCE_MS, goRows, MIN_QUERY, moveChoice, type FoundMessage, type GoRow } from "./lib/goto";
@@ -43,6 +45,10 @@
     onwalkloop?: (session: string, id: string) => void;
     /** Run a loop (by id or file), passing by the stops in `skip` (the unticked ones). */
     onrunloop?: (session: string, id: string, skip: RoomKey[]) => void;
+    /** Keep a loop of the player's own: a name, the stops in order, the loop it was made from. */
+    onsaveloop?: (session: string, name: string, base: string | undefined, stops: RoomKey[]) => void;
+    /** Delete a loop of the player's own (`custom:...`). */
+    ondeleteloop?: (session: string, id: string) => void;
     /** The brain's last `found` for it. */
     found?: FoundMessage;
     /** Find rooms, places and monsters by part of a name. */
@@ -62,6 +68,8 @@
     onloops,
     onwalkloop,
     onrunloop,
+    onsaveloop,
+    ondeleteloop,
     found,
     onfind,
     goAsked = 0,
@@ -185,8 +193,36 @@
     if (!id || !loops) return null;
     const g = loops.generated.find((l) => l.id === id);
     if (g) return { path: g.path, stops: g.stops.map((s) => ({ map: s.map, room: s.room })) };
+    const c = (loops.custom ?? []).find((l) => l.id === id);
+    if (c) return { path: c.path, stops: c.stops.map((s) => ({ map: s.map, room: s.room })) };
     const m = loops.megamud.find((l) => `mm:${l.file}` === id);
     return m ? { path: m.path, stops: m.stops.map((s) => ({ map: s.map, room: s.room })) } : null;
+  }
+
+  /** The picked loop as a base for one of the player's own: the id `save_loop` records and its stops. */
+  const base = $derived.by(() => {
+    if (!pickedLoop || !loops) return null;
+    const g = loops.generated.find((l) => l.id === pickedLoop) ?? (loops.custom ?? []).find((l) => l.id === pickedLoop);
+    if (g) return { id: g.id, name: g.name, stops: g.stops };
+    const m = loops.megamud.find((l) => `mm:${l.file}` === pickedLoop);
+    return m ? { id: m.file, name: m.description || m.file, stops: m.stops } : null;
+  });
+
+  // Making a loop from the picked one: its name, and the rooms staged to go in (from the go
+  // box), each after a stop.
+  let newName = $state("");
+  let staged = $state<StagedStop[]>([]);
+
+  function stage(row: GoRow) {
+    const r = row.room;
+    if (!r) return;
+    staged = [...staged, { map: r.map, room: r.room, name: row.text, after: null }];
+  }
+
+  function saveMine() {
+    if (!session || !base) return;
+    onsaveloop?.(session.id, newName, base.id, insertStops(base.stops, staged));
+    staged = [];
   }
   const drawnLoop = $derived(loopShape(hoverLoop ?? pickedLoop));
 
@@ -245,6 +281,7 @@
   /** Pick a loop to keep it drawn (again to let it go), showing the floor of its first stop. */
   function pickLoop(id: string) {
     pickedLoop = pickedLoop === id ? null : id;
+    staged = [];
     const first = loopShape(pickedLoop)?.path[0];
     const r = first && view?.rooms.find((x) => keyOf(x) === keyOf(first) && !x.collides);
     if (r && r.level !== level) {
@@ -461,6 +498,11 @@
                   {/if}
                   {#if chosen === i && row.room}
                     <button class="walk" onclick={() => go(row)}>go</button>
+                    {#if base}
+                      <button class="walk" onclick={() => stage(row)} title={`Put this room in a loop made from ${base.name}`}
+                        >add to loop</button
+                      >
+                    {/if}
                   {/if}
                 </li>
               {/each}
@@ -526,6 +568,61 @@
               <li class="dim">No hunt rooms in reach.</li>
             {/each}
           </ul>
+          {#if (loops.custom ?? []).length > 0}
+            <div class="dim">My loops</div>
+            <ul aria-label="My loops">
+              {#each loops.custom ?? [] as c (c.id)}
+                <li class:on={pickedLoop === c.id}>
+                  <button
+                    class="pick"
+                    aria-pressed={pickedLoop === c.id}
+                    title={stopsTip(c.stops)}
+                    onclick={() => pickLoop(c.id)}
+                    onpointerenter={() => (hoverLoop = c.id)}
+                    onpointerleave={() => (hoverLoop = null)}
+                    onfocus={() => (hoverLoop = c.id)}
+                    onblur={() => (hoverLoop = null)}>{c.name}</button
+                  >
+                  <span class="dim">{loopText(c)}</span>
+                  <button class="walk" onclick={() => session && onwalkloop?.(session.id, c.id)}>walk once</button>
+                  {@render runAndStops(c, pickedLoop === c.id)}
+                  <button class="walk" title="Forget this loop" onclick={() => session && ondeleteloop?.(session.id, c.id)}
+                    >delete</button
+                  >
+                </li>
+              {/each}
+            </ul>
+          {/if}
+          {#if base}
+            <div class="make" aria-label="Make a loop from {base.name}">
+              <span class="dim">Make a loop from {base.name}:</span>
+              <input bind:value={newName} placeholder="name for your loop" aria-label="Name for your loop" spellcheck="false" />
+              {#each staged as s, i (i)}
+                <div class="staged">
+                  + {s.name}
+                  <label>
+                    after stop
+                    <input
+                      type="number"
+                      min="0"
+                      max={base.stops.length}
+                      placeholder="end"
+                      value={s.after ?? ""}
+                      onchange={(e) => {
+                        const v = e.currentTarget.value;
+                        staged = staged.map((x, j) => (j === i ? { ...x, after: v === "" ? null : Number(v) } : x));
+                      }}
+                    />
+                  </label>
+                  <button class="walk" onclick={() => (staged = staged.filter((_, j) => j !== i))}>remove</button>
+                </div>
+              {/each}
+              <button class="run" disabled={newName.trim() === ""} onclick={saveMine}
+                >save as my loop{staged.length > 0 ? ` (+${staged.length})` : ""}</button
+              >
+              <span class="dim">Rooms to add: find them in the go box, then “add to loop”.</span>
+            </div>
+          {/if}
           {#if loops.megamud.length > 0}
             <div class="dim">MegaMud, verified</div>
             <ul aria-label="MegaMud loops">
@@ -699,6 +796,16 @@
   .loops ul.stops {
     flex-basis: 100%;
     padding-left: 2ch;
+  }
+  .loops .make {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5ch 1ch;
+    padding: 2px 0;
+  }
+  .loops .make .staged {
+    flex-basis: 100%;
   }
   .loops ul.stops li.at {
     color: var(--vga-white);

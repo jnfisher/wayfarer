@@ -244,10 +244,23 @@ The brain's log is `NN-loop/brain.log`.
 ```sh
 scripts/live-check.sh --scenario soak --char NAME --minutes N [--anchor MAP:ROOM]
     [--radius R] [--skip MAP:ROOM ...] [--loop ID] [--flee-from NAME ...]
+    [--save-as NAME [--add-stop MAP:ROOM[@N] ...]]
 scripts/live-check.sh --scenario soak --char Waychecka --minutes 3 --anchor 1:2140 \
     --skip 1:2152 --skip 1:2156          # the smoke run: Newhaven, the Lairs unticked
 scripts/live-check.sh --scenario soak --char Waychecka --minutes 3 --anchor 1:2140 \
     --loop NARNLOO2.mp                   # a MegaMud loop: the Arena and the Dungeon Entrance
+```
+
+**A custom loop** (`--save-as NAME`): the loop picked (`--loop`) is saved under NAME as a loop of
+the player's own, with the rooms of `--add-stop MAP:ROOM@N` put in after the loop's stop N (as
+listed, 1-based; 0 first; no `@N` last; several after the same stop in the order given), and
+that is what runs. The step "save_loop" in the table shows the brain's notice. Example, Bandit
+Keep with Leo the Quick's room (9:870) after its last Living Quarters stop (32), a short run:
+
+```sh
+scripts/live-check.sh --scenario soak --char Thorgrim --minutes 15 --loop HKEPLOOP.mp \
+    --anchor 9:750 --save-as "Hidden Keep with Leo the Quick" --add-stop 9:870@32 \
+    --credentials "$HOME/Library/Application Support/wayfarer/credentials.toml"
 ```
 
 A character runs a loop for N minutes and the numbers come out. It is for M3's acceptance run
