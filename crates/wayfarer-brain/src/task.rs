@@ -22,6 +22,7 @@ use std::time::Duration;
 
 use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
+use wayfarer_settings::Settings;
 use wayfarer_world::{ExitType, Key, RoomGraph, Traveller, distances, route};
 
 use crate::brain::Atlas;
@@ -178,6 +179,10 @@ pub(crate) struct Task {
     passed: Vec<Option<Instant>>,
     /// How long a stop passed by is left alone (`bot.passed_by_minutes`).
     passed_for: Duration,
+    /// `bot.leg_tries`, `bot.give_ups` and `bot.stop_quiet_seconds`.
+    leg_tries: u32,
+    give_up_after: u32,
+    stop_quiet: Duration,
     /// Stops passed by in a row since it last reached a stop or killed something.
     give_ups: u32,
     /// Why the bot should stop itself, once [`GIVE_UPS`] stops are passed by in a row.
@@ -198,6 +203,7 @@ impl Task {
     /// the stops `skip`. The stops' names come from the world pack.
     pub fn new(
         atlas: &Atlas,
+        settings: &Settings,
         id: String,
         name: String,
         stops: &[Key],
@@ -220,8 +226,12 @@ impl Task {
             id,
             name,
             passed: vec![None; n],
-            passed_for: u64::try_from(atlas.settings.int(PASSED_BY_MINUTES))
+            passed_for: u64::try_from(settings.int(PASSED_BY_MINUTES))
                 .map_or(PASSED_FOR, |m| Duration::from_secs(m * 60)),
+            leg_tries: u32::try_from(settings.int("bot.leg_tries")).unwrap_or(LEG_TRIES),
+            give_up_after: u32::try_from(settings.int("bot.give_ups")).unwrap_or(GIVE_UPS),
+            stop_quiet: u64::try_from(settings.int("bot.stop_quiet_seconds"))
+                .map_or(STOP_QUIET, Duration::from_secs),
             give_ups: 0,
             gave_up: None,
             index: first.min(n.saturating_sub(1)),
@@ -236,9 +246,10 @@ impl Task {
     }
 
     /// A stored loop, put back after a restart: on the way to its stop again, nothing cleared.
-    pub fn restore(atlas: &Atlas, name: String, t: &TaskLoop) -> Task {
+    pub fn restore(atlas: &Atlas, settings: &Settings, name: String, t: &TaskLoop) -> Task {
         Task::new(
             atlas,
+            settings,
             t.id.clone(),
             name,
             &t.stops,
@@ -370,7 +381,7 @@ impl Task {
     /// quiet time running out.
     pub fn wake(&self, now: Instant) -> Option<Instant> {
         let quiet = match &self.phase {
-            Phase::At { quiet_from, .. } => Some(*quiet_from + STOP_QUIET),
+            Phase::At { quiet_from, .. } => Some(*quiet_from + self.stop_quiet),
             _ => None,
         };
         let respawn = (0..self.stops.len())
@@ -604,7 +615,7 @@ impl Mode for Task {
                 }
                 Phase::Going => {}
             }
-            if self.tries >= LEG_TRIES {
+            if self.tries >= self.leg_tries {
                 let s = &self.stops[self.index];
                 let text = format!(
                     "Stop {} {}: could not get there; passing it by this time round",
@@ -614,10 +625,10 @@ impl Mode for Task {
                 self.passed[self.index] = Some(v.now);
                 self.tries = 0;
                 self.give_ups += 1;
-                if self.give_ups >= GIVE_UPS {
+                if self.give_ups >= self.give_up_after {
                     self.gave_up = Some(format!(
-                        "loop {}: could not get to a stop {GIVE_UPS} times in a row",
-                        self.name
+                        "loop {}: could not get to a stop {} times in a row",
+                        self.name, self.give_up_after
                     ));
                     return Step::wait(text);
                 }
@@ -639,7 +650,7 @@ impl Mode for Task {
                 .here
                 .iter()
                 .any(|n| hostile(&v.atlas.monsters, n));
-            if lingering && v.now < *quiet_from + STOP_QUIET {
+            if lingering && v.now < *quiet_from + self.stop_quiet {
                 return Step::wait(format!(
                     "Stop {}: waiting for it to go quiet",
                     self.nth(self.index)

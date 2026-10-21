@@ -602,23 +602,49 @@ against silvermere's oracle, `tests/fixtures/command-words/`) and sends it as it
 
 ## Settings
 
-`settings.toml` in the data directory (beside `wayfarer.toml`) sets the values the bot used to
-have as constants, for every character. It holds only what differs from the defaults; a missing
-file means the defaults, and a file that is not valid stops the brain, saying what is
-wrong (an unknown key, a number out of its range, the HP lines out of order). `wayfarer brain`
-and `wayfarer serve` read it at start; a change needs a restart of the brain (the bot resumes).
-Declared in `wayfarer-settings` (`docs/plan/04-settings.md`, "Status"):
+The values the bot used to have as constants are settings (`wayfarer-settings`,
+`docs/plan/04-settings.md`, "Status"). They come from files in the data directory (beside
+`wayfarer.toml`), each holding only what differs from the layer below it:
+
+| Layer, least specific first | File |
+|---|---|
+| The default | built in |
+| The style | the preset of `bot.style` (below) |
+| My defaults, all characters | `settings.toml` |
+| This server | `servers/<host>_<port>.toml` (`servers/127.0.0.1_2323.toml` for `127.0.0.1:2323`) |
+| This character | `characters/<character id>.toml` (the id in `wayfarer.toml`) |
+
+A missing file is an empty layer. `settings.toml` is checked when the brain starts, and a bad one
+stops it, saying what is wrong (an unknown key, a number out of its range, a word that is not
+one of the options, the HP lines out of order). A server's or a character's file is read when
+that session is first seen; if it is not valid, that session runs on the defaults and its tile
+shows "Settings not used, the defaults apply: ..." with the file and the reason. A change to a
+file needs a restart of the brain (the bot resumes). `wayfarer settings [--character ID]
+[--server HOST:PORT]` prints the files read and every setting with its value, the layer it
+came from and its label, and checks the files.
+
+```toml
+# characters/thorgrim.toml
+[bot]
+style = "bold"
+[health]
+rest_until_hp = 92
+```
 
 | Key | Default | Range | What |
 |---|---|---|---|
+| `bot.style` | `"balanced"` | careful, balanced, bold | The preset of the three HP lines: Careful 40 / 85 / 98, Balanced 30 / 80 / 95, Bold 20 / 70 / 90 (flee below / rest below / rest until). A line set in a file beats the preset |
 | `health.flee_below_hp` | 30 | 0–90 | Flee takes control below this per cent of the maximum HP |
 | `health.rest_below_hp` | 80 | 10–99 | Recover takes control below this per cent |
 | `health.rest_until_hp` | 95 | 20–100 | Recover rests until this per cent |
 | `movement.search_limit` | 300 | 1–1000 | Searches for a hidden exit before the walker gives it up |
 | `bot.passed_by_minutes` | 5 | 1–120 | How long a loop stop the bot passed by is left alone |
+| `bot.leg_tries` | 3 | 1–10 | Walks to one loop stop that end elsewhere before it is passed by |
+| `bot.give_ups` | 3 | 1–20 | Stops passed by in a row before the bot stops itself |
+| `bot.stop_quiet_seconds` | 20 | 5–120 | Quiet time that clears a stop where only monsters it will not attack are left |
 
-The HP lines must run flee below < rest below <= rest until. `wayfarer brain --flee-below`
-(a test knob) overrides the flee line whatever the file says.
+The HP lines must run flee below < rest below <= rest until. `wayfarer brain --flee-below` (a
+test knob) overrides the flee line whatever the files say.
 
 ## What it keeps
 

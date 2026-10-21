@@ -91,6 +91,20 @@ struct BrainArgs {
 }
 
 #[derive(Args)]
+struct SettingsArgs {
+    /// The gateway's config file; its directory is the data directory (and holds
+    /// `settings.toml`, `servers/` and `characters/`). Default: the user's wayfarer data directory.
+    #[arg(long)]
+    config: Option<PathBuf>,
+    /// The character's id, as in `wayfarer.toml`. Without one: the settings for all characters.
+    #[arg(long)]
+    character: Option<String>,
+    /// The game server as the gateway names it, `host:port` (for `servers/<host>_<port>.toml`).
+    #[arg(long)]
+    server: Option<String>,
+}
+
+#[derive(Args)]
 struct ReplayArgs {
     /// A session's log directory (`logs/<id>/`, with its `output.log`).
     dir: PathBuf,
@@ -133,6 +147,9 @@ enum Command {
     /// Play a recorded session back into the UI (and a brain) as if the game were sending it
     /// (docs/replay.md).
     Replay(ReplayArgs),
+    /// Show the settings in force for a character and where each value comes from; checks
+    /// the settings files (docs/brain.md "Settings").
+    Settings(SettingsArgs),
     /// Build a world pack (SQLite) from the stock-world export, optionally with MegaMud's path set.
     ImportWorld {
         /// The export directory: one `<TABLE>.jsonl.gz` per table and `MANIFEST.json`.
@@ -153,6 +170,18 @@ fn main() -> ExitCode {
     let (name, args, world) = match cli.command {
         Command::Gateway(args) => ("gateway", args, None),
         Command::Serve(args) => ("serve", args.gateway, Some((args.world, args.store))),
+        Command::Settings(args) => {
+            return match show_settings(args) {
+                Ok(text) => {
+                    print!("{text}");
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("wayfarer settings: {e}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Command::Replay(args) => {
             return match run_replay(args) {
                 Ok(()) => ExitCode::SUCCESS,
@@ -198,6 +227,48 @@ fn main() -> ExitCode {
     }
 }
 
+/// `wayfarer settings`: the files read, and every setting with its value, where it came from
+/// and what it is.
+fn show_settings(args: SettingsArgs) -> Result<String, Box<dyn std::error::Error>> {
+    let paths = paths(args.config)?;
+    let dir = wayfarer_settings::SettingsDir::new(
+        paths
+            .credentials
+            .parent()
+            .unwrap_or(std::path::Path::new(".")),
+    );
+    let (server, character) = (
+        args.server.as_deref().unwrap_or(""),
+        args.character.as_deref().unwrap_or(""),
+    );
+    let settings = dir.resolve(server, character).map_err(|e| e.to_string())?;
+    let mut out = String::new();
+    for (layer, path) in dir.files(server, character) {
+        let state = if path.is_file() { "read" } else { "not there" };
+        out.push_str(&format!(
+            "{:<16} {state:<10} {}\n",
+            layer.to_string(),
+            path.display()
+        ));
+    }
+    out.push('\n');
+    for (setting, value, layer) in settings.rows() {
+        let unit = if setting.unit.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", setting.unit)
+        };
+        out.push_str(&format!(
+            "{:<26} {:<12} {:<14} {}\n",
+            setting.key,
+            format!("{value}{unit}"),
+            layer.to_string(),
+            setting.label
+        ));
+    }
+    Ok(out)
+}
+
 fn paths(config: Option<PathBuf>) -> Result<Paths, Box<dyn std::error::Error>> {
     Ok(match config {
         Some(config) => Paths::for_config(config),
@@ -207,31 +278,16 @@ fn paths(config: Option<PathBuf>) -> Result<Paths, Box<dyn std::error::Error>> {
     })
 }
 
-/// The settings in force: `settings.toml` beside `beside` (the gateway's token file or
-/// credentials, so in the data directory), or the defaults when there is none
-/// (`docs/plan/04-settings.md`). A file that is not valid is an error, not a silent default.
-fn load_settings(beside: &std::path::Path) -> Result<wayfarer_settings::Settings, String> {
-    use wayfarer_settings::{Layer, Overrides, Settings};
-    let path = beside.with_file_name("settings.toml");
-    let text = match std::fs::read_to_string(&path) {
-        Ok(text) => text,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Settings::default()),
-        Err(e) => return Err(format!("{}: {e}", path.display())),
-    };
-    let over = Overrides::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-    let settings = Settings::resolve(&[(Layer::Mine, &over)])
-        .map_err(|e| format!("{}: {e}", path.display()))?;
-    tracing::info!(file = %path.display(), "settings loaded");
-    Ok(settings)
-}
-
-/// The world pack, with the settings in force.
-fn open_world(
-    path: &std::path::Path,
-    beside: &std::path::Path,
-) -> Result<World, Box<dyn std::error::Error>> {
-    let settings = load_settings(beside)?;
-    Ok(World::open(path)?.with_settings(settings))
+/// The settings files beside `beside` (the gateway's token file or credentials, so in the data
+/// directory): `settings.toml`, `servers/` and `characters/` (`docs/plan/04-settings.md`). The
+/// files for all characters are checked now, so a mistake in them stops the brain at start
+/// instead of at a session; each character's own file is checked when its session is first
+/// seen.
+fn settings_dir(beside: &std::path::Path) -> Result<wayfarer_settings::SettingsDir, String> {
+    let dir =
+        wayfarer_settings::SettingsDir::new(beside.parent().unwrap_or(std::path::Path::new(".")));
+    dir.resolve("", "").map_err(|e| e.to_string())?;
+    Ok(dir)
 }
 
 fn init_tracing() {
@@ -279,13 +335,20 @@ fn run_gateway(
             let hub = Hub::new(gateway, token.clone());
             let brain = match world_path {
                 Some(path) if path.is_file() => {
-                    let world = open_world(&path, &token_file)?;
+                    let world = World::open(&path)?;
+                    let settings = settings_dir(&token_file)?;
                     tracing::info!(
                         build = wayfarer_brain::BUILD,
                         world = %path.display(),
                         "brain running in-process"
                     );
-                    Some(spawn_brain(&hub, world, token, open_store(&store_path)))
+                    Some(spawn_brain(
+                        &hub,
+                        world,
+                        token,
+                        open_store(&store_path),
+                        Some(settings),
+                    ))
                 }
                 Some(path) => {
                     tracing::warn!(
@@ -337,8 +400,10 @@ fn run_brain(args: BrainArgs) -> Result<(), Box<dyn std::error::Error>> {
         .build()?
         .block_on(async {
             init_tracing();
-            let world = open_world(&world_path, &paths.credentials)?;
-            let mut brain = Brain::new(world, Arc::new(SystemClock), token);
+            let world = World::open(&world_path)?;
+            let settings = settings_dir(&paths.credentials)?;
+            let mut brain =
+                Brain::new(world, Arc::new(SystemClock), token).with_settings_dir(settings);
             if let Some(store) = open_store(&store_path) {
                 brain = brain.with_store(store);
             }

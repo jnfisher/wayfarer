@@ -25,6 +25,8 @@ pub enum Kind {
         max: i64,
     },
     Bool,
+    /// One of these words.
+    Choice(&'static [&'static str]),
 }
 
 /// A value.
@@ -32,6 +34,7 @@ pub enum Kind {
 pub enum Value {
     Int(i64),
     Bool(bool),
+    Choice(&'static str),
 }
 
 impl fmt::Display for Value {
@@ -39,6 +42,7 @@ impl fmt::Display for Value {
         match self {
             Value::Int(n) => write!(f, "{n}"),
             Value::Bool(b) => write!(f, "{b}"),
+            Value::Choice(c) => write!(f, "\"{c}\""),
         }
     }
 }
@@ -147,6 +151,50 @@ pub const CATALOGUE: &[Setting] = &[
         group: Group::Bot,
         megamud: None,
     },
+    Setting {
+        key: "bot.style",
+        label: "Style",
+        help: "How much risk the bot takes: Careful flees early and rests to nearly full, Bold fights on to a lower line and rests less; Balanced is the default. A style sets the HP lines below, and a line you set yourself wins over it.",
+        kind: Kind::Choice(&["careful", "balanced", "bold"]),
+        default: Value::Choice("balanced"),
+        unit: "",
+        tier: Tier::Essential,
+        group: Group::Bot,
+        megamud: None,
+    },
+    Setting {
+        key: "bot.leg_tries",
+        label: "Tries to reach a stop",
+        help: "Walks to one loop stop that end somewhere else, with no fight between, before the stop is passed by for now.",
+        kind: Kind::Int { min: 1, max: 10 },
+        default: Value::Int(3),
+        unit: "tries",
+        tier: Tier::Advanced,
+        group: Group::Bot,
+        megamud: None,
+    },
+    Setting {
+        key: "bot.give_ups",
+        label: "Stops passed by before the bot stops itself",
+        help: "Loop stops passed by in a row, with none reached and nothing killed between, before the bot stops and says the loop cannot go round.",
+        kind: Kind::Int { min: 1, max: 20 },
+        default: Value::Int(3),
+        unit: "stops",
+        tier: Tier::Advanced,
+        group: Group::Bot,
+        megamud: None,
+    },
+    Setting {
+        key: "bot.stop_quiet_seconds",
+        label: "Quiet time that clears a stop",
+        help: "At a stop where only monsters the bot will not attack are left, the stop counts as cleared once your own combat has been quiet this long.",
+        kind: Kind::Int { min: 5, max: 120 },
+        default: Value::Int(20),
+        unit: "seconds",
+        tier: Tier::Advanced,
+        group: Group::Bot,
+        megamud: None,
+    },
 ];
 
 /// The setting declared for `key`.
@@ -154,11 +202,135 @@ pub fn setting(key: &str) -> Option<&'static Setting> {
     CATALOGUE.iter().find(|s| s.key == key)
 }
 
-/// A layer, least specific first (`docs/plan/04-settings.md` section 2). Class presets sit
-/// between the default and "my defaults" and arrive with the presets.
+/// What a style sets, under every layer: the three HP lines. Balanced sets nothing (the
+/// defaults are Balanced). Careful flees at 40 and rests below 85 to 98; Bold flees at 20 and
+/// rests below 70 to 90 ("tougher fights and a lower flee line, still relying on fleeing
+/// reliably", `docs/plan/04-settings.md` section 2). Each keeps flee < rest below <= rest until.
+pub fn preset(style: &str) -> Overrides {
+    let lines: &[(&str, i64)] = match style {
+        "careful" => &[
+            ("health.flee_below_hp", 40),
+            ("health.rest_below_hp", 85),
+            ("health.rest_until_hp", 98),
+        ],
+        "bold" => &[
+            ("health.flee_below_hp", 20),
+            ("health.rest_below_hp", 70),
+            ("health.rest_until_hp", 90),
+        ],
+        _ => &[],
+    };
+    let mut over = Overrides::default();
+    for &(key, v) in lines {
+        over.set(key, Value::Int(v))
+            .expect("a preset is within its ranges");
+    }
+    over
+}
+
+/// A settings file that could not be used: which, and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileError {
+    pub path: std::path::PathBuf,
+    pub error: Error,
+}
+
+impl fmt::Display for FileError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.path.display(), self.error)
+    }
+}
+
+impl std::error::Error for FileError {}
+
+/// The settings files in a directory (the data directory): `settings.toml` for all
+/// characters, `servers/<host>_<port>.toml` for one server and `characters/<character id>.toml`
+/// for one character, each holding only what differs from the layer below it. A file that is
+/// not there is an empty layer; one that is there and not valid is an error, never a silent
+/// default.
+#[derive(Debug, Clone)]
+pub struct SettingsDir {
+    dir: std::path::PathBuf,
+}
+
+/// An id fit to be a file name: letters, digits, `-` and `_`.
+fn safe_id(id: &str) -> bool {
+    !id.is_empty()
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// The file name of a server (`host:port` as the gateway names it): the colon becomes `_`, so
+/// `127.0.0.1:2323` is `127.0.0.1_2323`. `None` for a name that is not safe as a file name.
+fn server_file(server: &str) -> Option<String> {
+    let name = server.replace(':', "_");
+    let safe = !name.is_empty()
+        && !name.starts_with('.')
+        && !name.contains("..")
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+    safe.then_some(name)
+}
+
+impl SettingsDir {
+    pub fn new(dir: impl Into<std::path::PathBuf>) -> Self {
+        Self { dir: dir.into() }
+    }
+
+    /// The files that make up a character's settings, least specific first, whether or not
+    /// they exist.
+    pub fn files(&self, server: &str, character: &str) -> Vec<(Layer, std::path::PathBuf)> {
+        let mut files = vec![(Layer::Mine, self.dir.join("settings.toml"))];
+        if let Some(server) = server_file(server) {
+            let name = format!("{server}.toml");
+            files.push((Layer::Server, self.dir.join("servers").join(name)));
+        }
+        if safe_id(character) {
+            let name = format!("{character}.toml");
+            files.push((Layer::Character, self.dir.join("characters").join(name)));
+        }
+        files
+    }
+
+    /// The settings for `character` on `server`: the files' layers over the style preset.
+    pub fn resolve(&self, server: &str, character: &str) -> Result<Settings, FileError> {
+        let files = self.files(server, character);
+        let mut layers = Vec::new();
+        for (layer, path) in &files {
+            let text = match std::fs::read_to_string(path) {
+                Ok(text) => text,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => {
+                    return Err(FileError {
+                        path: path.clone(),
+                        error: Error::Parse(e.to_string()),
+                    });
+                }
+            };
+            let over = Overrides::parse(&text).map_err(|error| FileError {
+                path: path.clone(),
+                error,
+            })?;
+            layers.push((*layer, over));
+        }
+        let refs: Vec<(Layer, &Overrides)> = layers.iter().map(|(l, o)| (*l, o)).collect();
+        // An order error belongs to the files together: name the most specific one.
+        Settings::resolve(&refs).map_err(|error| FileError {
+            path: files.last().map(|(_, p)| p.clone()).unwrap_or_default(),
+            error,
+        })
+    }
+}
+
+/// A layer, least specific first (`docs/plan/04-settings.md` section 2). Class presets would sit
+/// beside the style preset, between the default and "my defaults".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Layer {
     Default,
+    /// The style preset (`bot.style`: careful, balanced or bold).
+    Style,
     /// My defaults, for all characters.
     Mine,
     /// This server.
@@ -171,6 +343,7 @@ impl fmt::Display for Layer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Layer::Default => "the default",
+            Layer::Style => "the style",
             Layer::Mine => "my defaults",
             Layer::Server => "this server",
             Layer::Character => "this character",
@@ -192,6 +365,12 @@ pub enum Error {
         min: i64,
         max: i64,
     },
+    /// A word that is not one of the options.
+    Choice {
+        key: String,
+        value: String,
+        options: &'static [&'static str],
+    },
     /// The HP thresholds out of order (flee < rest below < rest until).
     Order(String),
     /// The file is not TOML, or not the shape settings take.
@@ -209,6 +388,11 @@ impl fmt::Display for Error {
                 min,
                 max,
             } => write!(f, "{key} is {value}, outside {min} to {max}"),
+            Error::Choice {
+                key,
+                value,
+                options,
+            } => write!(f, "{key} is {value:?}, not one of {}", options.join(", ")),
             Error::Order(why) => write!(f, "{why}"),
             Error::Parse(why) => write!(f, "settings file: {why}"),
         }
@@ -255,6 +439,27 @@ impl Overrides {
                 let value = match v {
                     toml::Value::Integer(n) => Value::Int(n),
                     toml::Value::Boolean(b) => Value::Bool(b),
+                    toml::Value::String(word) => match setting(&key).map(|s| s.kind) {
+                        Some(Kind::Choice(options)) => {
+                            match options.iter().find(|o| o.eq_ignore_ascii_case(word.trim())) {
+                                Some(&o) => Value::Choice(o),
+                                None => {
+                                    return Err(Error::Choice {
+                                        key,
+                                        value: word,
+                                        options,
+                                    });
+                                }
+                            }
+                        }
+                        Some(kind) => {
+                            return Err(Error::Type {
+                                key,
+                                wants: wants(kind),
+                            });
+                        }
+                        None => return Err(Error::Unknown(key)),
+                    },
                     _ => {
                         let wants = setting(&key).map_or("a number or a switch", |s| wants(s.kind));
                         return Err(Error::Type { key, wants });
@@ -295,6 +500,7 @@ fn wants(kind: Kind) -> &'static str {
     match kind {
         Kind::Int { .. } => "a whole number",
         Kind::Bool => "true or false",
+        Kind::Choice(_) => "one of its words in quotes",
     }
 }
 
@@ -313,6 +519,7 @@ fn check(s: &Setting, v: Value) -> Result<(), Error> {
             }
         }
         (Kind::Bool, Value::Bool(_)) => Ok(()),
+        (Kind::Choice(options), Value::Choice(word)) if options.contains(&word) => Ok(()),
         (kind, _) => Err(Error::Type {
             key: s.key.to_owned(),
             wants: wants(kind),
@@ -342,6 +549,18 @@ impl Settings {
     /// puts the HP thresholds out of order.
     pub fn resolve(layers: &[(Layer, &Overrides)]) -> Result<Settings, Error> {
         let mut s = Settings::default();
+        // The style is the most specific one named; its preset sits under every layer given.
+        let style = layers
+            .iter()
+            .rev()
+            .find_map(|(_, over)| match over.get("bot.style") {
+                Some(Value::Choice(c)) => Some(c),
+                _ => None,
+            })
+            .unwrap_or("balanced");
+        for (&key, &v) in &preset(style).values {
+            s.values.insert(key, (v, Layer::Style));
+        }
         for &(layer, over) in layers {
             for (&key, &v) in &over.values {
                 s.values.insert(key, (v, layer));
@@ -358,6 +577,27 @@ impl Settings {
             Some((Value::Int(n), _)) => *n,
             _ => panic!("no whole-number setting {key:?}"),
         }
+    }
+
+    /// The word of a choice setting.
+    pub fn choice(&self, key: &str) -> &'static str {
+        match self.values.get(key) {
+            Some((Value::Choice(c), _)) => c,
+            _ => panic!("no choice setting {key:?}"),
+        }
+    }
+
+    /// The value of `key`, whatever its kind.
+    pub fn value(&self, key: &str) -> Option<Value> {
+        self.values.get(key).map(|&(v, _)| v)
+    }
+
+    /// Every setting in catalogue order: its declaration, its value and the layer it came from.
+    pub fn rows(&self) -> impl Iterator<Item = (&'static Setting, Value, Layer)> + '_ {
+        CATALOGUE.iter().map(|s| {
+            let (v, l) = self.values[s.key];
+            (s, v, l)
+        })
     }
 
     pub fn bool(&self, key: &str) -> bool {
@@ -423,7 +663,7 @@ mod tests {
             assert!(!name.is_empty());
             match s.kind {
                 Kind::Int { .. } => assert!(!s.unit.is_empty(), "{} has no unit", s.key),
-                Kind::Bool => assert!(s.unit.is_empty()),
+                Kind::Bool | Kind::Choice(_) => assert!(s.unit.is_empty()),
             }
         }
     }
@@ -510,5 +750,153 @@ mod tests {
         assert_eq!(Overrides::parse(&text).unwrap(), o);
         assert_eq!(Overrides::default().to_toml(), "");
         assert!(Overrides::parse("").unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_style_sets_the_hp_lines_and_says_so() {
+        for style in ["careful", "balanced", "bold"] {
+            let over = Overrides::parse(&format!("[bot]\nstyle = \"{style}\"\n")).unwrap();
+            let s = Settings::resolve(&[(Layer::Mine, &over)]).unwrap();
+            assert_eq!(s.choice("bot.style"), style);
+            let lines = (
+                s.int("health.flee_below_hp"),
+                s.int("health.rest_below_hp"),
+                s.int("health.rest_until_hp"),
+            );
+            let want = match style {
+                "careful" => (40, 85, 98),
+                "bold" => (20, 70, 90),
+                _ => (30, 80, 95),
+            };
+            assert_eq!(lines, want, "{style}");
+            let from = s.source("health.flee_below_hp");
+            assert_eq!(
+                from,
+                Some(if style == "balanced" {
+                    Layer::Default
+                } else {
+                    Layer::Style
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn a_line_you_set_wins_over_the_style_and_the_most_specific_style_wins() {
+        let mine =
+            Overrides::parse("[bot]\nstyle = \"bold\"\n[health]\nrest_until_hp = 95\n").unwrap();
+        let character = Overrides::parse("[health]\nflee_below_hp = 25\n").unwrap();
+        let s = Settings::resolve(&[(Layer::Mine, &mine), (Layer::Character, &character)]).unwrap();
+        // Bold: rest below 70; the character's flee line and my rest-until beat the preset.
+        assert_eq!(s.int("health.flee_below_hp"), 25);
+        assert_eq!(s.source("health.flee_below_hp"), Some(Layer::Character));
+        assert_eq!(s.int("health.rest_below_hp"), 70);
+        assert_eq!(s.source("health.rest_below_hp"), Some(Layer::Style));
+        assert_eq!(s.int("health.rest_until_hp"), 95);
+        assert_eq!(s.source("health.rest_until_hp"), Some(Layer::Mine));
+        // A more specific layer names another style: that one's preset applies.
+        let careful = Overrides::parse("[bot]\nstyle = \"careful\"\n").unwrap();
+        let s = Settings::resolve(&[(Layer::Mine, &mine), (Layer::Character, &careful)]).unwrap();
+        assert_eq!(s.choice("bot.style"), "careful");
+        assert_eq!(s.int("health.flee_below_hp"), 40);
+    }
+
+    #[test]
+    fn a_style_that_is_not_one_is_refused_with_the_options() {
+        let err = Overrides::parse("[bot]\nstyle = \"reckless\"\n").unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "bot.style is \"reckless\", not one of careful, balanced, bold"
+        );
+        assert!(matches!(
+            Overrides::parse("[bot]\nstyle = 3\n").unwrap_err(),
+            Error::Type { .. }
+        ));
+        assert!(matches!(
+            Overrides::parse("[health]\nflee_below_hp = \"bold\"\n").unwrap_err(),
+            Error::Type { .. }
+        ));
+        // Any case, written back in lower case.
+        let o = Overrides::parse("[bot]\nstyle = \" Bold \"\n").unwrap();
+        assert!(o.to_toml().contains("style = \"bold\""), "{}", o.to_toml());
+    }
+
+    #[test]
+    fn a_style_whose_lines_clash_with_a_set_line_is_refused() {
+        // Bold rests below 70; rest until 60 is below that.
+        let o =
+            Overrides::parse("[bot]\nstyle = \"bold\"\n[health]\nrest_until_hp = 60\n").unwrap();
+        assert!(matches!(
+            Settings::resolve(&[(Layer::Character, &o)]),
+            Err(Error::Order(_))
+        ));
+    }
+
+    #[test]
+    fn the_files_of_a_directory_are_the_layers_of_a_character() {
+        let dir = tempfile::tempdir().unwrap();
+        let w = |path: &str, text: &str| {
+            let p = dir.path().join(path);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, text).unwrap();
+        };
+        let files = SettingsDir::new(dir.path());
+        // No files: the defaults.
+        assert_eq!(
+            files.resolve("silvermere", "thorgrim").unwrap(),
+            Settings::default()
+        );
+        w(
+            "settings.toml",
+            "[bot]\nstyle = \"bold\"\n[movement]\nsearch_limit = 400\n",
+        );
+        w(
+            "servers/silvermere.toml",
+            "[movement]\nsearch_limit = 500\n",
+        );
+        w("characters/thorgrim.toml", "[health]\nflee_below_hp = 25\n");
+        let s = files.resolve("silvermere", "thorgrim").unwrap();
+        assert_eq!(s.int("movement.search_limit"), 500);
+        assert_eq!(s.source("movement.search_limit"), Some(Layer::Server));
+        assert_eq!(s.int("health.flee_below_hp"), 25);
+        assert_eq!(s.source("health.flee_below_hp"), Some(Layer::Character));
+        assert_eq!(s.choice("bot.style"), "bold");
+        // Another character on the same server has the server's layer and not Thorgrim's.
+        let other = files.resolve("silvermere", "waydeva").unwrap();
+        assert_eq!(other.int("health.flee_below_hp"), 20);
+        assert_eq!(other.int("movement.search_limit"), 500);
+        // Another server has only my defaults.
+        let elsewhere = files.resolve("elsewhere", "thorgrim").unwrap();
+        assert_eq!(elsewhere.int("movement.search_limit"), 400);
+        // A server is named as the gateway names it, `host:port`: the colon is `_` in the file.
+        w(
+            "servers/127.0.0.1_2323.toml",
+            "[movement]\nsearch_limit = 600\n",
+        );
+        let local = files.resolve("127.0.0.1:2323", "thorgrim").unwrap();
+        assert_eq!(local.int("movement.search_limit"), 600);
+        assert_eq!(local.source("movement.search_limit"), Some(Layer::Server));
+    }
+
+    #[test]
+    fn a_file_that_is_not_valid_names_itself_and_ids_cannot_leave_the_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("characters")).unwrap();
+        std::fs::write(
+            dir.path().join("characters/thorgrim.toml"),
+            "[health]\nflee_below_hp = 95\n",
+        )
+        .unwrap();
+        let files = SettingsDir::new(dir.path());
+        let err = files.resolve("silvermere", "thorgrim").unwrap_err();
+        assert!(err.path.ends_with("characters/thorgrim.toml"), "{err}");
+        assert!(
+            err.to_string().contains("health.flee_below_hp is 95"),
+            "{err}"
+        );
+        // An id with a slash or dots names no file.
+        assert_eq!(files.files("../x", "../../etc/passwd").len(), 1);
+        assert_eq!(files.files("a/b", "c d").len(), 1);
+        assert_eq!(files.files(".hidden", "c").len(), 2);
     }
 }

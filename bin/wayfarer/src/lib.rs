@@ -7,6 +7,7 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use wayfarer_brain::{Brain, BrainError, ChannelLink, Clock, Store, SystemClock, World};
 use wayfarer_gateway::Hub;
+use wayfarer_settings::SettingsDir;
 use wayfarer_store::Note;
 
 /// The brain's store at `path`, made if missing and made afresh if unreadable (both logged);
@@ -69,12 +70,16 @@ pub fn spawn_brain(
     world: World,
     token: Option<String>,
     store: Option<Store>,
+    settings: Option<SettingsDir>,
 ) -> JoinHandle<Result<(), BrainError>> {
     let (to_gateway, from_gateway) = hub.connect();
     tokio::spawn(async move {
         let mut brain = Brain::new(world, Arc::new(SystemClock), token);
         if let Some(store) = store {
             brain = brain.with_store(store);
+        }
+        if let Some(settings) = settings {
+            brain = brain.with_settings_dir(settings);
         }
         let mut link = ChannelLink::new(to_gateway, from_gateway);
         brain.run(&mut link).await

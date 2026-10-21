@@ -46,7 +46,7 @@ async fn the_in_process_brain_attaches_and_the_ui_gets_its_character() {
     )
     .unwrap();
     let hub = Hub::new(gateway.clone(), None);
-    let brain = spawn_brain(&hub, world, None, None);
+    let brain = spawn_brain(&hub, world, None, None, None);
 
     let (to_hub, mut from_hub) = hub.connect();
     to_hub
