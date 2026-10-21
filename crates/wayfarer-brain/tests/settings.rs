@@ -194,6 +194,43 @@ async fn the_careful_style_rests_to_ninety() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn an_edited_settings_file_is_read_again_and_what_changed_is_said() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut g, run) =
+        Game::start_brain(SessionState::Realm, arena(&[], 35), brain_in(dir.path())).await;
+    g.until(|m| matches!(m, ToGateway::MapView { .. }).then_some(()))
+        .await;
+    g.idle(Duration::from_secs(10)).await;
+    std::fs::write(
+        dir.path().join("settings.toml"),
+        "[spells]\nheal = \"off\"\n[health]\nflee_below_hp = 30\n",
+    )
+    .unwrap();
+    g.narrated("Settings reloaded: health.flee_below_hp 25 → 30, spells.heal \"auto\" → \"off\"")
+        .await;
+    // A file that is not valid leaves them as they are, with a warning.
+    std::fs::write(
+        dir.path().join("settings.toml"),
+        "[spells]\nheal = \"sometimes\"\n",
+    )
+    .unwrap();
+    let said = g.narration().await;
+    assert!(
+        said.starts_with("Settings changed but not used, the earlier settings stay: "),
+        "{said}"
+    );
+    // Mended, it reads again.
+    std::fs::write(
+        dir.path().join("settings.toml"),
+        "[health]\nflee_below_hp = 28\n",
+    )
+    .unwrap();
+    g.narrated("Settings reloaded: health.flee_below_hp 30 → 28, spells.heal \"off\" → \"auto\"")
+        .await;
+    g.close(run).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn the_class_the_status_screen_shows_moves_the_hp_lines() {
     // The capture's status screen is a Warrior's (25 / 60 / 85, the defaults, so nothing is
     // said); a Mage's lines are 45 / 70 / 90, and the bot says so once it knows.

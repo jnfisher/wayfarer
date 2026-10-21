@@ -48,6 +48,8 @@ pub const MAP_RADIUS: u32 = 15;
 pub const RESYNC_COMMANDS: [&str; 5] = ["st", "exp", "i", "look", "spells"];
 /// The commands before `spells`, which only a character that casts sends.
 const RESYNC_BASE: usize = 4;
+/// How often the settings files are looked at for a change.
+pub const SETTINGS_POLL: Duration = Duration::from_secs(3);
 /// How long nothing must have been sent to the game for a prompt to count as idle.
 pub const IDLE: Duration = Duration::from_secs(2);
 /// How long a re-sync command waits for its answer before the next one goes.
@@ -268,6 +270,9 @@ pub(crate) struct Session {
     settings_warning: Option<String>,
     /// The class the settings were last resolved for.
     class_seen: Option<String>,
+    /// The settings files as last seen (`SettingsSource::stamp`), and when to look next.
+    settings_stamp: Vec<Option<(std::time::SystemTime, u64)>>,
+    settings_check: Option<Instant>,
     /// The rows of the last `spells` screen, and the attacks and heals among them.
     spell_rows: Vec<SpellRow>,
     spellbook: Spellbook,
@@ -403,6 +408,8 @@ impl Session {
             settings_source: settings,
             settings_warning,
             class_seen: None,
+            settings_stamp: Vec::new(),
+            settings_check: None,
             spell_rows: Vec::new(),
             spellbook: Spellbook::default(),
             map_radius: MAP_RADIUS,
@@ -2027,8 +2034,13 @@ impl Session {
         }
     }
 
-    /// `walk_stop`.
-    pub fn walk_stop(&mut self, out: &mut Vec<ToGateway>) {
+    /// `walk_stop`: the map's `stop`. A walk of the bot's (a loop it runs) is stopped by
+    /// stopping the bot, or it would take its next leg at once; a walk the player asked for
+    /// (the bot is not running then) just ends.
+    pub fn walk_stop(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
+        if self.bot.running() {
+            self.bot_control(BotAction::Stop, now, out);
+        }
         self.stop_walk("asked to stop", out);
         self.flush_views(out);
     }
@@ -2327,17 +2339,65 @@ impl Session {
             out.push(self.warning(&why));
             return;
         }
+        self.apply_settings(settings);
+        self.settings_stamp = self.settings_source.stamp(&self.id);
+        if self.hp_lines() != before {
+            let (flee, below, until) = self.hp_lines();
+            out.push(self.notice(&format!(
+                "Settings for a {name}: flee below {flee}%, rest below {below}% to {until}%"
+            )));
+        }
+    }
+
+    /// Put `settings` in force: the walker and the flee line take them at once, the modes read
+    /// the rest at their next decision.
+    fn apply_settings(&mut self, settings: Arc<Settings>) {
         let flee = self.settings_source.flee_below(&settings);
         self.walker.set_search_limit(
             u32::try_from(settings.int("movement.search_limit")).unwrap_or(MAX_SEARCHES),
         );
         self.bot.set_flee_below(flee);
         self.settings = settings;
-        if self.hp_lines() != before {
-            let (flee, below, until) = self.hp_lines();
-            out.push(self.notice(&format!(
-                "Settings for a {name}: flee below {flee}%, rest below {below}% to {until}%"
-            )));
+    }
+
+    /// The settings files were edited: read them again and put them in force, saying what
+    /// changed; a file that is not valid leaves the settings in force as they are, with a
+    /// warning. Looked at every [`SETTINGS_POLL`].
+    fn check_settings(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
+        if !self.settings_source.reads_files() || self.settings_check.is_some_and(|t| now < t) {
+            return;
+        }
+        let first = self.settings_check.is_none();
+        self.settings_check = Some(now + SETTINGS_POLL);
+        let stamp = self.settings_source.stamp(&self.id);
+        // The first look only notes the files as they are (the starter files may just have been
+        // written).
+        if first || stamp == self.settings_stamp {
+            self.settings_stamp = stamp;
+            return;
+        }
+        self.settings_stamp = stamp;
+        let class = self.character.state().class.clone();
+        match self.settings_source.reload(&self.id, class.as_deref()) {
+            Err(why) => out.push(self.warning(&format!(
+                "Settings changed but not used, the earlier settings stay: {why}"
+            ))),
+            Ok(new) => {
+                let changes: Vec<String> = self
+                    .settings
+                    .rows()
+                    .zip(new.rows())
+                    .filter(|((_, old, _), (_, now, _))| old != now)
+                    .map(|((s, old, _), (_, now, _))| format!("{} {old} → {now}", s.key))
+                    .collect();
+                self.apply_settings(new);
+                let text = if changes.is_empty() {
+                    "Settings reloaded: no change".to_owned()
+                } else {
+                    format!("Settings reloaded: {}", changes.join(", "))
+                };
+                out.push(self.notice(&text));
+            }
         }
     }
 
@@ -2538,6 +2598,11 @@ impl Session {
             .chain(engaged)
             .chain(typed)
             .chain(self.ledger.deadline())
+            .chain(
+                self.settings_source
+                    .reads_files()
+                    .then(|| self.settings_check.unwrap_or(now)),
+            )
             .min()
     }
 
@@ -2560,6 +2625,7 @@ impl Session {
             c.hp.map(i64::from),
         );
         self.ledger.sample(exp, hp, now);
+        self.check_settings(now, out);
         if let Resync::Waiting {
             step,
             deadline,

@@ -455,7 +455,7 @@ impl Brain {
                 None => out.push(no_session("find", &session)),
             },
             ToClient::WalkStop { session } => match self.sessions.get_mut(&session) {
-                Some(s) => s.walk_stop(out),
+                Some(s) => s.walk_stop(now, out),
                 None => out.push(no_session("walk_stop", &session)),
             },
             ToClient::BotControl { session, action } => match self.sessions.get_mut(&session) {

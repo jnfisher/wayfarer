@@ -266,7 +266,7 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 | `resync {session}` | Re-sync that character (`st`, `exp`, `i`, look) |
 | `state_request {session?}` | Send a fresh `character` snapshot (of one session, or of all when `session` is left out) and a `brain_info` |
 | `walk_to {session, map, room, stop_short?}` | Walk the character to that room, confirming each step ([brain.md](brain.md) "Walking"); replaces a walk in progress. `stop_short`: stop in the room before it when it is a boss lair ([brain.md](brain.md) "Go to"); left out, on for a boss lair; it changes nothing for another room |
-| `walk_stop {session}` | Stop walking after the move in flight |
+| `walk_stop {session}` | Stop walking after the move in flight. When the bot is running (the walk is a leg of a loop it runs) the bot is stopped too, as `bot_control` `stop` would, or it would take the next leg |
 | `map_request {session, radius?}` | Send a `map_view` now, of the rooms within `radius` steps (15 when left out); later views use the same radius |
 | `bot_control {session, action}` | The bot ([brain.md](brain.md) "Fight here"): `start` (fight here: re-sync, then fight what comes and rest when low), `stop`, `pause` (after the action in flight) or `resume` (re-sync, then carry on) |
 | `loops_request {session, anchor?, radius, doors?}` | Send the `loops` of the area within `radius` steps of `anchor` (`{map, room}`; the believed room when left out), through doors unless `doors` is false |
