@@ -21,6 +21,7 @@ pub mod nav;
 pub mod pack;
 pub mod route;
 pub mod schema;
+pub mod spells;
 pub mod walk;
 
 use std::path::PathBuf;
@@ -34,6 +35,7 @@ pub use loops::{Area, HuntRoom, Loop, MmLoop, generate, hunt_rooms, megamud_loop
 pub use monsters::{DEFAULT_RULES, MonsterRule, MonsterRules, Monsters, huntable};
 pub use nav::{Category, DirSet, Edge, ExitType, Gate, Key, LockState, RoomGraph};
 pub use pack::WorldPack;
+pub use spells::{SpellDef, SpellKind, Spells};
 pub use route::{Costs, Route, Step, Traveller, distances, route, route_within};
 
 #[derive(Debug, thiserror::Error)]
