@@ -11,7 +11,7 @@ use wayfarer_parse::{GameTexts, Registry};
 use wayfarer_proto::{
     CharacterState, ClientKind, PROTOCOL, RoomKind, SessionInfo, ToClient, ToGateway, WorldPackInfo,
 };
-use wayfarer_settings::Settings;
+use wayfarer_settings::{Settings, SettingsDir};
 use wayfarer_store::Store;
 use wayfarer_world::{Finder, Key, MmLoop, Monsters, PathKnowledge, RoomGraph, WorldPack};
 
@@ -57,9 +57,6 @@ pub struct Atlas {
     pub knowledge: PathKnowledge,
     /// Rooms, places and monsters by name (`find`), and the boss lairs.
     pub finder: Finder,
-    /// The settings in force for every session (`Brain::with_settings`); the defaults until
-    /// then. Per-character layers come with the settings forms.
-    pub settings: Settings,
 }
 
 /// Room types (`kb/game-data.md` "Enumerations") and shop types (`kb/economy.md`).
@@ -120,7 +117,6 @@ impl Atlas {
             monsters,
             mm_loops,
             knowledge,
-            settings: Settings::default(),
         })
     }
 }
@@ -155,16 +151,6 @@ impl World {
             hash: format!("sha256:{hash}"),
         });
         Ok(world)
-    }
-
-    /// The settings in force, kept on the atlas every session reads. Call it on a world just
-    /// opened: an atlas already shared with another world keeps the settings it has.
-    pub fn with_settings(mut self, settings: Settings) -> Self {
-        match self.atlas.as_mut().and_then(Arc::get_mut) {
-            Some(atlas) => atlas.settings = settings,
-            None => tracing::warn!("settings not applied: the world's atlas is shared"),
-        }
-        self
     }
 
     /// An open pack: its game texts and its atlas (no `info`).
@@ -228,6 +214,11 @@ pub struct Brain {
     flee_below: Option<i32>,
     /// Monsters every bot flees from, as the player's rules (`--flee-from`).
     flee_from: Vec<String>,
+    /// The settings every session starts with when there is no settings directory.
+    settings: Arc<Settings>,
+    /// Where the settings files are: each session gets its own layers (`settings.toml`,
+    /// `servers/<server>.toml`, `characters/<character>.toml`).
+    settings_dir: Option<SettingsDir>,
 }
 
 impl Brain {
@@ -244,6 +235,8 @@ impl Brain {
             store: None,
             flee_below: None,
             flee_from: Vec::new(),
+            settings: Arc::new(Settings::default()),
+            settings_dir: None,
         }
     }
 
@@ -254,21 +247,42 @@ impl Brain {
         self
     }
 
-    /// The flee line a new session starts with: the knob's, else the setting
-    /// `health.flee_below_hp`, else [`FLEE_BELOW`] (no world pack, so no settings).
-    fn flee_below(&self) -> i32 {
-        self.flee_below
-            .or_else(|| {
-                let atlas = self.world.atlas.as_ref()?;
-                i32::try_from(atlas.settings.int("health.flee_below_hp")).ok()
-            })
-            .unwrap_or(FLEE_BELOW)
+    /// The settings every session starts with, whatever its character (tests; the settings
+    /// files, [`Brain::with_settings_dir`], take over when there are any).
+    pub fn with_settings(mut self, settings: Settings) -> Self {
+        self.settings = Arc::new(settings);
+        self
     }
 
-    /// The settings in force: see [`World::with_settings`].
-    pub fn with_settings(mut self, settings: Settings) -> Self {
-        self.world = self.world.with_settings(settings);
+    /// Resolve each session's settings from the files in `dir` when it is first seen:
+    /// `settings.toml` for all characters, `servers/<server id>.toml`, and
+    /// `characters/<character id>.toml`, over the style preset. A file that is not valid
+    /// leaves that session on the defaults, with a warning on its tile.
+    pub fn with_settings_dir(mut self, dir: SettingsDir) -> Self {
+        self.settings_dir = Some(dir);
         self
+    }
+
+    /// The settings a new session starts with, and the warning if its files could not be used.
+    fn settings_for(&self, info: &SessionInfo) -> (Arc<Settings>, Option<String>) {
+        let Some(dir) = &self.settings_dir else {
+            return (self.settings.clone(), None);
+        };
+        match dir.resolve(&info.server, &info.id) {
+            Ok(s) => (Arc::new(s), None),
+            Err(e) => (
+                self.settings.clone(),
+                Some(format!("Settings not used, the defaults apply: {e}")),
+            ),
+        }
+    }
+
+    /// The flee line a new session starts with: the knob's, else the setting
+    /// `health.flee_below_hp`.
+    fn flee_below(&self, settings: &Settings) -> i32 {
+        self.flee_below.unwrap_or_else(|| {
+            i32::try_from(settings.int("health.flee_below_hp")).unwrap_or(FLEE_BELOW)
+        })
     }
 
     /// Every bot flees from monsters whose name holds one of `names`, as if the player had set
@@ -367,17 +381,23 @@ impl Brain {
                 Some(s) if attach => s.attach(info, now, out),
                 Some(s) => s.set_state(info.state, out),
                 None => {
+                    let (settings, unused) = self.settings_for(info);
                     let mut s = Session::new(
                         info,
                         self.world.registry.clone(),
                         self.world.atlas.clone(),
                         self.store.clone(),
                         self.clock.clone(),
-                        self.flee_below(),
+                        self.flee_below(&settings),
+                        settings,
                         &self.flee_from,
                         now,
                     );
                     s.attach(info, now, out);
+                    if let Some(why) = unused {
+                        tracing::warn!(session = %info.id, "{why}");
+                        out.push(s.warning(&why));
+                    }
                     self.sessions.insert(info.id.clone(), s);
                 }
             }

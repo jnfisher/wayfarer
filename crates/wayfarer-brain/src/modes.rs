@@ -154,6 +154,8 @@ pub(crate) struct View<'a> {
     pub rules: &'a MonsterRules,
     /// Where the monsters to avoid were last seen.
     pub sightings: &'a Sightings,
+    /// The session's settings.
+    pub settings: &'a wayfarer_settings::Settings,
 }
 
 impl View<'_> {
@@ -168,7 +170,7 @@ impl View<'_> {
     }
 
     fn setting(&self, key: &str, default: i32) -> i32 {
-        i32::try_from(self.atlas.settings.int(key)).unwrap_or(default)
+        i32::try_from(self.settings.int(key)).unwrap_or(default)
     }
 
     pub fn room_name(&self, k: Option<Key>) -> String {

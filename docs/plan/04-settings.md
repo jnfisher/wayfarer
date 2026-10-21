@@ -20,17 +20,19 @@ character's class, and everything else is one level down.
 
 ## Status (2026-10-20)
 
-A first slice is built, in `crates/wayfarer-settings` (its README): section 1's declaration
-(key, label, help, kind, range, default, unit, tier, group, MegaMud name), section 2's layers
-(default, my defaults, server, character) with the source of each value, validation (ranges,
-types, the HP lines in order) and the TOML file holding only what differs. The brain reads
-five settings from `settings.toml` in the data directory, for all characters:
-`health.flee_below_hp`, `health.rest_below_hp`, `health.rest_until_hp`,
-`movement.search_limit` and `bot.passed_by_minutes` (`docs/brain.md` "Settings"). Not built
-yet: the forms and the essentials page, class and style presets, per-server and per-character
-files, narrating a change on the tile, applying a change to a running bot, the remote toggles,
-the docs page and the MegaMud import, and every setting in sections 3 and 4 other than those
-five.
+Two slices are built, in `crates/wayfarer-settings` (its README): section 1's declaration (key,
+label, help, kind, range, default, unit, tier, group, MegaMud name), section 2's layers (default,
+style, my defaults, this server, this character) with the source of each value, validation
+(ranges, types, words, the HP lines in order), the TOML file holding only what differs, and the
+files that are the layers: `settings.toml`, `servers/<host>_<port>.toml`,
+`characters/<id>.toml` in the data directory. The **style presets** (Careful, Balanced, Bold)
+set the three HP lines under the files. Each session gets its own resolved settings when it is
+first seen; `wayfarer settings` shows them and where each came from. Nine settings are read by
+the brain (`docs/brain.md` "Settings"): the style, the three HP lines, the hidden-exit search
+limit and four of the loop runner's. Not built yet: **class presets**, the forms and the
+essentials page, narrating a change on the tile, applying a change to a running bot (a brain
+restart picks files up), the remote toggles, the docs page and the MegaMud import, and every
+setting in sections 3 and 4 other than those nine.
 
 ## 1. Declared once
 
@@ -87,9 +89,9 @@ HP  0 ──[Flee 30]────[Heal in combat 40]────[Rest below 80]�
 
 | Setting | Default | MegaMud | Notes |
 |---|---|---|---|
-| Rest below HP % | 80 | 90 | Between fights, rest when below this; never in a room that spawns. MegaMud's 90 is cautious: resting already dominates time in hard areas (`kb/recovery.md`) |
-| Rest until HP % | 95 | 99 | A little under 100, so it doesn't wait a whole regen tick for a few HP |
-| Flee below HP % | 30 melee, 50 casters | 30 | The percentage alone; the "twice the hardest hit this fight" addition was dropped (John, 2026-10-19) |
+| Rest below HP % | 60 | 90 | Between fights, rest when below this; never in a room that spawns (bolder than the first draft's 80, John 2026-10-20; the style presets run from 50 to 70). MegaMud's 90 is cautious: resting already dominates time in hard areas (`kb/recovery.md`) |
+| Rest until HP % | 85 | 99 | A little under 100, so it doesn't wait a whole regen tick for a few HP |
+| Flee below HP % | 25 (the Balanced style; Careful 30, Bold 20); casters 50 once class presets exist | 30 | The percentage alone; the "twice the hardest hit this fight" addition was dropped (John, 2026-10-19) |
 | Mana: rest below / until % | 30 / 95 | 20 / 100 | Casters only |
 
 **Combat**

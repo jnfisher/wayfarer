@@ -96,3 +96,78 @@ fn brain_refuses_a_settings_file_that_is_not_valid() {
     );
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn settings_shows_the_layers_and_where_each_value_comes_from() {
+    let dir = std::env::temp_dir().join(format!("wayfarer-cli-show-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("characters")).unwrap();
+    std::fs::write(dir.join("settings.toml"), "[bot]\nstyle = \"bold\"\n").unwrap();
+    std::fs::write(
+        dir.join("characters/thorgrim.toml"),
+        "[movement]\nsearch_limit = 500\n",
+    )
+    .unwrap();
+    let config = dir.join("wayfarer.toml");
+    let run = wayfarer(&[
+        "settings",
+        "--config",
+        config.to_str().unwrap(),
+        "--character",
+        "thorgrim",
+        "--server",
+        "127.0.0.1:2323",
+    ]);
+    assert!(run.status.success(), "{run:?}");
+    let out = String::from_utf8_lossy(&run.stdout).into_owned();
+    // The files, least specific first.
+    assert!(
+        out.contains("my defaults") && out.contains("settings.toml"),
+        "{out}"
+    );
+    assert!(
+        out.contains("this server") && out.contains("not there"),
+        "{out}"
+    );
+    assert!(
+        out.contains("this character") && out.contains("thorgrim.toml"),
+        "{out}"
+    );
+    // Bold sets the flee line to 20; the character's file sets the search limit.
+    let row = |key: &str| {
+        out.lines()
+            .find(|l| l.starts_with(key))
+            .unwrap_or("")
+            .to_owned()
+    };
+    assert!(
+        row("health.flee_below_hp").contains("20 %")
+            && row("health.flee_below_hp").contains("the style")
+    );
+    assert!(
+        row("movement.search_limit").contains("500 tries")
+            && row("movement.search_limit").contains("this character")
+    );
+    assert!(row("bot.style").contains("\"bold\"") && row("bot.style").contains("my defaults"));
+    assert!(row("bot.passed_by_minutes").contains("the default"));
+
+    // A character's file that is not valid is named.
+    std::fs::write(
+        dir.join("characters/thorgrim.toml"),
+        "[movement]\nsearch_limit = 0\n",
+    )
+    .unwrap();
+    let bad = wayfarer(&[
+        "settings",
+        "--config",
+        config.to_str().unwrap(),
+        "--character",
+        "thorgrim",
+    ]);
+    assert_eq!(bad.status.code(), Some(1));
+    let err = String::from_utf8_lossy(&bad.stderr).into_owned();
+    assert!(
+        err.contains("thorgrim.toml") && err.contains("movement.search_limit is 0"),
+        "{err}"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}

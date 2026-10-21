@@ -136,12 +136,31 @@ impl Lair {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Walker {
     walk: Option<Walk>,
+    /// Searches for one hidden exit before it is given up (`movement.search_limit`).
+    search_limit: u32,
     /// A `walk_to` that came while an action of the walk it replaces was in flight, and whether
     /// it stops short of a boss lair.
     then: Option<(Key, bool)>,
+}
+
+impl Default for Walker {
+    fn default() -> Self {
+        Self::with_search_limit(MAX_SEARCHES)
+    }
+}
+
+impl Walker {
+    /// A walker that searches for a hidden exit up to `limit` times.
+    pub fn with_search_limit(limit: u32) -> Self {
+        Self {
+            walk: None,
+            search_limit: limit,
+            then: None,
+        }
+    }
 }
 
 fn room_name(atlas: &Atlas, k: Key) -> String {
@@ -399,6 +418,7 @@ impl Walker {
         seen: Option<&Belief>,
     ) -> Next {
         let mut next = Next::default();
+        let search_limit = self.search_limit;
         let Some(w) = &mut self.walk else {
             return next;
         };
@@ -504,9 +524,7 @@ impl Walker {
             )),
             (Doing::Search, Outcome::Confirmed(Confirmed::Search { found: false })) => {
                 w.searches += 1;
-                let limit = u32::try_from(atlas.settings.int("movement.search_limit"))
-                    .unwrap_or(MAX_SEARCHES);
-                if w.searches < limit {
+                if w.searches < search_limit {
                     if w.searches % NARRATE_EVERY == 0 {
                         next.notice(format!(
                             "Still searching for the hidden exit {} ({} tries)",

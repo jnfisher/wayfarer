@@ -17,13 +17,13 @@ use crate::brain::Atlas;
 // defaults those settings declare.
 
 /// Recover takes control below this much HP (per cent of the maximum).
-pub const REST_BELOW: i32 = 80;
+pub const REST_BELOW: i32 = 60;
 /// Recover rests until this much HP.
-pub const REST_UNTIL: i32 = 95;
+pub const REST_UNTIL: i32 = 85;
 /// Flee takes control below this much HP (per cent of the maximum). A plain percentage: the
 /// plan's "twice the hardest hit this fight" was dropped (John, 2026-10-19). `wayfarer brain
 /// --flee-below` overrides it for the live check only.
-pub const FLEE_BELOW: i32 = 30;
+pub const FLEE_BELOW: i32 = 25;
 /// Rooms Flee runs through while followed before it gives up (the prototype's three).
 pub const FLEE_HOPS: u32 = 3;
 /// How long Flee waits at the prompt after a hop for a monster to follow

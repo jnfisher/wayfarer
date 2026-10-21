@@ -16,6 +16,7 @@ use wayfarer_proto::{
     BotAction, CharacterState, Chunk, Found, FoundKind, FoundRoom, GeneratedLoop, LoopStop,
     MegaMudLoop, RoomKey, SessionId, SessionInfo, SessionState, ToGateway,
 };
+use wayfarer_settings::Settings;
 use wayfarer_store::{BotRecord, BotState, CustomLoop, EventKind, Store};
 use wayfarer_world::loops::{Area, circuits, hunt_rooms, megamud_through, stop_room};
 use wayfarer_world::{self as world, HuntRoom, Key, MmLoop, PlaceKind, Reach, Traveller, route};
@@ -33,7 +34,7 @@ use crate::position::Position;
 use crate::rules::{self, RuleBook, Sightings};
 use crate::stats::{Ledger, unix};
 use crate::task::{Task, TaskLoop, why_unreachable};
-use crate::walker::{Next, Say, Walker};
+use crate::walker::{MAX_SEARCHES, Next, Say, Walker};
 
 /// The rooms a `map_view` holds unless a `map_request` asks for another radius: those within
 /// this many steps.
@@ -254,6 +255,8 @@ fn visible(text: &str) -> bool {
 pub(crate) struct Session {
     pub id: SessionId,
     pub state: SessionState,
+    /// The settings in force for this character (`Brain::with_settings_dir`).
+    settings: Arc<Settings>,
     registry: Arc<Registry>,
     parser: Parser,
     pub character: Character,
@@ -356,6 +359,7 @@ impl Session {
         store: Option<Arc<Mutex<Store>>>,
         clock: Arc<dyn Clock>,
         flee_below: i32,
+        settings: Arc<Settings>,
         flee_from: &[String],
         now: Instant,
     ) -> Self {
@@ -377,7 +381,10 @@ impl Session {
             atlas,
             position: Position::default(),
             executor: Executor::default(),
-            walker: Walker::default(),
+            walker: Walker::with_search_limit(
+                u32::try_from(settings.int("movement.search_limit")).unwrap_or(MAX_SEARCHES),
+            ),
+            settings,
             map_radius: MAP_RADIUS,
             map_center: None,
             map_dirty: false,
@@ -838,7 +845,7 @@ impl Session {
         });
         let task = stored.map(|t| {
             let name = self.loop_name(&atlas, &t, out);
-            Task::restore(&atlas, name, &t)
+            Task::restore(&atlas, &self.settings, name, &t)
         });
         let doing = match &task {
             Some(t) => {
@@ -1878,7 +1885,15 @@ impl Session {
         if self.executor.in_flight().is_none() {
             self.cancel(out);
         }
-        let task = Task::new(&atlas, l.id.clone(), l.name.clone(), &stops, first, skipped);
+        let task = Task::new(
+            &atlas,
+            &self.settings,
+            l.id.clone(),
+            l.name.clone(),
+            &stops,
+            first,
+            skipped,
+        );
         // Re-sync first: the HP maximum, the combat state, who is here.
         self.request_resync();
         let says = self.bot.run_loop(task, &l.name);
@@ -2107,6 +2122,7 @@ impl Session {
             presence: &self.presence,
             rules: self.rules.rules(),
             sightings: &self.sightings,
+            settings: &self.settings,
         };
         let (act, says) = self.bot.tick(&view);
         self.say(says, out);
@@ -2157,7 +2173,7 @@ impl Session {
         }
     }
 
-    fn warning(&self, text: &str) -> ToGateway {
+    pub(crate) fn warning(&self, text: &str) -> ToGateway {
         ToGateway::Warning {
             session: Some(self.id.clone()),
             text: text.to_owned(),

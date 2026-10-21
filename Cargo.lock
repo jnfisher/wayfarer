@@ -1773,6 +1773,7 @@ dependencies = [
 name = "wayfarer-settings"
 version = "0.1.0"
 dependencies = [
+ "tempfile",
  "toml",
 ]
 
