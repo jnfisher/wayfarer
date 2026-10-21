@@ -141,7 +141,7 @@ fn settings_shows_the_layers_and_where_each_value_comes_from() {
     };
     assert!(
         row("health.flee_below_hp").contains("20 %")
-            && row("health.flee_below_hp").contains("the style")
+            && row("health.flee_below_hp").contains("the class and style")
     );
     assert!(
         row("movement.search_limit").contains("500 tries")
@@ -168,6 +168,36 @@ fn settings_shows_the_layers_and_where_each_value_comes_from() {
     assert!(
         err.contains("thorgrim.toml") && err.contains("movement.search_limit is 0"),
         "{err}"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn settings_for_a_class_shows_the_class_presets() {
+    let dir = std::env::temp_dir().join(format!("wayfarer-cli-class-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let config = dir.join("wayfarer.toml");
+    let show = |class: &[&str]| {
+        let mut args = vec!["settings", "--config", config.to_str().unwrap()];
+        args.extend_from_slice(class);
+        String::from_utf8_lossy(&wayfarer(&args).stdout).into_owned()
+    };
+    let row = |out: &str, key: &str| {
+        out.lines()
+            .find(|l| l.starts_with(key))
+            .unwrap_or("")
+            .to_owned()
+    };
+    let none = show(&[]);
+    assert!(
+        row(&none, "health.flee_below_hp").contains("25 %"),
+        "{none}"
+    );
+    let mage = show(&["--class", "Mage"]);
+    let flee = row(&mage, "health.flee_below_hp");
+    assert!(
+        flee.contains("45 %") && flee.contains("the class and style"),
+        "{mage}"
     );
     std::fs::remove_dir_all(&dir).unwrap();
 }

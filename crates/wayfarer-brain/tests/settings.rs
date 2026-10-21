@@ -11,6 +11,7 @@ use std::time::UNIX_EPOCH;
 use game::arena::*;
 use game::*;
 use wayfarer_brain::{Brain, FixedClock, HIDDEN_FOR, MAX_SEARCHES};
+use wayfarer_proto::BotAction;
 use wayfarer_settings::{Layer, Overrides, Settings, SettingsDir};
 
 fn settings(text: &str) -> Settings {
@@ -190,4 +191,41 @@ async fn the_careful_style_rests_to_ninety() {
     // Careful: rest below 70 to 90. 31 of 35 is 89%, short of it; 32 (91%) will do.
     let said = rest_narration(brain("[bot]\nstyle = \"careful\"\n"), &[24, 28, 31], 32).await;
     assert_eq!(said, "Recover: resting to 90% in Newhaven, Narrow Road");
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_class_the_status_screen_shows_moves_the_hp_lines() {
+    // The capture's status screen is a Warrior's (25 / 60 / 85, the defaults, so nothing is
+    // said); a Mage's lines are 45 / 70 / 90, and the bot says so once it knows.
+    let dir = tempfile::tempdir().unwrap();
+    let (mut g, run) =
+        Game::start_brain(SessionState::Realm, arena(&[], 35), brain_in(dir.path())).await;
+    g.until(|m| matches!(m, ToGateway::MapView { .. }).then_some(()))
+        .await;
+    g.idle(Duration::from_secs(20)).await;
+    g.expect("st", status(35).replace("Warrior    ", "Mage       "));
+    g.expect("look", arena(&[], 35));
+    g.bot(BotAction::Start).await;
+    g.narrated("Settings for a Mage: flee below 45%, rest below 70% to 90%")
+        .await;
+    g.idle(Duration::from_secs(30)).await;
+    g.close(run).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_warriors_status_screen_changes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut g, run) =
+        Game::start_brain(SessionState::Realm, arena(&[], 35), brain_in(dir.path())).await;
+    g.until(|m| matches!(m, ToGateway::MapView { .. }).then_some(()))
+        .await;
+    g.idle(Duration::from_secs(20)).await;
+    start(&mut g, &[], 35).await;
+    g.idle(Duration::from_secs(30)).await;
+    let (seen, _) = g.close(run).await;
+    let said = notices(&seen);
+    assert!(
+        !said.iter().any(|s| s.starts_with("Settings for")),
+        "{said:?}"
+    );
 }

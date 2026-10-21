@@ -113,6 +113,11 @@ impl Default for Flee {
 }
 
 impl Flee {
+    /// Flee below `percent` HP from now on; a flee in progress goes on.
+    pub fn set_below(&mut self, percent: i32) {
+        self.below = percent;
+    }
+
     pub fn new(below: i32) -> Flee {
         Flee {
             below,

@@ -17,9 +17,9 @@ use wayfarer_world::{Finder, Key, MmLoop, Monsters, PathKnowledge, RoomGraph, Wo
 
 use crate::clock::{Clock, rfc3339};
 use crate::link::Link;
-use crate::policy::FLEE_BELOW;
 use crate::rules;
 use crate::session::{Progress, Session};
+use crate::session_settings::SettingsSource;
 
 /// This build: the version, and the commit it was built from when known.
 pub const BUILD: &str = env!("WAYFARER_BUILD");
@@ -263,28 +263,6 @@ impl Brain {
         self
     }
 
-    /// The settings a new session starts with, and the warning if its files could not be used.
-    fn settings_for(&self, info: &SessionInfo) -> (Arc<Settings>, Option<String>) {
-        let Some(dir) = &self.settings_dir else {
-            return (self.settings.clone(), None);
-        };
-        match dir.resolve(&info.server, &info.id) {
-            Ok(s) => (Arc::new(s), None),
-            Err(e) => (
-                self.settings.clone(),
-                Some(format!("Settings not used, the defaults apply: {e}")),
-            ),
-        }
-    }
-
-    /// The flee line a new session starts with: the knob's, else the setting
-    /// `health.flee_below_hp`.
-    fn flee_below(&self, settings: &Settings) -> i32 {
-        self.flee_below.unwrap_or_else(|| {
-            i32::try_from(settings.int("health.flee_below_hp")).unwrap_or(FLEE_BELOW)
-        })
-    }
-
     /// Every bot flees from monsters whose name holds one of `names`, as if the player had set
     /// *flee from* for each (`wayfarer brain --flee-from`, the live check's way to name one
     /// without a UI). Kept with the bot's record like any rule of the player's.
@@ -381,20 +359,23 @@ impl Brain {
                 Some(s) if attach => s.attach(info, now, out),
                 Some(s) => s.set_state(info.state, out),
                 None => {
-                    let (settings, unused) = self.settings_for(info);
                     let mut s = Session::new(
                         info,
                         self.world.registry.clone(),
                         self.world.atlas.clone(),
                         self.store.clone(),
                         self.clock.clone(),
-                        self.flee_below(&settings),
-                        settings,
+                        SettingsSource::new(
+                            self.settings_dir.clone(),
+                            info.server.clone(),
+                            self.settings.clone(),
+                            self.flee_below,
+                        ),
                         &self.flee_from,
                         now,
                     );
                     s.attach(info, now, out);
-                    if let Some(why) = unused {
+                    if let Some(why) = s.take_settings_warning() {
                         tracing::warn!(session = %info.id, "{why}");
                         out.push(s.warning(&why));
                     }

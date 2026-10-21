@@ -609,7 +609,7 @@ The values the bot used to have as constants are settings (`wayfarer-settings`,
 | Layer, least specific first | File |
 |---|---|
 | The default | built in |
-| The style | the preset of `bot.style` (below) |
+| The class and style presets | the HP lines of the character's class, moved by `bot.style` (below) |
 | My defaults, all characters | `settings.toml` |
 | This server | `servers/<host>_<port>.toml` (`servers/127.0.0.1_2323.toml` for `127.0.0.1:2323`) |
 | This character | `characters/<character id>.toml` (the id in `wayfarer.toml`) |
@@ -633,7 +633,7 @@ rest_until_hp = 92
 
 | Key | Default | Range | What |
 |---|---|---|---|
-| `bot.style` | `"balanced"` | careful, balanced, bold | The preset of the three HP lines: Careful 30 / 70 / 90, Balanced 25 / 60 / 85, Bold 20 / 50 / 80 (flee below / rest below / rest until). A line set in a file beats the preset |
+| `bot.style` | `"balanced"` | careful, balanced, bold | How far to move the three HP lines (flee below / rest below / rest until) from the class's: Careful adds 5 / 10 / 5, Bold takes them off, Balanced leaves them. A line set in a file beats the preset |
 | `health.flee_below_hp` | 25 | 0–90 | Flee takes control below this per cent of the maximum HP |
 | `health.rest_below_hp` | 60 | 10–99 | Recover takes control below this per cent |
 | `health.rest_until_hp` | 85 | 20–100 | Recover rests until this per cent |
@@ -642,6 +642,23 @@ rest_until_hp = 92
 | `bot.leg_tries` | 3 | 1–10 | Walks to one loop stop that end elsewhere before it is passed by |
 | `bot.give_ups` | 3 | 1–20 | Stops passed by in a row before the bot stops itself |
 | `bot.stop_quiet_seconds` | 20 | 5–120 | Quiet time that clears a stop where only monsters it will not attack are left |
+
+**Class presets.** The HP lines (flee below / rest below / rest until) start from the
+character's class, which the status screen names, so a class that needs a bigger cushion leaves
+earlier. Until the first `st` the class is not known and a Fighter's lines apply; when it is,
+the settings are resolved again, the flee line and the search limit take effect at once and the
+tile says so ("Settings for a Mage: flee below 45%, rest below 70% to 90%"). Fixed settings
+(a test's) are not moved by the class.
+
+| Kind | Classes | Balanced lines | Careful | Bold |
+|---|---|---|---|---|
+| Fighter | Warrior, Witchunter, Paladin, Ranger, Cleric | 25 / 60 / 85 | 30 / 70 / 90 | 20 / 50 / 80 |
+| Skirmisher | Ninja, Thief, Mystic, Warlock, Missionary, Gypsy, Bard | 35 / 65 / 85 | 40 / 75 / 90 | 30 / 55 / 80 |
+| Caster | Mage, Priest, Druid | 45 / 70 / 90 | 50 / 80 / 95 | 40 / 60 / 85 |
+
+The gaps between the kinds are an inference from the plan ("flee below 30 melee, 50 casters"),
+not measured; the defaults (a Fighter's) are John's. `wayfarer settings --class Mage` shows a
+class's lines before the character exists.
 
 The HP lines must run flee below < rest below <= rest until. `wayfarer brain --flee-below` (a
 test knob) overrides the flee line whatever the files say.
