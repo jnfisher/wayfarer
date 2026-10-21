@@ -62,6 +62,8 @@ pub enum Group {
     Movement,
     Bot,
     Spells,
+    Cash,
+    Combat,
 }
 
 impl Group {
@@ -72,6 +74,8 @@ impl Group {
             Group::Movement => "movement",
             Group::Bot => "bot",
             Group::Spells => "spells",
+            Group::Cash => "cash",
+            Group::Combat => "combat",
         }
     }
 }
@@ -95,6 +99,22 @@ pub struct Setting {
     /// MegaMud's name for it, for the import and for players who know MegaMud.
     pub megamud: Option<&'static str>,
 }
+
+/// The commands that start a fight, by the game's command table (`commands.rs`, kind Attack):
+/// a test in the brain checks every word here is one.
+pub const ATTACK_COMMANDS: &[&str] = &[
+    "a", "attack", "bash", "allout", "force", "bs", "backstab", "kil", "kill", "pu", "punch",
+];
+
+/// The groups, in the order a file lists them.
+const GROUPS: [Group; 6] = [
+    Group::Health,
+    Group::Movement,
+    Group::Bot,
+    Group::Spells,
+    Group::Cash,
+    Group::Combat,
+];
 
 /// Every setting. A test fails if one lacks help or a default inside its range.
 pub const CATALOGUE: &[Setting] = &[
@@ -253,6 +273,72 @@ pub const CATALOGUE: &[Setting] = &[
         megamud: None,
     },
     Setting {
+        key: "combat.attack_command",
+        label: "Attack with",
+        help: "The command that starts a fight, followed by the monster's name: a (attack), bash (aa, allout, force), bs (backstab: needs sneaking), kil (killblow, also spelt kill) or pu (punch), or their longer spellings. It is checked against the game's own command table, so only an attack command is accepted.",
+        kind: Kind::Choice(ATTACK_COMMANDS),
+        default: Value::Choice("a"),
+        unit: "",
+        tier: Tier::Essential,
+        group: Group::Combat,
+        megamud: Some("Attack"),
+    },
+    Setting {
+        key: "cash.silver",
+        label: "Pick up silver",
+        help: "Pick up silver nobles left in the room (after a kill, say) when not in a fight.",
+        kind: Kind::Bool,
+        default: Value::Bool(false),
+        unit: "",
+        tier: Tier::Essential,
+        group: Group::Cash,
+        megamud: Some("WantSilver"),
+    },
+    Setting {
+        key: "cash.gold",
+        label: "Pick up gold",
+        help: "Pick up gold crowns left in the room when not in a fight.",
+        kind: Kind::Bool,
+        default: Value::Bool(false),
+        unit: "",
+        tier: Tier::Essential,
+        group: Group::Cash,
+        megamud: Some("WantGold"),
+    },
+    Setting {
+        key: "cash.platinum",
+        label: "Pick up platinum",
+        help: "Pick up platinum pieces left in the room when not in a fight.",
+        kind: Kind::Bool,
+        default: Value::Bool(true),
+        unit: "",
+        tier: Tier::Essential,
+        group: Group::Cash,
+        megamud: Some("WantPlat"),
+    },
+    Setting {
+        key: "cash.runic",
+        label: "Pick up runic coins",
+        help: "Pick up runic coins left in the room when not in a fight.",
+        kind: Kind::Bool,
+        default: Value::Bool(true),
+        unit: "",
+        tier: Tier::Essential,
+        group: Group::Cash,
+        megamud: Some("WantRunic"),
+    },
+    Setting {
+        key: "cash.max_encumbrance",
+        label: "Carry coins up to",
+        help: "The heaviest the character may get from picking up coins, by the game's own words for the load: light (up to 33%), medium (up to 66%) or heavy (no limit but the game's). With medium, coins that would make the character Heavy are left, or only as many as fit are taken. A character with more capacity (a dwarf's +20%) is counted by the capacity the game reports.",
+        kind: Kind::Choice(&["light", "medium", "heavy"]),
+        default: Value::Choice("medium"),
+        unit: "",
+        tier: Tier::Essential,
+        group: Group::Cash,
+        megamud: Some("DontBeHeavy"),
+    },
+    Setting {
         key: "spells.heal_in_combat_below_hp",
         label: "Heal in a fight below",
         help: "In a fight, cast a healing spell when HP is below this per cent of the maximum. Casting ends the swing for that round, so keep it close to the flee line; below the flee line it never happens, since fleeing comes first.",
@@ -368,7 +454,7 @@ pub fn starter_toml(scope: &str) -> String {
          # > class and style presets > defaults). `wayfarer settings` shows each value and where it\n\
          # came from. Restart the brain after editing.\n"
     );
-    for group in [Group::Health, Group::Movement, Group::Bot, Group::Spells] {
+    for group in GROUPS {
         // The header is live (an empty table sets nothing), so an uncommented line under it is
         // in the right table.
         out.push_str(&format!("\n[{}]\n", group.table()));
@@ -681,7 +767,7 @@ impl Overrides {
     /// The file text: only these values, grouped, with the label as a comment.
     pub fn to_toml(&self) -> String {
         let mut out = String::new();
-        for group in [Group::Health, Group::Movement, Group::Bot, Group::Spells] {
+        for group in GROUPS {
             let mut rows = CATALOGUE
                 .iter()
                 .filter(|s| s.group == group)

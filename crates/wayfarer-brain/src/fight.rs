@@ -131,7 +131,10 @@ impl Mode for Fight {
                         format!("Fight: {t} with {}", s.name),
                     ),
                     None => Step::send(
-                        Action::new(format!("a {}", attack_word(&t)), Expect::Engaged),
+                        Action::new(
+                            format!("{} {}", v.attack_command(), attack_word(&t)),
+                            Expect::Engaged,
+                        ),
                         format!("Fight: {t}"),
                     ),
                 }

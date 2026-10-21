@@ -728,6 +728,36 @@ shows them ([web-ui.md](web-ui.md) "The stats"). `stats_reset` ends the current 
 another at once with its numbers at zero (the old run stays in the list, its loop carried
 over): the way to measure a stretch of play without stopping the bot. With no run it warns.
 
+## Coins and the attack command
+
+**Loot** is a mode between Flee and Recover: when nothing is attacking and the bot is not
+engaged, and the last room view (`You notice 12 gold crowns, torch here.`) showed coins of a
+kind the settings want, it sends `get <n> <coin>` (`kb/economy.md`: `get` takes one to 99,998)
+and the character's coins and load are updated from `You picked up ...` (the next `i` makes
+them exact). After a kill Fight looks, and that look is what shows the coins, so they are
+picked up straight after the fight, before the bot rests or goes on. Coins seen while walking
+between stops are not stopped for: Loot acts only when the bot stands still.
+
+- **Which coins**: `cash.silver`, `cash.gold`, `cash.platinum` and `cash.runic`; platinum and
+  runic are on by default, silver and gold off. Copper is never taken.
+- **How many**: `cash.max_encumbrance` (`light`, `medium` default, `heavy`) is the heaviest load
+  coins may bring the character to, in the game's words for it (Light up to 33%, Medium up to
+  66%, Heavy over that). Three coins of a type weigh one unit, each type on its own, so the
+  bot takes as many as fit under the limit (`get 59 gold` of 100) and none when none fit, not
+  all or nothing. The capacity is the game's own from `i` (`Encumbrance: 650/1200`), and it
+  already holds a dwarf's +20% (and any other Alter Encumbrance), so no race rule is needed:
+  the same load is a smaller share of a bigger capacity. Without a known load (before the
+  first `i`) it takes everything and the game's own limit stands (`You cannot carry that much!`
+  ends the tries).
+- A `get` that is not answered by `You picked up` is tried twice at most for a room view.
+- **The attack command**: `combat.attack_command` is the verb Fight sends before the monster's
+  name: `a` (default), `attack`, `bash` (`allout`, `force`), `bs` (`backstab`; the character
+  must be sneaking), `kil` (`kill`: killblow) or `pu` (`punch`). The list is the settings' choices,
+  and a test checks every one is an attack in the game's command table, so the executor's
+  rule (no attack while engaged) covers whichever is chosen. MegaMud's free text allows
+  anything its table knows; this list is the attacks silvermere's table has (there is no
+  `smash`).
+
 ## Spells
 
 A character whose class has magery (the pack's class record: Paladin, Cleric, Priest, Missionary,

@@ -29,6 +29,7 @@ pub mod executor;
 mod fight;
 mod flee;
 mod link;
+mod loot;
 mod modes;
 pub mod policy;
 mod position;

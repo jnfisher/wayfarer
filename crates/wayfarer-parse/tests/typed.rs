@@ -618,6 +618,29 @@ fn unknown_and_other() {
 }
 
 #[test]
+fn coins_on_the_floor_and_picked_up() {
+    let got = line("You notice 12 gold crowns, 3 silver nobles, torch here.");
+    let GameEvent::RoomItems { coins } = &got[0] else {
+        panic!("{got:?}")
+    };
+    assert_eq!(
+        coins
+            .iter()
+            .map(|(c, n)| (c.as_str(), *n))
+            .collect::<Vec<_>>(),
+        [("gold crowns", 12), ("silver nobles", 3)]
+    );
+    assert_eq!(
+        example("picked_up_coins"),
+        GameEvent::CoinsPicked {
+            n: 9,
+            coin: "copper farthings".into()
+        }
+    );
+    assert_eq!(example("too_much"), GameEvent::CannotCarry);
+}
+
+#[test]
 fn the_spell_list_and_the_casting_refusals() {
     let got = line(
         "Level Mana Short Spell Name\n  1   2    vine  vine strike\n  3  12    mmis  magic missile",

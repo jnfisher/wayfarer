@@ -18,6 +18,7 @@ use crate::brain::Atlas;
 use crate::executor::{Action, Outcome};
 use crate::fight::Fight;
 use crate::flee::Flee;
+use crate::loot::Loot;
 use crate::policy;
 use crate::recover::Recover;
 use crate::rules::Sightings;
@@ -38,12 +39,26 @@ pub(crate) struct Presence {
     pvp: Vec<String>,
     /// The room being shown: its `Also here:` monsters and players until its exits come.
     shown: Option<(Vec<String>, Vec<String>)>,
+    /// The coins on the floor as the last room view showed them, by the game's name for them
+    /// (`gold crowns`), until they are picked up or the view changes.
+    pub floor: std::collections::BTreeMap<String, u64>,
 }
 
 impl Presence {
     pub fn event(&mut self, atlas: &Atlas, ev: &GameEvent) {
         match ev {
-            GameEvent::RoomTitle { .. } => self.shown = Some(Default::default()),
+            GameEvent::RoomTitle { .. } => {
+                self.shown = Some(Default::default());
+                self.floor.clear();
+            }
+            GameEvent::RoomItems { coins } => self.floor.clone_from(coins),
+            // Taken, or the game would not give it: not on the floor for the bot's purposes
+            // (a pickup that took only part is not asked for the rest again).
+            GameEvent::CoinsPicked { coin, .. } => {
+                let word = crate::loot::coin_word(coin).to_owned();
+                self.floor
+                    .retain(|name, _| crate::loot::coin_word(name) != word);
+            }
             GameEvent::AlsoHere { monsters, players } => match &mut self.shown {
                 Some(shown) => *shown = (monsters.clone(), players.clone()),
                 None => {
@@ -162,9 +177,34 @@ pub(crate) struct View<'a> {
     pub hp_missing: Option<i64>,
     pub level: i64,
     pub book: &'a Spellbook,
+    /// What the character carries, in weight units now and at most (`i`'s `Encumbrance:`),
+    /// and the coins it holds.
+    pub load: Option<(u64, u64)>,
+    pub coins: &'a [wayfarer_proto::CoinCount],
 }
 
 impl View<'_> {
+    /// Whether the settings want this coin picked up (`cash.silver`, ...).
+    pub fn wants_coin(&self, word: &str) -> bool {
+        match word {
+            "silver" | "gold" | "platinum" | "runic" => self.settings.bool(&format!("cash.{word}")),
+            _ => false,
+        }
+    }
+
+    /// How many coins of this kind the character holds.
+    pub fn carried(&self, word: &str) -> u64 {
+        self.coins
+            .iter()
+            .find(|c| crate::loot::coin_word(&c.coin) == word)
+            .map_or(0, |c| c.count)
+    }
+
+    /// The command word that starts a fight (`combat.attack_command`).
+    pub fn attack_command(&self) -> &'static str {
+        self.settings.choice("combat.attack_command")
+    }
+
     /// Mana in per cent of the maximum, when both are known.
     pub fn mana_percent(&self) -> Option<i32> {
         self.mana
@@ -320,6 +360,7 @@ pub(crate) struct Bot {
     reason: Option<String>,
     flee: Flee,
     fight: Fight,
+    loot: Loot,
     recover: Recover,
     /// The gateway is logging the character off under attack: Flee alone runs, then the bot
     /// stops.
@@ -607,6 +648,7 @@ impl Bot {
     pub fn event(&mut self, ev: &GameEvent, now: Instant) -> Vec<Say> {
         self.flee.on_event(ev, now);
         self.fight.on_event(ev, now);
+        self.loot.on_event(ev, now);
         self.recover.on_event(ev, now);
         if let Some(t) = &mut self.task {
             t.on_event(ev, now);
@@ -643,6 +685,7 @@ impl Bot {
             Some(BotMode::Flee) => self.flee.outcome(action, outcome),
             Some(BotMode::Fight) => self.fight.outcome(action, outcome),
             Some(BotMode::Recover) => self.recover.outcome(action, outcome),
+            Some(BotMode::Loot) => self.loot.outcome(action, outcome),
             _ => {}
         }
         // Flee broke off the fight it could not run from.
@@ -709,6 +752,8 @@ impl Bot {
             } else if self.leaving {
                 says.extend(self.stop("the gateway is logging off", false));
                 return (None, says);
+            } else if let Some(r) = self.loot.wants(v) {
+                (BotMode::Loot, r)
             } else if let Some(r) = self.recover.wants(v) {
                 (BotMode::Recover, r)
             } else if let Some(r) = self.fight.wants(v) {
@@ -725,6 +770,7 @@ impl Bot {
             let step = match mode {
                 BotMode::Flee => self.flee.step(v),
                 BotMode::Recover => self.recover.step(v),
+                BotMode::Loot => self.loot.step(v),
                 BotMode::Fight => self.fight.step(v),
                 BotMode::Task => {
                     let task = self.task.as_mut().expect("Task has a loop");

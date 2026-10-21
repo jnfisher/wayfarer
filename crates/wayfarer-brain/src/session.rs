@@ -2177,6 +2177,11 @@ impl Session {
             hp_missing: c.hp.zip(c.hp_max).map(|(h, m)| i64::from(m - h)),
             level: c.level.map_or(1, i64::from),
             book: &self.spellbook,
+            load: c
+                .encumbrance
+                .as_ref()
+                .and_then(|e| Some((u64::from(e.current?), u64::from(e.max?)))),
+            coins: c.coins.as_ref().map_or(&[], |c| c.carried.as_slice()),
         };
         let (act, says) = self.bot.tick(&view);
         self.say(says, out);
