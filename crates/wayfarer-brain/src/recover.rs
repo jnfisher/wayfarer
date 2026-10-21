@@ -21,7 +21,7 @@ const WALKS: u32 = 2;
 /// resting it back with the HP.
 const HEALS: u32 = 6;
 /// One general spell goes per 5-s round (`kb/spells.md`).
-const HEAL_GAP: Duration = Duration::from_secs(6);
+const HEAL_GAP: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Default)]
 pub(crate) struct Recover {

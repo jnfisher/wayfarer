@@ -34,7 +34,7 @@ pub const STALEMATE_ROUNDS: u32 = 4;
 pub const ROUND_GAP: Duration = Duration::from_secs(2);
 /// One general spell goes per 5-s round (`kb/spells.md`); a heal in a fight is tried again
 /// no sooner than this.
-pub const HEAL_GAP: Duration = Duration::from_secs(6);
+pub const HEAL_GAP: Duration = Duration::from_secs(5);
 /// After the game refuses an attack spell (no mana, a spell already cast this round) the
 /// fights are fought with weapons for this long.
 pub const SPELL_HOLD: Duration = Duration::from_secs(12);
@@ -78,6 +78,8 @@ pub(crate) struct Fight {
     spell_hold: Option<Instant>,
     /// No heal in a fight before then.
     heal_ready: Option<Instant>,
+    /// A heal was cast in this fight and the `*Combat Off*` it causes has not come yet.
+    healed: bool,
 }
 
 impl Mode for Fight {
@@ -140,7 +142,14 @@ impl Mode for Fight {
 
     fn on_event(&mut self, ev: &GameEvent, now: Instant) {
         match ev {
+            // The end of the fight our own heal caused: the monster is still there, so no
+            // `look`; the next step attacks it again, before the next round's swings.
+            GameEvent::CombatOff if std::mem::take(&mut self.healed) => {
+                self.target = None;
+                self.stall = Stall::default();
+            }
             GameEvent::CombatOff | GameEvent::ExpGain { .. } => {
+                self.healed = false;
                 self.target = None;
                 self.look = true;
                 self.stall = Stall::default();
@@ -161,6 +170,7 @@ impl Mode for Fight {
     fn outcome(&mut self, action: &Action, outcome: Outcome) {
         match (action.expect, outcome) {
             (Expect::RoomSeen, _) => self.look = false,
+            (Expect::Engaged, Outcome::Confirmed(_)) => self.healed = false,
             (Expect::Engaged, Outcome::Refused(Refused::Target)) => self.refused(),
             (Expect::Engaged, Outcome::Refused(Refused::Spell)) => self.spell_refused = true,
             (Expect::Engaged, Outcome::TimedOut) => {
@@ -189,6 +199,7 @@ impl Fight {
         }
         let spell = v.heal_spell()?;
         self.heal_ready = Some(v.now + HEAL_GAP);
+        self.healed = true;
         Some(Step::send(
             Action::new(spell.short.clone(), Expect::Prompt),
             format!("Fight: HP {}%, casting {}", v.hp?, spell.name),

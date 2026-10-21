@@ -33,6 +33,23 @@ fn minor_healing_is_a_heal_that_grows_with_the_level() {
 }
 
 #[test]
+fn buffs_that_heal_heals_over_time_and_resurrection_are_not_heals_to_cast() {
+    let pack = WorldPack::open(common::pack_path()).unwrap();
+    let spells = Spells::load(&pack).unwrap();
+    // righteousness and blood ritual (a buff first), regeneration (over time), restoration
+    // (a resurrection); minor healing and godheal are.
+    for (class, short, name) in [
+        ("Cleric", "rite", "righteousness"),
+        ("Cleric", "blud", "blood ritual"),
+        ("Druid", "rgen", "regeneration"),
+        ("Cleric", "rsto", "restoration"),
+    ] {
+        assert!(spells.find(class, short, name).is_none(), "{name}");
+    }
+    assert!(spells.find("Cleric", "mihe", "minor healing").is_some());
+}
+
+#[test]
 fn a_flat_spell_averages_its_range() {
     let s = wayfarer_world::SpellDef::flat("x", "x", SpellKind::Attack, 2, 4, 10);
     assert_eq!(s.average(30), 7.0);

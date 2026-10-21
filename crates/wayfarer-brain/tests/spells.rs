@@ -153,7 +153,7 @@ async fn a_cleric_heals_before_it_rests_a_round_apart() {
         format!("You cast minor healing, for 11\r\n{}", prompt(31)),
     );
     g.narrated("Recover: HP 28%, casting minor healing").await;
-    g.narrated("Recover: HP 42%, the next heal in 6 s").await;
+    g.narrated("Recover: HP 42%, the next heal in 5 s").await;
     g.narrated("Waiting here").await;
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "spells", "mihe", "mihe", "mihe"]);
@@ -189,13 +189,23 @@ async fn a_cleric_hurt_in_a_fight_heals_then_fights_on() {
     g.narrated("Fight: large giant rat").await;
     g.round("You whap large giant rat for 6 damage!", 35).await;
     // 15 of 35 is 42%: under the 50% line for a heal in a fight, over the 25% flee line.
+    // The cast ends auto-combat: the game says so, and the bot attacks again at once, with no
+    // `look` in between, before the next round's swings.
     g.expect(
         "mihe",
-        format!("You cast minor healing, for 5\r\n{}", prompt(20)),
+        format!(
+            "You cast minor healing, for 5\r\n*Combat Off*\r\n{}",
+            prompt(20)
+        ),
     );
+    g.expect("a rat", line(ENGAGED, 20));
     g.output(&line("The large giant rat lunges at you!", 15))
         .await;
     g.narrated("Fight: HP 42%, casting minor healing").await;
+    g.narrated("Fight: large giant rat").await;
     let (_, played) = g.close(run).await;
-    assert_eq!(played, ["st", "look", "spells", "a rat", "mihe"]);
+    assert_eq!(
+        played[..6],
+        ["st", "look", "spells", "a rat", "mihe", "a rat"]
+    );
 }
