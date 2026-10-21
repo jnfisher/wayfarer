@@ -2034,8 +2034,13 @@ impl Session {
         }
     }
 
-    /// `walk_stop`.
-    pub fn walk_stop(&mut self, out: &mut Vec<ToGateway>) {
+    /// `walk_stop`: the map's `stop`. A walk of the bot's (a loop it runs) is stopped by
+    /// stopping the bot, or it would take its next leg at once; a walk the player asked for
+    /// (the bot is not running then) just ends.
+    pub fn walk_stop(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
+        if self.bot.running() {
+            self.bot_control(BotAction::Stop, now, out);
+        }
         self.stop_walk("asked to stop", out);
         self.flush_views(out);
     }

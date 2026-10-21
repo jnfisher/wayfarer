@@ -120,6 +120,23 @@ async fn round_the_loop() -> (Vec<ToGateway>, Vec<String>, Vec<String>) {
 }
 
 #[tokio::test(start_paused = true)]
+async fn the_maps_stop_while_the_bot_walks_a_loop_stops_the_bot() {
+    // The map's stop sends `walk_stop`: it ended the leg and the bot took the next at once.
+    let (mut g, run) = ready_at(VILLAGE_ENTRANCE).await;
+    g.expect("w", room(NARROW_PATH));
+    g.expect("w", room(NARROW_ROAD));
+    g.run_loop(&[SMALL_CAVERN]).await;
+    g.narrated("Loop Newhaven: to stop 1/3 Newhaven, Arena (3 steps)")
+        .await;
+    g.send(ToClient::WalkStop { session: ID.into() }).await;
+    g.idle(Duration::from_secs(120)).await;
+    let (seen, played) = g.close(run).await;
+    // Nothing after the moves in flight: the third step (`d`) and the stops never came.
+    assert!(!played.iter().any(|c| c == "d"), "{played:?}");
+    assert_eq!(bot(&seen).state, BotState::Stopped);
+}
+
+#[tokio::test(start_paused = true)]
 async fn run_walks_to_the_nearest_stop_fights_moves_on_skips_and_waits() {
     let (seen, played, said) = round_the_loop().await;
     // After the re-sync's `st` and `look`.
