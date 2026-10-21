@@ -519,6 +519,10 @@ impl Brain {
                 Some(s) => s.stats_request(out),
                 None => out.push(no_session("stats_request", &session)),
             },
+            ToClient::StatsReset { session } => match self.sessions.get_mut(&session) {
+                Some(s) => s.stats_reset(now, out),
+                None => out.push(no_session("stats_reset", &session)),
+            },
             ToClient::Resync { session } => match self.sessions.get_mut(&session) {
                 Some(s) => {
                     tracing::info!(%session, "re-sync asked for");

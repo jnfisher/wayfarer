@@ -963,6 +963,19 @@ impl Session {
         });
     }
 
+    /// `stats_reset`: a new run from now, its numbers at zero.
+    pub fn stats_reset(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
+        if self.ledger.reset(now) {
+            out.push(
+                self.notice("Run reset: a new run starts now, the old one is kept in the history"),
+            );
+            self.stats_request(out);
+            self.flush_views(out);
+        } else {
+            out.push(self.warning("No run to reset: Start the bot first"));
+        }
+    }
+
     /// The player a PvP line shows attacking the character: `X moves to attack you!` from a
     /// player, or `X just attacked <the character>!`.
     fn pvp_attacker(&self, ev: &Event) -> Option<String> {

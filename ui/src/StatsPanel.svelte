@@ -11,11 +11,13 @@
     stats: Stats | undefined;
     attached: boolean | null;
     onrefresh: (session: string) => void;
+    /** End the current run and start a new one at zero (the old one stays in the history). */
+    onreset?: (session: string) => void;
     /** Set the player's monster rule for a pattern, or remove it (`null`). */
     onrule?: (session: string, pattern: string, rule: MonsterRuleKind | null) => void;
   }
 
-  let { session, character, stats, attached, onrefresh, onrule = () => {} }: Props = $props();
+  let { session, character, stats, attached, onrefresh, onreset = () => {}, onrule = () => {} }: Props = $props();
 
   const rules = $derived(character?.bot?.monster_rules ?? []);
   const RULES: { rule: MonsterRuleKind; label: string }[] = [
@@ -55,7 +57,14 @@
   {:else}
     <section class="current" aria-label="Current run">
       {#if run}
-        <div class="since">run since {startedAt(run.run_started_at)}</div>
+        <div class="since">
+          run since {startedAt(run.run_started_at)}
+          <button
+            class="reset"
+            title="End this run and start a new one at zero. The old run stays in the list below."
+            onclick={() => onreset(session.id)}>reset</button
+          >
+        </div>
         <div class="big">
           {#each BIG as b (b.key)}
             <div class="cell">
@@ -149,6 +158,9 @@
   }
   .since {
     color: var(--dim);
+  }
+  .since .reset {
+    margin-left: 0.5em;
   }
   .big {
     display: grid;

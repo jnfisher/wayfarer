@@ -275,6 +275,7 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 | `save_loop {session, name, base?, stops}` | Make or change a custom loop: `name` (1 to 60 characters, with a letter or a digit) and its `stops` (`[{map, room}]`, 1 to 300, in order; every room must exist), made from the loop `base` (an id or a MegaMud file, kept for reference). The id is `custom:` and a slug of the name, so the same name again replaces the loop. The brain answers with a notice ("Saved loop X (N stops): custom:x" or "Changed loop ...") or a warning, and the loop is in the next `loops` message ([brain.md](brain.md) "Custom loops") |
 | `delete_loop {session, id}` | Delete a custom loop (`custom:...`) |
 | `stats_request {session}` | Send a `stats` message: the character's last runs and the newest run's samples |
+| `stats_reset {session}` | End the current run and start a new one now, its numbers (exp/hr, kills, deaths, flees, rests) at zero; the ended run stays in the history. A notice says so and a `stats` message follows; with no run (the bot stopped) a warning says so |
 | `find {session, query}` | Send a `found` message: the rooms, well-known places and monsters whose name holds `query` (two characters or more, any case) |
 | `set_monster_rule {session, pattern, rule}` | Set the player's monster rule for names that hold `pattern` (any case): `never_fight`, `flee_from` or `avoid` ([brain.md](brain.md) "Monster rules"); `null` removes it. Stored with the bot's record; the bot's `monster_rules` shows the result |
 
@@ -289,6 +290,7 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 {"type":"walk_loop","session":"kasimir","id":"1:2140:8:doors:0"}
 {"type":"run_loop","session":"kasimir","id":"1:2140:8:doors:0","skip":[{"map":1,"room":2156}]}
 {"type":"stats_request","session":"kasimir"}
+{"type":"stats_reset","session":"kasimir"}
 {"type":"save_loop","session":"kasimir","name":"Hidden Keep with Leo the Quick","base":"HKEPLOOP.mp","stops":[{"map":9,"room":749},{"map":9,"room":870}]}
 {"type":"delete_loop","session":"kasimir","id":"custom:hidden-keep-with-leo-the-quick"}
 {"type":"find","session":"kasimir","query":"chief"}

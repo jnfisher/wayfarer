@@ -318,6 +318,40 @@ async fn a_run_counts_kills_and_ends_with_a_death() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_reset_starts_a_new_run_at_zero_and_keeps_the_old_one() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let (mut g, run) = arena_brain(brain_on(&path), &["large giant rat"]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    g.expect("look", arena(&[], 35));
+    g.output(&kill(35)).await;
+    g.narrated("Waiting here").await;
+    g.idle(Duration::from_secs(120)).await;
+    g.send(ToClient::StatsReset { session: ID.into() }).await;
+    g.narrated("Run reset: a new run starts now, the old one is kept in the history")
+        .await;
+    let (runs, _) = g.stats().await;
+    let (seen, _) = g.close(run).await;
+    // The snapshot's run is the new one, at zero; the history has both, newest first.
+    let now = as_ui_sees(&seen).run.expect("a run");
+    assert_eq!((now.kills, now.exp_gained), (0, 0));
+    assert_eq!(runs.len(), 2, "{runs:?}");
+    assert_eq!((runs[0].kills, runs[0].ended_at.is_none()), (0, true));
+    assert_eq!((runs[1].kills, runs[1].ended_at.is_some()), (1, true));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_reset_with_no_run_says_so() {
+    let (mut g, run) = Game::start_with(SessionState::Realm, arena(&[], 35)).await;
+    g.idle(Duration::from_secs(20)).await;
+    g.send(ToClient::StatsReset { session: ID.into() }).await;
+    g.narrated("No run to reset: Start the bot first").await;
+    g.close(run).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn without_a_store_the_run_is_still_counted() {
     let (mut g, run) = Game::start_with(SessionState::Realm, arena(&["large giant rat"], 35)).await;
     g.idle(Duration::from_secs(20)).await;

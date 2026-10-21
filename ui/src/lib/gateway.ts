@@ -238,6 +238,12 @@ export class GatewayClient {
     return this.send({ type: "stats_request", session });
   }
 
+  /** End the current run and start a new one at zero (the old one stays in the history);
+   * false when not connected. */
+  resetStats(session: string): boolean {
+    return this.send({ type: "stats_reset", session });
+  }
+
   /** Walk a generated loop once; false when not connected. */
   walkLoop(session: string, id: string): boolean {
     return this.send({ type: "walk_loop", session, id });

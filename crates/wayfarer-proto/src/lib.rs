@@ -829,6 +829,9 @@ pub enum ToClient {
     StatsRequest {
         session: SessionId,
     },
+    StatsReset {
+        session: SessionId,
+    },
     SaveLoop {
         session: SessionId,
         name: String,
@@ -1008,6 +1011,11 @@ pub enum ToGateway {
     },
     /// UI → brain: send a `stats` message with the character's last runs.
     StatsRequest { session: SessionId },
+    /// UI → brain: end the character's current run and start a new one now, with its numbers
+    /// at zero (exp/hr, kills, deaths, flees, rests). The ended run stays in the history. A
+    /// notice says so, and a `stats` message follows. Nothing happens without a run (the bot
+    /// stopped): a warning says so.
+    StatsReset { session: SessionId },
     /// UI → brain: make or change a custom loop: `name` and the `stops` in order (the loop it
     /// was made from, `base`, is kept for reference). The id is `custom:` and a slug of the name,
     /// so saving the same name again replaces the loop. The brain answers with a notice, and the
@@ -1190,6 +1198,7 @@ impl ToClient {
         "walk_loop",
         "run_loop",
         "stats_request",
+        "stats_reset",
         "save_loop",
         "delete_loop",
         "find",
@@ -1234,6 +1243,7 @@ impl ToClient {
             Self::WalkLoop { .. } => "walk_loop",
             Self::RunLoop { .. } => "run_loop",
             Self::StatsRequest { .. } => "stats_request",
+            Self::StatsReset { .. } => "stats_reset",
             Self::SaveLoop { .. } => "save_loop",
             Self::DeleteLoop { .. } => "delete_loop",
             Self::Find { .. } => "find",
@@ -1273,6 +1283,7 @@ impl ToClient {
             | Self::WalkLoop { session, .. }
             | Self::RunLoop { session, .. }
             | Self::StatsRequest { session }
+            | Self::StatsReset { session }
             | Self::SaveLoop { session, .. }
             | Self::DeleteLoop { session, .. }
             | Self::Sent { session, .. }
@@ -1320,6 +1331,7 @@ impl ToGateway {
         "walk_loop",
         "run_loop",
         "stats_request",
+        "stats_reset",
         "save_loop",
         "delete_loop",
         "find",
@@ -1358,6 +1370,7 @@ impl ToGateway {
             Self::WalkLoop { .. } => "walk_loop",
             Self::RunLoop { .. } => "run_loop",
             Self::StatsRequest { .. } => "stats_request",
+            Self::StatsReset { .. } => "stats_reset",
             Self::SaveLoop { .. } => "save_loop",
             Self::DeleteLoop { .. } => "delete_loop",
             Self::Find { .. } => "find",
@@ -1397,6 +1410,7 @@ impl ToGateway {
             | Self::WalkLoop { .. }
             | Self::RunLoop { .. }
             | Self::StatsRequest { .. }
+            | Self::StatsReset { .. }
             | Self::SaveLoop { .. }
             | Self::DeleteLoop { .. }
             | Self::Find { .. }
@@ -1451,6 +1465,7 @@ impl ToGateway {
             Self::WalkLoop { session, id } => ToClient::WalkLoop { session, id },
             Self::RunLoop { session, id, skip } => ToClient::RunLoop { session, id, skip },
             Self::StatsRequest { session } => ToClient::StatsRequest { session },
+            Self::StatsReset { session } => ToClient::StatsReset { session },
             Self::SaveLoop {
                 session,
                 name,

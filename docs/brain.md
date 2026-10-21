@@ -724,7 +724,9 @@ The snapshot's `run` has the current run's numbers, recomputed on each event and
 `exp_per_hour` is the exp gained over the wall time since Start (a minute at least, so a first
 kill is not thousands an hour), not since the last kill. `stats_request` answers with the last
 ten runs and the newest one's samples ([protocol.md](protocol.md)); the web UI's stats tab
-shows them ([web-ui.md](web-ui.md) "The stats").
+shows them ([web-ui.md](web-ui.md) "The stats"). `stats_reset` ends the current run and starts
+another at once with its numbers at zero (the old run stays in the list, its loop carried
+over): the way to measure a stretch of play without stopping the bot. With no run it warns.
 
 ## Spells
 

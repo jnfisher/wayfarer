@@ -79,6 +79,31 @@ describe("the stats tab", () => {
     expect(onrefresh).toHaveBeenCalledWith("a");
   });
 
+  it("resets the current run from a button beside the run, and only when there is one", async () => {
+    const onreset = vi.fn();
+    const { container, unmount } = render(StatsPanel, {
+      session,
+      character,
+      stats,
+      attached: true,
+      onrefresh: () => {},
+      onreset,
+    });
+    await fireEvent.click(screen.getByRole("button", { name: "reset" }));
+    expect(onreset).toHaveBeenCalledWith("a");
+    unmount();
+    const none = render(StatsPanel, {
+      session,
+      character: {},
+      stats: undefined,
+      attached: true,
+      onrefresh: () => {},
+      onreset,
+    });
+    expect(none.container.querySelector(".reset")).toBeNull();
+    void container;
+  });
+
   it("says when there is no run, no rows or no brain", () => {
     const { container, unmount } = render(StatsPanel, {
       session,
