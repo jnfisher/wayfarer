@@ -97,14 +97,19 @@ impl Spells {
             if magery == 0 || s.short_name.is_empty() {
                 continue;
             }
-            let has = |a: i64| {
-                v.get("abilities")
-                    .and_then(Value::as_array)
-                    .is_some_and(|l| l.iter().any(|x| x.as_i64() == Some(a)))
-            };
+            // The spell's first ability is what it is. A heal that goes with a buff
+            // (righteousness, blood ritual), one that works over time (regeneration, way of the
+            // troll: a `duration` above 0), a resurrection (restoration: no amount) and one that
+            // takes from the target (a negative amount) are not heals to cast between blows.
+            let first = v
+                .get("abilities")
+                .and_then(Value::as_array)
+                .and_then(|l| l.first())
+                .and_then(Value::as_i64);
+            let instant = int("duration") == 0 && int("minval") > 0;
             let kind = match (s.spell_type, s.target) {
-                (0, 0 | 4 | 8) if has(ABILITY_DAMAGE) => SpellKind::Attack,
-                (3, 1 | 2 | 6) if has(ABILITY_HEAL) => SpellKind::Heal,
+                (0, 0 | 4 | 8) if first == Some(ABILITY_DAMAGE) && instant => SpellKind::Attack,
+                (3, 1 | 2 | 6) if first == Some(ABILITY_HEAL) && instant => SpellKind::Heal,
                 _ => continue,
             };
             spells.push(SpellDef {

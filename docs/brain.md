@@ -746,14 +746,18 @@ scroll read since is found the next time.
   `You have already cast a spell this round!`) is not the target's fault: the fight uses the
   weapon for 12 s.
 - **Heals between fights.** Recover casts the cheapest heal that covers the HP that are missing
-  (else the strongest it can pay for) while HP is below `health.rest_below_hp`, one per 6 s (a
+  (else the strongest it can pay for) while HP is below `health.rest_below_hp`, one per 5 s (a
   round is 5 s), at most six per rest, before it walks to a quiet room and rests: a Cleric at
   57% heals itself instead of waiting several minutes. Resting is still how it reaches
   `health.rest_until_hp`. `spells.heal` `off` makes it only rest.
 - **Heals in a fight.** Below `spells.heal_in_combat_below_hp` (50%) Fight casts a heal instead
-  of waiting, once per 6 s. The cast ends auto-combat (`*Combat Off*`); Fight looks and engages
-  again. The flee line wins when it is higher (Flee is the higher mode), so the setting only
-  matters above it.
+  of waiting, once per 5 s (a round). Heals cost no energy (`energy` 0 in the pack), so the
+  point is to heal between rounds and be engaged again before the next one: the cast ends
+  auto-combat (`*Combat Off*`) and Fight attacks the same monster at once, with no `look`.
+  The heal line is how far HP may fall before it heals each round. The flee line wins when it
+  is higher (Flee is the higher mode), so the setting only matters above it. Only instant heals
+  count: a heal that comes with a buff (righteousness, blood ritual), one over time
+  (regeneration, way of the troll) and a resurrection are left out.
 - **Mana rests.** A character that casts what it has rests when mana is below
   `health.rest_mana_below` (30%), to `health.rest_mana_until` (90%), on the same rules as an HP
   rest (a quiet room if one is near, a rest started is finished). With both spell settings `off`
