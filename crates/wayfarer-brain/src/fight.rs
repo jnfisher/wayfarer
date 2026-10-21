@@ -32,6 +32,12 @@ pub const STALEMATE_ROUNDS: u32 = 4;
 /// The character's swings of one round come together (a prompt after each); a swing this long
 /// after the round's first starts the next round. Rounds are 5 s apart (`kb/combat.md`).
 pub const ROUND_GAP: Duration = Duration::from_secs(2);
+/// One general spell goes per 5-s round (`kb/spells.md`); a heal in a fight is tried again
+/// no sooner than this.
+pub const HEAL_GAP: Duration = Duration::from_secs(6);
+/// After the game refuses an attack spell (no mana, a spell already cast this round) the
+/// fights are fought with weapons for this long.
+pub const SPELL_HOLD: Duration = Duration::from_secs(12);
 
 /// The character's swings at the target in the round going on.
 #[derive(Debug, Clone, Copy)]
@@ -66,6 +72,12 @@ pub(crate) struct Fight {
     stall: Stall,
     /// A stalemate with this monster, for the bot to act on.
     stalemate: Option<String>,
+    /// The game refused an attack spell; the hold starts at the next step.
+    spell_refused: bool,
+    /// No attack spells until then.
+    spell_hold: Option<Instant>,
+    /// No heal in a fight before then.
+    heal_ready: Option<Instant>,
 }
 
 impl Mode for Fight {
@@ -82,6 +94,9 @@ impl Mode for Fight {
 
     fn step(&mut self, v: &View) -> Step {
         if v.engaged {
+            if let Some(step) = self.heal(v) {
+                return step;
+            }
             let t = self.target.as_deref().unwrap_or("in combat");
             return Step::wait(format!("Fight: {t}"));
         }
@@ -98,10 +113,26 @@ impl Mode for Fight {
                 let t = t.to_owned();
                 self.target = Some(t.clone());
                 self.stall = Stall::default();
-                Step::send(
-                    Action::new(format!("a {}", attack_word(&t)), Expect::Engaged),
-                    format!("Fight: {t}"),
-                )
+                if std::mem::take(&mut self.spell_refused) {
+                    self.spell_hold = Some(v.now + SPELL_HOLD);
+                }
+                let spell = if self.spell_hold.is_some_and(|t| v.now < t) {
+                    None
+                } else {
+                    v.attack_spell()
+                };
+                match spell {
+                    // Cast out of combat, the spell engages and auto-combat casts it every
+                    // round while the mana lasts (`kb/spells.md`).
+                    Some(s) => Step::send(
+                        Action::new(format!("{} {}", s.short, attack_word(&t)), Expect::Engaged),
+                        format!("Fight: {t} with {}", s.name),
+                    ),
+                    None => Step::send(
+                        Action::new(format!("a {}", attack_word(&t)), Expect::Engaged),
+                        format!("Fight: {t}"),
+                    ),
+                }
             }
             None => Step::wait("Fight: nothing to fight"),
         }
@@ -131,6 +162,7 @@ impl Mode for Fight {
         match (action.expect, outcome) {
             (Expect::RoomSeen, _) => self.look = false,
             (Expect::Engaged, Outcome::Refused(Refused::Target)) => self.refused(),
+            (Expect::Engaged, Outcome::Refused(Refused::Spell)) => self.spell_refused = true,
             (Expect::Engaged, Outcome::TimedOut) => {
                 if let Some(t) = self.target.take() {
                     let n = self.timeouts.entry(t.clone()).or_default();
@@ -148,6 +180,21 @@ impl Mode for Fight {
 }
 
 impl Fight {
+    /// A heal on the character in a fight, when HP is below the line and a spell and the
+    /// mana for one are there. The cast ends auto-combat (`kb/spells.md`); Fight looks and
+    /// engages again.
+    fn heal(&mut self, v: &View) -> Option<Step> {
+        if v.hp? >= v.heal_in_combat_below() || self.heal_ready.is_some_and(|t| v.now < t) {
+            return None;
+        }
+        let spell = v.heal_spell()?;
+        self.heal_ready = Some(v.now + HEAL_GAP);
+        Some(Step::send(
+            Action::new(spell.short.clone(), Expect::Prompt),
+            format!("Fight: HP {}%, casting {}", v.hp?, spell.name),
+        ))
+    }
+
     fn pick<'a>(
         &self,
         atlas: &Atlas,

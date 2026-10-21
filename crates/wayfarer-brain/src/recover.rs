@@ -4,6 +4,8 @@
 //! that fight is over, then Recover carries on. It does not walk back into a room where a
 //! monster to avoid or flee from was last seen (`rules.rs`): it waits until that is forgotten.
 
+use std::time::Duration;
+
 use tokio::time::Instant;
 use wayfarer_parse::typed::{GameEvent, Rest};
 use wayfarer_world::Key;
@@ -15,6 +17,11 @@ use crate::policy::{REST_TRIES, REST_WAIT, RestAt, rest_at};
 /// Walks to a quiet room, and walks back, tried before giving up on each (a fight can stop a
 /// walk on the way).
 const WALKS: u32 = 2;
+/// Heals cast on the way to a rest, at most: more than this and the mana is better spent
+/// resting it back with the HP.
+const HEALS: u32 = 6;
+/// One general spell goes per 5-s round (`kb/spells.md`).
+const HEAL_GAP: Duration = Duration::from_secs(6);
 
 #[derive(Debug, Default)]
 pub(crate) struct Recover {
@@ -31,6 +38,9 @@ pub(crate) struct Recover {
     wait_until: Option<Instant>,
     /// Resting in a room that spawns after the walks out were stopped has been warned of.
     warned: bool,
+    /// Heals cast since Recover took control, and when the next may go.
+    heals: u32,
+    heal_ready: Option<Instant>,
 }
 
 impl Recover {
@@ -56,11 +66,33 @@ impl Recover {
     }
 
     fn low(v: &View) -> bool {
-        v.hp.is_some_and(|hp| hp < v.rest_below()) || v.poisoned
+        v.hp.is_some_and(|hp| hp < v.rest_below()) || v.poisoned || v.mana_low()
     }
 
     fn rested(v: &View) -> bool {
-        !v.hp.is_some_and(|hp| hp < v.rest_until()) && !v.poisoned
+        !v.hp.is_some_and(|hp| hp < v.rest_until()) && !v.poisoned && v.mana_restored()
+    }
+
+    /// A heal on the character, between fights: while HP is below the rest line, a heal
+    /// spell and its mana are there, and not too many have gone. Resting waits for it.
+    fn heal(&mut self, v: &View) -> Option<Step> {
+        if v.resting || v.poisoned || self.heals >= HEALS || v.hp? >= v.rest_below() {
+            return None;
+        }
+        let spell = v.heal_spell()?;
+        if let Some(t) = self.heal_ready.filter(|&t| v.now < t) {
+            let secs = (t - v.now).as_secs() + 1;
+            return Some(Step::wait(format!(
+                "Recover: HP {}%, the next heal in {secs} s",
+                v.hp?
+            )));
+        }
+        self.heals += 1;
+        self.heal_ready = Some(v.now + HEAL_GAP);
+        Some(Step::send(
+            Action::new(spell.short.clone(), Expect::Prompt),
+            format!("Recover: HP {}%, casting {}", v.hp?, spell.name),
+        ))
     }
 
     fn done(&mut self) {
@@ -78,7 +110,8 @@ impl Mode for Recover {
         if Self::low(v) {
             return Some(match v.hp {
                 Some(hp) if hp < v.rest_below() => format!("HP {hp}%"),
-                _ => "poisoned".to_owned(),
+                _ if v.poisoned => "poisoned".to_owned(),
+                _ => format!("mana {}%", v.mana_percent().unwrap_or(0)),
             });
         }
         let back = self.away(v) && self.walks_back < WALKS && self.shunned(v).is_none();
@@ -120,6 +153,9 @@ impl Mode for Recover {
         if v.resting {
             self.rests = 0;
             return Step::wait(format!("Recover: resting to {}% in {here}", v.rest_until()));
+        }
+        if let Some(step) = self.heal(v) {
+            return step;
         }
         // Every walk out was stopped on the way (a fight) and a quiet room is still near:
         // resting here goes against the quiet-room rule (`kb/pitfalls.md` 20, 24). Said once.
@@ -177,6 +213,8 @@ impl Mode for Recover {
 
     fn on_event(&mut self, ev: &GameEvent, now: Instant) {
         match ev {
+            // Out of mana: no more heals this time; the rest brings it back.
+            GameEvent::NoMana => self.heals = HEALS,
             GameEvent::TooSick => {
                 self.rests = 0;
                 self.wait_until = Some(now + REST_WAIT);
@@ -219,8 +257,11 @@ impl Recover {
     }
 
     /// When a wait ends, for the clock to wake the bot.
-    pub fn wake(&self) -> Option<Instant> {
+    pub fn wake(&self, now: Instant) -> Option<Instant> {
         self.wait_until
+            .into_iter()
+            .chain(self.heal_ready.filter(|&t| t > now))
+            .min()
     }
 
     /// Where the bot plays from, once known.

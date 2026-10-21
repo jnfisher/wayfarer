@@ -32,6 +32,7 @@ impl Spellbook {
         book
     }
 
+    #[cfg(test)]
     pub fn from_defs(defs: Vec<SpellDef>) -> Spellbook {
         let (attacks, heals) = defs
             .into_iter()
