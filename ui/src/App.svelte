@@ -5,7 +5,9 @@
   import Help from "./Help.svelte";
   import DevPanel from "./DevPanel.svelte";
   import MapPanel from "./MapPanel.svelte";
+  import SettingsPanel from "./SettingsPanel.svelte";
   import StatsPanel from "./StatsPanel.svelte";
+  import type { SettingsMessage } from "./lib/settings";
   import { STATS_REFRESH_MS, type Stats } from "./lib/stats";
   import { PAUSE_KEY, START_KEY, botKeyAction } from "./lib/bot";
   import {
@@ -14,6 +16,7 @@
     GO_CODE,
     MAP_PANEL_CODE,
     RESET_LAYOUT_CODE,
+    SETTINGS_PANEL_CODE,
     STATS_PANEL_CODE,
     ZOOM_IN_KEYS,
     ZOOM_OUT_KEYS,
@@ -81,6 +84,7 @@
   const DRAWER_BUTTONS: { panel: DrawerPanel; title: string }[] = [
     { panel: "map", title: "Map (Alt+M)" },
     { panel: "stats", title: "Stats (Alt+S)" },
+    { panel: "settings", title: "Settings (Alt+T)" },
     { panel: "dev", title: "Dev panel (Alt+D)" },
   ];
 
@@ -90,6 +94,8 @@
   let loopsBySession = $state.raw<Record<string, Loops>>({});
   // The brain's last `stats` per session.
   let statsBySession = $state.raw<Record<string, Stats>>({});
+  // The brain's last `settings` per session, for the settings tab.
+  let settingsBySession = $state.raw<Record<string, SettingsMessage>>({});
   // The brain's last `found` per session, for the map panel's go box.
   let foundBySession = $state.raw<Record<string, FoundMessage>>({});
   /** Bumped by Alt+G: the map panel opens its go box and focuses it. */
@@ -117,6 +123,14 @@
     client.requestStats(id);
     const timer = setInterval(() => client.requestStats(id), STATS_REFRESH_MS);
     return () => clearInterval(timer);
+  });
+
+  // The settings tab asks for the focused character's settings when it opens or the focus
+  // moves, and again when the brain attaches.
+  $effect(() => {
+    const id = focusedId;
+    if (!devPrefs.open || devPrefs.panel !== "settings" || !id || status !== "open" || !brain.attached) return;
+    client.requestSettings(id, settingsBySession[id]?.layer ?? "character");
   });
 
   /** Open (over the focused tile) or close the help overlay. */
@@ -260,6 +274,9 @@
       stats: (stats) => {
         statsBySession = { ...statsBySession, [stats.session]: stats };
       },
+      settings: (settings) => {
+        settingsBySession = { ...settingsBySession, [settings.session]: settings };
+      },
       found: (found) => {
         foundBySession = { ...foundBySession, [found.session]: found };
       },
@@ -318,7 +335,15 @@
       return;
     }
     const drawer: DrawerPanel | null =
-      e.code === MAP_PANEL_CODE ? "map" : e.code === STATS_PANEL_CODE ? "stats" : e.code === DEV_PANEL_CODE ? "dev" : null;
+      e.code === MAP_PANEL_CODE
+        ? "map"
+        : e.code === STATS_PANEL_CODE
+          ? "stats"
+          : e.code === SETTINGS_PANEL_CODE
+            ? "settings"
+            : e.code === DEV_PANEL_CODE
+              ? "dev"
+              : null;
     if (e.altKey && !e.ctrlKey && !e.metaKey && drawer) {
       e.preventDefault();
       toggleDrawer(devPrefs, drawer);
@@ -471,6 +496,14 @@
             onrunloop={(id, loop, skip) => client.runLoop(id, loop, skip)}
             onsaveloop={(id, name, base, stops) => client.saveLoop(id, name, base, stops)}
             ondeleteloop={(id, loop) => client.deleteLoop(id, loop)}
+          />
+        {:else if devPrefs.panel === "settings"}
+          <SettingsPanel
+            session={sessions[focused]}
+            settings={focusedId ? settingsBySession[focusedId] : undefined}
+            attached={brain.attached}
+            onrequest={(id, layer) => client.requestSettings(id, layer)}
+            onsave={(id, layer, changes) => client.saveSettings(id, layer, changes)}
           />
         {:else if devPrefs.panel === "stats"}
           <StatsPanel

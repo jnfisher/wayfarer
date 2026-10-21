@@ -100,6 +100,7 @@ export const DEV_PANEL_CODE = "KeyD";
 export const MAP_PANEL_CODE = "KeyM";
 export const GO_CODE = "KeyG";
 export const STATS_PANEL_CODE = "KeyS";
+export const SETTINGS_PANEL_CODE = "KeyT";
 export const ZOOM_IN_KEYS = ["+", "="];
 export const ZOOM_OUT_KEYS = ["-"];
 export const ZOOM_RESET_KEYS = ["0"];

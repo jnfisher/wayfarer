@@ -105,6 +105,7 @@ and `■` but no pause sign, so pause is `[║]`.
 | `F10`, or `[►]` and `[■]` in the tile's header | Start the focused character's bot where it stands (fight what comes, rest when low), or stop it |
 | `F9`, or `[║]` and `[►]` in the tile's header | Pause or resume the focused character's bot; a line you type pauses it too |
 | `Alt+S`, or the `stats` button | Open the drawer on the stats of the focused character's runs: exp per hour, kills, deaths and flees, now and for the last runs; or close it (on a Mac, `Option`) |
+| `Alt+T`, or the `settings` button | Open the drawer on the focused character's settings (the form, "The settings" below), or close it (on a Mac, `Option`) |
 | `Alt+D`, or the `dev` button | Open the drawer on the dev panel: the focused character's events, unclassified lines and the brain; or close it (on a Mac, `Option`) |
 
 The `?` overlay shows these keys, what the state badges mean and where the data files live. It
@@ -133,8 +134,9 @@ is per browser until settings arrive (`docs/plan/04-settings.md`); it is not wri
 
 ## The drawer
 
-The map, the stats and the dev panel share one drawer on the right, a third of the window at
-most; the tiles refit beside it. Its title has the three tabs, `map`, `stats` and `dev`, the
+The map, the stats, the settings and the dev panel share one drawer on the right, a third of
+the window at most; the tiles refit beside it. Its title has the four tabs, `map`, `stats`,
+`settings` and `dev`, the
 focused character's name and a close button. `Alt+M` (on a Mac, `Option+M`) or the `map`
 button opens it on the map, and again closes it; `Alt+S` or the `stats` button and `Alt+D` or
 the `dev` button do the same for the stats and the dev panel, and each key switches tabs when
@@ -257,6 +259,30 @@ rules"): each rule (*flee from*, *never fight*, *avoid*), its pattern and where 
 remove it; the line under the list adds one (`set_monster_rule`): pick the rule, type the
 name, `add`. A pattern matches any monster whose name holds it, so use the full name (`ooze`
 would also catch the glittering ooze). The settings page (M4) replaces this list.
+
+## The settings
+
+The focused character's settings as a form (`docs/plan/04-settings.md`), from the brain's
+`settings` answer. Rows are grouped (Health, Combat, Spells, Coins, Movement, The bot), each
+with its label, a control that fits it (a number box with its range, a switch, a list of
+words), the unit, where the value in force comes from (`default`, `class & style`, `my
+defaults`, `this server`, `this character`) and the setting's help line. The advanced
+settings show with `all`.
+
+- **Which file**: the buttons above the form choose the file being edited, `this character`
+  (default), `this server` or `my defaults`; the line under them says which file that is and
+  whether it exists yet. A control shows the value that file sets, or, where it sets none, the
+  value in force; the badge says `set here` for the first and names the layer for the second.
+- **Saving**: a change is sent as soon as the control changes (a number when its box loses
+  focus or Enter is pressed). The brain checks it (range, words, the HP lines in order), writes
+  the file, puts it in force at once (the tile says what changed) and answers with the new
+  `settings`. A number outside its range is not sent and its box is marked; one the brain
+  refuses (flee above the rest line) is explained by a warning and the form goes back to what
+  is in force.
+- **Reset**: a value the file sets has a `reset`, which takes it out of the file so the layer
+  below shows through (the default, a preset, or another file).
+- A change made to the file by hand shows up too: the brain sends the form again when it
+  reloads a file.
 
 ## The dev panel
 

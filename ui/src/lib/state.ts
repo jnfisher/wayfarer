@@ -220,8 +220,8 @@ export function clock(at: number): string {
 export const DEV_KEY = "wayfarer.dev";
 export const DEV_TABS = ["events", "unclassified", "brain"] as const;
 export type DevTab = (typeof DEV_TABS)[number];
-/** The drawer's panels (C-023; stats, C-029). */
-export const DRAWER_PANELS = ["map", "stats", "dev"] as const;
+/** The drawer's panels (C-023; stats, C-029; settings). */
+export const DRAWER_PANELS = ["map", "stats", "settings", "dev"] as const;
 export type DrawerPanel = (typeof DRAWER_PANELS)[number];
 export interface DevPrefs {
   open: boolean;
