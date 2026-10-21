@@ -153,6 +153,11 @@ impl Default for Walker {
 }
 
 impl Walker {
+    /// Search for a hidden exit up to `limit` times from now on (a walk in progress goes on).
+    pub fn set_search_limit(&mut self, limit: u32) {
+        self.search_limit = limit;
+    }
+
     /// A walker that searches for a hidden exit up to `limit` times.
     pub fn with_search_limit(limit: u32) -> Self {
         Self {

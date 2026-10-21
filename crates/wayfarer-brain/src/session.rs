@@ -32,6 +32,7 @@ use crate::modes::{Bot, Do, Presence, View};
 use crate::policy::{COMBAT_QUIET, hp_percent};
 use crate::position::Position;
 use crate::rules::{self, RuleBook, Sightings};
+use crate::session_settings::SettingsSource;
 use crate::stats::{Ledger, unix};
 use crate::task::{Task, TaskLoop, why_unreachable};
 use crate::walker::{MAX_SEARCHES, Next, Say, Walker};
@@ -257,6 +258,12 @@ pub(crate) struct Session {
     pub state: SessionState,
     /// The settings in force for this character (`Brain::with_settings_dir`).
     settings: Arc<Settings>,
+    /// Where they come from, to resolve them again when the class is known.
+    settings_source: SettingsSource,
+    /// The warning for settings files that could not be used, until the brain has sent it.
+    settings_warning: Option<String>,
+    /// The class the settings were last resolved for.
+    class_seen: Option<String>,
     registry: Arc<Registry>,
     parser: Parser,
     pub character: Character,
@@ -358,11 +365,12 @@ impl Session {
         atlas: Option<Arc<Atlas>>,
         store: Option<Arc<Mutex<Store>>>,
         clock: Arc<dyn Clock>,
-        flee_below: i32,
-        settings: Arc<Settings>,
+        settings: SettingsSource,
         flee_from: &[String],
         now: Instant,
     ) -> Self {
+        let (resolved, settings_warning) = settings.resolve(&info.id, None);
+        let flee_below = settings.flee_below(&resolved);
         let ledger = Ledger::new(store, clock.clone(), &info.id);
         let restore = ledger
             .stored()
@@ -382,9 +390,12 @@ impl Session {
             position: Position::default(),
             executor: Executor::default(),
             walker: Walker::with_search_limit(
-                u32::try_from(settings.int("movement.search_limit")).unwrap_or(MAX_SEARCHES),
+                u32::try_from(resolved.int("movement.search_limit")).unwrap_or(MAX_SEARCHES),
             ),
-            settings,
+            settings: resolved,
+            settings_source: settings,
+            settings_warning,
+            class_seen: None,
             map_radius: MAP_RADIUS,
             map_center: None,
             map_dirty: false,
@@ -2213,7 +2224,54 @@ impl Session {
 
     /// Move the executor on: hand a finished action's outcome to the walker, and send the next
     /// action if this is a prompt boundary in the realm with nothing else in flight.
+    /// The warning for settings files that could not be used, once.
+    pub fn take_settings_warning(&mut self) -> Option<String> {
+        self.settings_warning.take()
+    }
+
+    /// The class the status screen showed is not the one the settings were resolved for: do it
+    /// again, so the class presets (a Mage flees earlier than a Warrior) apply, and say what
+    /// the HP lines are now. Fixed settings (a test's) are left as they are.
+    fn refresh_settings(&mut self, out: &mut Vec<ToGateway>) {
+        let class = self.character.state().class.clone();
+        if class == self.class_seen {
+            return;
+        }
+        self.class_seen = class.clone();
+        let Some(name) = class.filter(|_| self.settings_source.reads_files()) else {
+            return;
+        };
+        let before = self.hp_lines();
+        let (settings, warning) = self.settings_source.resolve(&self.id, Some(&name));
+        if let Some(why) = warning {
+            out.push(self.warning(&why));
+            return;
+        }
+        let flee = self.settings_source.flee_below(&settings);
+        self.walker.set_search_limit(
+            u32::try_from(settings.int("movement.search_limit")).unwrap_or(MAX_SEARCHES),
+        );
+        self.bot.set_flee_below(flee);
+        self.settings = settings;
+        if self.hp_lines() != before {
+            let (flee, below, until) = self.hp_lines();
+            out.push(self.notice(&format!(
+                "Settings for a {name}: flee below {flee}%, rest below {below}% to {until}%"
+            )));
+        }
+    }
+
+    /// The HP lines in force: flee below, rest below, rest until.
+    fn hp_lines(&self) -> (i64, i64, i64) {
+        (
+            self.settings.int("health.flee_below_hp"),
+            self.settings.int("health.rest_below_hp"),
+            self.settings.int("health.rest_until_hp"),
+        )
+    }
+
     fn drive(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
+        self.refresh_settings(out);
         if let Some((action, outcome)) = self.executor.finished(self.at_prompt, now)
             && let Some(atlas) = self.atlas.clone()
         {

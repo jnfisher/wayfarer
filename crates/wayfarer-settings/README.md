@@ -34,5 +34,5 @@ search_limit = 500  # default 300
 ```
 
 Second slice: nine settings, the style presets, per-server and per-character files. The forms,
-class presets, narrating a change, applying one to a running bot and the MegaMud import are the
+the other class presets, narrating a change, applying one to a running bot and the MegaMud import are the
 rest of `docs/plan/04-settings.md`.

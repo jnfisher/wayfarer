@@ -276,6 +276,11 @@ impl Bot {
         }
     }
 
+    /// Flee below `percent` HP from now on (the settings changed: the class became known).
+    pub fn set_flee_below(&mut self, percent: i32) {
+        self.flee.set_below(percent);
+    }
+
     pub fn running(&self) -> bool {
         self.state == BotState::Running
     }

@@ -102,6 +102,9 @@ struct SettingsArgs {
     /// The game server as the gateway names it, `host:port` (for `servers/<host>_<port>.toml`).
     #[arg(long)]
     server: Option<String>,
+    /// The character's class as the status screen names it (`Mage`), for the class presets.
+    #[arg(long)]
+    class: Option<String>,
 }
 
 #[derive(Args)]
@@ -241,7 +244,9 @@ fn show_settings(args: SettingsArgs) -> Result<String, Box<dyn std::error::Error
         args.server.as_deref().unwrap_or(""),
         args.character.as_deref().unwrap_or(""),
     );
-    let settings = dir.resolve(server, character).map_err(|e| e.to_string())?;
+    let settings = dir
+        .resolve_for(server, character, args.class.as_deref())
+        .map_err(|e| e.to_string())?;
     let mut out = String::new();
     for (layer, path) in dir.files(server, character) {
         let state = if path.is_file() { "read" } else { "not there" };

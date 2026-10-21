@@ -35,6 +35,7 @@ mod position;
 mod recover;
 mod rules;
 mod session;
+mod session_settings;
 mod stats;
 mod task;
 mod walker;

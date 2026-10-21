@@ -202,29 +202,74 @@ pub fn setting(key: &str) -> Option<&'static Setting> {
     CATALOGUE.iter().find(|s| s.key == key)
 }
 
-/// What a style sets, under every layer: the three HP lines. Balanced sets nothing (the
-/// defaults are Balanced: flee below 25, rest below 60 to 85). Careful flees at 30 and rests
-/// below 70 to 90; Bold flees at 20 and rests below 50 to 80 (John, 2026-10-20: every style
-/// fights on to a lower line than the first draft's). Each keeps flee < rest below <= rest
-/// until.
-pub fn preset(style: &str) -> Overrides {
-    let lines: &[(&str, i64)] = match style {
-        "careful" => &[
-            ("health.flee_below_hp", 30),
-            ("health.rest_below_hp", 70),
-            ("health.rest_until_hp", 90),
-        ],
-        "bold" => &[
-            ("health.flee_below_hp", 20),
-            ("health.rest_below_hp", 50),
-            ("health.rest_until_hp", 80),
-        ],
-        _ => &[],
+/// How a class fights, for its HP lines: a heavily armoured fighter takes hits at low HP; a
+/// lightly armoured skirmisher or hybrid leaves earlier; a robe caster, with the fewest hit
+/// points, earliest (`docs/plan/04-settings.md` section 3: "flee below 30 melee, 50 casters").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClassKind {
+    /// Warrior, Witchunter, Paladin, Ranger, Cleric: plate or mail, a basher.
+    Fighter,
+    /// Ninja, Thief, Mystic, Warlock, Missionary, Gypsy, Bard: light armour, or a mix of
+    /// melee and magic.
+    Skirmisher,
+    /// Mage, Priest, Druid: robes and spells.
+    Caster,
+}
+
+/// The kind of a class, by the name the status screen gives (any case). A name that is not a
+/// class of the stock game is a Fighter, the plainest.
+pub fn class_kind(class: &str) -> ClassKind {
+    match class.trim().to_ascii_lowercase().as_str() {
+        "ninja" | "thief" | "mystic" | "warlock" | "missionary" | "gypsy" | "bard" => {
+            ClassKind::Skirmisher
+        }
+        "mage" | "priest" | "druid" => ClassKind::Caster,
+        _ => ClassKind::Fighter,
+    }
+}
+
+/// The three HP lines for a class and a style: (flee below, rest below, rest until). The
+/// Balanced lines of a Fighter are 25 / 60 / 85, a Skirmisher's 35 / 65 / 85 and a Caster's
+/// 45 / 70 / 90 (John, 2026-10-20: bolder than the first draft; the class gaps are the plan's
+/// "casters flee earlier", inferred). Careful adds 5 / 10 / 5 to a class's lines and Bold takes
+/// them off, so a Fighter's Careful is 30 / 70 / 90 and Bold 20 / 50 / 80. Each is held within
+/// its setting's range and keeps flee < rest below <= rest until.
+pub fn hp_lines(class: Option<&str>, style: &str) -> (i64, i64, i64) {
+    let (flee, below, until) = match class.map_or(ClassKind::Fighter, class_kind) {
+        ClassKind::Fighter => (25, 60, 85),
+        ClassKind::Skirmisher => (35, 65, 85),
+        ClassKind::Caster => (45, 70, 90),
     };
+    let (df, db, du) = match style {
+        "careful" => (5, 10, 5),
+        "bold" => (-5, -10, -5),
+        _ => (0, 0, 0),
+    };
+    let clamp = |key: &str, v: i64| match setting(key).map(|s| s.kind) {
+        Some(Kind::Int { min, max }) => v.clamp(min, max),
+        _ => v,
+    };
+    let flee = clamp("health.flee_below_hp", flee + df);
+    let below = clamp("health.rest_below_hp", below + db).max(flee + 5);
+    let until = clamp("health.rest_until_hp", until + du).max(below);
+    (flee, below, until)
+}
+
+/// What a class and a style set, under every layer: the three HP lines, where they differ from
+/// the defaults (a Balanced Fighter sets nothing). `class` is the status screen's name for the
+/// character's class, `None` until it is known.
+pub fn preset(class: Option<&str>, style: &str) -> Overrides {
+    let (flee, below, until) = hp_lines(class, style);
     let mut over = Overrides::default();
-    for &(key, v) in lines {
-        over.set(key, Value::Int(v))
-            .expect("a preset is within its ranges");
+    for (key, v) in [
+        ("health.flee_below_hp", flee),
+        ("health.rest_below_hp", below),
+        ("health.rest_until_hp", until),
+    ] {
+        if setting(key).map(|s| s.default) != Some(Value::Int(v)) {
+            over.set(key, Value::Int(v))
+                .expect("a preset is within its ranges");
+        }
     }
     over
 }
@@ -297,6 +342,16 @@ impl SettingsDir {
 
     /// The settings for `character` on `server`: the files' layers over the style preset.
     pub fn resolve(&self, server: &str, character: &str) -> Result<Settings, FileError> {
+        self.resolve_for(server, character, None)
+    }
+
+    /// The same for a character of `class`.
+    pub fn resolve_for(
+        &self,
+        server: &str,
+        character: &str,
+        class: Option<&str>,
+    ) -> Result<Settings, FileError> {
         let files = self.files(server, character);
         let mut layers = Vec::new();
         for (layer, path) in &files {
@@ -318,7 +373,7 @@ impl SettingsDir {
         }
         let refs: Vec<(Layer, &Overrides)> = layers.iter().map(|(l, o)| (*l, o)).collect();
         // An order error belongs to the files together: name the most specific one.
-        Settings::resolve(&refs).map_err(|error| FileError {
+        Settings::resolve_for(class, &refs).map_err(|error| FileError {
             path: files.last().map(|(_, p)| p.clone()).unwrap_or_default(),
             error,
         })
@@ -330,8 +385,8 @@ impl SettingsDir {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Layer {
     Default,
-    /// The style preset (`bot.style`: careful, balanced or bold).
-    Style,
+    /// The class and style presets (`bot.style`: careful, balanced or bold; the class kind).
+    Preset,
     /// My defaults, for all characters.
     Mine,
     /// This server.
@@ -344,7 +399,7 @@ impl fmt::Display for Layer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Layer::Default => "the default",
-            Layer::Style => "the style",
+            Layer::Preset => "the class and style",
             Layer::Mine => "my defaults",
             Layer::Server => "this server",
             Layer::Character => "this character",
@@ -549,6 +604,15 @@ impl Settings {
     /// The layers resolved, in the order given (least specific first); refused if the result
     /// puts the HP thresholds out of order.
     pub fn resolve(layers: &[(Layer, &Overrides)]) -> Result<Settings, Error> {
+        Self::resolve_for(None, layers)
+    }
+
+    /// The same for a character of `class` (the status screen's name for it; `None` while it is
+    /// not known): the class's HP lines are the base the style moves.
+    pub fn resolve_for(
+        class: Option<&str>,
+        layers: &[(Layer, &Overrides)],
+    ) -> Result<Settings, Error> {
         let mut s = Settings::default();
         // The style is the most specific one named; its preset sits under every layer given.
         let style = layers
@@ -559,8 +623,8 @@ impl Settings {
                 _ => None,
             })
             .unwrap_or("balanced");
-        for (&key, &v) in &preset(style).values {
-            s.values.insert(key, (v, Layer::Style));
+        for (&key, &v) in &preset(class, style).values {
+            s.values.insert(key, (v, Layer::Preset));
         }
         for &(layer, over) in layers {
             for (&key, &v) in &over.values {
@@ -776,7 +840,7 @@ mod tests {
                 Some(if style == "balanced" {
                     Layer::Default
                 } else {
-                    Layer::Style
+                    Layer::Preset
                 })
             );
         }
@@ -792,7 +856,7 @@ mod tests {
         assert_eq!(s.int("health.flee_below_hp"), 25);
         assert_eq!(s.source("health.flee_below_hp"), Some(Layer::Character));
         assert_eq!(s.int("health.rest_below_hp"), 50);
-        assert_eq!(s.source("health.rest_below_hp"), Some(Layer::Style));
+        assert_eq!(s.source("health.rest_below_hp"), Some(Layer::Preset));
         assert_eq!(s.int("health.rest_until_hp"), 95);
         assert_eq!(s.source("health.rest_until_hp"), Some(Layer::Mine));
         // A more specific layer names another style: that one's preset applies.
@@ -899,5 +963,97 @@ mod tests {
         assert_eq!(files.files("../x", "../../etc/passwd").len(), 1);
         assert_eq!(files.files("a/b", "c d").len(), 1);
         assert_eq!(files.files(".hidden", "c").len(), 2);
+    }
+
+    #[test]
+    fn a_class_is_a_fighter_a_skirmisher_or_a_caster() {
+        for c in [
+            "Warrior",
+            "Witchunter",
+            "Paladin",
+            "Ranger",
+            "Cleric",
+            "Nobody",
+        ] {
+            assert_eq!(class_kind(c), ClassKind::Fighter, "{c}");
+        }
+        for c in [
+            "Ninja",
+            "Thief",
+            "Mystic",
+            "Warlock",
+            "Missionary",
+            "Gypsy",
+            "bard",
+        ] {
+            assert_eq!(class_kind(c), ClassKind::Skirmisher, "{c}");
+        }
+        for c in ["Mage", "PRIEST", " druid "] {
+            assert_eq!(class_kind(c), ClassKind::Caster, "{c}");
+        }
+    }
+
+    #[test]
+    fn the_hp_lines_follow_the_class_and_the_style_moves_them() {
+        let lines = |class, style| hp_lines(class, style);
+        // A fighter, or a class not yet known.
+        assert_eq!(lines(None, "balanced"), (25, 60, 85));
+        assert_eq!(lines(Some("Warrior"), "careful"), (30, 70, 90));
+        assert_eq!(lines(Some("Warrior"), "bold"), (20, 50, 80));
+        assert_eq!(lines(Some("Thief"), "balanced"), (35, 65, 85));
+        assert_eq!(lines(Some("Thief"), "careful"), (40, 75, 90));
+        assert_eq!(lines(Some("Thief"), "bold"), (30, 55, 80));
+        assert_eq!(lines(Some("Mage"), "balanced"), (45, 70, 90));
+        assert_eq!(lines(Some("Mage"), "careful"), (50, 80, 95));
+        assert_eq!(lines(Some("Mage"), "bold"), (40, 60, 85));
+        // Every combination is in range and in order.
+        for class in [None, Some("Warrior"), Some("Thief"), Some("Mage")] {
+            for style in ["careful", "balanced", "bold"] {
+                let (f, b, u) = lines(class, style);
+                assert!((0..=90).contains(&f) && (10..=99).contains(&b) && (20..=100).contains(&u));
+                assert!(f < b && b <= u, "{class:?} {style}: {f} {b} {u}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_class_moves_the_defaults_and_says_so() {
+        // No class: a fighter's, which are the defaults, set by nothing.
+        let fighter = Settings::resolve_for(None, &[]).unwrap();
+        assert_eq!(fighter, Settings::default());
+        assert_eq!(fighter.source("health.flee_below_hp"), Some(Layer::Default));
+        // A Mage: the class and style presets set the lines.
+        let mage = Settings::resolve_for(Some("Mage"), &[]).unwrap();
+        assert_eq!(mage.int("health.flee_below_hp"), 45);
+        assert_eq!(mage.int("health.rest_until_hp"), 90);
+        assert_eq!(mage.source("health.flee_below_hp"), Some(Layer::Preset));
+        // The style moves a Mage's lines from the Mage's, and a file beats both.
+        let over =
+            Overrides::parse("[bot]\nstyle = \"bold\"\n[health]\nrest_until_hp = 95\n").unwrap();
+        let s = Settings::resolve_for(Some("mage"), &[(Layer::Character, &over)]).unwrap();
+        assert_eq!(s.int("health.flee_below_hp"), 40);
+        assert_eq!(s.int("health.rest_below_hp"), 60);
+        assert_eq!(s.int("health.rest_until_hp"), 95);
+        assert_eq!(s.source("health.rest_until_hp"), Some(Layer::Character));
+    }
+
+    #[test]
+    fn a_directory_resolves_for_a_class() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("settings.toml"),
+            "[health]\nflee_below_hp = 33\n",
+        )
+        .unwrap();
+        let files = SettingsDir::new(dir.path());
+        let mage = files.resolve_for("x", "y", Some("Mage")).unwrap();
+        // My file beats the class's line; the class's others stand.
+        assert_eq!(mage.int("health.flee_below_hp"), 33);
+        assert_eq!(mage.int("health.rest_below_hp"), 70);
+        // Without a class it is a fighter's.
+        assert_eq!(
+            files.resolve("x", "y").unwrap().int("health.rest_below_hp"),
+            60
+        );
     }
 }
