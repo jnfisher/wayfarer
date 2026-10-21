@@ -272,6 +272,21 @@ impl Ledger {
         }
     }
 
+    /// End the run in progress (it stays in the history) and start another now, its numbers at
+    /// zero. `false` when there is no run to reset.
+    pub fn reset(&mut self, now: Instant) -> bool {
+        if self.run.take().is_none() {
+            return false;
+        }
+        let at = self.now();
+        let loop_id = self.saved.as_ref().and_then(|b| b.loop_id.clone());
+        self.with(|s, id| s.end_other_runs(id, None, at));
+        self.run = Some(self.start_run(at, loop_id.as_deref()));
+        self.next_sample = Some(now + SAMPLE_EVERY);
+        self.refresh();
+        true
+    }
+
     /// When the next sample is due.
     pub fn deadline(&self) -> Option<Instant> {
         self.next_sample

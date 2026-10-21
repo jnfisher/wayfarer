@@ -395,6 +395,12 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
             r#"{"type":"stats_request","session":"kasimir"}"#,
         ),
         (
+            ToGateway::StatsReset {
+                session: "kasimir".into(),
+            },
+            r#"{"type":"stats_reset","session":"kasimir"}"#,
+        ),
+        (
             ToGateway::SaveLoop {
                 session: "kasimir".into(),
                 name: "Hidden Keep with Leo the Quick".into(),
@@ -824,7 +830,9 @@ fn families_say_who_may_send_what() {
         let want = match msg.type_name() {
             "resync" | "state_request" | "walk_to" | "walk_stop" | "map_request"
             | "bot_control" | "loops_request" | "walk_loop" | "run_loop" | "stats_request"
-            | "save_loop" | "delete_loop" | "find" | "set_monster_rule" => Family::Control,
+            | "stats_reset" | "save_loop" | "delete_loop" | "find" | "set_monster_rule" => {
+                Family::Control
+            }
             "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
             | "map_view" | "loops" | "stats" | "input_held" | "found" => Family::Brain,
             "ready_to_leave" | "arbitrate" => Family::BrainToGateway,

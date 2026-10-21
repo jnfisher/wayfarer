@@ -248,7 +248,8 @@ over the newest run, a bar a minute. Then the last ten runs as rows, newest firs
 started, its loop (`here` for "fight here"), minutes, exp per hour, kills, deaths and flees;
 the run still going is in cyan. The rows come from the brain's store (`stats_request`): asked
 for when the tab opens, when a run starts or ends, every minute while it is open, and on
-`refresh`.
+`refresh`. **Reset**, beside "run since", ends the current run and starts a new one at zero
+(`stats_reset`); the old run stays in the list. It has no effect while the bot is stopped.
 
 Between the two, the **monster rules** the bot plays by ([brain.md](brain.md) "Monster
 rules"): each rule (*flee from*, *never fight*, *avoid*), its pattern and where it comes from

@@ -70,6 +70,7 @@ Client → gateway:
 {"type":"walk_loop","session":"kasimir","id":"1:2140:8:doors:0"}
 {"type":"run_loop","session":"kasimir","id":"1:2140:8:doors:0","skip":[{"map":1,"room":2156}]}
 {"type":"stats_request","session":"kasimir"}
+{"type":"stats_reset","session":"kasimir"}
 {"type":"save_loop","session":"kasimir","name":"Hidden Keep with Leo the Quick","base":"HKEPLOOP.mp","stops":[{"map":9,"room":749},{"map":9,"room":870}]}
 {"type":"delete_loop","session":"kasimir","id":"custom:hidden-keep-with-leo-the-quick"}
 {"type":"find","session":"kasimir","query":"chief"}
