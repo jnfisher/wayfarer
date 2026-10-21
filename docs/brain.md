@@ -605,7 +605,12 @@ against silvermere's oracle, `tests/fixtures/command-words/`) and sends it as it
 
 The values the bot used to have as constants are settings (`wayfarer-settings`,
 `docs/plan/04-settings.md`, "Status"). They come from files in the data directory (beside
-`wayfarer.toml`), each holding only what differs from the layer below it:
+`wayfarer.toml`), each holding only what differs from the layer below it. **Starter files**: when
+a session's settings are first read the brain writes `settings.toml` and
+`characters/<id>.toml` if they are not there: every setting with its help and default, all
+commented out, so the file changes nothing until a line is uncommented. `wayfarer settings
+--write [--character ID] [--server HOST:PORT] [--force]` writes one by hand (an existing file is
+kept unless `--force`).
 
 | Layer, least specific first | File |
 |---|---|

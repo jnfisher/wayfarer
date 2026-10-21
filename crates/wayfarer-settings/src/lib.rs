@@ -357,6 +357,40 @@ impl fmt::Display for FileError {
 
 impl std::error::Error for FileError {}
 
+/// A settings file to start from: every setting with its label, help and default, commented
+/// out. Uncomment a line to set it for `scope`; what is left commented follows the layers
+/// below it (the class and style presets, then the defaults).
+pub fn starter_toml(scope: &str) -> String {
+    let mut out = format!(
+        "# Settings for {scope}. Every line is commented out: uncomment one to change it.\n\
+         # What is not set here comes from the layers below (character > server > settings.toml\n\
+         # > class and style presets > defaults). `wayfarer settings` shows each value and where it\n\
+         # came from. Restart the brain after editing.\n"
+    );
+    for group in [Group::Health, Group::Movement, Group::Bot, Group::Spells] {
+        out.push_str(&format!("\n# [{}]\n", group.table()));
+        for s in CATALOGUE.iter().filter(|s| s.group == group) {
+            let name = s.key.split_once('.').map_or(s.key, |(_, n)| n);
+            let range = match s.kind {
+                Kind::Int { min, max } => format!(" ({min} to {max}{})", unit_suffix(s.unit)),
+                Kind::Bool => " (true or false)".to_owned(),
+                Kind::Choice(words) => format!(" ({})", words.join(", ")),
+            };
+            out.push_str(&format!("# {}{range}: {}\n", s.label, s.help));
+            out.push_str(&format!("# {name} = {}\n", s.default));
+        }
+    }
+    out
+}
+
+fn unit_suffix(unit: &str) -> String {
+    if unit.is_empty() {
+        String::new()
+    } else {
+        format!(" {unit}")
+    }
+}
+
 /// The settings files in a directory (the data directory): `settings.toml` for all
 /// characters, `servers/<host>_<port>.toml` for one server and `characters/<character id>.toml`
 /// for one character, each holding only what differs from the layer below it. A file that is
@@ -406,6 +440,52 @@ impl SettingsDir {
             files.push((Layer::Character, self.dir.join("characters").join(name)));
         }
         files
+    }
+
+    /// The most specific file of the call: the character's, else the server's, else
+    /// `settings.toml`.
+    pub fn most_specific(&self, server: &str, character: &str) -> std::path::PathBuf {
+        let files = self.files(server, character);
+        let wanted = if !character.is_empty() {
+            Layer::Character
+        } else if !server.is_empty() {
+            Layer::Server
+        } else {
+            Layer::Mine
+        };
+        files
+            .into_iter()
+            .rev()
+            .find(|(l, _)| *l == wanted)
+            .map_or_else(|| self.dir.join("settings.toml"), |(_, p)| p)
+    }
+
+    /// Write the starter file ([`starter_toml`]) for the call's most specific file. An existing
+    /// file is left alone unless `force`; `Ok(false)` then. Every line of a starter is a
+    /// comment, so a new file changes nothing until a line is uncommented.
+    pub fn write_starter(
+        &self,
+        server: &str,
+        character: &str,
+        force: bool,
+    ) -> Result<(std::path::PathBuf, bool), String> {
+        let path = self.most_specific(server, character);
+        if path.exists() && !force {
+            return Ok((path, false));
+        }
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        let scope = if !character.is_empty() {
+            format!("the character {character}")
+        } else if !server.is_empty() {
+            format!("the server {server}")
+        } else {
+            "all characters".to_owned()
+        };
+        std::fs::write(&path, starter_toml(&scope))
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        Ok((path, true))
     }
 
     /// The settings for `character` on `server`: the files' layers over the style preset.
@@ -963,6 +1043,61 @@ mod tests {
             Settings::resolve(&[(Layer::Character, &o)]),
             Err(Error::Order(_))
         ));
+    }
+
+    #[test]
+    fn a_starter_file_lists_every_setting_and_sets_none() {
+        let text = starter_toml("all characters");
+        for s in CATALOGUE {
+            let name = s.key.split_once('.').unwrap().1;
+            assert!(
+                text.contains(&format!("# {name} = {}", s.default)),
+                "{}",
+                s.key
+            );
+        }
+        assert!(Overrides::parse(&text).unwrap().is_empty());
+        // Uncommented, a line works.
+        let on = text
+            .replace("# [spells]", "[spells]")
+            .replace("# heal = \"auto\"", "heal = \"off\"");
+        assert_eq!(
+            Overrides::parse(&on).unwrap().get("spells.heal"),
+            Some(Value::Choice("off"))
+        );
+    }
+
+    #[test]
+    fn a_starter_is_written_once_in_the_most_specific_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = SettingsDir::new(tmp.path());
+        let (path, wrote) = dir.write_starter("", "waydeva", false).unwrap();
+        assert!(wrote && path == tmp.path().join("characters/waydeva.toml"));
+        std::fs::write(&path, "[spells]\nheal = \"off\"\n").unwrap();
+        // Left alone, then replaced when asked.
+        assert!(!dir.write_starter("", "waydeva", false).unwrap().1);
+        assert!(
+            std::fs::read_to_string(&path)
+                .unwrap()
+                .contains("heal = \"off\"")
+        );
+        assert!(dir.write_starter("", "waydeva", true).unwrap().1);
+        assert!(
+            std::fs::read_to_string(&path)
+                .unwrap()
+                .starts_with("# Settings for the character waydeva")
+        );
+        let (all, _) = dir.write_starter("", "", false).unwrap();
+        assert_eq!(all, tmp.path().join("settings.toml"));
+        let (srv, _) = dir.write_starter("127.0.0.1:2323", "", false).unwrap();
+        assert_eq!(srv, tmp.path().join("servers/127.0.0.1_2323.toml"));
+        // Starters change nothing.
+        assert_eq!(
+            dir.resolve("127.0.0.1:2323", "waydeva")
+                .unwrap()
+                .int("health.flee_below_hp"),
+            25
+        );
     }
 
     #[test]
