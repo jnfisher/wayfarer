@@ -27,9 +27,9 @@ style, my defaults, this server, this character) with the source of each value, 
 files that are the layers: `settings.toml`, `servers/<host>_<port>.toml`,
 `characters/<id>.toml` in the data directory. The **style presets** (Careful, Balanced, Bold)
 set the three HP lines under the files. Each session gets its own resolved settings when it is
-first seen; `wayfarer settings` shows them and where each came from. Fifteen settings are read by
+first seen; `wayfarer settings` shows them and where each came from. Twenty-one settings are read by
 the brain (`docs/brain.md` "Settings"): the style, the three HP lines, the hidden-exit search
-limit and four of the loop runner's, and the six **spell** settings (`docs/brain.md` "Spells": attack and heal on or off, the mana line for attack spells, the in-combat heal line, and resting for mana). The plan's table below had a small and a big heal and a heal line out of combat; the built slice casts the cheapest heal that covers the missing HP between fights, from `health.rest_below_hp`, so those three are not settings yet. Class presets (the HP lines by class kind, resolved again when the status screen names the class) are built too; the other class presets (a Witchunter bashes, a Thief sneaks) are not. Not built yet: the forms and the
+limit and four of the loop runner's, the six **coin and attack** settings (`docs/brain.md` "Coins and the attack command": which coins to pick up, the heaviest load they may bring, the attack verb), and the six **spell** settings (`docs/brain.md` "Spells": attack and heal on or off, the mana line for attack spells, the in-combat heal line, and resting for mana). The plan's table below had a small and a big heal and a heal line out of combat; the built slice casts the cheapest heal that covers the missing HP between fights, from `health.rest_below_hp`, so those three are not settings yet. Class presets (the HP lines by class kind, resolved again when the status screen names the class) are built too; the other class presets (a Witchunter bashes, a Thief sneaks) are not. Not built yet: the forms and the
 essentials page, narrating a change on the tile, applying a change to a running bot (a brain
 restart picks files up), the remote toggles, the docs page and the MegaMud import, and every
 setting in sections 3 and 4 other than those built.

@@ -512,6 +512,18 @@ mod tests {
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
     }
 
+    // The settings' list of attack commands (`combat.attack_command`) holds attacks only.
+    #[test]
+    fn every_attack_command_the_settings_offer_is_an_attack() {
+        for word in wayfarer_settings::ATTACK_COMMANDS {
+            assert_eq!(
+                classify(&format!("{word} rat")).kind,
+                Kind::Attack,
+                "{word}"
+            );
+        }
+    }
+
     // 1,761 words, each through the table's runs: milliseconds.
     #[test]
     fn every_oracle_entry_gives_its_code() {

@@ -319,6 +319,18 @@ pub enum GameEvent {
     Blind,
     Stunned,
 
+    /// `room_items`: `You notice 9 copper farthings, torch here.`: the coins on the floor, by
+    /// the name the game gives them (`gold crowns`).
+    RoomItems {
+        coins: BTreeMap<String, u64>,
+    },
+    /// `picked_up_coins`: `You picked up 9 copper farthings`.
+    CoinsPicked {
+        n: u64,
+        coin: String,
+    },
+    /// `too_much`: `You cannot carry that much!`
+    CannotCarry,
     /// `spells_columns`: the header of the `spells` list, whose rows follow.
     SpellsHeader,
     /// `spell_row`: `  1   2    vine  vine strike`.
@@ -616,6 +628,17 @@ impl GameEvent {
             "poison_tick" => G::PoisonTick,
             "blind" => G::Blind,
             "stunned" => G::Stunned,
+            "room_items" => G::RoomItems {
+                coins: parse_carrying(ev.text("items").unwrap_or_default()).0,
+            },
+            "picked_up_coins" => match int(ev, "n") {
+                Some(n) => G::CoinsPicked {
+                    n: u64::try_from(n).unwrap_or(0),
+                    coin: text(ev, "coin"),
+                },
+                None => G::Other(ev.clone()),
+            },
+            "too_much" => G::CannotCarry,
             "spells_columns" => G::SpellsHeader,
             "spell_row" => match (int(ev, "level"), int(ev, "mana")) {
                 (Some(level), Some(mana)) => G::SpellRow {

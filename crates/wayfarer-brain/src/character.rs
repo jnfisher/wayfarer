@@ -250,6 +250,36 @@ impl Character {
             GameEvent::Wealth { coins } => {
                 s.coins.get_or_insert_with(Coins::default).copper = u64_of(Some(*coins));
             }
+            // Coins picked up: the count, and the load by the weight they add (three coins of
+            // a type weigh one unit), until the next `i` says it exactly.
+            GameEvent::CoinsPicked { n, coin } => {
+                let word = crate::loot::coin_word(coin);
+                let coins = s.coins.get_or_insert_with(Coins::default);
+                let held = coins
+                    .carried
+                    .iter_mut()
+                    .find(|c| crate::loot::coin_word(&c.coin) == word);
+                let before = held.as_ref().map_or(0, |c| c.count);
+                match held {
+                    Some(c) => c.count += n,
+                    None => coins.carried.push(CoinCount {
+                        coin: coin.clone(),
+                        count: *n,
+                    }),
+                }
+                let added = crate::loot::units(before + n) - crate::loot::units(before);
+                if let Some(e) = &mut s.encumbrance
+                    && let (Some(current), Some(max)) = (e.current, e.max)
+                    && max > 0
+                {
+                    let current = current.saturating_add(u32::try_from(added).unwrap_or(0));
+                    e.current = Some(current);
+                    e.level = Some(
+                        crate::loot::level_word(u64::from(current) * 100 / u64::from(max))
+                            .to_owned(),
+                    );
+                }
+            }
             GameEvent::Encumbrance {
                 current,
                 max,

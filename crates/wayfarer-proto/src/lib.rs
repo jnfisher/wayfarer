@@ -236,6 +236,8 @@ pub enum BotMode {
     Fight,
     Recover,
     Flee,
+    /// Picking up coins left in the room.
+    Loot,
     /// Running a loop (`run_loop`): walking to its next stop, or waiting there for respawns.
     Task,
 }
