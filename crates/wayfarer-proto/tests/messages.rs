@@ -6,7 +6,8 @@ use wayfarer_proto::{
     DecodeError, Encumbrance, ExitKind, ExpSample, Family, Found, FoundKind, FoundRoom,
     GeneratedLoop, LoopStop, MapExit, MapRoom, MegaMudLoop, MonsterRuleEntry, MonsterRuleKind,
     PROTOCOL, ParseCounts, Position, RoomKey, RoomKind, RuleSource, RunSummary, SessionInfo,
-    SessionState, Stats, ToClient, ToGateway, Walking, WorldPackInfo, protocol_mismatch,
+    SessionState, SettingChange, SettingKind, SettingRow, SettingValue, SettingsFile, Stats,
+    ToClient, ToGateway, Walking, WorldPackInfo, protocol_mismatch,
 };
 
 fn kasimir(state: SessionState, last_seq: u64) -> SessionInfo {
@@ -289,6 +290,39 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
             r#"{"type":"stats","session":"kasimir","runs":[{"started_at":"2026-10-19T12:00:00Z","minutes":2,"exp_per_hour":540,"kills":2,"deaths":0,"flees":0,"rests":1,"exp_gained":18}],"samples":[{"at":"2026-10-19T12:01:00Z","exp":355,"hp":30}]}"#,
         ),
         (
+            ToGateway::Settings {
+                session: "kasimir".into(),
+                layer: "character".into(),
+                files: vec![
+                    SettingsFile {
+                        layer: "mine".into(),
+                        path: "/data/settings.toml".into(),
+                        exists: false,
+                    },
+                    SettingsFile {
+                        layer: "character".into(),
+                        path: "/data/characters/kasimir.toml".into(),
+                        exists: true,
+                    },
+                ],
+                rows: vec![SettingRow {
+                    key: "health.flee_below_hp".into(),
+                    label: "Flee below".into(),
+                    help: "Leave the fight and run when HP falls below this.".into(),
+                    group: "health".into(),
+                    tier: "essential".into(),
+                    kind: SettingKind::Int { min: 0, max: 90 },
+                    unit: "%".into(),
+                    default: SettingValue::Int(25),
+                    value: SettingValue::Int(35),
+                    source: "character".into(),
+                    own: Some(SettingValue::Int(35)),
+                    megamud: Some("HP Run If Below".into()),
+                }],
+            },
+            r#"{"type":"settings","session":"kasimir","layer":"character","files":[{"layer":"mine","path":"/data/settings.toml","exists":false},{"layer":"character","path":"/data/characters/kasimir.toml","exists":true}],"rows":[{"key":"health.flee_below_hp","label":"Flee below","help":"Leave the fight and run when HP falls below this.","group":"health","tier":"essential","kind":{"kind":"int","min":0,"max":90},"unit":"%","default":25,"value":35,"source":"character","own":35,"megamud":"HP Run If Below"}]}"#,
+        ),
+        (
             ToGateway::InputHeld {
                 session: "kasimir".into(),
                 text: "a rat".into(),
@@ -399,6 +433,30 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
                 session: "kasimir".into(),
             },
             r#"{"type":"stats_reset","session":"kasimir"}"#,
+        ),
+        (
+            ToGateway::SettingsRequest {
+                session: "kasimir".into(),
+                layer: Some("server".into()),
+            },
+            r#"{"type":"settings_request","session":"kasimir","layer":"server"}"#,
+        ),
+        (
+            ToGateway::SettingsSave {
+                session: "kasimir".into(),
+                layer: "character".into(),
+                changes: vec![
+                    SettingChange {
+                        key: "health.flee_below_hp".into(),
+                        value: Some(SettingValue::Int(35)),
+                    },
+                    SettingChange {
+                        key: "spells.heal".into(),
+                        value: None,
+                    },
+                ],
+            },
+            r#"{"type":"settings_save","session":"kasimir","layer":"character","changes":[{"key":"health.flee_below_hp","value":35},{"key":"spells.heal"}]}"#,
         ),
         (
             ToGateway::SaveLoop {
@@ -830,11 +888,10 @@ fn families_say_who_may_send_what() {
         let want = match msg.type_name() {
             "resync" | "state_request" | "walk_to" | "walk_stop" | "map_request"
             | "bot_control" | "loops_request" | "walk_loop" | "run_loop" | "stats_request"
-            | "stats_reset" | "save_loop" | "delete_loop" | "find" | "set_monster_rule" => {
-                Family::Control
-            }
+            | "stats_reset" | "settings_request" | "settings_save" | "save_loop"
+            | "delete_loop" | "find" | "set_monster_rule" => Family::Control,
             "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
-            | "map_view" | "loops" | "stats" | "input_held" | "found" => Family::Brain,
+            | "map_view" | "loops" | "stats" | "settings" | "input_held" | "found" => Family::Brain,
             "ready_to_leave" | "arbitrate" => Family::BrainToGateway,
             _ => Family::Gateway,
         };

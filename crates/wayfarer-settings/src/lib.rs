@@ -55,6 +55,17 @@ pub enum Tier {
     Advanced,
 }
 
+impl Tier {
+    /// The tier's name on the wire.
+    pub fn id(self) -> &'static str {
+        match self {
+            Tier::Essential => "essential",
+            Tier::Standard => "standard",
+            Tier::Advanced => "advanced",
+        }
+    }
+}
+
 /// Where a setting lives in the forms (`docs/plan/04-settings.md` section 1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Group {
@@ -577,6 +588,77 @@ impl SettingsDir {
         Ok((path, true))
     }
 
+    /// What the file of `layer` sets itself (nothing, if the file is not there or not valid).
+    pub fn read_layer(&self, server: &str, character: &str, layer: Layer) -> Overrides {
+        self.files(server, character)
+            .into_iter()
+            .find(|(l, _)| *l == layer)
+            .and_then(|(_, path)| std::fs::read_to_string(path).ok())
+            .and_then(|text| Overrides::parse(&text).ok())
+            .unwrap_or_default()
+    }
+
+    /// Change the file of `layer` (`mine`, `server` or `character`): set each key to its value,
+    /// or take it out when the value is `None`. The result is checked as the settings of a
+    /// character of `class` would resolve with it (ranges, words, the HP lines in order)
+    /// before anything is written, so a refused change leaves the file as it was. The file is
+    /// written whole (only the values that differ, as [`Overrides::to_toml`] has them) by a
+    /// rename, so a reader never sees half of it.
+    pub fn save(
+        &self,
+        server: &str,
+        character: &str,
+        class: Option<&str>,
+        layer: Layer,
+        changes: &[(String, Option<Value>)],
+    ) -> Result<std::path::PathBuf, String> {
+        let files = self.files(server, character);
+        let Some((_, target)) = files.iter().find(|(l, _)| {
+            *l == layer && matches!(l, Layer::Mine | Layer::Server | Layer::Character)
+        }) else {
+            return Err(format!("there is no settings file for {layer} to change"));
+        };
+        let mut layers: Vec<(Layer, Overrides)> = Vec::new();
+        for (l, path) in &files {
+            let over = match std::fs::read_to_string(path) {
+                Ok(text) => Overrides::parse(&text).map_err(|error| {
+                    FileError {
+                        path: path.clone(),
+                        error,
+                    }
+                    .to_string()
+                })?,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Overrides::default(),
+                Err(e) => return Err(format!("{}: {e}", path.display())),
+            };
+            layers.push((*l, over));
+        }
+        let own = &mut layers
+            .iter_mut()
+            .find(|(l, _)| *l == layer)
+            .expect("the layer's file was found")
+            .1;
+        for (key, value) in changes {
+            match value {
+                Some(v) => own.set(key, *v).map_err(|e| e.to_string())?,
+                None => {
+                    setting(key).ok_or_else(|| Error::Unknown(key.clone()).to_string())?;
+                    own.remove(key);
+                }
+            }
+        }
+        let text = own.to_toml();
+        let refs: Vec<(Layer, &Overrides)> = layers.iter().map(|(l, o)| (*l, o)).collect();
+        Settings::resolve_for(class, &refs).map_err(|e| e.to_string())?;
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        let tmp = target.with_extension("toml.tmp");
+        std::fs::write(&tmp, text).map_err(|e| format!("{}: {e}", tmp.display()))?;
+        std::fs::rename(&tmp, target).map_err(|e| format!("{}: {e}", target.display()))?;
+        Ok(target.clone())
+    }
+
     /// The settings for `character` on `server`: the files' layers over the style preset.
     pub fn resolve(&self, server: &str, character: &str) -> Result<Settings, FileError> {
         self.resolve_for(server, character, None)
@@ -630,6 +712,32 @@ pub enum Layer {
     Server,
     /// This character.
     Character,
+}
+
+impl Layer {
+    /// The layer's name on the wire and in the forms.
+    pub fn id(self) -> &'static str {
+        match self {
+            Layer::Default => "default",
+            Layer::Preset => "preset",
+            Layer::Mine => "mine",
+            Layer::Server => "server",
+            Layer::Character => "character",
+        }
+    }
+
+    /// The layer with this [`id`](Layer::id).
+    pub fn from_id(id: &str) -> Option<Layer> {
+        [
+            Layer::Default,
+            Layer::Preset,
+            Layer::Mine,
+            Layer::Server,
+            Layer::Character,
+        ]
+        .into_iter()
+        .find(|l| l.id() == id)
+    }
 }
 
 impl fmt::Display for Layer {
@@ -711,6 +819,11 @@ impl Overrides {
 
     pub fn get(&self, key: &str) -> Option<Value> {
         self.values.get(key).copied()
+    }
+
+    /// Take `key` out: the layer below shows through again.
+    pub fn remove(&mut self, key: &str) {
+        self.values.remove(key);
     }
 
     pub fn is_empty(&self) -> bool {
@@ -1152,6 +1265,90 @@ mod tests {
             Overrides::parse(&on).unwrap().get("spells.heal"),
             Some(Value::Choice("off"))
         );
+    }
+
+    #[test]
+    fn saving_a_layer_checks_the_result_and_writes_only_what_differs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = SettingsDir::new(tmp.path());
+        let file = tmp.path().join("characters/waydeva.toml");
+        let set = |key: &str, v: Option<Value>| vec![(key.to_owned(), v)];
+        dir.save(
+            "",
+            "waydeva",
+            None,
+            Layer::Character,
+            &set("health.flee_below_hp", Some(Value::Int(35))),
+        )
+        .unwrap();
+        assert_eq!(
+            dir.resolve("", "waydeva")
+                .unwrap()
+                .int("health.flee_below_hp"),
+            35
+        );
+        assert_eq!(
+            dir.read_layer("", "waydeva", Layer::Character)
+                .get("health.flee_below_hp"),
+            Some(Value::Int(35))
+        );
+        // A change that breaks the order (rest below under flee), a value out of range, an
+        // unknown key and a layer with no file are refused and leave the file as it was.
+        let before = std::fs::read_to_string(&file).unwrap();
+        for (layer, changes) in [
+            (
+                Layer::Character,
+                set("health.rest_below_hp", Some(Value::Int(30))),
+            ),
+            (
+                Layer::Character,
+                set("health.flee_below_hp", Some(Value::Int(200))),
+            ),
+            (Layer::Character, set("nope.nothing", Some(Value::Int(1)))),
+            (Layer::Character, set("nope.nothing", None)),
+            (
+                Layer::Server,
+                set("health.flee_below_hp", Some(Value::Int(30))),
+            ),
+            (
+                Layer::Default,
+                set("health.flee_below_hp", Some(Value::Int(30))),
+            ),
+        ] {
+            assert!(
+                dir.save("", "waydeva", None, layer, &changes).is_err(),
+                "{changes:?}"
+            );
+        }
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
+        // Taken out, the layer below shows through; another layer is written on its own.
+        dir.save(
+            "",
+            "waydeva",
+            None,
+            Layer::Character,
+            &set("health.flee_below_hp", None),
+        )
+        .unwrap();
+        assert_eq!(
+            dir.resolve("", "waydeva")
+                .unwrap()
+                .int("health.flee_below_hp"),
+            25
+        );
+        dir.save(
+            "",
+            "waydeva",
+            None,
+            Layer::Mine,
+            &set("spells.heal", Some(Value::Choice("off"))),
+        )
+        .unwrap();
+        assert_eq!(
+            dir.resolve("", "waydeva").unwrap().choice("spells.heal"),
+            "off"
+        );
+        assert!(tmp.path().join("settings.toml").is_file());
     }
 
     #[test]

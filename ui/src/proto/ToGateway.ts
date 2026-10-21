@@ -11,12 +11,24 @@ import type { MegaMudLoop } from "./MegaMudLoop";
 import type { MonsterRuleKind } from "./MonsterRuleKind";
 import type { RoomKey } from "./RoomKey";
 import type { RunSummary } from "./RunSummary";
+import type { SettingChange } from "./SettingChange";
+import type { SettingRow } from "./SettingRow";
+import type { SettingsFile } from "./SettingsFile";
 import type { WorldPackInfo } from "./WorldPackInfo";
 
 /**
  * Client → gateway.
  */
-export type ToGateway = { "type": "hello", protocol: number, client: ClientKind, token?: string, } | { "type": "input_line", session: string, text: string, } | { "type": "input_keys", session: string, bytes: Array<number>, } | { "type": "history_request", session: string, after_seq?: number, before_seq?: number, max_chunks: number, } | { "type": "subscribe", sessions?: Array<string>, } | { "type": "user_input", session: string, text: string, force?: boolean, } | { "type": "resync", session: string, } | { "type": "state_request", session?: string, } | { "type": "walk_to", session: string, map: number, room: number, stop_short?: boolean, } | { "type": "walk_stop", session: string, } | { "type": "map_request", session: string, radius?: number, } | { "type": "bot_control", session: string, action: BotAction, } | { "type": "loops_request", session: string, anchor?: RoomKey, radius: number, doors?: boolean, } | { "type": "walk_loop", session: string, id: string, } | { "type": "run_loop", session: string, id: string, skip?: Array<RoomKey>, } | { "type": "stats_request", session: string, } | { "type": "stats_reset", session: string, } | { "type": "save_loop", session: string, name: string, base?: string, stops: Array<RoomKey>, } | { "type": "delete_loop", session: string, id: string, } | { "type": "find", session: string, query: string, } | { "type": "set_monster_rule", session: string, pattern: string, rule: MonsterRuleKind | null, } | { "type": "event", session: string, seq: number, line_no: number, name: string, cat: string, fields: Record<string, unknown>, line: string, } | { "type": "character", session: string, state: CharacterState, } | { "type": "character_patch", session: string, patch: unknown, } | { "type": "brain_info", build: string, started_at: string, world_pack?: WorldPackInfo, } | { "type": "notice", session?: string, text: string, } | { "type": "warning", session?: string, text: string, } | { "type": "map_view", session: string, center: RoomKey, 
+export type ToGateway = { "type": "hello", protocol: number, client: ClientKind, token?: string, } | { "type": "input_line", session: string, text: string, } | { "type": "input_keys", session: string, bytes: Array<number>, } | { "type": "history_request", session: string, after_seq?: number, before_seq?: number, max_chunks: number, } | { "type": "subscribe", sessions?: Array<string>, } | { "type": "user_input", session: string, text: string, force?: boolean, } | { "type": "resync", session: string, } | { "type": "state_request", session?: string, } | { "type": "walk_to", session: string, map: number, room: number, stop_short?: boolean, } | { "type": "walk_stop", session: string, } | { "type": "map_request", session: string, radius?: number, } | { "type": "bot_control", session: string, action: BotAction, } | { "type": "loops_request", session: string, anchor?: RoomKey, radius: number, doors?: boolean, } | { "type": "walk_loop", session: string, id: string, } | { "type": "run_loop", session: string, id: string, skip?: Array<RoomKey>, } | { "type": "stats_request", session: string, } | { "type": "stats_reset", session: string, } | { "type": "settings_request", session: string, 
+/**
+ * The layer to show the player's own values of: `mine`, `server` or `character`
+ * (left out: `character`).
+ */
+layer?: string, } | { "type": "settings_save", session: string, 
+/**
+ * The layer to write: `mine`, `server` or `character`.
+ */
+layer: string, changes: Array<SettingChange>, } | { "type": "save_loop", session: string, name: string, base?: string, stops: Array<RoomKey>, } | { "type": "delete_loop", session: string, id: string, } | { "type": "find", session: string, query: string, } | { "type": "set_monster_rule", session: string, pattern: string, rule: MonsterRuleKind | null, } | { "type": "event", session: string, seq: number, line_no: number, name: string, cat: string, fields: Record<string, unknown>, line: string, } | { "type": "character", session: string, state: CharacterState, } | { "type": "character_patch", session: string, patch: unknown, } | { "type": "brain_info", build: string, started_at: string, world_pack?: WorldPackInfo, } | { "type": "notice", session?: string, text: string, } | { "type": "warning", session?: string, text: string, } | { "type": "map_view", session: string, center: RoomKey, 
 /**
  * The center's level: the floor the panel shows first.
  */
@@ -24,4 +36,8 @@ level: number, rooms: Array<MapRoom>, exits: Array<MapExit>, route?: Array<RoomK
 /**
  * The loops the player made (`save_loop`) with a stop in the area, by name.
  */
-custom: Array<GeneratedLoop>, } | { "type": "stats", session: string, runs: Array<RunSummary>, samples: Array<ExpSample>, } | { "type": "input_held", session: string, text: string, reason: string, } | { "type": "found", session: string, query: string, results: Array<Found>, } | { "type": "ready_to_leave", session: string, } | { "type": "arbitrate", session: string, on: boolean, };
+custom: Array<GeneratedLoop>, } | { "type": "stats", session: string, runs: Array<RunSummary>, samples: Array<ExpSample>, } | { "type": "settings", session: string, 
+/**
+ * The layer whose own values `own` shows.
+ */
+layer: string, files: Array<SettingsFile>, rows: Array<SettingRow>, } | { "type": "input_held", session: string, text: string, reason: string, } | { "type": "found", session: string, query: string, results: Array<Found>, } | { "type": "ready_to_leave", session: string, } | { "type": "arbitrate", session: string, on: boolean, };

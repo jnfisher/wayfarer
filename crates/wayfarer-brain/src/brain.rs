@@ -519,6 +519,18 @@ impl Brain {
                 Some(s) => s.stats_request(out),
                 None => out.push(no_session("stats_request", &session)),
             },
+            ToClient::SettingsRequest { session, layer } => match self.sessions.get_mut(&session) {
+                Some(s) => s.settings_request(layer.as_deref(), out),
+                None => out.push(no_session("settings_request", &session)),
+            },
+            ToClient::SettingsSave {
+                session,
+                layer,
+                changes,
+            } => match self.sessions.get_mut(&session) {
+                Some(s) => s.settings_save(&layer, &changes, now, out),
+                None => out.push(no_session("settings_save", &session)),
+            },
             ToClient::StatsReset { session } => match self.sessions.get_mut(&session) {
                 Some(s) => s.stats_reset(now, out),
                 None => out.push(no_session("stats_reset", &session)),

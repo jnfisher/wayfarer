@@ -593,6 +593,71 @@ pub struct Encumbrance {
     pub level: Option<String>,
 }
 
+/// A settings value on the wire: a whole number, a switch or a word.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(untagged)]
+pub enum SettingValue {
+    Int(i64),
+    Bool(bool),
+    Text(String),
+}
+
+/// What a setting holds: a whole number in a range, a switch, or one of some words.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SettingKind {
+    Int { min: i64, max: i64 },
+    Bool,
+    Choice { options: Vec<String> },
+}
+
+/// One setting in a `settings` message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(optional_fields)]
+pub struct SettingRow {
+    /// `group.name`, as in the TOML file.
+    pub key: String,
+    pub label: String,
+    pub help: String,
+    /// The group's table name: `health`, `movement`, `bot`, `spells`, `cash`, `combat`.
+    pub group: String,
+    /// `essential`, `standard` or `advanced`.
+    pub tier: String,
+    pub kind: SettingKind,
+    /// The unit shown beside a number (`%`, `tries`); empty for a switch or words.
+    pub unit: String,
+    pub default: SettingValue,
+    /// The value in force.
+    pub value: SettingValue,
+    /// Where it comes from: `default`, `preset`, `mine`, `server` or `character`.
+    pub source: String,
+    /// The value the asked-for layer's own file sets, if it sets one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub own: Option<SettingValue>,
+    /// MegaMud's name for it, if it has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub megamud: Option<String>,
+}
+
+/// One settings file in a `settings` message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct SettingsFile {
+    /// `mine`, `server` or `character`.
+    pub layer: String,
+    pub path: String,
+    pub exists: bool,
+}
+
+/// One change in a `settings_save`: set `key` to `value`, or take it out of the file when
+/// `value` is left out.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(optional_fields)]
+pub struct SettingChange {
+    pub key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<SettingValue>,
+}
+
 /// A character's six stats.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(optional_fields)]
@@ -766,6 +831,16 @@ pub enum ToClient {
         runs: Vec<RunSummary>,
         samples: Vec<ExpSample>,
     },
+    /// Brain → UIs: the character's settings, answering `settings_request` and `settings_save`
+    /// (and sent again when the files change): every setting with its effective value, where
+    /// the value comes from, and the value the `layer` file itself holds.
+    Settings {
+        session: SessionId,
+        /// The layer whose own values `own` shows.
+        layer: String,
+        files: Vec<SettingsFile>,
+        rows: Vec<SettingRow>,
+    },
     InputHeld {
         session: SessionId,
         text: String,
@@ -833,6 +908,20 @@ pub enum ToClient {
     },
     StatsReset {
         session: SessionId,
+    },
+    SettingsRequest {
+        session: SessionId,
+        /// The layer to show the player's own values of: `mine`, `server` or `character`
+        /// (left out: `character`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        layer: Option<String>,
+    },
+    SettingsSave {
+        session: SessionId,
+        /// The layer to write: `mine`, `server` or `character`.
+        layer: String,
+        changes: Vec<SettingChange>,
     },
     SaveLoop {
         session: SessionId,
@@ -1018,6 +1107,26 @@ pub enum ToGateway {
     /// notice says so, and a `stats` message follows. Nothing happens without a run (the bot
     /// stopped): a warning says so.
     StatsReset { session: SessionId },
+    /// UI → brain: send a `settings` message for the character, with the values of `layer`
+    /// (`mine`, `server` or `character`; left out: `character`) as that layer's file holds them.
+    SettingsRequest {
+        session: SessionId,
+        /// The layer to show the player's own values of: `mine`, `server` or `character`
+        /// (left out: `character`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        layer: Option<String>,
+    },
+    /// UI → brain: change settings in the `layer` file: each change sets a value, or removes it
+    /// (`value` left out) so the layer below shows through again. A value the settings refuse
+    /// (out of range, not one of the words) changes nothing and a warning says why; otherwise the
+    /// file is written, put in force at once, narrated, and a `settings` message follows.
+    SettingsSave {
+        session: SessionId,
+        /// The layer to write: `mine`, `server` or `character`.
+        layer: String,
+        changes: Vec<SettingChange>,
+    },
     /// UI → brain: make or change a custom loop: `name` and the `stops` in order (the loop it
     /// was made from, `base`, is kept for reference). The id is `custom:` and a slug of the name,
     /// so saving the same name again replaces the loop. The brain answers with a notice, and the
@@ -1125,6 +1234,16 @@ pub enum ToGateway {
         runs: Vec<RunSummary>,
         samples: Vec<ExpSample>,
     },
+    /// Brain → UIs: the character's settings, answering `settings_request` and `settings_save`
+    /// (and sent again when the files change): every setting with its effective value, where
+    /// the value comes from, and the value the `layer` file itself holds.
+    Settings {
+        session: SessionId,
+        /// The layer whose own values `own` shows.
+        layer: String,
+        files: Vec<SettingsFile>,
+        rows: Vec<SettingRow>,
+    },
     /// Brain → UIs: a line the player typed was not sent: it would break a rule while the bot
     /// plays (an attack while combat is engaged). The UI shows it with a `send anyway`, which
     /// sends `user_input` with `force`.
@@ -1188,6 +1307,7 @@ impl ToClient {
         "map_view",
         "loops",
         "stats",
+        "settings",
         "input_held",
         "found",
         "resync",
@@ -1201,6 +1321,8 @@ impl ToClient {
         "run_loop",
         "stats_request",
         "stats_reset",
+        "settings_request",
+        "settings_save",
         "save_loop",
         "delete_loop",
         "find",
@@ -1233,6 +1355,7 @@ impl ToClient {
             Self::MapView { .. } => "map_view",
             Self::Loops { .. } => "loops",
             Self::Stats { .. } => "stats",
+            Self::Settings { .. } => "settings",
             Self::InputHeld { .. } => "input_held",
             Self::Found { .. } => "found",
             Self::Resync { .. } => "resync",
@@ -1246,6 +1369,8 @@ impl ToClient {
             Self::RunLoop { .. } => "run_loop",
             Self::StatsRequest { .. } => "stats_request",
             Self::StatsReset { .. } => "stats_reset",
+            Self::SettingsRequest { .. } => "settings_request",
+            Self::SettingsSave { .. } => "settings_save",
             Self::SaveLoop { .. } => "save_loop",
             Self::DeleteLoop { .. } => "delete_loop",
             Self::Find { .. } => "find",
@@ -1272,6 +1397,7 @@ impl ToClient {
             | Self::MapView { session, .. }
             | Self::Loops { session, .. }
             | Self::Stats { session, .. }
+            | Self::Settings { session, .. }
             | Self::InputHeld { session, .. }
             | Self::Found { session, .. }
             | Self::Find { session, .. }
@@ -1286,6 +1412,8 @@ impl ToClient {
             | Self::RunLoop { session, .. }
             | Self::StatsRequest { session }
             | Self::StatsReset { session }
+            | Self::SettingsRequest { session, .. }
+            | Self::SettingsSave { session, .. }
             | Self::SaveLoop { session, .. }
             | Self::DeleteLoop { session, .. }
             | Self::Sent { session, .. }
@@ -1334,6 +1462,8 @@ impl ToGateway {
         "run_loop",
         "stats_request",
         "stats_reset",
+        "settings_request",
+        "settings_save",
         "save_loop",
         "delete_loop",
         "find",
@@ -1347,6 +1477,7 @@ impl ToGateway {
         "map_view",
         "loops",
         "stats",
+        "settings",
         "input_held",
         "found",
         "ready_to_leave",
@@ -1373,6 +1504,8 @@ impl ToGateway {
             Self::RunLoop { .. } => "run_loop",
             Self::StatsRequest { .. } => "stats_request",
             Self::StatsReset { .. } => "stats_reset",
+            Self::SettingsRequest { .. } => "settings_request",
+            Self::SettingsSave { .. } => "settings_save",
             Self::SaveLoop { .. } => "save_loop",
             Self::DeleteLoop { .. } => "delete_loop",
             Self::Find { .. } => "find",
@@ -1386,6 +1519,7 @@ impl ToGateway {
             Self::MapView { .. } => "map_view",
             Self::Loops { .. } => "loops",
             Self::Stats { .. } => "stats",
+            Self::Settings { .. } => "settings",
             Self::InputHeld { .. } => "input_held",
             Self::Found { .. } => "found",
             Self::ReadyToLeave { .. } => "ready_to_leave",
@@ -1413,6 +1547,8 @@ impl ToGateway {
             | Self::RunLoop { .. }
             | Self::StatsRequest { .. }
             | Self::StatsReset { .. }
+            | Self::SettingsRequest { .. }
+            | Self::SettingsSave { .. }
             | Self::SaveLoop { .. }
             | Self::DeleteLoop { .. }
             | Self::Find { .. }
@@ -1426,6 +1562,7 @@ impl ToGateway {
             | Self::MapView { .. }
             | Self::Loops { .. }
             | Self::Stats { .. }
+            | Self::Settings { .. }
             | Self::InputHeld { .. }
             | Self::Found { .. } => Family::Brain,
             Self::ReadyToLeave { .. } | Self::Arbitrate { .. } => Family::BrainToGateway,
@@ -1468,6 +1605,18 @@ impl ToGateway {
             Self::RunLoop { session, id, skip } => ToClient::RunLoop { session, id, skip },
             Self::StatsRequest { session } => ToClient::StatsRequest { session },
             Self::StatsReset { session } => ToClient::StatsReset { session },
+            Self::SettingsRequest { session, layer } => {
+                ToClient::SettingsRequest { session, layer }
+            }
+            Self::SettingsSave {
+                session,
+                layer,
+                changes,
+            } => ToClient::SettingsSave {
+                session,
+                layer,
+                changes,
+            },
             Self::SaveLoop {
                 session,
                 name,
@@ -1560,6 +1709,17 @@ impl ToGateway {
                 session,
                 runs,
                 samples,
+            },
+            Self::Settings {
+                session,
+                layer,
+                files,
+                rows,
+            } => ToClient::Settings {
+                session,
+                layer,
+                files,
+                rows,
             },
             Self::InputHeld {
                 session,

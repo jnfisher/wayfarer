@@ -16,7 +16,7 @@ use wayfarer_proto::{
     BotAction, CharacterState, Chunk, Found, FoundKind, FoundRoom, GeneratedLoop, LoopStop,
     MegaMudLoop, RoomKey, SessionId, SessionInfo, SessionState, ToGateway,
 };
-use wayfarer_settings::Settings;
+use wayfarer_settings::{Layer, Settings};
 use wayfarer_store::{BotRecord, BotState, CustomLoop, EventKind, Store};
 use wayfarer_world::loops::{Area, circuits, hunt_rooms, megamud_through, stop_room};
 use wayfarer_world::{self as world, HuntRoom, Key, MmLoop, PlaceKind, Reach, Traveller, route};
@@ -273,6 +273,9 @@ pub(crate) struct Session {
     /// The settings files as last seen (`SettingsSource::stamp`), and when to look next.
     settings_stamp: Vec<Option<(std::time::SystemTime, u64)>>,
     settings_check: Option<Instant>,
+    /// The layer whose own values the forms last asked for: a `settings` message follows a
+    /// reload with it.
+    settings_layer: Layer,
     /// The rows of the last `spells` screen, and the attacks and heals among them.
     spell_rows: Vec<SpellRow>,
     spellbook: Spellbook,
@@ -410,6 +413,7 @@ impl Session {
             class_seen: None,
             settings_stamp: Vec::new(),
             settings_check: None,
+            settings_layer: Layer::Character,
             spell_rows: Vec::new(),
             spellbook: Spellbook::default(),
             map_radius: MAP_RADIUS,
@@ -2363,9 +2367,9 @@ impl Session {
     /// The settings files were edited: read them again and put them in force, saying what
     /// changed; a file that is not valid leaves the settings in force as they are, with a
     /// warning. Looked at every [`SETTINGS_POLL`].
-    fn check_settings(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
+    fn check_settings(&mut self, now: Instant, out: &mut Vec<ToGateway>) -> bool {
         if !self.settings_source.reads_files() || self.settings_check.is_some_and(|t| now < t) {
-            return;
+            return false;
         }
         let first = self.settings_check.is_none();
         self.settings_check = Some(now + SETTINGS_POLL);
@@ -2374,14 +2378,17 @@ impl Session {
         // written).
         if first || stamp == self.settings_stamp {
             self.settings_stamp = stamp;
-            return;
+            return false;
         }
         self.settings_stamp = stamp;
         let class = self.character.state().class.clone();
         match self.settings_source.reload(&self.id, class.as_deref()) {
-            Err(why) => out.push(self.warning(&format!(
-                "Settings changed but not used, the earlier settings stay: {why}"
-            ))),
+            Err(why) => {
+                out.push(self.warning(&format!(
+                    "Settings changed but not used, the earlier settings stay: {why}"
+                )));
+                false
+            }
             Ok(new) => {
                 let changes: Vec<String> = self
                     .settings
@@ -2397,8 +2404,76 @@ impl Session {
                     format!("Settings reloaded: {}", changes.join(", "))
                 };
                 out.push(self.notice(&text));
+                // The forms follow a change made in the file by hand too.
+                self.send_settings(self.settings_layer, out);
+                true
             }
         }
+    }
+
+    /// `settings_request`: the character's settings and the values `layer`'s file sets.
+    pub fn settings_request(&mut self, layer: Option<&str>, out: &mut Vec<ToGateway>) {
+        let Some(layer) = self.edited_layer(layer, out) else {
+            return;
+        };
+        self.settings_layer = layer;
+        self.send_settings(layer, out);
+    }
+
+    /// `settings_save`: change the file of `layer`. A change the settings refuse writes nothing
+    /// and says why; otherwise the file is written and put in force at once.
+    pub fn settings_save(
+        &mut self,
+        layer: &str,
+        changes: &[wayfarer_proto::SettingChange],
+        now: Instant,
+        out: &mut Vec<ToGateway>,
+    ) {
+        let Some(layer) = self.edited_layer(Some(layer), out) else {
+            return;
+        };
+        self.settings_layer = layer;
+        let class = self.character.state().class.clone();
+        match self
+            .settings_source
+            .save(&self.id, class.as_deref(), layer, changes)
+        {
+            Err(why) => out.push(self.warning(&format!("Settings not saved: {why}"))),
+            Ok(()) => {
+                // Read again now, not at the next look at the files; that sends the answer.
+                self.settings_check = Some(now);
+                if self.check_settings(now, out) {
+                    return;
+                }
+            }
+        }
+        self.send_settings(layer, out);
+    }
+
+    /// The layer a settings message names (the character's by default); only the player's own
+    /// files can be edited.
+    fn edited_layer(&self, layer: Option<&str>, out: &mut Vec<ToGateway>) -> Option<Layer> {
+        let layer = match layer.unwrap_or("character") {
+            "mine" => Layer::Mine,
+            "server" => Layer::Server,
+            "character" => Layer::Character,
+            other => {
+                out.push(self.warning(&format!(
+                    "settings: no layer {other:?} (mine, server or character)"
+                )));
+                return None;
+            }
+        };
+        Some(layer)
+    }
+
+    fn send_settings(&self, layer: Layer, out: &mut Vec<ToGateway>) {
+        out.push(ToGateway::Settings {
+            session: self.id.clone(),
+            layer: layer.id().to_owned(),
+            files: self.settings_source.files(&self.id),
+            rows: self.settings_source.rows(&self.settings, &self.id, layer),
+        });
     }
 
     /// The HP lines in force: flee below, rest below, rest until.
