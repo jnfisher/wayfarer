@@ -319,6 +319,24 @@ pub enum GameEvent {
     Blind,
     Stunned,
 
+    /// `spells_columns`: the header of the `spells` list, whose rows follow.
+    SpellsHeader,
+    /// `spell_row`: `  1   2    vine  vine strike`.
+    SpellRow {
+        level: i64,
+        mana: i64,
+        short: String,
+        name: String,
+    },
+    /// `spells_none`: `You have no spells.`
+    SpellsNone,
+    /// `no_mana`: `You do not have enough mana to cast that spell.`
+    NoMana,
+    /// `already_this_round`: one general spell per round.
+    AlreadyCast,
+    /// `cast_fail`: `You attempt to cast vine strike, but fail.`
+    CastFailed,
+
     /// `inv_carrying` (and `inv_nothing`, empty): coins by name and items.
     Inventory {
         coins: BTreeMap<String, u64>,
@@ -598,6 +616,20 @@ impl GameEvent {
             "poison_tick" => G::PoisonTick,
             "blind" => G::Blind,
             "stunned" => G::Stunned,
+            "spells_columns" => G::SpellsHeader,
+            "spell_row" => match (int(ev, "level"), int(ev, "mana")) {
+                (Some(level), Some(mana)) => G::SpellRow {
+                    level,
+                    mana,
+                    short: text(ev, "short"),
+                    name: text(ev, "name"),
+                },
+                _ => G::Other(ev.clone()),
+            },
+            "spells_none" => G::SpellsNone,
+            "no_mana" => G::NoMana,
+            "already_this_round" => G::AlreadyCast,
+            "cast_fail" => G::CastFailed,
             "inv_carrying" => {
                 let (coins, items) = parse_carrying(ev.text("items").unwrap_or_default());
                 G::Inventory { coins, items }

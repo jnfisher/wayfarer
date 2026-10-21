@@ -105,6 +105,14 @@ struct SettingsArgs {
     /// The character's class as the status screen names it (`Mage`), for the class presets.
     #[arg(long)]
     class: Option<String>,
+    /// Write a starter file (every setting with its help, commented out) instead of showing the
+    /// settings: the character's with `--character`, the server's with `--server`, else
+    /// `settings.toml`. An existing file is left alone unless `--force`.
+    #[arg(long)]
+    write: bool,
+    /// With `--write`: replace a file that is there.
+    #[arg(long, requires = "write")]
+    force: bool,
 }
 
 #[derive(Args)]
@@ -244,6 +252,14 @@ fn show_settings(args: SettingsArgs) -> Result<String, Box<dyn std::error::Error
         args.server.as_deref().unwrap_or(""),
         args.character.as_deref().unwrap_or(""),
     );
+    if args.write {
+        let (path, written) = dir.write_starter(server, character, args.force)?;
+        return Ok(if written {
+            format!("wrote {}\n", path.display())
+        } else {
+            format!("{} is there already; --force replaces it\n", path.display())
+        });
+    }
     let settings = dir
         .resolve_for(server, character, args.class.as_deref())
         .map_err(|e| e.to_string())?;

@@ -46,6 +46,12 @@ impl SettingsSource {
         let Some(dir) = &self.dir else {
             return (self.fallback.clone(), None);
         };
+        // A new character gets a starter file to edit (all comments, so it changes nothing);
+        // one that cannot be written is not worth a warning.
+        let _ = dir.write_starter("", "", false);
+        if !character.is_empty() {
+            let _ = dir.write_starter("", character, false);
+        }
         match dir.resolve_for(&self.server, character, class) {
             Ok(s) => (Arc::new(s), None),
             Err(e) => (

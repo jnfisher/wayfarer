@@ -12,7 +12,7 @@ use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
 use wayfarer_proto::{BotMode, BotState};
 use wayfarer_store::BotRecord;
-use wayfarer_world::{Key, LockState, MonsterRules, Traveller};
+use wayfarer_world::{Key, LockState, MonsterRules, SpellDef, Traveller};
 
 use crate::brain::Atlas;
 use crate::executor::{Action, Outcome};
@@ -21,6 +21,7 @@ use crate::flee::Flee;
 use crate::policy;
 use crate::recover::Recover;
 use crate::rules::Sightings;
+use crate::spellcraft::Spellbook;
 use crate::task::Task;
 use crate::walker::Say;
 
@@ -156,9 +157,75 @@ pub(crate) struct View<'a> {
     pub sightings: &'a Sightings,
     /// The session's settings.
     pub settings: &'a wayfarer_settings::Settings,
+    /// Mana now and at most, and the character's level; the attack and heal spells it knows.
+    pub mana: Option<(i64, i64)>,
+    pub hp_missing: Option<i64>,
+    pub level: i64,
+    pub book: &'a Spellbook,
 }
 
 impl View<'_> {
+    /// Mana in per cent of the maximum, when both are known.
+    pub fn mana_percent(&self) -> Option<i32> {
+        self.mana
+            .filter(|&(_, max)| max > 0)
+            .map(|(m, max)| i32::try_from(m * 100 / max).unwrap_or(100))
+    }
+
+    pub fn casts_attacks(&self) -> bool {
+        self.book.has_attack() && self.settings.choice("spells.attack") == "auto"
+    }
+
+    pub fn casts_heals(&self) -> bool {
+        self.book.has_heal() && self.settings.choice("spells.heal") == "auto"
+    }
+
+    /// The attack spell for the next fight, if the mana allows one.
+    pub fn attack_spell(&self) -> Option<&SpellDef> {
+        let (mana, _) = self.mana?;
+        if !self.casts_attacks()
+            || self.mana_percent()? <= self.setting("spells.attack_mana_above", 15)
+        {
+            return None;
+        }
+        self.book.attack(self.level, mana)
+    }
+
+    /// The heal for the HP that are missing, if there is a spell and the mana for one.
+    pub fn heal_spell(&self) -> Option<&SpellDef> {
+        let (mana, _) = self.mana?;
+        if !self.casts_heals() {
+            return None;
+        }
+        self.book.heal(self.level, mana, self.hp_missing?)
+    }
+
+    /// Mana matters to this character: it casts what it knows.
+    pub fn uses_mana(&self) -> bool {
+        self.mana.is_some() && (self.casts_attacks() || self.casts_heals())
+    }
+
+    /// Mana is low enough to rest for (`health.rest_mana_below`).
+    pub fn mana_low(&self) -> bool {
+        self.uses_mana()
+            && self
+                .mana_percent()
+                .is_some_and(|m| m < self.setting("health.rest_mana_below", 30))
+    }
+
+    /// Mana is back to where resting for it stops (`health.rest_mana_until`).
+    pub fn mana_restored(&self) -> bool {
+        !self.uses_mana()
+            || self
+                .mana_percent()
+                .is_none_or(|m| m >= self.setting("health.rest_mana_until", 90))
+    }
+
+    /// Cast a heal in a fight below this per cent of HP (`spells.heal_in_combat_below_hp`).
+    pub fn heal_in_combat_below(&self) -> i32 {
+        self.setting("spells.heal_in_combat_below_hp", 50)
+    }
+
     /// Recover takes control below this much HP (`health.rest_below_hp`, per cent).
     pub fn rest_below(&self) -> i32 {
         self.setting("health.rest_below_hp", crate::policy::REST_BELOW)
@@ -597,7 +664,7 @@ impl Bot {
     /// When a wait ends, for the clock to wake the bot.
     pub fn wake(&self, now: Instant) -> Option<Instant> {
         self.recover
-            .wake()
+            .wake(now)
             .into_iter()
             .chain(self.flee.wake())
             .chain(self.fight.wake())

@@ -472,6 +472,47 @@ impl WorldPack {
         self.names("classes")
     }
 
+    /// Every class's (name, magery, magery level), by number.
+    pub fn class_magery(&self) -> Result<Vec<(String, i64, i64)>, Error> {
+        let mut st = self
+            .conn
+            .prepare_cached("SELECT name, raw FROM classes ORDER BY number")?;
+        let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (name, raw) = row?;
+            let v: Value = serde_json::from_str(&raw)
+                .map_err(|e| Error::Format(format!("classes: raw record of {name}: {e}")))?;
+            out.push((
+                name,
+                raw_field(&v, "classes", "magery")?.as_i64().unwrap_or(0),
+                raw_field(&v, "classes", "magelvl")?.as_i64().unwrap_or(0),
+            ));
+        }
+        Ok(out)
+    }
+
+    /// Every spell, by number.
+    pub fn spells(&self) -> Result<Vec<Spell>, Error> {
+        let mut st = self.conn.prepare_cached(
+            "SELECT number, name, short_name, level, mana, type, target, raw FROM spells \
+             ORDER BY number",
+        )?;
+        let rows = st.query_map([], |r| {
+            Ok(Spell {
+                number: r.get(0)?,
+                name: r.get(1)?,
+                short_name: r.get(2)?,
+                level: r.get(3)?,
+                mana: r.get(4)?,
+                spell_type: r.get(5)?,
+                target: r.get(6)?,
+                raw: r.get(7)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
     /// Every race, (number, name), by number.
     pub fn races(&self) -> Result<Vec<(i64, String)>, Error> {
         self.names("races")

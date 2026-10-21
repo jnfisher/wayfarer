@@ -98,6 +98,8 @@ pub enum Refused {
     /// The game would not start the attack: the target is not here, the weapon does nothing
     /// to it, or another of the [`ATTACK_REFUSALS`].
     Target,
+    /// The attack spell did not go: not enough mana, or a spell already cast this round.
+    Spell,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -235,6 +237,9 @@ fn answer(expect: Expect, ev: &GameEvent) -> Option<Outcome> {
         (Expect::Engaged, GameEvent::CombatEngaged) => Some(Outcome::Confirmed(Confirmed::Engaged)),
         (Expect::Engaged, GameEvent::YouDoNotSee { .. } | GameEvent::NoEffect) => {
             Some(Outcome::Refused(Refused::Target))
+        }
+        (Expect::Engaged, GameEvent::NoMana | GameEvent::AlreadyCast) => {
+            Some(Outcome::Refused(Refused::Spell))
         }
         (Expect::Engaged, GameEvent::Other(e)) if ATTACK_REFUSALS.contains(&e.name.as_str()) => {
             Some(Outcome::Refused(Refused::Target))

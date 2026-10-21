@@ -616,3 +616,35 @@ fn unknown_and_other() {
         }
     );
 }
+
+#[test]
+fn the_spell_list_and_the_casting_refusals() {
+    let got = line(
+        "Level Mana Short Spell Name\n  1   2    vine  vine strike\n  3  12    mmis  magic missile",
+    );
+    assert_eq!(got[0], GameEvent::SpellsHeader, "{got:?}");
+    assert_eq!(
+        got[1],
+        GameEvent::SpellRow {
+            level: 1,
+            mana: 2,
+            short: "vine".into(),
+            name: "vine strike".into()
+        }
+    );
+    assert!(
+        matches!(
+            got[2],
+            GameEvent::SpellRow {
+                level: 3,
+                mana: 12,
+                ..
+            }
+        ),
+        "{got:?}"
+    );
+    assert_eq!(example("spells_none"), GameEvent::SpellsNone);
+    assert_eq!(example("no_mana"), GameEvent::NoMana);
+    assert_eq!(example("already_this_round"), GameEvent::AlreadyCast);
+    assert_eq!(example("cast_fail"), GameEvent::CastFailed);
+}

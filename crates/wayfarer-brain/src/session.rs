@@ -33,6 +33,7 @@ use crate::policy::{COMBAT_QUIET, hp_percent};
 use crate::position::Position;
 use crate::rules::{self, RuleBook, Sightings};
 use crate::session_settings::SettingsSource;
+use crate::spellcraft::{SpellRow, Spellbook};
 use crate::stats::{Ledger, unix};
 use crate::task::{Task, TaskLoop, why_unreachable};
 use crate::walker::{MAX_SEARCHES, Next, Say, Walker};
@@ -44,7 +45,9 @@ pub const MAP_RADIUS: u32 = 15;
 /// The re-sync's commands, in order: the "talk and look" kind (docs/plan/03-engine.md
 /// section 6). `look`, not an empty line: an empty line shows the room only in statline FULL
 /// modes (`kb/screen-parsing.md`).
-pub const RESYNC_COMMANDS: [&str; 4] = ["st", "exp", "i", "look"];
+pub const RESYNC_COMMANDS: [&str; 5] = ["st", "exp", "i", "look", "spells"];
+/// The commands before `spells`, which only a character that casts sends.
+const RESYNC_BASE: usize = 4;
 /// How long nothing must have been sent to the game for a prompt to count as idle.
 pub const IDLE: Duration = Duration::from_secs(2);
 /// How long a re-sync command waits for its answer before the next one goes.
@@ -226,6 +229,7 @@ fn answers(step: usize, ev: &GameEvent) -> bool {
                 | G::StatusStat { .. }
         ),
         1 => matches!(ev, G::ExpScreen { .. }),
+        4 => matches!(ev, G::SpellsHeader | G::SpellRow { .. } | G::SpellsNone),
         2 => matches!(
             ev,
             G::Inventory { .. } | G::Wealth { .. } | G::Encumbrance { .. }
@@ -264,6 +268,9 @@ pub(crate) struct Session {
     settings_warning: Option<String>,
     /// The class the settings were last resolved for.
     class_seen: Option<String>,
+    /// The rows of the last `spells` screen, and the attacks and heals among them.
+    spell_rows: Vec<SpellRow>,
+    spellbook: Spellbook,
     registry: Arc<Registry>,
     parser: Parser,
     pub character: Character,
@@ -396,6 +403,8 @@ impl Session {
             settings_source: settings,
             settings_warning,
             class_seen: None,
+            spell_rows: Vec::new(),
+            spellbook: Spellbook::default(),
             map_radius: MAP_RADIUS,
             map_center: None,
             map_dirty: false,
@@ -619,6 +628,7 @@ impl Session {
                 }
             }
             let typed = GameEvent::from_event(ev);
+            self.spell_event(&typed);
             if let Resync::Waiting {
                 step,
                 ref mut answered,
@@ -2134,6 +2144,13 @@ impl Session {
             rules: self.rules.rules(),
             sightings: &self.sightings,
             settings: &self.settings,
+            mana: c
+                .mana
+                .zip(c.mana_max)
+                .map(|(m, max)| (i64::from(m), i64::from(max))),
+            hp_missing: c.hp.zip(c.hp_max).map(|(h, m)| i64::from(m - h)),
+            level: c.level.map_or(1, i64::from),
+            book: &self.spellbook,
         };
         let (act, says) = self.bot.tick(&view);
         self.say(says, out);
@@ -2227,6 +2244,38 @@ impl Session {
     /// The warning for settings files that could not be used, once.
     pub fn take_settings_warning(&mut self) -> Option<String> {
         self.settings_warning.take()
+    }
+
+    /// How many re-sync commands this character sends: `spells` only if its class casts.
+    fn resync_len(&self) -> usize {
+        let casts = match (&self.atlas, &self.character.state().class) {
+            (Some(atlas), Some(class)) => atlas.spells.casts(class),
+            _ => false,
+        };
+        if casts {
+            RESYNC_COMMANDS.len()
+        } else {
+            RESYNC_BASE
+        }
+    }
+
+    /// The `spells` screen, row by row: the attacks and heals among them are the spellbook.
+    fn spell_event(&mut self, ev: &GameEvent) {
+        match ev {
+            GameEvent::SpellsHeader | GameEvent::SpellsNone => self.spell_rows.clear(),
+            GameEvent::SpellRow {
+                level,
+                mana,
+                short,
+                name,
+            } => self
+                .spell_rows
+                .push((*level, *mana, short.clone(), name.clone())),
+            _ => return,
+        }
+        if let (Some(atlas), Some(class)) = (&self.atlas, &self.character.state().class) {
+            self.spellbook = Spellbook::learn(&atlas.spells, class, &self.spell_rows);
+        }
     }
 
     /// The class the status screen showed is not the one the settings were resolved for: do it
@@ -2501,7 +2550,7 @@ impl Session {
             return Progress::None;
         }
         match self.resync {
-            Resync::Want { next, .. } if next >= RESYNC_COMMANDS.len() => {
+            Resync::Want { next, .. } if next >= self.resync_len() => {
                 self.resync = Resync::Off;
                 self.synced = true;
                 // Every answer has come, so every `sent` before it has: nothing is pending.

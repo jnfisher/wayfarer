@@ -13,7 +13,7 @@ use wayfarer_proto::{
 };
 use wayfarer_settings::{Settings, SettingsDir};
 use wayfarer_store::Store;
-use wayfarer_world::{Finder, Key, MmLoop, Monsters, PathKnowledge, RoomGraph, WorldPack};
+use wayfarer_world::{Finder, Key, MmLoop, Monsters, PathKnowledge, RoomGraph, Spells, WorldPack};
 
 use crate::clock::{Clock, rfc3339};
 use crate::link::Link;
@@ -57,6 +57,8 @@ pub struct Atlas {
     pub knowledge: PathKnowledge,
     /// Rooms, places and monsters by name (`find`), and the boss lairs.
     pub finder: Finder,
+    /// The attack and heal spells of the player classes.
+    pub spells: Spells,
 }
 
 /// Room types (`kb/game-data.md` "Enumerations") and shop types (`kb/economy.md`).
@@ -117,6 +119,7 @@ impl Atlas {
             monsters,
             mm_loops,
             knowledge,
+            spells: Spells::load(pack)?,
         })
     }
 }

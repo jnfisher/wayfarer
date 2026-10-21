@@ -193,6 +193,12 @@ fn settings_for_a_class_shows_the_class_presets() {
         row(&none, "health.flee_below_hp").contains("25 %"),
         "{none}"
     );
+    // `--write` makes the character's starter file once; `--force` replaces it.
+    let wrote = show(&["--write", "--character", "waydeva"]);
+    let file = dir.join("characters/waydeva.toml");
+    assert!(wrote.starts_with("wrote ") && file.is_file(), "{wrote}");
+    assert!(show(&["--write", "--character", "waydeva"]).contains("is there already"));
+    assert!(show(&["--write", "--force", "--character", "waydeva"]).starts_with("wrote "));
     let mage = show(&["--class", "Mage"]);
     let flee = row(&mage, "health.flee_below_hp");
     assert!(

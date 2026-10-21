@@ -21,6 +21,7 @@ pub mod nav;
 pub mod pack;
 pub mod route;
 pub mod schema;
+pub mod spells;
 pub mod walk;
 
 use std::path::PathBuf;
@@ -35,6 +36,7 @@ pub use monsters::{DEFAULT_RULES, MonsterRule, MonsterRules, Monsters, huntable}
 pub use nav::{Category, DirSet, Edge, ExitType, Gate, Key, LockState, RoomGraph};
 pub use pack::WorldPack;
 pub use route::{Costs, Route, Step, Traveller, distances, route, route_within};
+pub use spells::{SpellDef, SpellKind, Spells};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
