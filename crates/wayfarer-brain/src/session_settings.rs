@@ -61,6 +61,30 @@ impl SettingsSource {
         }
     }
 
+    /// What the settings files look like now (their modification times and sizes, `None` for a
+    /// file that is not there), to see that one changed. Empty without a directory.
+    pub fn stamp(&self, character: &str) -> Vec<Option<(std::time::SystemTime, u64)>> {
+        let Some(dir) = &self.dir else {
+            return Vec::new();
+        };
+        dir.files(&self.server, character)
+            .into_iter()
+            .map(|(_, path)| {
+                let meta = std::fs::metadata(path).ok()?;
+                Some((meta.modified().ok()?, meta.len()))
+            })
+            .collect()
+    }
+
+    /// The settings from the files as they are now, or why they cannot be used: a reload
+    /// keeps the settings in force then, unlike a first resolve, which falls back.
+    pub fn reload(&self, character: &str, class: Option<&str>) -> Result<Arc<Settings>, String> {
+        let dir = self.dir.as_ref().ok_or("no settings directory")?;
+        dir.resolve_for(&self.server, character, class)
+            .map(Arc::new)
+            .map_err(|e| e.to_string())
+    }
+
     /// The flee line: the knob's, else the setting `health.flee_below_hp`.
     pub fn flee_below(&self, settings: &Settings) -> i32 {
         self.flee_override.unwrap_or_else(|| {

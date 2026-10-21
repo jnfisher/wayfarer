@@ -612,6 +612,16 @@ commented out, so the file changes nothing until a line is uncommented. `wayfare
 --write [--character ID] [--server HOST:PORT] [--force]` writes one by hand (an existing file is
 kept unless `--force`).
 
+**Saved changes apply by themselves.** Every 3 s the brain looks at the modification time and
+size of each character's files; when one changed it reads them again and puts them in force
+without a restart or a pause of the bot: the flee line and the search limit at once, the rest at
+the bot's next decision (an action in flight finishes as it was sent). The tile says what
+changed (`Settings reloaded: health.flee_below_hp 25 → 30, spells.heal "auto" → "off"`). A file
+that is not valid (a bad word, a number out of range) changes nothing: the earlier settings stay
+and a warning says why (`Settings changed but not used, the earlier settings stay: ...`); mend
+the file and it is read again. The first look after a session starts only notes the files, and
+a settings change by the character's class (below) still applies when the class is known.
+
 | Layer, least specific first | File |
 |---|---|
 | The default | built in |

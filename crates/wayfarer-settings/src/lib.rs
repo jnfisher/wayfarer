@@ -452,7 +452,7 @@ pub fn starter_toml(scope: &str) -> String {
          # change it (the [group] lines are already live).\n\
          # What is not set here comes from the layers below (character > server > settings.toml\n\
          # > class and style presets > defaults). `wayfarer settings` shows each value and where it\n\
-         # came from. Restart the brain after editing.\n"
+         # came from. A running brain reads a saved change within a few seconds.\n"
     );
     for group in GROUPS {
         // The header is live (an empty table sets nothing), so an uncommented line under it is
