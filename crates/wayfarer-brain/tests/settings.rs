@@ -126,10 +126,10 @@ fn write(dir: &Path, file: &str, text: &str) {
 
 #[tokio::test(start_paused = true)]
 async fn the_files_of_a_settings_directory_are_this_characters_layers() {
-    // Everyone is Bold (rest until 90); this character's file asks for 92. The character
+    // Everyone is Careful (rest below 70 to 90); the server asks for 93 and this character 90. The character
     // (`aldric`) is the layer that wins; the server's file (`bbs.example.org:23`) sits between.
     let dir = tempfile::tempdir().unwrap();
-    write(dir.path(), "settings.toml", "[bot]\nstyle = \"bold\"\n");
+    write(dir.path(), "settings.toml", "[bot]\nstyle = \"careful\"\n");
     write(
         dir.path(),
         "servers/bbs.example.org_23.toml",
@@ -153,9 +153,9 @@ async fn another_characters_file_does_not_apply() {
         "characters/someone-else.toml",
         "[health]\nrest_until_hp = 90\n",
     );
-    // The default 95%: 34 of 35 is 97%.
-    let said = rest_narration(brain_in(dir.path()), &[24, 28, 31], 34).await;
-    assert_eq!(said, "Recover: resting to 95% in Newhaven, Narrow Road");
+    // The default 85%: 31 of 35 is 89%, rested; the others do not rest to 90.
+    let said = rest_narration(brain_in(dir.path()), &[24, 28], 31).await;
+    assert_eq!(said, "Recover: resting to 85% in Newhaven, Narrow Road");
 }
 
 #[tokio::test(start_paused = true)]
@@ -186,13 +186,8 @@ async fn a_file_that_is_not_valid_leaves_the_defaults_with_a_warning() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_careful_style_rests_to_nearly_full() {
-    // Careful: rest below 85 to 98. 34 of 35 is 97%, short of it; only 35 will do.
-    let said = rest_narration(
-        brain("[bot]\nstyle = \"careful\"\n"),
-        &[24, 28, 31, 33, 34],
-        35,
-    )
-    .await;
-    assert_eq!(said, "Recover: resting to 98% in Newhaven, Narrow Road");
+async fn the_careful_style_rests_to_ninety() {
+    // Careful: rest below 70 to 90. 31 of 35 is 89%, short of it; 32 (91%) will do.
+    let said = rest_narration(brain("[bot]\nstyle = \"careful\"\n"), &[24, 28, 31], 32).await;
+    assert_eq!(said, "Recover: resting to 90% in Newhaven, Narrow Road");
 }

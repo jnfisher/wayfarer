@@ -89,9 +89,9 @@ HP  0 ──[Flee 30]────[Heal in combat 40]────[Rest below 80]�
 
 | Setting | Default | MegaMud | Notes |
 |---|---|---|---|
-| Rest below HP % | 80 | 90 | Between fights, rest when below this; never in a room that spawns. MegaMud's 90 is cautious: resting already dominates time in hard areas (`kb/recovery.md`) |
-| Rest until HP % | 95 | 99 | A little under 100, so it doesn't wait a whole regen tick for a few HP |
-| Flee below HP % | 30 melee, 50 casters | 30 | The percentage alone; the "twice the hardest hit this fight" addition was dropped (John, 2026-10-19) |
+| Rest below HP % | 60 | 90 | Between fights, rest when below this; never in a room that spawns (bolder than the first draft's 80, John 2026-10-20; the style presets run from 50 to 70). MegaMud's 90 is cautious: resting already dominates time in hard areas (`kb/recovery.md`) |
+| Rest until HP % | 85 | 99 | A little under 100, so it doesn't wait a whole regen tick for a few HP |
+| Flee below HP % | 25 (the Balanced style; Careful 30, Bold 20); casters 50 once class presets exist | 30 | The percentage alone; the "twice the hardest hit this fight" addition was dropped (John, 2026-10-19) |
 | Mana: rest below / until % | 30 / 95 | 20 / 100 | Casters only |
 
 **Combat**

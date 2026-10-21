@@ -101,7 +101,7 @@ pub const CATALOGUE: &[Setting] = &[
         label: "Flee below",
         help: "Leave the fight and run to a room with no spawns when HP falls below this per cent of the maximum.",
         kind: Kind::Int { min: 0, max: 90 },
-        default: Value::Int(30),
+        default: Value::Int(25),
         unit: "%",
         tier: Tier::Essential,
         group: Group::Health,
@@ -112,7 +112,7 @@ pub const CATALOGUE: &[Setting] = &[
         label: "Rest below",
         help: "Between fights, rest when HP is below this per cent of the maximum (never in a room that spawns monsters).",
         kind: Kind::Int { min: 10, max: 99 },
-        default: Value::Int(80),
+        default: Value::Int(60),
         unit: "%",
         tier: Tier::Essential,
         group: Group::Health,
@@ -123,7 +123,7 @@ pub const CATALOGUE: &[Setting] = &[
         label: "Rest until",
         help: "Keep resting until HP is back to this per cent of the maximum. A little under 100, so it does not wait a whole regeneration tick for a few points.",
         kind: Kind::Int { min: 20, max: 100 },
-        default: Value::Int(95),
+        default: Value::Int(85),
         unit: "%",
         tier: Tier::Essential,
         group: Group::Health,
@@ -203,20 +203,21 @@ pub fn setting(key: &str) -> Option<&'static Setting> {
 }
 
 /// What a style sets, under every layer: the three HP lines. Balanced sets nothing (the
-/// defaults are Balanced). Careful flees at 40 and rests below 85 to 98; Bold flees at 20 and
-/// rests below 70 to 90 ("tougher fights and a lower flee line, still relying on fleeing
-/// reliably", `docs/plan/04-settings.md` section 2). Each keeps flee < rest below <= rest until.
+/// defaults are Balanced: flee below 25, rest below 60 to 85). Careful flees at 30 and rests
+/// below 70 to 90; Bold flees at 20 and rests below 50 to 80 (John, 2026-10-20: every style
+/// fights on to a lower line than the first draft's). Each keeps flee < rest below <= rest
+/// until.
 pub fn preset(style: &str) -> Overrides {
     let lines: &[(&str, i64)] = match style {
         "careful" => &[
-            ("health.flee_below_hp", 40),
-            ("health.rest_below_hp", 85),
-            ("health.rest_until_hp", 98),
+            ("health.flee_below_hp", 30),
+            ("health.rest_below_hp", 70),
+            ("health.rest_until_hp", 90),
         ],
         "bold" => &[
             ("health.flee_below_hp", 20),
-            ("health.rest_below_hp", 70),
-            ("health.rest_until_hp", 90),
+            ("health.rest_below_hp", 50),
+            ("health.rest_until_hp", 80),
         ],
         _ => &[],
     };
@@ -671,9 +672,9 @@ mod tests {
     #[test]
     fn the_defaults_resolve_and_say_where_they_came_from() {
         let s = Settings::default();
-        assert_eq!(s.int("health.flee_below_hp"), 30);
-        assert_eq!(s.int("health.rest_below_hp"), 80);
-        assert_eq!(s.int("health.rest_until_hp"), 95);
+        assert_eq!(s.int("health.flee_below_hp"), 25);
+        assert_eq!(s.int("health.rest_below_hp"), 60);
+        assert_eq!(s.int("health.rest_until_hp"), 85);
         assert_eq!(s.int("movement.search_limit"), 300);
         assert_eq!(s.int("bot.passed_by_minutes"), 5);
         assert_eq!(s.source("health.flee_below_hp"), Some(Layer::Default));
@@ -764,9 +765,9 @@ mod tests {
                 s.int("health.rest_until_hp"),
             );
             let want = match style {
-                "careful" => (40, 85, 98),
-                "bold" => (20, 70, 90),
-                _ => (30, 80, 95),
+                "careful" => (30, 70, 90),
+                "bold" => (20, 50, 80),
+                _ => (25, 60, 85),
             };
             assert_eq!(lines, want, "{style}");
             let from = s.source("health.flee_below_hp");
@@ -787,10 +788,10 @@ mod tests {
             Overrides::parse("[bot]\nstyle = \"bold\"\n[health]\nrest_until_hp = 95\n").unwrap();
         let character = Overrides::parse("[health]\nflee_below_hp = 25\n").unwrap();
         let s = Settings::resolve(&[(Layer::Mine, &mine), (Layer::Character, &character)]).unwrap();
-        // Bold: rest below 70; the character's flee line and my rest-until beat the preset.
+        // Bold: rest below 50; the character's flee line and my rest-until beat the preset.
         assert_eq!(s.int("health.flee_below_hp"), 25);
         assert_eq!(s.source("health.flee_below_hp"), Some(Layer::Character));
-        assert_eq!(s.int("health.rest_below_hp"), 70);
+        assert_eq!(s.int("health.rest_below_hp"), 50);
         assert_eq!(s.source("health.rest_below_hp"), Some(Layer::Style));
         assert_eq!(s.int("health.rest_until_hp"), 95);
         assert_eq!(s.source("health.rest_until_hp"), Some(Layer::Mine));
@@ -798,7 +799,7 @@ mod tests {
         let careful = Overrides::parse("[bot]\nstyle = \"careful\"\n").unwrap();
         let s = Settings::resolve(&[(Layer::Mine, &mine), (Layer::Character, &careful)]).unwrap();
         assert_eq!(s.choice("bot.style"), "careful");
-        assert_eq!(s.int("health.flee_below_hp"), 40);
+        assert_eq!(s.int("health.flee_below_hp"), 30);
     }
 
     #[test]
@@ -823,9 +824,9 @@ mod tests {
 
     #[test]
     fn a_style_whose_lines_clash_with_a_set_line_is_refused() {
-        // Bold rests below 70; rest until 60 is below that.
+        // Bold rests below 50; rest until 40 is below that.
         let o =
-            Overrides::parse("[bot]\nstyle = \"bold\"\n[health]\nrest_until_hp = 60\n").unwrap();
+            Overrides::parse("[bot]\nstyle = \"bold\"\n[health]\nrest_until_hp = 40\n").unwrap();
         assert!(matches!(
             Settings::resolve(&[(Layer::Character, &o)]),
             Err(Error::Order(_))

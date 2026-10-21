@@ -24,7 +24,7 @@ Settings declared once (`docs/plan/04-settings.md`). A leaf crate: it depends on
 ```toml
 # characters/thorgrim.toml: only what differs
 [bot]
-style = "bold"      # flee 20, rest below 70, rest until 90 (the preset)
+style = "bold"      # flee 20, rest below 50, rest until 80 (the preset)
 
 [health]
 rest_until_hp = 92  # beats the preset

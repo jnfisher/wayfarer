@@ -63,12 +63,12 @@ controls, just left of the server:
 | State | Buttons | Line under the header |
 |---|---|---|
 | Stopped (every character to begin with) | `[►]` start | none |
-| Running | `[║]` pause, `[■]` stop | the narration, light cyan: "Fight: large giant rat", "Recover: resting to 95% in Newhaven, Narrow Road", "Waiting here" |
+| Running | `[║]` pause, `[■]` stop | the narration, light cyan: "Fight: large giant rat", "Recover: resting to 85% in Newhaven, Narrow Road", "Waiting here" |
 | Paused | `[►]` resume, `[■]` stop | yellow: "Paused: you took over" |
 
 **Start** plays the character where it stands: it fights what comes, keeps auto-combat on,
 rests when HP is low (in the nearest quiet room if this one spawns, then walks back), and
-flees below 30% HP to a room where nothing spawns, rests there and walks back; it stops itself
+flees below 25% HP to a room where nothing spawns, rests there and walks back; it stops itself
 with a warning only when there is no way out ([brain.md](brain.md) "Flee"). **Typing beside
 it**: talk and look (`gossip hi`, `st`, `look`, `who`) goes between the bot's commands and does
 not pause it; a line that acts (`n`, `rest`, `buy sword`) pauses it after the command in flight

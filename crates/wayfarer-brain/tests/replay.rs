@@ -37,7 +37,9 @@ async fn replay(name: &str) -> (Vec<String>, Vec<String>) {
     let brain = tokio::spawn({
         let hub = hub.clone();
         async move {
-            let mut brain = Brain::new(world, clock, None).with_store(Store::in_memory().unwrap());
+            let mut brain = Brain::new(world, clock, None)
+                .with_settings(recorded_policy())
+                .with_store(Store::in_memory().unwrap());
             while attached.wait_for(|on| *on).await.is_ok() {
                 let (tx, rx) = hub.connect();
                 let mut link = ChannelLink::new(tx, rx);
@@ -81,4 +83,14 @@ async fn the_fight_recording_replays_to_the_same_commands() {
     let (wanted, live) = replay("fight").await;
     assert!(live.contains(&"a thief".to_owned()), "{live:?}");
     assert_eq!(wanted, live);
+}
+
+/// The HP lines the recordings were made with (flee below 30, rest below 80 to 95), before the
+/// defaults became bolder: a replay must decide as the recorded brain did.
+fn recorded_policy() -> wayfarer_settings::Settings {
+    let over = wayfarer_settings::Overrides::parse(
+        "[health]\nflee_below_hp = 30\nrest_below_hp = 80\nrest_until_hp = 95\n",
+    )
+    .unwrap();
+    wayfarer_settings::Settings::resolve(&[(wayfarer_settings::Layer::Mine, &over)]).unwrap()
 }

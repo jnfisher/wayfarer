@@ -42,7 +42,12 @@ async fn ready_at(at: Key) -> (Game, Run) {
 /// The same, the history and the re-sync's room being the Arena as `arena` shows it (the
 /// caller expects the `look`).
 async fn ready_with(history: String) -> (Game, Run) {
-    let hp = if history.contains("[HP=30") { 30 } else { 35 };
+    // The HP in the history's last prompt (`[HP=29`), else full.
+    let hp = history
+        .rsplit_once("[HP=")
+        .and_then(|(_, rest)| rest.split(|c: char| !c.is_ascii_digit()).next())
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(35);
     let (mut g, run) = Game::start_with(SessionState::Realm, history).await;
     g.pipelining = true;
     g.idle(Duration::from_secs(20)).await;
@@ -391,18 +396,18 @@ async fn a_restarted_brain_goes_on_with_the_loop_at_the_same_stop() {
 
 #[tokio::test(start_paused = true)]
 async fn with_hp_short_it_rests_before_waiting_for_respawns() {
-    // 30 of 35 is 85%: not low enough for Recover by itself, short of the 95% a rest reaches.
-    let (mut g, run) = ready_with(arena(&[], 30)).await;
-    g.expect("look", arena(&[], 30));
-    g.expect("u", at_hp(&room(NARROW_ROAD), 30));
-    g.expect("rest", format!("You are now resting.\r\n{}", resting(30)));
+    // 29 of 35 is 83%: not low enough for Recover by itself (60%), short of the 85% a rest reaches.
+    let (mut g, run) = ready_with(arena(&[], 29)).await;
+    g.expect("look", arena(&[], 29));
+    g.expect("u", at_hp(&room(NARROW_ROAD), 29));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(29)));
     g.run_loop(&[BEYOND_ARENA, SMALL_CAVERN]).await;
     g.narrated("Waiting for respawns: resting first").await;
-    g.narrated("Recover: resting to 95% in Newhaven, Narrow Road")
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
         .await;
     g.idle(Duration::from_secs(20)).await;
-    g.expect("d", arena(&[], 34));
-    g.output(&resting(34)).await;
+    g.expect("d", arena(&[], 31));
+    g.output(&resting(31)).await;
     g.narrated("Recover: rested; walking back to Newhaven, Arena")
         .await;
     g.narrated("Waiting for respawns in Newhaven, Arena").await;

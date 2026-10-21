@@ -315,8 +315,8 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
 
   | Mode | Wants control when | Does |
   |---|---|---|
-  | Flee | HP below 30% while running, whether or not engaged, with something to run from (a fight, an attacker, or a room that spawns); a monster to *flee from* in the room, whatever the HP; a stalemate; until it is done | Leaves by a confirmed exit toward a room that spawns nothing, keeps running if followed, then hands over to Recover ("Flee", below) |
-  | Recover | HP below 80% (or poisoned) and not fighting; or a rest it began is not finished | Rests: in this room if nothing spawns here; else walks (through the walker, each step confirmed) to the nearest room within 5 steps where nothing spawns, and rests there; else rests here anyway. `rest` again when the next prompt lacks `(Resting)` (three times, then a 30 s wait; `You are too sick to rest!` waits 30 s too). Rested at 95%, it walks back home. Each walk is tried twice (a fight can stop one): after two walks out that were stopped it rests where it is, against the quiet-room rule, and says so with a warning ("Recover: resting in Newhaven, Arena though it spawns: 2 walks to a quiet room were stopped"); after two walks home that were stopped it waits where it rested: "Rested; could not walk home, waiting here" |
+  | Flee | HP below 25% (`health.flee_below_hp`) while running, whether or not engaged, with something to run from (a fight, an attacker, or a room that spawns); a monster to *flee from* in the room, whatever the HP; a stalemate; until it is done | Leaves by a confirmed exit toward a room that spawns nothing, keeps running if followed, then hands over to Recover ("Flee", below) |
+  | Recover | HP below 60% (`health.rest_below_hp`) (or poisoned) and not fighting; or a rest it began is not finished | Rests: in this room if nothing spawns here; else walks (through the walker, each step confirmed) to the nearest room within 5 steps where nothing spawns, and rests there; else rests here anyway. `rest` again when the next prompt lacks `(Resting)` (three times, then a 30 s wait; `You are too sick to rest!` waits 30 s too). Rested at 95%, it walks back home. Each walk is tried twice (a fight can stop one): after two walks out that were stopped it rests where it is, against the quiet-room rule, and says so with a warning ("Recover: resting in Newhaven, Arena though it spawns: 2 walks to a quiet room were stopped"); after two walks home that were stopped it waits where it rested: "Rested; could not walk home, waiting here" |
   | Fight | Engaged; or a monster worth fighting is here | Picks one that is attacking the character first, else the first listed, by the monster rules ("Monster rules", below: never one to *never fight* unless it attacks, never one to *flee from*); sends `a <its last word>` once and lets auto-combat run. After `*Combat Off*` or a kill it looks (`look`) and picks the next. A target the game refuses (`You do not see rat here!`, `Your weapon has no effect`) is left alone for the rest of the session. Four rounds of the character's swings with no damage dealt, one of them glancing off the target's armour at least, are a stalemate: it gives the target up and the bot leaves ("Monster rules"). Never leaves the room itself |
   | Idle | Otherwise | Sends nothing: "Waiting here" |
 
@@ -349,7 +349,7 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
   (`F9`, `[►]`) re-syncs first, then narrates what it does next. **Stop** (`F10`, `[■]`)
   sends nothing more; a walk of the bot's stops after the move in flight.
 - **Constants** in this slice, settings in M4 (`docs/plan/04-settings.md` section 3): rest
-  below 80%, rest until 95%, flee below 30%, three rooms of fleeing, a 1.5 s watch for a
+  below 60%, rest until 85%, flee below 25%, three rooms of fleeing, a 1.5 s watch for a
   follower, a quiet room within 5 steps (`crates/wayfarer-brain/src/policy.rs`).
 
 Not in this slice: coins and loot, healing spells and healers, bash and the other attacks,
@@ -358,7 +358,7 @@ it cannot win.
 
 ## Flee
 
-Below the flee line (30% of the maximum HP; a plain percentage, John dropped "twice the
+Below the flee line (25% of the maximum HP; a plain percentage, John dropped "twice the
 hardest hit this fight" on 2026-10-19) the bot leaves the fight. Every HP value is checked,
 whatever is in flight: a walk of the bot's stops after the move in flight, an action of its not
 sent yet is dropped, and Flee acts at the next prompt.
@@ -381,7 +381,7 @@ sent yet is dropped, and Flee acts at the next prompt.
   **safe**; not followed but in a room that spawns, it hops on toward a quiet one. Three hops at
   most while HP stays under the line.
 - **After**: Recover takes over, whatever the HP: it rests where Flee got to (walking to a quiet
-  room within 5 steps if it must) to 95%, then walks back home, and Fight carries on there. A
+  room within 5 steps if it must) to 85%, then walks back home, and Fight carries on there. A
   monster that attacks again while HP is still under the line sets off another flee.
 - **Cornered**: with no exit to take (the position not sure of the room, every exit refused,
   locked or gated), or still followed after the third hop, it sends `break` if the character is
@@ -487,7 +487,7 @@ stop it is at or walking to, and the stops it passes by.
   31.4k exp/hr with a five-minute clock on every stop and 31.6k without it, with no rests and
   no idle waits in the second: what limits exp there is the supply of monsters, not the walk.
   (`task::passed_left`, `PASSED_FOR`.)
-- **None ready** (every stop unticked, unreachable or passed by lately): with HP under 95% it
+- **None ready** (every stop unticked, unreachable or passed by lately): with HP under 85% it
   rests first ("Waiting for respawns: resting first": Recover rests, in a quiet room if this one
   spawns, and walks back); then it waits where it is, "Waiting for respawns: next in 1 m", and
   goes when the next stop is ready. An Arena the bot stands in waits there and Fight takes what
@@ -633,10 +633,10 @@ rest_until_hp = 92
 
 | Key | Default | Range | What |
 |---|---|---|---|
-| `bot.style` | `"balanced"` | careful, balanced, bold | The preset of the three HP lines: Careful 40 / 85 / 98, Balanced 30 / 80 / 95, Bold 20 / 70 / 90 (flee below / rest below / rest until). A line set in a file beats the preset |
-| `health.flee_below_hp` | 30 | 0–90 | Flee takes control below this per cent of the maximum HP |
-| `health.rest_below_hp` | 80 | 10–99 | Recover takes control below this per cent |
-| `health.rest_until_hp` | 95 | 20–100 | Recover rests until this per cent |
+| `bot.style` | `"balanced"` | careful, balanced, bold | The preset of the three HP lines: Careful 30 / 70 / 90, Balanced 25 / 60 / 85, Bold 20 / 50 / 80 (flee below / rest below / rest until). A line set in a file beats the preset |
+| `health.flee_below_hp` | 25 | 0–90 | Flee takes control below this per cent of the maximum HP |
+| `health.rest_below_hp` | 60 | 10–99 | Recover takes control below this per cent |
+| `health.rest_until_hp` | 85 | 20–100 | Recover rests until this per cent |
 | `movement.search_limit` | 300 | 1–1000 | Searches for a hidden exit before the walker gives it up |
 | `bot.passed_by_minutes` | 5 | 1–120 | How long a loop stop the bot passed by is left alone |
 | `bot.leg_tries` | 3 | 1–10 | Walks to one loop stop that end elsewhere before it is passed by |

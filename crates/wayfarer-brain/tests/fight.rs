@@ -93,15 +93,15 @@ async fn low_hp_rests_in_a_quiet_room_then_walks_back() {
     g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
     g.narrated("Recover: walking to Newhaven, Narrow Road to rest (Newhaven, Arena spawns)")
         .await;
-    g.narrated("Recover: resting to 95% in Newhaven, Narrow Road")
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
         .await;
-    // The resting prompt, redrawn as HP comes back; 34 of 35 is 97%.
-    for hp in [24, 28, 31] {
+    // The resting prompt, redrawn as HP comes back; 31 of 35 is 89%, rested at 85%.
+    for hp in [24, 28] {
         g.output(&resting(hp)).await;
         g.idle(Duration::from_secs(20)).await;
     }
-    g.expect("d", arena(&[], 34));
-    g.output(&resting(34)).await;
+    g.expect("d", arena(&[], 31));
+    g.output(&resting(31)).await;
     g.narrated("Recover: rested; walking back to Newhaven, Arena")
         .await;
     g.narrated("Waiting here").await;
@@ -134,15 +134,15 @@ async fn started_where_the_position_is_unknown_home_is_where_the_resync_finds_it
     g.narrated("Playing from Newhaven, Arena").await;
     g.expect("u", at_hp(&room(NARROW_ROAD), 20));
     g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
-    g.narrated("Recover: resting to 95% in Newhaven, Narrow Road")
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
         .await;
-    for hp in [24, 28, 31] {
+    for hp in [24, 28] {
         g.output(&resting(hp)).await;
         g.idle(Duration::from_secs(20)).await;
     }
-    g.expect("d", arena(&["large giant rat"], 34));
-    g.expect("a rat", line(ENGAGED, 34));
-    g.output(&resting(34)).await;
+    g.expect("d", arena(&["large giant rat"], 31));
+    g.expect("a rat", line(ENGAGED, 31));
+    g.output(&resting(31)).await;
     g.narrated("Recover: rested; walking back to Newhaven, Arena")
         .await;
     g.narrated("Fight: large giant rat").await;
@@ -162,7 +162,7 @@ async fn rest_is_sent_again_when_the_prompt_lacks_resting() {
     g.expect("u", at_hp(&room(NARROW_ROAD), 20));
     g.expect("rest", prompt(20));
     g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
-    g.narrated("Recover: resting to 95% in Newhaven, Narrow Road")
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
         .await;
     g.idle(Duration::from_secs(10)).await;
     let (_, played) = g.close(run).await;
@@ -175,7 +175,7 @@ async fn a_monster_that_attacks_while_resting_wakes_fight() {
     start(&mut g, &[], 20).await;
     g.expect("u", at_hp(&room(NARROW_ROAD), 20));
     g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
-    g.narrated("Recover: resting to 95% in Newhaven, Narrow Road")
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
         .await;
     g.output(&resting(22)).await;
     g.idle(Duration::from_secs(5)).await;
@@ -523,7 +523,7 @@ async fn after_two_failed_walks_home_it_says_it_could_not_walk_home() {
     start(&mut g, &[], 20).await;
     g.expect("u", at_hp(&room(NARROW_ROAD), 20));
     g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
-    g.narrated("Recover: resting to 95% in Newhaven, Narrow Road")
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
         .await;
     g.idle(Duration::from_secs(20)).await;
     g.expect("d", refused_in_combat(34));
@@ -563,7 +563,7 @@ async fn after_two_interrupted_walks_out_it_warns_that_it_rests_in_a_spawning_ro
     let warning = "Recover: resting in Newhaven, Arena though it spawns: 2 walks to a quiet room \
                    were stopped";
     g.narrated(warning).await;
-    g.narrated("Recover: resting to 95% in Newhaven, Arena")
+    g.narrated("Recover: resting to 85% in Newhaven, Arena")
         .await;
     g.idle(Duration::from_secs(30)).await;
     let (seen, played) = g.close(run).await;
@@ -626,7 +626,7 @@ async fn a_player_is_no_attacker_without_a_pvp_line_and_does_not_keep_recover_fr
     g.output(&blows.map(|b| line(b, 20)).concat()).await;
     g.narrated("Recover: walking to Newhaven, Narrow Road to rest (Newhaven, Arena spawns)")
         .await;
-    g.narrated("Recover: resting to 95% in Newhaven, Narrow Road")
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
         .await;
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "u", "rest"]);

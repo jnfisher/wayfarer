@@ -103,7 +103,7 @@ async fn talk_goes_between_the_steps_of_the_bots_walk() {
     g.after_cmd = Some(("u".into(), user_input("gossip hi", false)));
     g.expect("gossip hi", line("You gossip: hi", 20));
     g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
-    g.narrated("Recover: resting to 95% in Newhaven, Narrow Road")
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
         .await;
     g.idle(Duration::from_secs(5)).await;
     let (seen, played) = g.close(run).await;

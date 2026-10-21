@@ -61,16 +61,17 @@ async fn flee_rest_and_return() -> (Vec<String>, Vec<String>) {
     g.narrated("Safe in Newhaven, Narrow Path").await;
     // Its own auto-combat lapses (no `*Combat Off*` here); then Recover rests where it is.
     g.expect("rest", format!("You are now resting.\r\n{}", resting(8)));
-    g.narrated("Recover: resting to 95% in Newhaven, Narrow Path")
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Path")
         .await;
-    for hp in [16, 24, 31] {
+    // 31 of 35 is 89%: rested at 85%.
+    for hp in [16, 24] {
         g.output(&resting(hp)).await;
         g.idle(Duration::from_secs(20)).await;
     }
-    g.expect("w", at_hp(&room(NARROW_ROAD), 34));
-    g.expect("d", arena(&[RAT], 34));
-    g.expect("a rat", line(ENGAGED, 34));
-    g.output(&resting(34)).await;
+    g.expect("w", at_hp(&room(NARROW_ROAD), 31));
+    g.expect("d", arena(&[RAT], 31));
+    g.expect("a rat", line(ENGAGED, 31));
+    g.output(&resting(31)).await;
     g.narrated("Recover: rested; walking back to Newhaven, Arena")
         .await;
     g.narrated("Fight: large giant rat").await;
@@ -94,10 +95,10 @@ async fn under_the_line_it_flees_keeps_running_when_followed_rests_and_returns()
 
 #[tokio::test(start_paused = true)]
 async fn with_the_line_above_recovers_it_still_rests_and_walks_back() {
-    // The live check's `--flee-below 95`: the first blow (33 of 35, 94%) sets the flee off,
-    // with HP above the 80% Recover would rest below. It rests to 95% anyway, then goes back.
+    // A flee line of 80%: the first blow (24 of 35, 68%) sets the flee off, with HP above the
+    // 60% Recover would rest below. It rests to 85% anyway, then goes back.
     let clock = FixedClock(UNIX_EPOCH + Duration::from_secs(T0));
-    let brain = Brain::new(world(), Arc::new(clock), None).with_flee_below(95);
+    let brain = Brain::new(world(), Arc::new(clock), None).with_flee_below(80);
     let (mut g, run) = Game::start_brain(SessionState::Realm, arena(&[RAT], 35), brain).await;
     g.until(|m| matches!(m, ToGateway::MapView { .. }).then_some(()))
         .await;
@@ -106,18 +107,18 @@ async fn with_the_line_above_recovers_it_still_rests_and_walks_back() {
     g.expect("a rat", line(ENGAGED, 35));
     g.narrated("Fight: large giant rat").await;
     g.round("The large giant rat lunges at you!", 35).await;
-    g.expect("u", at_hp(&room(NARROW_ROAD), 33));
-    g.expect("rest", format!("You are now resting.\r\n{}", resting(33)));
-    g.output(&lunge(33)).await;
-    g.narrated("Fleeing: HP 94%: up to Newhaven, Narrow Road")
+    g.expect("u", at_hp(&room(NARROW_ROAD), 24));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(24)));
+    g.output(&lunge(24)).await;
+    g.narrated("Fleeing: HP 68%: up to Newhaven, Narrow Road")
         .await;
     g.narrated("Safe in Newhaven, Narrow Road").await;
-    g.narrated("Recover: resting to 95% in Newhaven, Narrow Road")
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
         .await;
-    g.expect("d", arena(&[RAT], 34));
-    g.expect("a rat", line(ENGAGED, 34));
+    g.expect("d", arena(&[RAT], 31));
+    g.expect("a rat", line(ENGAGED, 31));
     g.idle(Duration::from_secs(20)).await;
-    g.output(&resting(34)).await;
+    g.output(&resting(31)).await;
     g.narrated("Recover: rested; walking back to Newhaven, Arena")
         .await;
     g.narrated("Fight: large giant rat").await;
