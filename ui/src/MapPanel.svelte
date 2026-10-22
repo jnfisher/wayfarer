@@ -9,6 +9,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import {
+    agoText,
     carryPan,
     DEFAULT_ZOOM,
     LOOP_RADIUS,
@@ -29,7 +30,7 @@
   } from "./lib/map";
   import { centreOn, FIND_DEBOUNCE_MS, goRows, MIN_QUERY, moveChoice, type FoundMessage, type GoRow } from "./lib/goto";
   import { FONT_FAMILY } from "./lib/theme";
-  import type { CharacterState, GeneratedLoop, LoopStop, MapRoom, MegaMudLoop, RoomKey, SessionInfo } from "./proto";
+  import type { CharacterState, GeneratedLoop, LoopStop, MapRoom, MegaMudLoop, Place, RoomKey, SessionInfo } from "./proto";
 
   interface Props {
     /** The focused tile's session, which the panel follows. */
@@ -156,12 +157,16 @@
   }
 
   function ongokeydown(e: KeyboardEvent) {
+    // Nothing typed: the keys work on the recent places.
+    const recent = query.trim().length === 0 && places.length > 0;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
-      choose(moveChoice(rows, chosen, e.key === "ArrowDown" ? 1 : -1));
+      if (recent) chosen = Math.max(0, Math.min(places.length - 1, chosen + (e.key === "ArrowDown" ? 1 : -1)));
+      else choose(moveChoice(rows, chosen, e.key === "ArrowDown" ? 1 : -1));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      go(rows[chosen] ?? rows[0]);
+      if (recent) goPlace(places[Math.max(chosen, 0)]);
+      else go(rows[chosen] ?? rows[0]);
     } else if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
@@ -184,6 +189,16 @@
   let tip = $state<{ x: number; y: number; lines: string[] } | null>(null);
 
   const position = $derived(character?.position);
+  /** Where the character died, fled and stopped, newest first. */
+  const places = $derived(character?.places ?? []);
+  function placeText(p: Place): string {
+    const what = p.kind === "death" ? "died" : p.kind === "flee" ? "fled" : "stopped";
+    const more = p.detail ? ` (${p.detail})` : "";
+    return `${what} ${agoText(p.at)}: ${p.name || "?"} ${p.map}:${p.room}${more}`;
+  }
+  function goPlace(p: Place) {
+    if (session) onwalk(session.id, p.map, p.room);
+  }
   const known = $derived(position?.room !== undefined);
   const walking = $derived(character?.walking);
   // The loops list: open or not, the loop hovered and the one picked
@@ -548,6 +563,21 @@
           spellcheck="false"
           autocomplete="off"
         />
+        {#if query.trim().length === 0 && places.length > 0}
+          <!-- Nothing typed: where the character died, fled and stopped, newest first. -->
+          <ul aria-label="Recent places">
+            {#each places as p, i (`${p.at}:${p.kind}:${p.map}:${p.room}`)}
+              <li class:on={chosen === i}>
+                <button class="row" aria-pressed={chosen === i} onclick={() => (chosen = i)} ondblclick={() => goPlace(p)}
+                  >{placeText(p)}</button
+                >
+                {#if chosen === i}
+                  <button class="walk" onclick={() => goPlace(p)}>go</button>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
         {#if query.trim().length >= MIN_QUERY}
           {#if !found || found.session !== session.id || found.query !== query.trim()}
             {#if rows.length === 0}<p class="dim">Asking the brain…</p>{/if}

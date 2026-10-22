@@ -228,6 +228,14 @@ export function loopText(l: { stops: unknown[]; steps: number; doors?: number })
   return parts.join(", ");
 }
 
+/** How long ago an RFC 3339 time was: `just now`, `5 m ago`, `2 h 10 m ago`, `3 d ago`. */
+export function agoText(at: string, now = Date.now()): string {
+  const minutes = Math.floor((now - Date.parse(at)) / 60000);
+  if (!(minutes >= 1)) return "just now";
+  if (minutes >= 2880) return `${Math.floor(minutes / 1440)} d ago`;
+  return `${minutesText(minutes)} ago`;
+}
+
 /** Minutes as `1 h 20 m`, `2 h`, `45 m`. */
 export function minutesText(minutes: number): string {
   const h = Math.floor(minutes / 60);

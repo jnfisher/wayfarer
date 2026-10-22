@@ -3,6 +3,7 @@ import type { Bot } from "./Bot";
 import type { Coins } from "./Coins";
 import type { Encumbrance } from "./Encumbrance";
 import type { ParseCounts } from "./ParseCounts";
+import type { Place } from "./Place";
 import type { Position } from "./Position";
 import type { RunStats } from "./RunStats";
 import type { Stats } from "./Stats";
@@ -73,4 +74,9 @@ bot?: Bot,
 /**
  * The bot's current run, from Start to Stop or a death; absent when there is none.
  */
-run?: RunStats, };
+run?: RunStats, 
+/**
+ * Where the character died, fled from and stopped, newest first (at most ten), whether
+ * or not the bot was running; absent without a world pack.
+ */
+places?: Array<Place>, };

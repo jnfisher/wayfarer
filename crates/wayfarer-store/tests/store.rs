@@ -2,8 +2,8 @@
 
 use rusqlite::Connection;
 use wayfarer_store::{
-    BotRecord, BotState, CustomLoop, Error, Event, EventKind, Note, RuleRecord, SCHEMA_VERSION,
-    Sample, Store, Totals,
+    BotRecord, BotState, CustomLoop, Error, Event, EventKind, Note, Place, PlaceKind, RuleRecord,
+    SCHEMA_VERSION, Sample, Store, Totals,
 };
 
 const T0: i64 = 1_792_411_200;
@@ -159,6 +159,32 @@ fn other_open_runs_are_ended() {
     assert_eq!(runs[1].run.ended_at, Some(T0 + 20));
     store.end_other_runs("aldric", None, T0 + 30).unwrap();
     assert_eq!(store.open_run("aldric").unwrap(), None);
+}
+
+#[test]
+fn places_are_kept_per_session_newest_first() {
+    let store = Store::in_memory().unwrap();
+    let place = |at, kind, room| Place {
+        at,
+        kind,
+        room,
+        detail: None,
+    };
+    store
+        .add_place("aldric", &place(T0, PlaceKind::Flee, (1, 5)))
+        .unwrap();
+    store
+        .add_place("aldric", &place(T0 + 9, PlaceKind::Death, (1, 1217)))
+        .unwrap();
+    store
+        .add_place("bryn", &place(T0 + 5, PlaceKind::Stopped, (2, 3)))
+        .unwrap();
+    let places = store.places("aldric", 10).unwrap();
+    assert_eq!(
+        places.iter().map(|p| (p.kind, p.room)).collect::<Vec<_>>(),
+        [(PlaceKind::Death, (1, 1217)), (PlaceKind::Flee, (1, 5))]
+    );
+    assert_eq!(store.places("aldric", 1).unwrap().len(), 1);
 }
 
 #[test]

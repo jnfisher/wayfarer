@@ -372,6 +372,28 @@ describe("the go box", () => {
     return input;
   }
 
+  it("lists where the character died, fled and stopped while nothing is typed, and goes there", async () => {
+    const places = [
+      { at: "2026-10-22T12:00:00Z", kind: "stopped", map: 1, room: 1217, name: "Slum Street", detail: "Stopped: asked to stop" },
+      { at: "2026-10-22T11:59:00Z", kind: "death", map: 1, room: 1217, name: "Slum Street" },
+      { at: "2026-10-22T11:50:00Z", kind: "flee", map: 1, room: 1203, name: "Slum Street", detail: "dark cultist" },
+    ];
+    const { onwalk } = mount({ character: { ...here, places } });
+    await fireEvent.click(screen.getByRole("button", { name: "go" }));
+    const rows = within(screen.getByRole("list", { name: "Recent places" })).getAllByRole("button", { name: /Slum Street/ });
+    expect(rows.map((r) => r.textContent?.replace(/^(\w+) .*?: /, "$1: "))).toEqual([
+      "stopped: Slum Street 1:1217 (Stopped: asked to stop)",
+      "died: Slum Street 1:1217",
+      "fled: Slum Street 1:1203 (dark cultist)",
+    ]);
+    await fireEvent.click(rows[1]);
+    await fireEvent.click(within(screen.getByRole("list", { name: "Recent places" })).getByRole("button", { name: "go" }));
+    expect(onwalk).toHaveBeenCalledWith("aria", 1, 1217);
+    // Typing puts them away.
+    await typeIn("ch");
+    expect(screen.queryByRole("list", { name: "Recent places" })).toBeNull();
+  });
+
   it("opens with the go button and asks the brain as you type, two letters or more", async () => {
     vi.useFakeTimers();
     try {

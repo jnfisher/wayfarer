@@ -196,6 +196,11 @@ and works nothing out itself.
   room before the lair so you can look before going in, and the walk bar says `one room
   short of Large Wooden Room (boss: minotaur chieftain)`. Untick it to walk in. `Esc`
   clears the box; `Esc` again closes it.
+- **Recent places**: with nothing typed, the go box lists where the character died (its gear
+  is in that room), fled from and was stopped in, newest first, ten at most, each with how long
+  ago, the room's name and `map:room` (`died 12 m ago: Slum Street 1:1217`; a flee says from
+  whom, a stop why). Pick a row (`Up` and `Down`) and press **go** or `Enter` to walk there. The
+  brain keeps them, run or no run, and they survive a restart.
 - **Loops**: `loops ▸`, beside `go` above the map, opens the list of the 12 loops nearest the
   character ([brain.md](brain.md), "Loops"), nearest first, each with its distance in steps
   (the green number on the left). Opening it asks the brain again, and while it is open it

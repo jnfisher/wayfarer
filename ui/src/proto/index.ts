@@ -27,6 +27,7 @@ export type { MegaMudLoop } from "./MegaMudLoop";
 export type { MonsterRuleEntry } from "./MonsterRuleEntry";
 export type { MonsterRuleKind } from "./MonsterRuleKind";
 export type { ParseCounts } from "./ParseCounts";
+export type { Place } from "./Place";
 export type { Position } from "./Position";
 export type { RoomKey } from "./RoomKey";
 export type { RoomKind } from "./RoomKind";
