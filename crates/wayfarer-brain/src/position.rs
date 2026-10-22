@@ -3,7 +3,7 @@
 //! are planned for, with the exits the game refused this session, the doors it showed open,
 //! shut or locked, the hidden exits it found, and the rooms visited.
 
-use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::time::Duration;
 
 use tokio::time::Instant;
@@ -53,8 +53,8 @@ pub(crate) struct Position {
     pub visited: HashSet<Key>,
     /// When each hidden exit in the traveller's `found` was found.
     found_at: BTreeMap<(Key, u8), Instant>,
-    /// The room whose pocket was last looked at ([`POCKET_ROOMS`]).
-    pocket_at: Option<Key>,
+    /// The rooms whose pockets were last looked at ([`POCKET_ROOMS`]).
+    pocket_at: BTreeSet<Key>,
     /// Moves that went to the game and whose rooms have not come yet, oldest first: one, or
     /// two with a move pipelined ahead of the first.
     moving: VecDeque<String>,
@@ -285,13 +285,13 @@ impl Position {
         self.traveller.class = c.class.as_ref().and_then(|n| atlas.classes.get(n).copied());
         self.traveller.race = c.race.as_ref().and_then(|n| atlas.races.get(n).copied());
         // Shut in with only a hidden way out (a room entered some other way): it is searched for.
-        if self.belief.certain()
-            && let Some(k) = self.belief.best()
-            && self.pocket_at != Some(k)
-        {
-            self.pocket_at = Some(k);
-            let exits = pocket_exits(&atlas.graph, k, POCKET_ROOMS, &self.traveller);
-            self.traveller.searchable.extend(exits);
+        // Unsure which of a few rooms: each of them is looked at.
+        if self.belief.candidates() != &self.pocket_at && self.belief.candidates().len() <= 8 {
+            self.pocket_at = self.belief.candidates().clone();
+            for &k in &self.pocket_at {
+                let exits = pocket_exits(&atlas.graph, k, POCKET_ROOMS, &self.traveller);
+                self.traveller.searchable.extend(exits);
+            }
         }
     }
 
