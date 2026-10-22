@@ -80,6 +80,17 @@ pub(crate) struct Fight {
     heal_ready: Option<Instant>,
     /// A heal was cast in this fight and the `*Combat Off*` it causes has not come yet.
     healed: bool,
+    /// The fight with the target was started with an attack spell, which has been cast this
+    /// many times at it.
+    spell_fight: bool,
+    casts: u32,
+    /// The monster the casts are counted for: a heal in the middle of the fight does not
+    /// start the count again.
+    cast_target: Option<String>,
+    /// `break` was sent to end the spell fight; the `*Combat Off*` it causes has not come yet.
+    broke: bool,
+    /// The weapon, not the spell, for the rest of this monster's fight.
+    weapon_only: bool,
 }
 
 impl Mode for Fight {
@@ -97,6 +108,9 @@ impl Mode for Fight {
     fn step(&mut self, v: &View) -> Step {
         if v.engaged {
             if let Some(step) = self.heal(v) {
+                return step;
+            }
+            if let Some(step) = self.enough_casts(v) {
                 return step;
             }
             let t = self.target.as_deref().unwrap_or("in combat");
@@ -118,11 +132,17 @@ impl Mode for Fight {
                 if std::mem::take(&mut self.spell_refused) {
                     self.spell_hold = Some(v.now + SPELL_HOLD);
                 }
-                let spell = if self.spell_hold.is_some_and(|t| v.now < t) {
+                let spell = if self.weapon_only || self.spell_hold.is_some_and(|t| v.now < t) {
                     None
                 } else {
                     v.attack_spell()
                 };
+                if self.cast_target.as_deref() != Some(t.as_str()) {
+                    self.casts = 0;
+                    self.weapon_only = false;
+                    self.cast_target = Some(t.clone());
+                }
+                self.spell_fight = spell.is_some();
                 match spell {
                     // Cast out of combat, the spell engages and auto-combat casts it every
                     // round while the mana lasts (`kb/spells.md`).
@@ -151,14 +171,31 @@ impl Mode for Fight {
                 self.target = None;
                 self.stall = Stall::default();
             }
+            // The same for the `break` that ends a spell fight: the weapon goes on at once.
+            GameEvent::CombatOff if std::mem::take(&mut self.broke) => {
+                self.target = None;
+                self.stall = Stall::default();
+            }
             GameEvent::CombatOff | GameEvent::ExpGain { .. } => {
                 self.healed = false;
+                self.broke = false;
+                self.weapon_only = false;
+                self.spell_fight = false;
+                self.casts = 0;
+                self.cast_target = None;
                 self.target = None;
                 self.look = true;
                 self.stall = Stall::default();
             }
             GameEvent::YouDoNotSee { .. } | GameEvent::NoEffect => self.refused(),
+            // A cast at the target, hit or missed: counted for the limit.
+            GameEvent::SpellCast { .. } | GameEvent::CastFailed if self.spell_fight => {
+                self.casts += 1;
+            }
             GameEvent::YouKilled => {
+                self.weapon_only = false;
+                self.spell_fight = false;
+                self.cast_target = None;
                 self.target = None;
                 self.look = false;
                 self.stall = Stall::default();
@@ -192,6 +229,13 @@ impl Mode for Fight {
     }
 }
 
+/// Whether a fight fought with a spell has had its casts: `max` casts at the monster are set
+/// (0 is no limit), the fight is a spell's, `casts` have been made, and the `break` that ends it
+/// has not been sent yet.
+fn spell_fight_is_over(max: u32, spell_fight: bool, casts: u32, broke: bool) -> bool {
+    max > 0 && spell_fight && casts >= max && !broke
+}
+
 impl Fight {
     /// A heal on the character in a fight, when HP is below the line and a spell and the
     /// mana for one are there. The cast ends auto-combat (`kb/spells.md`); Fight looks and
@@ -206,6 +250,23 @@ impl Fight {
         Some(Step::send(
             Action::new(spell.short.clone(), Expect::Prompt),
             format!("Fight: HP {}%, casting {}", v.hp?, spell.name),
+        ))
+    }
+
+    /// The spell has been cast as often as `spells.max_casts_per_monster` allows at this
+    /// monster: `break` ends the spell fight (a cast restarts nothing, and an attack typed in
+    /// a fight is the guard's to refuse), and the weapon takes over from the `*Combat Off*`.
+    fn enough_casts(&mut self, v: &View) -> Option<Step> {
+        if !spell_fight_is_over(v.max_casts(), self.spell_fight, self.casts, self.broke) {
+            return None;
+        }
+        self.broke = true;
+        self.weapon_only = true;
+        self.spell_fight = false;
+        let t = self.target.as_deref().unwrap_or("it");
+        Some(Step::send(
+            Action::new("break", Expect::Prompt),
+            format!("Fight: {} casts at {t}, now the weapon", self.casts),
         ))
     }
 
@@ -309,5 +370,23 @@ impl Fight {
     /// The monster a stalemate gave up, once.
     pub fn take_stalemate(&mut self) -> Option<String> {
         self.stalemate.take()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_spell_fight_is_over_after_the_most_casts_and_only_once() {
+        // No limit (0): never.
+        assert!(!spell_fight_is_over(0, true, 99, false));
+        // Under the limit: not yet; at it: over; the break sent: not again.
+        assert!(!spell_fight_is_over(2, true, 1, false));
+        assert!(spell_fight_is_over(2, true, 2, false));
+        assert!(spell_fight_is_over(2, true, 5, false));
+        assert!(!spell_fight_is_over(2, true, 2, true));
+        // A fight fought with the weapon has no casts to count.
+        assert!(!spell_fight_is_over(2, false, 9, false));
     }
 }

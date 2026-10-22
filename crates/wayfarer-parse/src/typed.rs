@@ -342,6 +342,12 @@ pub enum GameEvent {
     },
     /// `spells_none`: `You have no spells.`
     SpellsNone,
+    /// `spell_cast_you` or `you_cast_generic` with damage: `You cast vine strike at acid slime for 7 damage!`
+    SpellCast {
+        spell: String,
+        target: Option<String>,
+        damage: i64,
+    },
     /// `no_mana`: `You do not have enough mana to cast that spell.`
     NoMana,
     /// `already_this_round`: one general spell per round.
@@ -650,6 +656,19 @@ impl GameEvent {
                 _ => G::Other(ev.clone()),
             },
             "spells_none" => G::SpellsNone,
+            // The spell's own message (`spell_cast_you`, from the spell records' texts) or the
+            // generic one.
+            "you_cast_generic" | "spell_cast_you" => match int(ev, "dmg") {
+                Some(damage) => G::SpellCast {
+                    spell: text(ev, "spell"),
+                    target: ev
+                        .text("target")
+                        .map(str::to_owned)
+                        .filter(|t| !t.is_empty()),
+                    damage,
+                },
+                None => G::Other(ev.clone()),
+            },
             "no_mana" => G::NoMana,
             "already_this_round" => G::AlreadyCast,
             "cast_fail" => G::CastFailed,

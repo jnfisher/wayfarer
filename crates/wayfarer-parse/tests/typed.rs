@@ -641,6 +641,22 @@ fn coins_on_the_floor_and_picked_up() {
 }
 
 #[test]
+fn a_cast_that_does_damage_is_a_spell_cast_and_a_heal_is_not() {
+    let got = line("You cast magic missile at the large giant rat for 7 damage!");
+    assert_eq!(
+        got[0],
+        GameEvent::SpellCast {
+            spell: "magic missile".into(),
+            target: Some("the large giant rat".into()),
+            damage: 7
+        },
+        "{got:?}"
+    );
+    let got = line("You cast minor healing, for 5");
+    assert!(!matches!(got[0], GameEvent::SpellCast { .. }), "{got:?}");
+}
+
+#[test]
 fn the_spell_list_and_the_casting_refusals() {
     let got = line(
         "Level Mana Short Spell Name\n  1   2    vine  vine strike\n  3  12    mmis  magic missile",

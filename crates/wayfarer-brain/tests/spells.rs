@@ -209,3 +209,19 @@ async fn a_cleric_hurt_in_a_fight_heals_then_fights_on() {
         ["st", "look", "spells", "a rat", "mihe", "a rat"]
     );
 }
+
+const CAST: &str = "You cast magic missile at the large giant rat for 7 damage!";
+
+#[tokio::test(start_paused = true)]
+async fn with_no_limit_the_spell_goes_on() {
+    let (mut g, run) = in_arena(&["large giant rat"]).await;
+    start_caster(&mut g, "Mage", &MAGE_SPELLS, &["large giant rat"], 35, 20).await;
+    g.expect("mmis rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat with magic missile")
+        .await;
+    for _ in 0..6 {
+        g.round(CAST, 35).await;
+    }
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "spells", "mmis rat"]);
+}

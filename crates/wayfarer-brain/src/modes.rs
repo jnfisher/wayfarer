@@ -205,6 +205,11 @@ impl View<'_> {
         self.settings.choice("combat.attack_command")
     }
 
+    /// The most attack casts at one monster before the weapon takes over (0: no limit).
+    pub fn max_casts(&self) -> u32 {
+        u32::try_from(self.settings.int("spells.max_casts_per_monster")).unwrap_or(0)
+    }
+
     /// Mana in per cent of the maximum, when both are known.
     pub fn mana_percent(&self) -> Option<i32> {
         self.mana
