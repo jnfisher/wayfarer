@@ -213,6 +213,39 @@ async fn a_cleric_hurt_in_a_fight_heals_then_fights_on() {
 const CAST: &str = "You cast magic missile at the large giant rat for 7 damage!";
 
 #[tokio::test(start_paused = true)]
+async fn after_the_most_casts_the_attack_command_takes_over_in_the_fight() {
+    let (mut g, run) = in_arena_with(
+        &["large giant rat"],
+        "[spells]\nmax_casts_per_monster = 2\n",
+    )
+    .await;
+    start_caster(&mut g, "Mage", &MAGE_SPELLS, &["large giant rat"], 35, 20).await;
+    g.expect("mmis rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat with magic missile")
+        .await;
+    // Two casts, then `a rat` at once, with combat engaged (the one attack the guard lets
+    // through); the rat dies in the answer, since the fake sends no blows and the test's clock
+    // would run on to a lapse.
+    g.expect("a rat", format!("{}{}", line(ENGAGED, 35), kill(35)));
+    g.expect("look", arena(&[], 35));
+    g.round(CAST, 35).await;
+    g.round(CAST, 35).await;
+    // (The notices come while the rounds are played, so they are read from what was seen.)
+    g.idle(Duration::from_secs(1)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(
+        played,
+        ["st", "look", "spells", "mmis rat", "a rat", "look"]
+    );
+    let said = notices(&seen);
+    assert!(
+        said.iter()
+            .any(|n| n == "Fight: 2 casts at large giant rat, now the weapon"),
+        "{said:?}"
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn with_no_limit_the_spell_goes_on() {
     let (mut g, run) = in_arena(&["large giant rat"]).await;
     start_caster(&mut g, "Mage", &MAGE_SPELLS, &["large giant rat"], 35, 20).await;

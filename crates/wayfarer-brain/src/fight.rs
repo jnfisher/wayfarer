@@ -87,8 +87,9 @@ pub(crate) struct Fight {
     /// The monster the casts are counted for: a heal in the middle of the fight does not
     /// start the count again.
     cast_target: Option<String>,
-    /// `break` was sent to end the spell fight; the `*Combat Off*` it causes has not come yet.
-    broke: bool,
+    /// The attack that changes a spell fight into a weapon fight was sent; the `*Combat Off*`
+    /// the game may print for the restart has not come yet.
+    switched: bool,
     /// The weapon, not the spell, for the rest of this monster's fight.
     weapon_only: bool,
 }
@@ -171,14 +172,14 @@ impl Mode for Fight {
                 self.target = None;
                 self.stall = Stall::default();
             }
-            // The same for the `break` that ends a spell fight: the weapon goes on at once.
-            GameEvent::CombatOff if std::mem::take(&mut self.broke) => {
+            // The same for the restart when the weapon takes over from the spell.
+            GameEvent::CombatOff if std::mem::take(&mut self.switched) => {
                 self.target = None;
                 self.stall = Stall::default();
             }
             GameEvent::CombatOff | GameEvent::ExpGain { .. } => {
                 self.healed = false;
-                self.broke = false;
+                self.switched = false;
                 self.weapon_only = false;
                 self.spell_fight = false;
                 self.casts = 0;
@@ -210,7 +211,10 @@ impl Mode for Fight {
     fn outcome(&mut self, action: &Action, outcome: Outcome) {
         match (action.expect, outcome) {
             (Expect::RoomSeen, _) => self.look = false,
-            (Expect::Engaged, Outcome::Confirmed(_)) => self.healed = false,
+            (Expect::Engaged, Outcome::Confirmed(_)) => {
+                self.healed = false;
+                self.switched = false;
+            }
             (Expect::Engaged, Outcome::Refused(Refused::Target)) => self.refused(),
             (Expect::Engaged, Outcome::Refused(Refused::Spell)) => self.spell_refused = true,
             (Expect::Engaged, Outcome::TimedOut) => {
@@ -230,10 +234,10 @@ impl Mode for Fight {
 }
 
 /// Whether a fight fought with a spell has had its casts: `max` casts at the monster are set
-/// (0 is no limit), the fight is a spell's, `casts` have been made, and the `break` that ends it
-/// has not been sent yet.
-fn spell_fight_is_over(max: u32, spell_fight: bool, casts: u32, broke: bool) -> bool {
-    max > 0 && spell_fight && casts >= max && !broke
+/// (0 is no limit), the fight is a spell's, `casts` have been made, and the attack that changes
+/// it into a weapon fight has not been sent yet.
+fn spell_fight_is_over(max: u32, spell_fight: bool, casts: u32, switched: bool) -> bool {
+    max > 0 && spell_fight && casts >= max && !switched
 }
 
 impl Fight {
@@ -254,18 +258,19 @@ impl Fight {
     }
 
     /// The spell has been cast as often as `spells.max_casts_per_monster` allows at this
-    /// monster: `break` ends the spell fight (a cast restarts nothing, and an attack typed in
-    /// a fight is the guard's to refuse), and the weapon takes over from the `*Combat Off*`.
+    /// monster: the attack command is sent at it, which restarts auto-combat with the weapon
+    /// (`kb/combat.md`; the executor lets this one attack through in combat, [`Action::switching`]).
     fn enough_casts(&mut self, v: &View) -> Option<Step> {
-        if !spell_fight_is_over(v.max_casts(), self.spell_fight, self.casts, self.broke) {
+        if !spell_fight_is_over(v.max_casts(), self.spell_fight, self.casts, self.switched) {
             return None;
         }
-        self.broke = true;
+        self.switched = true;
         self.weapon_only = true;
         self.spell_fight = false;
-        let t = self.target.as_deref().unwrap_or("it");
+        let t = self.target.clone().unwrap_or_else(|| "it".to_owned());
+        let attack = format!("{} {}", v.attack_command(), attack_word(&t));
         Some(Step::send(
-            Action::new("break", Expect::Prompt),
+            Action::new(attack, Expect::Engaged).switching(),
             format!("Fight: {} casts at {t}, now the weapon", self.casts),
         ))
     }
@@ -381,7 +386,7 @@ mod tests {
     fn a_spell_fight_is_over_after_the_most_casts_and_only_once() {
         // No limit (0): never.
         assert!(!spell_fight_is_over(0, true, 99, false));
-        // Under the limit: not yet; at it: over; the break sent: not again.
+        // Under the limit: not yet; at it: over; the attack sent: not again.
         assert!(!spell_fight_is_over(2, true, 1, false));
         assert!(spell_fight_is_over(2, true, 2, false));
         assert!(spell_fight_is_over(2, true, 5, false));

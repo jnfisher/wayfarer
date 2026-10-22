@@ -275,7 +275,7 @@ pub const CATALOGUE: &[Setting] = &[
     Setting {
         key: "spells.max_casts_per_monster",
         label: "Most attack casts at one monster",
-        help: "Cast the attack spell at most this many times at one monster, then fight it with the weapon (the bot breaks off the spell and attacks), whatever the mana: a way to spend a little mana on each fight. 0 is no limit: the spell goes on while the mana lasts.",
+        help: "Cast the attack spell at most this many times at one monster, then attack it with your attack command instead, whatever the mana: a way to spend a little mana on each fight. 0 is no limit: the spell goes on while the mana lasts.",
         kind: Kind::Int { min: 0, max: 50 },
         default: Value::Int(0),
         unit: "casts",
