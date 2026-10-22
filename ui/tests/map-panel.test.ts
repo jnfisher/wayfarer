@@ -132,21 +132,53 @@ describe("the map panel", () => {
   it("opens the loops list, asking the brain for them", async () => {
     const { onloops } = mount({ character: here });
     expect(screen.queryByText("walk once")).toBeNull();
-    await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
-    expect(onloops).toHaveBeenCalledWith("aria", true);
+    await fireEvent.click(screen.getByRole("button", { name: "loops ▸" }));
+    expect(onloops).toHaveBeenCalledWith("aria", true, 8, undefined);
     expect(screen.getByText("Asking the brain…")).toBeTruthy();
-    // Without doors, and again here.
+    // Without doors, wider, and near the character again.
     await fireEvent.click(screen.getByRole("checkbox", { name: "doors" }));
-    expect(onloops).toHaveBeenLastCalledWith("aria", false);
-    await fireEvent.click(screen.getByRole("button", { name: "here" }));
-    expect(onloops).toHaveBeenCalledTimes(3);
+    expect(onloops).toHaveBeenLastCalledWith("aria", false, 8, undefined);
+    await fireEvent.change(screen.getByRole("combobox", { name: "Loop radius" }), { target: { value: "30" } });
+    expect(onloops).toHaveBeenLastCalledWith("aria", false, 30, undefined);
+    await fireEvent.click(screen.getByRole("button", { name: "near me" }));
+    expect(onloops).toHaveBeenCalledTimes(4);
+  });
+
+  it("asks again each time the list is opened, so it is around where the character is now", async () => {
+    const { onloops } = mount({ character: here, loops });
+    const toggle = () => fireEvent.click(screen.getByRole("button", { name: /^loops/ }));
+    await toggle();
+    await toggle();
+    await toggle();
+    expect(onloops).toHaveBeenCalledTimes(2);
+  });
+
+  it("says the list is around a room the character has left, and near me goes back", async () => {
+    const moved = { position: { map: 1, room: 11, candidates: 1 } };
+    const { onloops } = mount({ character: moved, loops });
+    await fireEvent.click(screen.getByRole("button", { name: "loops ▸" }));
+    expect(screen.getByText(/you have moved/)).toBeTruthy();
+    await fireEvent.click(screen.getByRole("button", { name: "near me" }));
+    expect(onloops).toHaveBeenLastCalledWith("aria", true, 8, undefined);
+  });
+
+  it("finds a loop by part of its name, file, author or a stop, and says how many match", async () => {
+    mount({ character: here, loops });
+    await fireEvent.click(screen.getByRole("button", { name: "loops ▸" }));
+    const find = screen.getByRole("searchbox", { name: "Find a loop" });
+    await fireEvent.input(find, { target: { value: "zzzz nothing" } });
+    expect(screen.queryByText("walk once")).toBeNull();
+    expect(screen.getByText(/0 of \d+ match/)).toBeTruthy();
+    expect(screen.getByText(/No generated loop matches/)).toBeTruthy();
+    // Escape clears the search, and the loops are back.
+    await fireEvent.keyDown(find, { key: "Escape" });
+    expect((find as HTMLInputElement).value).toBe("");
+    expect(screen.getAllByText("walk once").length).toBeGreaterThan(0);
   });
 
   it("lists the generated and MegaMud loops; walk once walks either", async () => {
-    const { onloops, onwalkloop } = mount({ character: here, loops });
-    await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
-    // The loops it has are for this session: not asked again.
-    expect(onloops).not.toHaveBeenCalled();
+    const { onwalkloop } = mount({ character: here, loops });
+    await fireEvent.click(screen.getByRole("button", { name: "loops ▸" }));
     expect(screen.getByText("8 steps around Gate")).toBeTruthy();
     expect(screen.getByText("2 stops, 2 steps, 1 door")).toBeTruthy();
     const gate = screen.getByRole("button", { name: "Gate" });
@@ -168,7 +200,7 @@ describe("the map panel", () => {
 
   it("runs a loop passing by the stops unticked; hovering a stop shows what spawns there", async () => {
     const { onrunloop } = mount({ character: here, loops });
-    await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
+    await fireEvent.click(screen.getByRole("button", { name: "loops ▸" }));
     // The stops show once the loop is picked.
     expect(screen.queryByRole("list", { name: "Stops of Gate" })).toBeNull();
     await fireEvent.click(screen.getByRole("button", { name: "Gate" }));
@@ -206,7 +238,7 @@ describe("the map panel", () => {
       },
     };
     const { onrunloop } = mount({ character: running, loops });
-    await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
+    await fireEvent.click(screen.getByRole("button", { name: "loops ▸" }));
     expect(screen.getByText("running: stop 2/2")).toBeTruthy();
     // Only the MegaMud loops' run buttons are left.
     expect(screen.getAllByRole("button", { name: "run" })).toHaveLength(2);
@@ -220,7 +252,7 @@ describe("the map panel", () => {
 
   it("runs a MegaMud loop by its file; one that cannot run is greyed with the reason", async () => {
     const { onrunloop } = mount({ character: here, loops });
-    await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
+    await fireEvent.click(screen.getByRole("button", { name: "loops ▸" }));
     const runs = screen.getAllByRole("button", { name: "run" }) as HTMLButtonElement[];
     expect(runs).toHaveLength(3);
     // The Oasis has nothing to hunt.
@@ -254,7 +286,7 @@ describe("the map panel", () => {
       },
     };
     mount({ character: running, loops });
-    await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
+    await fireEvent.click(screen.getByRole("button", { name: "loops ▸" }));
     expect(screen.getByText("running: stop 1/2")).toBeTruthy();
     expect(screen.getByRole("list", { name: "Stops of Road loop" })).toBeTruthy();
     // The generated loop is not the one running: its run button stays.
@@ -263,7 +295,7 @@ describe("the map panel", () => {
 
   it("says when there is nothing to hunt in reach", async () => {
     mount({ character: here, loops: { ...loops, generated: [], megamud: [] } });
-    await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
+    await fireEvent.click(screen.getByRole("button", { name: "loops ▸" }));
     expect(screen.getByText("No hunt rooms in reach.")).toBeTruthy();
   });
 
@@ -410,7 +442,7 @@ describe("the player's own loops", () => {
     const onsaveloop = vi.fn();
     const ondeleteloop = vi.fn();
     const { onrunloop, onwalkloop } = mount({ character: here, loops: mine, onsaveloop, ondeleteloop });
-    await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
+    await fireEvent.click(screen.getByRole("button", { name: "loops ▸" }));
     expect(screen.getByText("My loops")).toBeTruthy();
     const list = within(screen.getByRole("list", { name: "My loops" }));
     expect(list.getByRole("button", { name: "Gate plus" })).toBeTruthy();
@@ -425,7 +457,7 @@ describe("the player's own loops", () => {
   it("makes a loop from the one picked: needs a name, keeps its stops and says what it was made from", async () => {
     const onsaveloop = vi.fn();
     mount({ character: here, loops: mine, onsaveloop });
-    await fireEvent.click(screen.getByRole("button", { name: "▸ loops" }));
+    await fireEvent.click(screen.getByRole("button", { name: "loops ▸" }));
     // Nothing picked, nothing to make from.
     expect(screen.queryByRole("textbox", { name: "Name for your loop" })).toBeNull();
     await fireEvent.click(screen.getByRole("button", { name: "Gate" }));

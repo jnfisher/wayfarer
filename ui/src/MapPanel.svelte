@@ -8,6 +8,7 @@
   import {
     carryPan,
     DEFAULT_ZOOM,
+    LOOP_RADIUS,
     describeRoom,
     drawMap,
     insertStops,
@@ -24,6 +25,7 @@
     type ViewState,
   } from "./lib/map";
   import { centreOn, FIND_DEBOUNCE_MS, goRows, MIN_QUERY, moveChoice, type FoundMessage, type GoRow } from "./lib/goto";
+  import { LOOP_RADII, shownLoops } from "./lib/loopsearch";
   import { FONT_FAMILY } from "./lib/theme";
   import type { CharacterState, GeneratedLoop, LoopStop, MapRoom, MegaMudLoop, RoomKey, SessionInfo } from "./proto";
 
@@ -39,8 +41,9 @@
     onstop: (session: string) => void;
     /** The brain's last `loops` for it. */
     loops?: Loops;
-    /** Ask for the loops around the character, through doors or not. */
-    onloops?: (session: string, doors: boolean) => void;
+    /** Ask for the loops within `radius` steps of `anchor` (the character's room if left out),
+     * through doors or not. */
+    onloops?: (session: string, doors: boolean, radius?: number, anchor?: RoomKey) => void;
     /** Walk a loop once (a generated loop's id, or a MegaMud loop's file). */
     onwalkloop?: (session: string, id: string) => void;
     /** Run a loop (by id or file), passing by the stops in `skip` (the unticked ones). */
@@ -269,13 +272,48 @@
     return `${loops.radius} steps around ${r?.name || `${a.map}:${a.room}`}`;
   });
 
+  // Searching the list, how far around to look, and the place it is around when the player
+  // picked one in the go box (else the character's room).
+  let loopQuery = $state("");
+  let radius = $state<number>(LOOP_RADIUS);
+  let anchor = $state<RoomKey | null>(null);
+  const shown = $derived(shownLoops(loops && loops.session === session?.id ? loops : undefined, loopQuery));
+  /** The list is around a room the character has left. */
+  const stale = $derived(
+    !anchor && !!loops && position?.room !== undefined && keyOf({ map: position.map ?? 0, room: position.room }) !== keyOf(loops.anchor),
+  );
+
   function askLoops() {
-    if (session) onloops?.(session.id, doors);
+    if (session) onloops?.(session.id, doors, radius, anchor ?? undefined);
   }
 
+  /** The loops around the character's room again. */
+  function nearMe() {
+    anchor = null;
+    askLoops();
+  }
+
+  /** The loops around a place found in the go box. */
+  function loopsNear(row: GoRow) {
+    const r = row.room;
+    if (!r) return;
+    anchor = { map: r.map, room: r.room };
+    loopsOpen = true;
+    askLoops();
+  }
+
+  // Opening the list asks again, so it is around where the character is now.
   function toggleLoops() {
     loopsOpen = !loopsOpen;
-    if (loopsOpen && (!loops || loops.session !== session?.id)) askLoops();
+    if (loopsOpen) askLoops();
+  }
+
+  function onloopkeydown(e: KeyboardEvent) {
+    if (e.key === "Escape" && loopQuery) {
+      e.preventDefault();
+      e.stopPropagation();
+      loopQuery = "";
+    }
   }
 
   /** Pick a loop to keep it drawn (again to let it go), showing the floor of its first stop. */
@@ -446,6 +484,7 @@
       >
       <span class="dim">level</span>
       <button aria-label="Level down" disabled={levels.indexOf(level) <= 0} onclick={() => changeLevel(-1)}>▼</button>
+      <button class="gobutton" aria-expanded={loopsOpen} onclick={toggleLoops} title="Find a loop to run, near the character or anywhere you search">loops {loopsOpen ? "▾" : "▸"}</button>
       <span class="level">{level}</span>
       <button aria-label="Level up" disabled={levels.indexOf(level) >= levels.length - 1} onclick={() => changeLevel(1)}>
         ▲
@@ -498,6 +537,7 @@
                   {/if}
                   {#if chosen === i && row.room}
                     <button class="walk" onclick={() => go(row)}>go</button>
+                    <button class="walk" onclick={() => loopsNear(row)} title="List the loops around this place">loops near</button>
                     {#if base}
                       <button class="walk" onclick={() => stage(row)} title={`Put this room in a loop made from ${base.name}`}
                         >add to loop</button
@@ -511,36 +551,37 @@
         {/if}
       </div>
     {/if}
-    <div class="canvas" bind:clientWidth={width} bind:clientHeight={height}>
-      {#if view}
-        <canvas
-          bind:this={canvas}
-          style:width="{width}px"
-          style:height="{height}px"
-          aria-label="Map around {position?.title ?? 'the character'}"
-          {onpointerdown}
-          {onpointermove}
-          {onpointerup}
-          {onpointerleave}
-        ></canvas>
-        {#if tip}
-          <div class="tip" style:left="{tip.x + 12}px" style:top="{tip.y + 12}px">
-            {#each tip.lines as l, i}
-              <div class:name={i === 0}>{l}</div>
-            {/each}
-          </div>
-        {/if}
-      {:else}
-        <p class="msg">Waiting for the map from the brain…</p>
-      {/if}
-    </div>
     <div class="loops" aria-label="Loops">
       <div class="head">
-        <button class="toggle" aria-expanded={loopsOpen} onclick={toggleLoops}>{loopsOpen ? "▾" : "▸"} loops</button>
-        {#if loopsOpen}
-          <label><input type="checkbox" bind:checked={doors} onchange={askLoops} /> doors</label>
-          <button onclick={askLoops} title="The loops around the character's room now">here</button>
-          <span class="dim">{loopsAround}</span>
+        <input
+          type="search"
+          class="filter"
+          placeholder="find a loop by name, file, author or stop…"
+          aria-label="Find a loop"
+          bind:value={loopQuery}
+          onkeydown={onloopkeydown}
+        />
+        <label title="Loops through doors too"><input type="checkbox" bind:checked={doors} onchange={askLoops} /> doors</label>
+        <label title="How far from the character's room to look for loops">
+          within
+          <select bind:value={radius} onchange={askLoops} aria-label="Loop radius">
+            {#each LOOP_RADII as r (r)}
+              <option value={r}>{r}</option>
+            {/each}
+          </select>
+          steps
+        </label>
+        <button onclick={() => nearMe()} class:attention={stale} title="The loops around the character's room now">near me</button>
+      </div>
+      <div class="dim around">
+        {#if loops}
+          {loopsAround}{#if anchor} (picked on the map; “near me” goes back){/if}
+          {#if stale}
+            <span class="maybe">you have moved: “near me” refreshes the list</span>
+          {/if}
+          {#if loopQuery.trim()}
+            · {shown.count} of {shown.total} match
+          {/if}
         {/if}
       </div>
       {#if loopsOpen}
@@ -548,7 +589,7 @@
           <p class="dim">Asking the brain…</p>
         {:else}
           <ul aria-label="Generated loops">
-            {#each loops.generated as l (l.id)}
+            {#each shown.generated as l (l.id)}
               <li class:on={pickedLoop === l.id}>
                 <button
                   class="pick"
@@ -565,10 +606,16 @@
                 {@render runAndStops(l, pickedLoop === l.id)}
               </li>
             {:else}
-              <li class="dim">No hunt rooms in reach.</li>
+              <li class="dim">
+                {#if loopQuery.trim()}
+                  No generated loop matches “{loopQuery.trim()}”{#if radius < 30}; try a wider radius{/if}.
+                {:else}
+                  No hunt rooms in reach.
+                {/if}
+              </li>
             {/each}
           </ul>
-          {#if (loops.custom ?? []).length > 0}
+          {#if shown.custom.length > 0}
             <div class="dim">My loops</div>
             <ul aria-label="My loops">
               {#each loops.custom ?? [] as c (c.id)}
@@ -623,10 +670,10 @@
               <span class="dim">Rooms to add: find them in the go box, then “add to loop”.</span>
             </div>
           {/if}
-          {#if loops.megamud.length > 0}
+          {#if shown.megamud.length > 0}
             <div class="dim">MegaMud, verified</div>
             <ul aria-label="MegaMud loops">
-              {#each loops.megamud as m (m.file)}
+              {#each shown.megamud as m (m.file)}
                 <li class:on={pickedLoop === `mm:${m.file}`}>
                   <button
                     class="pick"
@@ -651,6 +698,29 @@
             </ul>
           {/if}
         {/if}
+      {/if}
+    </div>
+    <div class="canvas" bind:clientWidth={width} bind:clientHeight={height}>
+      {#if view}
+        <canvas
+          bind:this={canvas}
+          style:width="{width}px"
+          style:height="{height}px"
+          aria-label="Map around {position?.title ?? 'the character'}"
+          {onpointerdown}
+          {onpointermove}
+          {onpointerup}
+          {onpointerleave}
+        ></canvas>
+        {#if tip}
+          <div class="tip" style:left="{tip.x + 12}px" style:top="{tip.y + 12}px">
+            {#each tip.lines as l, i}
+              <div class:name={i === 0}>{l}</div>
+            {/each}
+          </div>
+        {/if}
+      {:else}
+        <p class="msg">Waiting for the map from the brain…</p>
       {/if}
     </div>
     <div class="bar" aria-label="Walk">
@@ -693,7 +763,7 @@
   }
   .bar,
   .loops {
-    border-top: 1px solid var(--frame);
+    border-bottom: 1px solid var(--frame);
   }
   .go {
     padding: 2px 1ch;
@@ -746,8 +816,28 @@
   }
   .loops {
     padding: 2px 1ch;
-    max-height: 40%;
+    max-height: 45%;
     overflow-y: auto;
+  }
+  .loops .filter {
+    flex: 1 1 18ch;
+    min-width: 12ch;
+    font: inherit;
+    color: var(--vga-lightgray);
+    background: #000;
+    border: 1px solid var(--frame);
+  }
+  .loops .around {
+    padding: 2px 0;
+  }
+  .loops .attention {
+    background: var(--vga-yellow);
+  }
+  .loops select {
+    font: inherit;
+    color: var(--vga-lightgray);
+    background: #000;
+    border: 1px solid var(--frame);
   }
   .loops .head {
     display: flex;
@@ -769,7 +859,6 @@
   .loops p {
     margin: 0;
   }
-  .loops .toggle,
   .loops .pick {
     color: var(--vga-yellow);
     background: none;
@@ -779,9 +868,6 @@
     color: #000;
     background: var(--vga-yellow);
     padding: 0 1ch;
-  }
-  .loops .toggle {
-    color: var(--vga-lightgray);
   }
   .loops .run {
     background: var(--vga-lightgreen);
