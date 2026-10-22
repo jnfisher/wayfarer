@@ -22,6 +22,7 @@ npm test           # vitest
 | `src/lib/theme.ts`, `src/app.css` | The 16 VGA colours and the IBM VGA font |
 | `src/lib/map.ts` | The map panel's drawing from a `map_view` on a 2D canvas, no Svelte: boxes, exits, the belief, the route; hit-testing, zoom, pan |
 | `src/App.svelte`, `src/Tile.svelte`, `src/MapPanel.svelte`, `src/DevPanel.svelte` | The page and its drawer, one tile, the map (`Alt+M`) and the dev panel (`Alt+D`) |
+| `src/SettingsPanel.svelte`, `src/lib/settings.ts` | The settings form (`Alt+T`): the rows grouped, the number checked, the change sent |
 | `public/fonts/` | The VGA web font and its licence |
 | `scripts/fake-bbs.mjs` | A stand-in game server replaying `tests/fixtures/captures/*/raw.bin` |
 | `scripts/screenshot.mjs` | A Playwright screenshot of a running gateway's page (`npx playwright install chromium` once) |

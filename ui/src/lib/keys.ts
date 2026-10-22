@@ -68,6 +68,11 @@ export const KEY_ROWS: KeyRow[] = [
     does: "Open the drawer on the stats of the focused character's runs: exp per hour, kills, deaths and flees, now and for the last runs; or close it (on a Mac, Option)",
   },
   {
+    group: "Bot",
+    keys: "Alt+T, or the settings button",
+    does: "Open the drawer on the focused character's settings (the form, \"The settings\" below), or close it (on a Mac, Option)",
+  },
+  {
     group: "Development",
     keys: "Alt+D, or the dev button",
     does: "Open the drawer on the dev panel: the focused character's events, unclassified lines and the brain; or close it (on a Mac, Option)",
@@ -100,6 +105,7 @@ export const DEV_PANEL_CODE = "KeyD";
 export const MAP_PANEL_CODE = "KeyM";
 export const GO_CODE = "KeyG";
 export const STATS_PANEL_CODE = "KeyS";
+export const SETTINGS_PANEL_CODE = "KeyT";
 export const ZOOM_IN_KEYS = ["+", "="];
 export const ZOOM_OUT_KEYS = ["-"];
 export const ZOOM_RESET_KEYS = ["0"];

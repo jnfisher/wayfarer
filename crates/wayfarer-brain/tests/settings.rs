@@ -230,6 +230,100 @@ async fn an_edited_settings_file_is_read_again_and_what_changed_is_said() {
     g.close(run).await;
 }
 
+/// The next `settings` message.
+async fn settings_rows(g: &mut Game) -> (String, Vec<wayfarer_proto::SettingRow>) {
+    g.until(|m| match m {
+        ToGateway::Settings { layer, rows, .. } => Some((layer.clone(), rows.clone())),
+        _ => None,
+    })
+    .await
+}
+
+fn row<'a>(rows: &'a [wayfarer_proto::SettingRow], key: &str) -> &'a wayfarer_proto::SettingRow {
+    rows.iter().find(|r| r.key == key).expect(key)
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_forms_ask_for_the_settings_and_save_a_change_that_takes_effect() {
+    use wayfarer_proto::{SettingChange, SettingValue};
+    let dir = tempfile::tempdir().unwrap();
+    let (mut g, run) =
+        Game::start_brain(SessionState::Realm, arena(&[], 35), brain_in(dir.path())).await;
+    g.until(|m| matches!(m, ToGateway::MapView { .. }).then_some(()))
+        .await;
+    g.idle(Duration::from_secs(10)).await;
+    g.send(ToClient::SettingsRequest {
+        session: ID.into(),
+        layer: None,
+    })
+    .await;
+    let (layer, rows) = settings_rows(&mut g).await;
+    assert_eq!(layer, "character");
+    let flee = row(&rows, "health.flee_below_hp");
+    assert_eq!(
+        (&flee.value, flee.source.as_str(), &flee.own),
+        (&SettingValue::Int(25), "default", &None)
+    );
+    // A change is written to the character's file, put in force and answered.
+    g.send(ToClient::SettingsSave {
+        session: ID.into(),
+        layer: "character".into(),
+        changes: vec![SettingChange {
+            key: "health.flee_below_hp".into(),
+            value: Some(SettingValue::Int(35)),
+        }],
+    })
+    .await;
+    g.narrated("Settings reloaded: health.flee_below_hp 25 → 35")
+        .await;
+    let (_, rows) = settings_rows(&mut g).await;
+    let flee = row(&rows, "health.flee_below_hp");
+    assert_eq!(
+        (&flee.value, flee.source.as_str(), &flee.own),
+        (
+            &SettingValue::Int(35),
+            "character",
+            &Some(SettingValue::Int(35))
+        )
+    );
+    assert!(
+        dir.path()
+            .join("characters")
+            .join(format!("{ID}.toml"))
+            .is_file()
+    );
+    // One the settings refuse (flee above the rest line) writes nothing and says why.
+    g.send(ToClient::SettingsSave {
+        session: ID.into(),
+        layer: "character".into(),
+        changes: vec![SettingChange {
+            key: "health.flee_below_hp".into(),
+            value: Some(SettingValue::Int(80)),
+        }],
+    })
+    .await;
+    let said = g.narration().await;
+    assert!(said.starts_with("Settings not saved: "), "{said}");
+    let (_, rows) = settings_rows(&mut g).await;
+    assert_eq!(
+        row(&rows, "health.flee_below_hp").value,
+        SettingValue::Int(35)
+    );
+    // Taken out, the default shows through again.
+    g.send(ToClient::SettingsSave {
+        session: ID.into(),
+        layer: "character".into(),
+        changes: vec![SettingChange {
+            key: "health.flee_below_hp".into(),
+            value: None,
+        }],
+    })
+    .await;
+    g.narrated("Settings reloaded: health.flee_below_hp 35 → 25")
+        .await;
+    g.close(run).await;
+}
+
 #[tokio::test(start_paused = true)]
 async fn the_class_the_status_screen_shows_moves_the_hp_lines() {
     // The capture's status screen is a Warrior's (25 / 60 / 85, the defaults, so nothing is

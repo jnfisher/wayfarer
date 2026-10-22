@@ -4,7 +4,8 @@
 
 use std::sync::Arc;
 
-use wayfarer_settings::{Settings, SettingsDir};
+use wayfarer_proto::{SettingChange, SettingKind, SettingRow, SettingValue, SettingsFile};
+use wayfarer_settings::{Kind, Layer, Settings, SettingsDir, Value};
 
 use crate::policy::FLEE_BELOW;
 
@@ -85,11 +86,108 @@ impl SettingsSource {
             .map_err(|e| e.to_string())
     }
 
+    /// Every setting as the forms show it: the value in force and where it comes from, and what
+    /// the file of `layer` sets itself.
+    pub fn rows(&self, settings: &Settings, character: &str, layer: Layer) -> Vec<SettingRow> {
+        let own = self
+            .dir
+            .as_ref()
+            .map(|d| d.read_layer(&self.server, character, layer));
+        settings
+            .rows()
+            .map(|(s, value, source)| SettingRow {
+                key: s.key.to_owned(),
+                label: s.label.to_owned(),
+                help: s.help.to_owned(),
+                group: s.group.table().to_owned(),
+                tier: s.tier.id().to_owned(),
+                kind: match s.kind {
+                    Kind::Int { min, max } => SettingKind::Int { min, max },
+                    Kind::Bool => SettingKind::Bool,
+                    Kind::Choice(options) => SettingKind::Choice {
+                        options: options.iter().map(|o| (*o).to_owned()).collect(),
+                    },
+                },
+                unit: s.unit.to_owned(),
+                default: wire(s.default),
+                value: wire(value),
+                source: source.id().to_owned(),
+                own: own.as_ref().and_then(|o| o.get(s.key)).map(wire),
+                megamud: s.megamud.map(str::to_owned),
+            })
+            .collect()
+    }
+
+    /// The character's settings files.
+    pub fn files(&self, character: &str) -> Vec<SettingsFile> {
+        let Some(dir) = &self.dir else {
+            return Vec::new();
+        };
+        dir.files(&self.server, character)
+            .into_iter()
+            .map(|(layer, path)| SettingsFile {
+                layer: layer.id().to_owned(),
+                exists: path.is_file(),
+                path: path.display().to_string(),
+            })
+            .collect()
+    }
+
+    /// Change the file of `layer`: see [`SettingsDir::save`]. The wire values are matched to
+    /// the declarations first (a word must be one of the options, a number a number).
+    pub fn save(
+        &self,
+        character: &str,
+        class: Option<&str>,
+        layer: Layer,
+        changes: &[SettingChange],
+    ) -> Result<(), String> {
+        let dir = self
+            .dir
+            .as_ref()
+            .ok_or("the settings of this brain are fixed")?;
+        let mut parsed = Vec::new();
+        for c in changes {
+            let value = match &c.value {
+                Some(v) => Some(value_of(&c.key, v)?),
+                None => None,
+            };
+            parsed.push((c.key.clone(), value));
+        }
+        dir.save(&self.server, character, class, layer, &parsed)
+            .map(|_| ())
+    }
+
     /// The flee line: the knob's, else the setting `health.flee_below_hp`.
     pub fn flee_below(&self, settings: &Settings) -> i32 {
         self.flee_override.unwrap_or_else(|| {
             i32::try_from(settings.int("health.flee_below_hp")).unwrap_or(FLEE_BELOW)
         })
+    }
+}
+
+fn wire(v: Value) -> SettingValue {
+    match v {
+        Value::Int(n) => SettingValue::Int(n),
+        Value::Bool(b) => SettingValue::Bool(b),
+        Value::Choice(c) => SettingValue::Text(c.to_owned()),
+    }
+}
+
+/// A wire value as the setting `key` takes it, or why it does not.
+fn value_of(key: &str, v: &SettingValue) -> Result<Value, String> {
+    let s = wayfarer_settings::setting(key).ok_or_else(|| format!("no setting {key:?}"))?;
+    match (s.kind, v) {
+        (Kind::Int { .. }, SettingValue::Int(n)) => Ok(Value::Int(*n)),
+        (Kind::Bool, SettingValue::Bool(b)) => Ok(Value::Bool(*b)),
+        (Kind::Choice(options), SettingValue::Text(t)) => options
+            .iter()
+            .find(|o| **o == t)
+            .map(|o| Value::Choice(o))
+            .ok_or_else(|| format!("{key} is {t:?}, not one of {}", options.join(", "))),
+        (Kind::Int { .. }, _) => Err(format!("{key} wants a whole number")),
+        (Kind::Bool, _) => Err(format!("{key} wants true or false")),
+        (Kind::Choice(options), _) => Err(format!("{key} wants one of {}", options.join(", "))),
     }
 }
 

@@ -15,11 +15,13 @@ import type {
   RoomKey,
   SessionInfo,
   SessionState,
+  SettingChange,
   ToClient,
   ToGateway,
 } from "../proto";
 import { clampRadius, LOOP_RADIUS, type Loops, type MapView } from "./map";
 import { MIN_QUERY, type FoundMessage } from "./goto";
+import type { SettingsMessage } from "./settings";
 import type { Stats } from "./stats";
 
 /** The part of the browser's `WebSocket` the client uses. */
@@ -84,6 +86,8 @@ export interface GatewayEvents {
   loops?(loops: Loops): void;
   /** A character's last runs, for the stats tab. */
   stats?(stats: Stats): void;
+  /** A character's settings, for the settings tab. */
+  settings?(settings: SettingsMessage): void;
   /** A line the player typed was held by the brain (an attack while combat is engaged). */
   inputHeld?(session: string, text: string, reason: string): void;
   /** What a `find` found, for the map panel's go box. */
@@ -236,6 +240,18 @@ export class GatewayClient {
   /** Ask for the character's last runs (a `stats` answer); false when not connected. */
   requestStats(session: string): boolean {
     return this.send({ type: "stats_request", session });
+  }
+
+  /** Ask for the character's settings, with the values the file of `layer` holds
+   * (`character`, `server` or `mine`); false when not connected. */
+  requestSettings(session: string, layer: string): boolean {
+    return this.send({ type: "settings_request", session, layer });
+  }
+
+  /** Change the file of `layer`: each change sets a value, or takes the key out when it has
+   * none; false when not connected. */
+  saveSettings(session: string, layer: string, changes: SettingChange[]): boolean {
+    return this.send({ type: "settings_save", session, layer, changes });
   }
 
   /** End the current run and start a new one at zero (the old one stays in the history);
@@ -394,6 +410,9 @@ export class GatewayClient {
         break;
       case "stats":
         this.opts.events.stats?.(message);
+        break;
+      case "settings":
+        this.opts.events.settings?.(message);
         break;
       case "input_held":
         this.opts.events.inputHeld?.(message.session, message.text, message.reason);

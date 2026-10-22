@@ -13,6 +13,9 @@ import type { RoomKey } from "./RoomKey";
 import type { RunSummary } from "./RunSummary";
 import type { SessionInfo } from "./SessionInfo";
 import type { SessionState } from "./SessionState";
+import type { SettingChange } from "./SettingChange";
+import type { SettingRow } from "./SettingRow";
+import type { SettingsFile } from "./SettingsFile";
 import type { WorldPackInfo } from "./WorldPackInfo";
 
 /**
@@ -22,4 +25,17 @@ export type ToClient = { "type": "welcome", protocol: number, server_build: stri
 /**
  * The loops the player made (`save_loop`) with a stop in the area, by name.
  */
-custom: Array<GeneratedLoop>, } | { "type": "stats", session: string, runs: Array<RunSummary>, samples: Array<ExpSample>, } | { "type": "input_held", session: string, text: string, reason: string, } | { "type": "found", session: string, query: string, results: Array<Found>, } | { "type": "resync", session: string, } | { "type": "state_request", session?: string, } | { "type": "walk_to", session: string, map: number, room: number, stop_short?: boolean, } | { "type": "walk_stop", session: string, } | { "type": "map_request", session: string, radius?: number, } | { "type": "bot_control", session: string, action: BotAction, } | { "type": "loops_request", session: string, anchor?: RoomKey, radius: number, doors?: boolean, } | { "type": "walk_loop", session: string, id: string, } | { "type": "run_loop", session: string, id: string, skip?: Array<RoomKey>, } | { "type": "stats_request", session: string, } | { "type": "stats_reset", session: string, } | { "type": "save_loop", session: string, name: string, base?: string, stops: Array<RoomKey>, } | { "type": "delete_loop", session: string, id: string, } | { "type": "find", session: string, query: string, } | { "type": "set_monster_rule", session: string, pattern: string, rule: MonsterRuleKind | null, } | { "type": "sent", session: string, seq: number, text: string, } | { "type": "brain_state", attached: boolean, } | { "type": "brain_lagged", missed: number, } | { "type": "logging_off", session: string, } | { "type": "user_input", session: string, text: string, from: string, force?: boolean, } | { "type": "keys_sent", session: string, };
+custom: Array<GeneratedLoop>, } | { "type": "stats", session: string, runs: Array<RunSummary>, samples: Array<ExpSample>, } | { "type": "settings", session: string, 
+/**
+ * The layer whose own values `own` shows.
+ */
+layer: string, files: Array<SettingsFile>, rows: Array<SettingRow>, } | { "type": "input_held", session: string, text: string, reason: string, } | { "type": "found", session: string, query: string, results: Array<Found>, } | { "type": "resync", session: string, } | { "type": "state_request", session?: string, } | { "type": "walk_to", session: string, map: number, room: number, stop_short?: boolean, } | { "type": "walk_stop", session: string, } | { "type": "map_request", session: string, radius?: number, } | { "type": "bot_control", session: string, action: BotAction, } | { "type": "loops_request", session: string, anchor?: RoomKey, radius: number, doors?: boolean, } | { "type": "walk_loop", session: string, id: string, } | { "type": "run_loop", session: string, id: string, skip?: Array<RoomKey>, } | { "type": "stats_request", session: string, } | { "type": "stats_reset", session: string, } | { "type": "settings_request", session: string, 
+/**
+ * The layer to show the player's own values of: `mine`, `server` or `character`
+ * (left out: `character`).
+ */
+layer?: string, } | { "type": "settings_save", session: string, 
+/**
+ * The layer to write: `mine`, `server` or `character`.
+ */
+layer: string, changes: Array<SettingChange>, } | { "type": "save_loop", session: string, name: string, base?: string, stops: Array<RoomKey>, } | { "type": "delete_loop", session: string, id: string, } | { "type": "find", session: string, query: string, } | { "type": "set_monster_rule", session: string, pattern: string, rule: MonsterRuleKind | null, } | { "type": "sent", session: string, seq: number, text: string, } | { "type": "brain_state", attached: boolean, } | { "type": "brain_lagged", missed: number, } | { "type": "logging_off", session: string, } | { "type": "user_input", session: string, text: string, from: string, force?: boolean, } | { "type": "keys_sent", session: string, };
