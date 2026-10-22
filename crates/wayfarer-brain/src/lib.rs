@@ -25,6 +25,7 @@ pub mod character;
 mod clock;
 pub mod commands;
 mod custom;
+mod errand;
 pub mod executor;
 mod fight;
 mod flee;

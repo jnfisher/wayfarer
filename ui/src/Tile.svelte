@@ -4,7 +4,7 @@
   import { FitAddon } from "@xterm/addon-fit";
   import { WebglAddon } from "@xterm/addon-webgl";
   import "@xterm/xterm/css/xterm.css";
-  import { botButtons, linkButton, narrationLine } from "./lib/bot";
+  import { botButtons, errandItems, linkButton, narrationLine } from "./lib/bot";
   import { keyBytes, type GatewayClient } from "./lib/gateway";
   import { HEADER_CELL_PX, bar, expText, fitHeader, levelClass, roomText } from "./lib/header";
   import { InputHistory } from "./lib/input";
@@ -52,6 +52,10 @@
   const buttons = $derived(botButtons(c?.bot));
   const narration = $derived(narrationLine(c?.bot));
   const link = $derived(linkButton(info.state));
+  const errand = $derived(c?.errand ?? undefined);
+  const errands = $derived(errandItems(c?.bot, errand));
+  /** The errand menu is open. */
+  let menuOpen = $state(false);
   const shown = $derived(
     fitHeader(
       { number, name: info.name, server: info.server, state: info.state, character: c },
@@ -245,12 +249,46 @@
         }}>[{link.label}]</button
       >
     {/if}
+    {#if c && info.state === "realm"}
+      <span class="menu">
+        <button
+          class="ctl"
+          aria-label="Errands"
+          aria-expanded={menuOpen}
+          title="Errands: pick up all, equip all"
+          onclick={(e) => {
+            e.stopPropagation();
+            menuOpen = !menuOpen;
+          }}>[▼]</button
+        >
+        {#if menuOpen}
+          <ul class="errands" role="menu" aria-label="Errands">
+            {#each errands as item (item.action)}
+              <li role="none">
+                <button
+                  role="menuitem"
+                  disabled={item.disabled}
+                  title={item.title}
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    menuOpen = false;
+                    client.botControl(info.id, item.action);
+                  }}>{item.label}</button
+                >
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </span>
+    {/if}
     {#if !c}
       <span class="nobrain">{" no brain"}</span>
     {/if}
     <span class="frame">{" ═╗"}</span>
   </header>
-  {#if narration !== null}
+  {#if errand}
+    <div class="narration errand" title="An errand: cancel it from the [▼] menu">{errand}</div>
+  {:else if narration !== null}
     <div class="narration {c?.bot?.state}" title={c?.bot?.reason ?? ""}>{narration}</div>
   {/if}
   <div class="screen">
@@ -450,6 +488,39 @@
   header .ctl.start,
   header .ctl.resume {
     color: var(--vga-lightgreen);
+  }
+  header .menu {
+    position: relative;
+    margin-left: 1ch;
+  }
+  ul.errands {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    z-index: 5;
+    margin: 0;
+    padding: 2px 0;
+    list-style: none;
+    background: var(--vga-black);
+    border: 1px solid var(--vga-darkgray);
+    white-space: nowrap;
+  }
+  ul.errands button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0 1ch;
+    color: var(--vga-lightgray);
+  }
+  ul.errands button:hover:not(:disabled) {
+    color: #000;
+    background: var(--vga-lightcyan);
+  }
+  ul.errands button:disabled {
+    color: var(--vga-darkgray);
+  }
+  .narration.errand {
+    color: var(--vga-lightcyan);
   }
   header .ctl.link {
     margin-left: 1ch;

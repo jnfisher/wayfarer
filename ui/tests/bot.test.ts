@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { botButtons, botKeyAction, botWidth, linkButton, narrationLine } from "../src/lib/bot";
+import { botButtons, botKeyAction, botWidth, errandItems, linkButton, narrationLine } from "../src/lib/bot";
 import type { Bot, CharacterState } from "../src/proto";
 
 // xterm needs a real canvas; these tests only look at the header and the narration line.
@@ -84,6 +84,32 @@ describe("the tile", () => {
     return render(Tile, { ...props, character }).container;
   }
 
+  it("has an errand menu in the realm that starts an errand, and shows its progress", async () => {
+    botControl.mockClear();
+    tile({ bot: stopped });
+    expect(screen.queryByRole("menu", { name: "Errands" })).toBeNull();
+    await fireEvent.click(screen.getByRole("button", { name: "Errands" }));
+    await fireEvent.click(screen.getByRole("menuitem", { name: "Pick up all" }));
+    expect(botControl).toHaveBeenCalledWith("a", "pick_up_all");
+    expect(screen.queryByRole("menu", { name: "Errands" })).toBeNull();
+    cleanup();
+    const el = tile({ bot: stopped, errand: "Equip: wear padded vest" });
+    expect(el.querySelector("header + .narration.errand")?.textContent).toBe("Equip: wear padded vest");
+    await fireEvent.click(screen.getByRole("button", { name: "Errands" }));
+    expect((screen.getByRole("menuitem", { name: "Equip all" }) as HTMLButtonElement).disabled).toBe(true);
+    await fireEvent.click(screen.getByRole("menuitem", { name: "Cancel errand" }));
+    expect(botControl).toHaveBeenLastCalledWith("a", "cancel_errand");
+  });
+
+  it("offers the errands only while the bot is not running", () => {
+    expect(errandItems(stopped, undefined).map((i) => [i.label, i.disabled])).toEqual([
+      ["Pick up all", false],
+      ["Equip all", false],
+    ]);
+    expect(errandItems(running, undefined).every((i) => i.disabled)).toBe(true);
+    expect(errandItems(paused, "Pick up: get torch").map((i) => i.label)).toEqual(["Pick up all", "Equip all", "Cancel errand"]);
+  });
+
   it("has a log off button in the realm, and a connect button once closed or lost", async () => {
     sessionControl.mockClear();
     tile({ bot: stopped });
@@ -109,7 +135,7 @@ describe("the tile", () => {
   it("shows the narration under the header while running, with pause and stop", async () => {
     const el = tile({ bot: running });
     expect(el.querySelector("header + .narration")?.textContent).toBe("Fight: large giant rat");
-    expect([...el.querySelectorAll("header .ctl:not(.link)")].map((b) => b.textContent)).toEqual(["[║]", "[■]"]);
+    expect([...el.querySelectorAll("header .ctl:not(.link):not([aria-label=Errands])")].map((b) => b.textContent)).toEqual(["[║]", "[■]"]);
     await fireEvent.click(screen.getByRole("button", { name: "pause the bot" }));
     await fireEvent.click(screen.getByRole("button", { name: "stop the bot" }));
     expect(botControl.mock.calls).toEqual([
@@ -128,7 +154,7 @@ describe("the tile", () => {
   it("has no controls without a bot (no world pack, or no brain)", () => {
     for (const character of [{}, null]) {
       const el = tile(character);
-      expect(el.querySelector("header .ctl:not(.link)")).toBeNull();
+      expect(el.querySelector("header .ctl:not(.link):not([aria-label=Errands])")).toBeNull();
       cleanup();
     }
   });

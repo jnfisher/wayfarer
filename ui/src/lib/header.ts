@@ -3,7 +3,7 @@
 // cells, since the header is the VGA font at a fixed 16 px (8 px a cell).
 
 import type { CharacterState } from "../proto";
-import { botWidth, linkWidth } from "./bot";
+import { botWidth, linkWidth, menuWidth } from "./bot";
 
 /** Width of one header character cell in CSS px. */
 export const HEADER_CELL_PX = 8;
@@ -89,7 +89,7 @@ export function fixedWidth(h: HeaderText): number {
   const start = 3 + String(h.number).length + 1 + h.name.length; // "╔═ 1 Name"
   const fill = 3; // " ═ " at its narrowest
   const bot = botWidth(h.character?.bot); // "[║][■] ═ "
-  const badge = h.state.length + 2 + linkWidth(h.state); // "realm [log off]"
+  const badge = h.state.length + 2 + linkWidth(h.state) + menuWidth(h.state, h.character !== null); // "realm [log off] [▼]"
   const noBrain = h.character ? 0 : 9; // " no brain"
   const end = 3; // " ═╗"
   return start + fill + bot + badge + noBrain + end;

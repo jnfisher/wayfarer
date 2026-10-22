@@ -323,7 +323,26 @@ pub enum GameEvent {
     /// the name the game gives them (`gold crowns`).
     RoomItems {
         coins: BTreeMap<String, u64>,
+        /// The other things lying there, counted.
+        items: Vec<Carried>,
     },
+    /// `took_item`: `You took torch.`
+    ItemTaken {
+        item: String,
+    },
+    /// `wear_ok`: `You are now wearing padded vest.`
+    Worn {
+        item: String,
+    },
+    /// `wield_ok`: `You are now holding quarterstaff.`
+    Wielded {
+        item: String,
+    },
+    /// `wear_fail`: `You may not wear that item!`, `You have no more room to wear that item!`
+    /// or `<item> may not be worn!`.
+    WearFailed,
+    /// `weapon_forbidden`: `You may not use that weapon.` or `<item> is not a weapon!`.
+    NotWielded,
     /// `picked_up_coins`: `You picked up 9 copper farthings`.
     CoinsPicked {
         n: u64,
@@ -634,9 +653,21 @@ impl GameEvent {
             "poison_tick" => G::PoisonTick,
             "blind" => G::Blind,
             "stunned" => G::Stunned,
-            "room_items" => G::RoomItems {
-                coins: parse_carrying(ev.text("items").unwrap_or_default()).0,
+            "room_items" => {
+                let (coins, items) = parse_carrying(ev.text("items").unwrap_or_default());
+                G::RoomItems { coins, items }
+            }
+            "took_item" => G::ItemTaken {
+                item: text(ev, "item"),
             },
+            "wear_ok" => G::Worn {
+                item: text(ev, "item"),
+            },
+            "wield_ok" => G::Wielded {
+                item: text(ev, "item"),
+            },
+            "wear_fail" => G::WearFailed,
+            "weapon_forbidden" => G::NotWielded,
             "picked_up_coins" => match int(ev, "n") {
                 Some(n) => G::CoinsPicked {
                     n: u64::try_from(n).unwrap_or(0),

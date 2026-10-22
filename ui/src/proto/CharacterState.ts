@@ -79,4 +79,9 @@ run?: RunStats,
  * Where the character died, fled from and stopped, newest first (at most ten), whether
  * or not the bot was running; absent without a world pack.
  */
-places?: Array<Place>, };
+places?: Array<Place>, 
+/**
+ * What the errand in progress is doing (`pick_up_all`, `equip_all`); absent when there is
+ * none.
+ */
+errand?: string, };

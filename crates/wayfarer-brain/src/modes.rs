@@ -42,6 +42,8 @@ pub(crate) struct Presence {
     /// The coins on the floor as the last room view showed them, by the game's name for them
     /// (`gold crowns`), until they are picked up or the view changes.
     pub floor: std::collections::BTreeMap<String, u64>,
+    /// The other things on the floor, as the last room view showed them.
+    pub floor_items: Vec<wayfarer_parse::helpers::Carried>,
 }
 
 impl Presence {
@@ -50,8 +52,26 @@ impl Presence {
             GameEvent::RoomTitle { .. } => {
                 self.shown = Some(Default::default());
                 self.floor.clear();
+                self.floor_items.clear();
             }
-            GameEvent::RoomItems { coins } => self.floor.clone_from(coins),
+            GameEvent::RoomItems { coins, items } => {
+                self.floor.clone_from(coins);
+                self.floor_items.clone_from(items);
+            }
+            GameEvent::ItemTaken { item } => {
+                let item = item.to_lowercase();
+                if let Some(i) = self
+                    .floor_items
+                    .iter()
+                    .position(|c| c.name.to_lowercase() == item)
+                {
+                    if self.floor_items[i].count > 1 {
+                        self.floor_items[i].count -= 1;
+                    } else {
+                        self.floor_items.remove(i);
+                    }
+                }
+            }
             // Taken, or the game would not give it: not on the floor for the bot's purposes
             // (a pickup that took only part is not asked for the rest again).
             GameEvent::CoinsPicked { coin, .. } => {

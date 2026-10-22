@@ -99,14 +99,14 @@ describe("fitHeader", () => {
   it("counts the cells of the header's design line", () => {
     // The card's example, from ╔ to ╗ with one cell of fill.
     const line =
-      "╔═ 1 Waydeva  L3 Warrior ═ HP ███████░░░ 28/40  MA ░░░░░░░░░░ 0/0 ═ 1,230 (45%) ═ Town Square ═ 127.0.0.1:2323 ═  realm  [log off] ═╗";
+      "╔═ 1 Waydeva  L3 Warrior ═ HP ███████░░░ 28/40  MA ░░░░░░░░░░ 0/0 ═ 1,230 (45%) ═ Town Square ═ 127.0.0.1:2323 ═  realm  [log off] [▼] ═╗";
     expect(all()).toBe([...line].length);
   });
 
   it("keeps room for the bot's buttons", () => {
     const running = { ...h, character: { ...FULL, bot: { state: "running", mode: "fight", narration: "" } } } as const;
     const line =
-      "╔═ 1 Waydeva  L3 Warrior ═ HP ███████░░░ 28/40  MA ░░░░░░░░░░ 0/0 ═ 1,230 (45%) ═ Town Square ═ [║][■] ═ 127.0.0.1:2323 ═  realm  [log off] ═╗";
+      "╔═ 1 Waydeva  L3 Warrior ═ HP ███████░░░ 28/40  MA ░░░░░░░░░░ 0/0 ═ 1,230 (45%) ═ Town Square ═ [║][■] ═ 127.0.0.1:2323 ═  realm  [log off] [▼] ═╗";
     const width = fixedWidth(running) + Object.values(itemWidths(running)).reduce((a, b) => a + b, 0);
     expect(width).toBe([...line].length);
   });
