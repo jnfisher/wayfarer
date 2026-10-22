@@ -148,6 +148,34 @@ describe("the settings tab", () => {
     expect(onsave).toHaveBeenCalledWith("a", "character", [{ key: "health.flee_below_hp" }]);
   });
 
+  it("asks once when it opens, and does not ask again for every answer", async () => {
+    const onrequest = vi.fn();
+    const { component, rerender } = render_({ onrequest }) as unknown as {
+      component: unknown;
+      rerender: (p: Record<string, unknown>) => Promise<void>;
+    };
+    void component;
+    expect(onrequest).toHaveBeenCalledTimes(1);
+    expect(onrequest).toHaveBeenCalledWith("a", "character");
+    // Answers arriving (a reload's, a save's) change `settings`, which must not ask again.
+    for (let i = 0; i < 3; i++) await rerender({ settings: { ...settings, rows: [flee, heal, gold, leg] } });
+    expect(onrequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows only the answer for the layer being edited", async () => {
+    const onrequest = vi.fn();
+    const { container, rerender } = render_({ onrequest }) as unknown as {
+      container: HTMLElement;
+      rerender: (p: Record<string, unknown>) => Promise<void>;
+    };
+    await fireEvent.click(screen.getByRole("button", { name: "my defaults" }));
+    // The answer for the character's file is still in: it is not shown as the defaults'.
+    expect(container.querySelector('[data-key="health.flee_below_hp"]')).toBeNull();
+    expect(container.textContent).toContain("Asking the brain");
+    await rerender({ settings: { ...settings, layer: "mine" } });
+    expect(container.querySelector('[data-key="health.flee_below_hp"]')).not.toBeNull();
+  });
+
   it("asks for another layer's file", async () => {
     const onrequest = vi.fn();
     render_({ onrequest });

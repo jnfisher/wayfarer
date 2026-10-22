@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { LAYERS, groupRows, isOwn, numberChange, resetChange, show, sourceLabel, type SettingsMessage } from "./lib/settings";
   import type { SessionInfo, SettingChange, SettingRow } from "./proto";
 
@@ -22,13 +23,23 @@
   /** Number boxes whose text is not yet a whole number in range. */
   let bad = $state<Record<string, boolean>>({});
 
-  /** The layer the brain last answered for, so the box follows a request from elsewhere. */
+  // The panel is mounted while its tab is open: it asks for the focused character's settings
+  // when it opens, when the focus moves and when the brain attaches. Only those are tracked;
+  // reading the answer or the layer here would ask again for every answer, and the answers
+  // would chase each other.
+  // (`session` is a new object whenever the session's counters move, so the effect follows a
+  // derived string, which says "changed" only when it is a different one.)
+  const target = $derived(attached && session ? session.id : undefined);
   $effect(() => {
-    if (settings) layer = settings.layer;
+    const id = target;
+    if (id) untrack(() => onrequest(id, layer));
   });
 
-  const groups = $derived(groupRows(settings?.rows ?? [], all));
-  const files = $derived(settings?.files ?? []);
+  /** The answer for the layer being edited: one for another layer (a late one, or a reload's
+   * after the layer was changed) is not shown as this one's. */
+  const shown = $derived(settings && settings.layer === layer ? settings : undefined);
+  const groups = $derived(groupRows(shown?.rows ?? [], all));
+  const files = $derived(shown?.files ?? []);
 
   function pick(next: string) {
     layer = next;
@@ -60,7 +71,7 @@
     <p class="dim">No character.</p>
   {:else if !attached}
     <p class="dim">No brain attached: no settings.</p>
-  {:else if !settings}
+  {:else if !shown}
     <p class="dim">Asking the brain for {session.name}'s settings…</p>
   {:else}
     <div class="tools" role="group" aria-label="Which settings file">
