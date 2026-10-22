@@ -26,7 +26,10 @@ use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc, watch};
 use tokio::task::JoinHandle;
 use tower_http::services::ServeDir;
-use wayfarer_proto::{ClientKind, Family, SessionId, ToClient, ToGateway, protocol_mismatch};
+use wayfarer_proto::{
+    ClientKind, Family, SessionAction, SessionId, SessionState, ToClient, ToGateway,
+    protocol_mismatch,
+};
 
 use crate::session::{Origin, Output, Sent};
 use crate::{Gateway, GatewayError, HistoryQuery};
@@ -846,6 +849,33 @@ impl Connection {
                     });
                 }
                 self.subscribe(wanted);
+                None
+            }
+            // The log-off takes a minute or so (and the brain's word first): not on this loop.
+            ToGateway::SessionControl { session, action } => {
+                if let Err(e) = gateway.state(&session) {
+                    return Some(error(e));
+                }
+                let hub = self.hub.clone();
+                tokio::spawn(async move {
+                    let gateway = hub.gateway().clone();
+                    let done = match action {
+                        SessionAction::Connect => gateway.open(&session),
+                        SessionAction::LogOff => {
+                            if gateway
+                                .state(&session)
+                                .is_ok_and(|s| s == SessionState::Realm)
+                            {
+                                hub.ready_to_leave(session.clone()).await;
+                            }
+                            gateway.close(&session).await
+                        }
+                        SessionAction::HangUp => gateway.close_now(&session).await,
+                    };
+                    if let Err(e) = done {
+                        tracing::warn!(%session, ?action, "session control: {e}");
+                    }
+                });
                 None
             }
             relayed => unreachable!("{:?} is relayed", relayed.type_name()),

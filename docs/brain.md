@@ -411,6 +411,16 @@ sent yet is dropped, and Flee acts at the next prompt.
 - Narrated as it goes: "Fleeing: HP 22%: up to Newhaven, Narrow Road", "Followed by large giant
   rat: east to Newhaven, Narrow Path", "Flee: in Newhaven, Narrow Path, watching for
   followers", "Safe in Newhaven, Narrow Path". The snapshot's `bot.mode` is `flee` meanwhile.
+- **Hang up** (`health.hangup`, on by default, under `health.hangup_below_hp`, 10%): the last
+  resort. A clean log-off (`x`) takes six quiet seconds and any blow interrupts it, so under attack
+  it cannot finish; a character that lies at 0 HP is killed. With the bot running (not stopped),
+  HP under the line and something hitting the character, the brain stops the bot ("Stopped: hung up
+  at 8% HP (under 10%): something was hitting it"), warns, and sends the gateway
+  `session_control` `hang_up`: the connection is dropped at once, the session shows `closed`
+  and stays so until **connect** on its tile. The game ends the fight but may punish a hang-up in
+  the realm: with `PUNHUP HIGH` it costs 25–50% of the maximum HP and half the inventory, which
+  can kill (`kb/recovery.md`, "Hanging up"), so on such a server turn it off. The place shows in
+  the recent places as "stopped". It is the one exception to "log off cleanly".
 - **Mortally wounded** (HP 0 or below): the game refuses every move, attack, cast, rest and `x`
   ("You may not do that while you are mortally wounded!") while monsters go on hitting, and
   nothing a script can send helps (only another player's help, or rebirth at -200). The brain
@@ -673,6 +683,8 @@ rest_until_hp = 92
 | `health.flee_rooms` | 6 | 1–30 | Rooms Flee runs through while a monster keeps following, before the character turns and fights |
 | `health.rest_below_hp` | 60 | 10–99 | Recover takes control below this per cent |
 | `health.rest_until_hp` | 85 | 20–100 | Recover rests until this per cent |
+| `health.hangup` | on | on, off | Hang up when nearly dead (below): drop the connection when the bot is running, HP is under the line and something is hitting the character. Turn it off on a server that punishes a hang-up in the realm |
+| `health.hangup_below_hp` | 10 | 1–30 | The per cent of the maximum HP under which it hangs up. Keep it under the flee line, so fleeing is tried first |
 | `movement.search_limit` | 300 | 1–1000 | Searches for a hidden exit before the walker gives it up |
 | `bot.passed_by_minutes` | 5 | 1–120 | How long a loop stop the bot passed by is left alone |
 | `bot.leg_tries` | 3 | 1–10 | Walks to one loop stop that end elsewhere before it is passed by |

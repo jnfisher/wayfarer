@@ -98,6 +98,16 @@ send. Live output carries on after the gap; the client fetches the gap with `his
 {"type":"lagged","session":"kasimir","missed":120}
 ```
 
+## Connecting and logging off
+
+| Message | What it does |
+|---|---|
+| `session_control {session, action}` | From a UI (the tile's button) or from the brain. `action` `connect` opens the connection and runs the logon (nothing if it is open); `log_off` logs the character off cleanly (a session in the realm has the brain told first, `logging_off`, and waited for, up to 30 s) and disconnects: it is not reconnected until a `connect`; `hang_up` drops the connection at once, in the realm or not, which the game may punish. The brain sends `hang_up` when the character's HP falls under the `health.hangup_below_hp` line |
+
+```json
+{"type":"session_control","session":"kasimir","action":"log_off"}
+```
+
 ## Input
 
 | Message | What it does |

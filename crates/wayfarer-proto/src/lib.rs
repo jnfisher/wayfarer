@@ -723,7 +723,8 @@ pub struct WorldPackInfo {
 /// Who may send a [`ToGateway`] message, and what the gateway does with it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Family {
-    /// Hello, input, history and subscribe: from any client, handled by the gateway.
+    /// Hello, input, history, subscribe and session control: from any client, handled by the
+    /// gateway.
     Gateway,
     /// From a UI, relayed to the brain: `resync`, `state_request`.
     Control,
@@ -743,6 +744,19 @@ impl Family {
             Self::Brain | Self::BrainToGateway => client == ClientKind::Brain,
         }
     }
+}
+
+/// What a `session_control` asks of a session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionAction {
+    /// Open the connection and log on (nothing if it is open).
+    Connect,
+    /// Log off cleanly (the brain is asked to get ready first) and disconnect: never
+    /// reconnected.
+    LogOff,
+    /// Drop the connection at once, in the realm or not: the game may punish it.
+    HangUp,
 }
 
 /// Gateway → client.
@@ -1057,6 +1071,12 @@ pub enum ToGateway {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         sessions: Option<Vec<SessionId>>,
+    },
+    /// Connect, log off or hang up one session: from a UI (the tile's button) or from the brain
+    /// (`hang_up` at the player's HP line).
+    SessionControl {
+        session: SessionId,
+        action: SessionAction,
     },
 
     /// UI → brain: re-sync the character (`st`, `exp`, `i`, look).
@@ -1473,6 +1493,7 @@ impl ToGateway {
         "input_keys",
         "history_request",
         "subscribe",
+        "session_control",
         "resync",
         "state_request",
         "walk_to",
@@ -1513,6 +1534,7 @@ impl ToGateway {
             Self::InputKeys { .. } => "input_keys",
             Self::HistoryRequest { .. } => "history_request",
             Self::Subscribe { .. } => "subscribe",
+            Self::SessionControl { .. } => "session_control",
             Self::Resync { .. } => "resync",
             Self::StateRequest { .. } => "state_request",
             Self::WalkTo { .. } => "walk_to",
@@ -1553,6 +1575,7 @@ impl ToGateway {
             | Self::InputLine { .. }
             | Self::InputKeys { .. }
             | Self::HistoryRequest { .. }
+            | Self::SessionControl { .. }
             | Self::Subscribe { .. } => Family::Gateway,
             Self::Resync { .. }
             | Self::StateRequest { .. }
@@ -1758,6 +1781,7 @@ impl ToGateway {
             | Self::InputKeys { .. }
             | Self::HistoryRequest { .. }
             | Self::Subscribe { .. }
+            | Self::SessionControl { .. }
             | Self::ReadyToLeave { .. }
             | Self::Arbitrate { .. } => return None,
         })

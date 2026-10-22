@@ -13,6 +13,7 @@ import type {
   Chunk,
   MonsterRuleKind,
   RoomKey,
+  SessionAction,
   SessionInfo,
   SessionState,
   SettingChange,
@@ -209,6 +210,11 @@ export class GatewayClient {
   /** Start, stop, pause or resume a character's bot; false when not connected. */
   botControl(session: string, action: BotAction): boolean {
     return this.send({ type: "bot_control", session, action });
+  }
+
+  /** Connect, log off or hang up a session; false when not connected. */
+  sessionControl(session: string, action: SessionAction): boolean {
+    return this.send({ type: "session_control", session, action });
   }
 
   /** Ask for a `map_view` now, of the rooms within `radius` steps (clamped to 1-30). */

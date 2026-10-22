@@ -534,7 +534,7 @@ fn not_sure_of_the_room_no_candidate() {
 
 #[tokio::test(start_paused = true)]
 async fn mortally_wounded_it_sends_nothing_and_says_so_once() {
-    let (mut g, run) = fighting().await;
+    let (mut g, run) = fighting_with("[health]\nhangup = false\n").await;
     g.round("The large giant rat lunges at you!", -4).await;
     g.round("You may not do that while you are mortally wounded!", -6)
         .await;
@@ -557,4 +557,51 @@ async fn mortally_wounded_it_sends_nothing_and_says_so_once() {
         .filter(|n| n.starts_with("Mortally wounded"))
         .count();
     assert_eq!(hurt, 1, "{said:?}");
+}
+
+fn hangups(seen: &[ToGateway]) -> usize {
+    seen.iter()
+        .filter(|m| {
+            matches!(
+                m,
+                ToGateway::SessionControl {
+                    action: wayfarer_proto::SessionAction::HangUp,
+                    ..
+                }
+            )
+        })
+        .count()
+}
+
+#[tokio::test(start_paused = true)]
+async fn under_the_hangup_line_with_a_monster_hitting_it_hangs_up_once_and_stops_the_bot() {
+    let (mut g, run) = fighting().await;
+    // 3 of 35 is 8%, under the 10% line.
+    g.round("The large giant rat lunges at you!", 3).await;
+    g.round("The large giant rat lunges at you!", 2).await;
+    let (seen, _) = g.close(run).await;
+    assert_eq!(hangups(&seen), 1);
+    let said = notices(&seen);
+    assert!(
+        said.iter()
+            .any(|n| n.starts_with("Stopped: hung up at 8% HP")),
+        "{said:?}"
+    );
+    assert_eq!(bot(&seen).state, BotState::Stopped);
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_hangup_can_be_turned_off_and_has_its_own_line() {
+    // Off: HP at 8% hangs nothing up.
+    let (mut g, run) = fighting_with("[health]\nhangup = false\n").await;
+    g.freeze();
+    g.round("The large giant rat lunges at you!", 3).await;
+    let (seen, _) = g.close(run).await;
+    assert_eq!(hangups(&seen), 0);
+    // A line of 3% leaves 8% alone.
+    let (mut g, run) = fighting_with("[health]\nhangup_below_hp = 3\n").await;
+    g.freeze();
+    g.round("The large giant rat lunges at you!", 3).await;
+    let (seen, _) = g.close(run).await;
+    assert_eq!(hangups(&seen), 0);
 }

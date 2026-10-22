@@ -16,7 +16,9 @@ use wayfarer_gateway::{
     Config, Credentials, Gateway, Hub, Options, ServerError, ServerOptions, create_token, serve,
     token_for_bind,
 };
-use wayfarer_proto::{CharacterState, ClientKind, PROTOCOL, SessionState, ToClient, ToGateway};
+use wayfarer_proto::{
+    CharacterState, ClientKind, PROTOCOL, SessionAction, SessionState, ToClient, ToGateway,
+};
 
 const ID: &str = "kasimir";
 /// A second character, never connected.
@@ -1027,4 +1029,42 @@ async fn a_session_the_brain_arbitrates_sends_its_ui_lines_to_the_brain_and_its_
     send(&mut ui, &line("e")).await;
     game_reads(&mut game, b"e\r").await;
     rig.stop().await;
+}
+
+#[tokio::test]
+async fn session_control_hangs_a_session_up_and_connects_it_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let rig = Rig::start(dir.path(), None).await;
+    let mut ui = rig.welcomed().await;
+    let mut game = rig.connect_game().await;
+    game.write_all(b"Password: ").await.unwrap();
+    while rig.gateway.state(ID).unwrap() != SessionState::Connected {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let control = |action| ToGateway::SessionControl {
+        session: ID.into(),
+        action,
+    };
+    send(&mut ui, &control(SessionAction::HangUp)).await;
+    while rig.gateway.state(ID).unwrap() != SessionState::Closed {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    // Closed on purpose: it stays so until asked.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(rig.gateway.state(ID).unwrap(), SessionState::Closed);
+    send(&mut ui, &control(SessionAction::Connect)).await;
+    while rig.gateway.state(ID).unwrap() == SessionState::Closed {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    // A session nobody knows is an error, not a hang.
+    send(
+        &mut ui,
+        &ToGateway::SessionControl {
+            session: "nobody".into(),
+            action: SessionAction::LogOff,
+        },
+    )
+    .await;
+    let msg = recv_where(&mut ui, |m| matches!(m, ToClient::Error { .. })).await;
+    assert!(matches!(msg, ToClient::Error { .. }), "{msg:?}");
 }

@@ -34,6 +34,7 @@ export type { RoomKind } from "./RoomKind";
 export type { RuleSource } from "./RuleSource";
 export type { RunStats } from "./RunStats";
 export type { RunSummary } from "./RunSummary";
+export type { SessionAction } from "./SessionAction";
 export type { SessionInfo } from "./SessionInfo";
 export type { SessionState } from "./SessionState";
 export type { SettingChange } from "./SettingChange";

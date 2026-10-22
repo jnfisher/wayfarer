@@ -2,7 +2,7 @@
 // narration line under it, and what F9 and F10 do. The glyphs are the VGA font's own (code page
 // 437 has ► and ■ but no pause sign, so pause is ║).
 
-import type { Bot, BotAction } from "../proto";
+import type { Bot, BotAction, SessionAction } from "../proto";
 
 export interface BotButton {
   action: BotAction;
@@ -55,4 +55,35 @@ export function botKeyAction(key: string, bot: Bot | undefined): BotAction | nul
   }
   if (key === START_KEY) return bot.state === "stopped" ? "start" : "stop";
   return null;
+}
+
+export interface LinkButton {
+  action: SessionAction;
+  label: string;
+  title: string;
+}
+
+/**
+ * The tile's connection button: connect when the session is closed or lost, log off while it is
+ * connected in any way. None while it is connecting.
+ */
+export function linkButton(state: string): LinkButton | null {
+  switch (state) {
+    case "closed":
+    case "lost":
+      return { action: "connect", label: "connect", title: "Connect and log on" };
+    case "connected":
+    case "logon":
+    case "menu":
+    case "realm":
+      return { action: "log_off", label: "log off", title: "Log off cleanly and disconnect (it stays off until you connect)" };
+    default:
+      return null;
+  }
+}
+
+/** Cells the connection button takes, with the space before it; 0 when there is none. */
+export function linkWidth(state: string): number {
+  const b = linkButton(state);
+  return b ? b.label.length + 3 : 0;
 }
