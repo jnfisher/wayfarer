@@ -125,14 +125,6 @@
     return () => clearInterval(timer);
   });
 
-  // The settings tab asks for the focused character's settings when it opens or the focus
-  // moves, and again when the brain attaches.
-  $effect(() => {
-    const id = focusedId;
-    if (!devPrefs.open || devPrefs.panel !== "settings" || !id || status !== "open" || !brain.attached) return;
-    client.requestSettings(id, settingsBySession[id]?.layer ?? "character");
-  });
-
   /** Open (over the focused tile) or close the help overlay. */
   function toggleHelp() {
     if (helpArea) {
