@@ -29,7 +29,7 @@ use crate::character::{Character, merge_patch};
 use crate::clock::Clock;
 use crate::commands::{Kind, classify};
 use crate::custom;
-use crate::errand::{Ctx, Errand, ErrandKind, ErrandNext};
+use crate::errand::{Active, Ctx, Errand, ErrandKind, ErrandNext};
 use crate::executor::{Action, Executor};
 use crate::modes::{Bot, Do, Presence, View};
 use crate::policy::{COMBAT_QUIET, hp_percent};
@@ -356,7 +356,7 @@ pub(crate) struct Session {
     /// The notice that the character is mortally wounded has been given, until it is not.
     wounded_noted: bool,
     /// The errand the player started (pick up all, equip all), with the bot stopped or paused.
-    errand: Option<Errand>,
+    errand: Option<Active>,
     /// The connection was dropped at the hang-up line and the realm has not been left yet.
     hung_up: bool,
     /// The gateway is logging the character off (`logging_off`): nothing more is sent.
@@ -1010,31 +1010,32 @@ impl Session {
         }
     }
 
-    /// `spell_plan_request`: the spells the class could learn and the character lacks, each at
-    /// its best shop ([`wayfarer_world::spellshop::plan`]), from where the character is.
-    pub fn spell_plan(&self, out: &mut Vec<ToGateway>) {
-        let Some(atlas) = &self.atlas else {
-            out.push(self.warning("spell plan: the brain has no world pack"));
-            return;
-        };
+    /// The plan for the character: its coins in copper, and the spells its class could learn that
+    /// it lacks, each at its best shop ([`wayfarer_world::spellshop::plan`]); an `Err` says what
+    /// is not known yet.
+    fn spell_plan_items(&self) -> Result<(u64, Vec<wayfarer_world::spellshop::PlanItem>), String> {
+        let atlas = self
+            .atlas
+            .as_ref()
+            .ok_or("spell plan: the brain has no world pack")?;
         let c = self.character.state();
-        let Some(class) = c.class.as_deref() else {
-            out.push(self.warning("spell plan: the character's class is not known yet"));
-            return;
-        };
-        let Some(&(magery, magery_level)) = atlas.class_magery.get(class) else {
-            out.push(self.warning(&format!("spell plan: no spells for a {class}")));
-            return;
-        };
-        let Some(here) = self.position.best() else {
-            out.push(self.warning("spell plan: the position is unknown"));
-            return;
-        };
+        let class = c
+            .class
+            .as_deref()
+            .ok_or("spell plan: the character's class is not known yet")?;
+        let &(magery, magery_level) = atlas
+            .class_magery
+            .get(class)
+            .ok_or_else(|| format!("spell plan: no spells for a {class}"))?;
+        let here = self
+            .position
+            .best()
+            .ok_or("spell plan: the position is unknown")?;
         if self.spell_rows.is_empty() {
-            out.push(self.warning(
-                "spell plan: the spellbook is not known yet (re-sync, or wait for the first `spells`)",
-            ));
-            return;
+            return Err(
+                "spell plan: the spellbook is not known yet (re-sync, or wait for the first `spells`)"
+                    .to_owned(),
+            );
         }
         let who = wayfarer_world::spellshop::Learner {
             magery,
@@ -1058,6 +1059,18 @@ impl Session {
                 .filter_map(|k| dist.get(k).map(|d| (*d, *k)))
                 .min()
         });
+        Ok((cash, items))
+    }
+
+    /// `spell_plan_request`.
+    pub fn spell_plan(&self, out: &mut Vec<ToGateway>) {
+        let (cash, items) = match self.spell_plan_items() {
+            Ok(plan) => plan,
+            Err(why) => {
+                out.push(self.warning(&why));
+                return;
+            }
+        };
         out.push(ToGateway::SpellPlan {
             session: self.id.clone(),
             cash,
@@ -2242,7 +2255,10 @@ impl Session {
         };
         if matches!(
             action,
-            BotAction::PickUpAll | BotAction::EquipAll | BotAction::CancelErrand
+            BotAction::PickUpAll
+                | BotAction::EquipAll
+                | BotAction::BuySpells
+                | BotAction::CancelErrand
         ) {
             self.errand_control(action, out);
             self.drive(now, out);
@@ -2283,7 +2299,10 @@ impl Session {
                 says
             }
             // Handled above.
-            BotAction::PickUpAll | BotAction::EquipAll | BotAction::CancelErrand => return,
+            BotAction::PickUpAll
+            | BotAction::EquipAll
+            | BotAction::BuySpells
+            | BotAction::CancelErrand => return,
         };
         self.say(says, out);
         self.bot_held(out);
@@ -2348,20 +2367,19 @@ impl Session {
 
     /// `pick_up_all`, `equip_all` and `cancel_errand`.
     fn errand_control(&mut self, action: BotAction, out: &mut Vec<ToGateway>) {
-        let kind = match action {
-            BotAction::PickUpAll => ErrandKind::PickUp,
-            BotAction::EquipAll => ErrandKind::Equip,
-            _ => {
-                if let Some(e) = self.errand.take() {
-                    self.executor.cancel();
-                    if self.owner == Some(Owner::Errand) {
-                        self.owner = None;
-                    }
-                    out.push(self.notice(&format!("{} cancelled", e.kind().label())));
+        if action == BotAction::CancelErrand {
+            if let Some(e) = self.errand.take() {
+                self.executor.cancel();
+                if self.owner == Some(Owner::Errand) {
+                    self.owner = None;
                 }
-                return;
+                if self.walker.walking() {
+                    self.stop_walk("the errand was cancelled", out);
+                }
+                out.push(self.notice(&format!("{} cancelled", e.label())));
             }
-        };
+            return;
+        }
         if self.state != SessionState::Realm {
             out.push(self.warning("errand: the character is not in the realm"));
         } else if self.bot.running() {
@@ -2371,9 +2389,47 @@ impl Session {
         } else if self.mortally_wounded() {
             out.push(self.warning("errand: the character is mortally wounded"));
         } else {
-            self.errand = Some(Errand::new(kind));
-            out.push(self.notice(&format!("{} started", kind.label())));
+            let errand = match action {
+                BotAction::PickUpAll => Active::Simple(Errand::new(ErrandKind::PickUp)),
+                BotAction::EquipAll => Active::Simple(Errand::new(ErrandKind::Equip)),
+                _ => match self.shopping_errand() {
+                    Ok(e) => e,
+                    Err(why) => {
+                        out.push(self.warning(&why));
+                        return;
+                    }
+                },
+            };
+            out.push(self.notice(&format!("{} started", errand.label())));
+            self.errand = Some(errand);
         }
+    }
+
+    /// The spell shopping from the plan: the scrolls usable now, cheapest first, and the Bank of
+    /// Godfrey to draw from when the cash on hand falls short.
+    fn shopping_errand(&self) -> Result<Active, String> {
+        let (cash, items) = self.spell_plan_items()?;
+        let wants: Vec<crate::shopping::Want> = items
+            .into_iter()
+            .filter(|i| i.usable)
+            .map(|i| crate::shopping::Want {
+                spell: i.spell,
+                scroll: i.scroll,
+                shop: i.shop,
+                room: i.room,
+                price: i.price,
+                steps: i.steps,
+            })
+            .collect();
+        if wants.is_empty() {
+            return Err(
+                "Spells: nothing to buy: no scroll the class can read now is missing".to_owned(),
+            );
+        }
+        let bank = self.atlas.as_ref().and_then(|a| a.godfrey);
+        Ok(Active::Shop(crate::shopping::Shopping::new(
+            wants, bank, cash,
+        )))
     }
 
     /// Give the errand its next command when nothing is in flight and the game is at a prompt;
@@ -2395,14 +2451,13 @@ impl Session {
             } else {
                 "something is attacking"
             };
-            out.push(self.warning(&format!("{} stopped: {why}", e.kind().label())));
+            out.push(self.warning(&format!("{} stopped: {why}", e.label())));
             return;
         }
         if self.state != SessionState::Realm
             || !self.live()
             || !self.at_prompt
             || self.executor.busy()
-            || self.walker.walking()
             || self.resync != Resync::Off
         {
             return;
@@ -2429,6 +2484,8 @@ impl Session {
             coins: &coins,
             load,
             limit: self.settings.choice("cash.max_encumbrance"),
+            here: self.position.best(),
+            walking: self.walker.walking(),
         };
         let next = self.errand.as_mut().expect("an errand").step(&ctx);
         match next {
@@ -2439,6 +2496,11 @@ impl Session {
                     out.push(self.warning(&format!("refused: {}", guard.describe())));
                 }
             },
+            ErrandNext::Walk(to) => {
+                if let Some(atlas) = self.atlas.clone() {
+                    self.start_walk(&atlas, to, false, out);
+                }
+            }
             ErrandNext::Wait => {}
             ErrandNext::Done(text) => {
                 self.errand = None;
@@ -2948,7 +3010,7 @@ impl Session {
             s.bot = Some(bot);
             s.run = self.ledger.snapshot();
             s.places = Some(self.places());
-            s.errand = self.errand.as_ref().map(Errand::narration);
+            s.errand = self.errand.as_ref().map(Active::narration);
         }
         s
     }

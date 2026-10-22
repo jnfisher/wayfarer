@@ -338,6 +338,33 @@ pub enum GameEvent {
     Wielded {
         item: String,
     },
+    /// `bought`: `You just bought torch for 2 silver nobles, 5 copper farthings.`, the price in
+    /// copper.
+    Bought {
+        item: String,
+        copper: u64,
+    },
+    /// `buy_not_here`, `buy_unknown` or `buy_poor`: the shop would not sell it (`not_here`: out of
+    /// stock or not sold, `unknown`: no such item, `poor`: cannot afford it).
+    BuyRefused {
+        why: &'static str,
+    },
+    /// `learn_scroll`: `You read scroll of mend and learn the spell mend.`
+    Learned {
+        spell: String,
+    },
+    /// `already_known`: `You realize that you already know this scroll!`
+    AlreadyKnown,
+    /// `learn_spell_refused`: `You don't know what to do with this!`
+    LearnRefused,
+    /// `bank_balance`, its `On deposit:` line: the balance, in copper.
+    Deposit {
+        copper: u64,
+    },
+    /// `bank_withdraw`: `You withdrew 500 copper farthings.`
+    Withdrew {
+        copper: u64,
+    },
     /// `wear_fail`: `You may not wear that item!`, `You have no more room to wear that item!`
     /// or `<item> may not be worn!`.
     WearFailed,
@@ -415,6 +442,23 @@ fn parse_int(s: &str) -> Option<i64> {
     } else {
         s.parse().ok()
     }
+}
+
+/// Coins by the game's name (`gold crowns`) in copper.
+fn coins_copper(coins: &BTreeMap<String, u64>) -> u64 {
+    coins
+        .iter()
+        .map(|(name, n)| {
+            let unit = match name.split_whitespace().next().unwrap_or_default() {
+                "runic" => 1_000_000,
+                "platinum" => 10_000,
+                "gold" => 100,
+                "silver" => 10,
+                _ => 1,
+            };
+            n * unit
+        })
+        .sum()
 }
 
 fn text(ev: &Event, name: &str) -> String {
@@ -665,6 +709,27 @@ impl GameEvent {
             },
             "wield_ok" => G::Wielded {
                 item: text(ev, "item"),
+            },
+            "bought" => G::Bought {
+                item: text(ev, "item"),
+                copper: coins_copper(&parse_carrying(ev.text("price").unwrap_or_default()).0),
+            },
+            "buy_not_here" => G::BuyRefused { why: "not_here" },
+            "buy_unknown" => G::BuyRefused { why: "unknown" },
+            "buy_poor" => G::BuyRefused { why: "poor" },
+            "learn_scroll" => G::Learned {
+                spell: text(ev, "spell"),
+            },
+            "already_known" => G::AlreadyKnown,
+            "learn_spell_refused" | "use_unknown" => G::LearnRefused,
+            "bank_balance" => match ev.text("dep") {
+                Some(dep) => G::Deposit {
+                    copper: coins_copper(&parse_carrying(dep).0),
+                },
+                None => G::Other(ev.clone()),
+            },
+            "bank_withdraw" => G::Withdrew {
+                copper: int(ev, "n").map_or(0, |n| u64::try_from(n).unwrap_or(0)),
             },
             "wear_fail" => G::WearFailed,
             "weapon_forbidden" => G::NotWielded,

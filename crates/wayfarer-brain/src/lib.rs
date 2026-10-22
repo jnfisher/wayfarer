@@ -38,6 +38,7 @@ mod recover;
 mod rules;
 mod session;
 mod session_settings;
+mod shopping;
 mod spellcraft;
 mod stats;
 mod task;
