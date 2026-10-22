@@ -221,10 +221,10 @@ export function insertStops(base: RoomKey[], adds: StagedStop[]): RoomKey[] {
 }
 
 /** A generated loop's size: `3 stops, 4 steps, 1 door`. */
-export function loopText(l: GeneratedLoop): string {
+export function loopText(l: { stops: unknown[]; steps: number; doors?: number }): string {
   const n = (k: number, one: string) => `${k} ${one}${k === 1 ? "" : "s"}`;
   const parts = [n(l.stops.length, "stop"), n(l.steps, "step")];
-  if (l.doors > 0) parts.push(n(l.doors, "door"));
+  if (l.doors) parts.push(n(l.doors, "door"));
   return parts.join(", ");
 }
 
