@@ -1,8 +1,9 @@
 //! Flee (docs/brain.md "Flee", docs/plan/03-engine.md section 4): below the flee line, leave
 //! the fight by a confirmed exit toward a room that spawns nothing ([`flee_exits`]), keep
-//! running while a monster follows, up to [`FLEE_HOPS`] rooms, and hand over: Recover rests
-//! where it got to and walks back home. With no exit to take, or still followed after the last
-//! hop, it breaks off the fight and the bot stops itself with a warning.
+//! running while a monster follows, up to `health.flee_rooms` rooms, and hand over: Recover
+//! rests where it got to (healing, if it can) and walks back home. A monster that comes in
+//! while HP is still under the line starts a new flee. With no exit to take, or still followed
+//! after the last room, the character turns and fights what attacks it: the bot does not stop.
 //!
 //! A hop is one move through the executor with a `RoomSeen` expectation, as a walker's step
 //! is; a door on the way is opened first (never bashed: a locked door is no candidate). After
@@ -23,7 +24,7 @@ use wayfarer_world::{Key, LockState, MonsterRules, mm};
 use crate::executor::{Action, Confirmed, Expect, Outcome, Refused};
 use crate::modes::{Mode, Presence, Step, View};
 use crate::policy::{
-    Candidate, FLEE_BELOW, FLEE_HOPS, FLEE_WATCH, flee_exits, flee_from, hostile, spawns_here,
+    Candidate, FLEE_BELOW, FLEE_WATCH, flee_exits, flee_from, hostile, spawns_here,
 };
 
 /// A monster to flee from in the room: listed, come in, or attacking (one that attacks can be
@@ -104,6 +105,10 @@ pub(crate) struct Flee {
     trapped: Option<Key>,
     /// A forced flee finished (or was cornered), for the bot to move on.
     forced_done: bool,
+    /// An HP flee could not shake what followed it (or had no exit) in this room: the
+    /// character fights what attacks it here, and Flee does not take control again until HP
+    /// is back over the line or it is somewhere else.
+    cornered: Option<Key>,
 }
 
 impl Default for Flee {
@@ -139,6 +144,7 @@ impl Flee {
             forced: None,
             trapped: None,
             forced_done: false,
+            cornered: None,
         }
     }
 
@@ -183,6 +189,11 @@ impl Flee {
         std::mem::take(&mut self.forced_done)
     }
 
+    /// An HP flee turned to fight in `room` (it could not shake what followed it).
+    pub fn cornered_in(&self, room: Option<Key>) -> bool {
+        self.cornered.is_some() && self.cornered == room
+    }
+
     /// A forced flee could not get out of `room`.
     pub fn trapped_in(&self, room: Option<Key>) -> bool {
         self.trapped.is_some() && self.trapped == room
@@ -193,6 +204,7 @@ impl Flee {
         if hp.is_some_and(|hp| hp >= self.below) && !self.active {
             self.spent = false;
             self.hops = 0;
+            self.cornered = None;
         }
     }
 
@@ -233,8 +245,9 @@ impl Flee {
         Step::wait(narration)
     }
 
-    /// Give up: `break` off a fight first; the bot then stops itself with `why`. A forced flee
-    /// does not stop the bot: it stays in the room, and fights only what attacks it.
+    /// Out of ways to run: a forced flee stays in the room and fights only what attacks it; so
+    /// does an HP flee (the monster that followed through every room is fought, healing as it
+    /// can). Only a log-off under attack gives up: the bot stops itself so the log-off can go on.
     fn corner(&mut self, v: &View, why: String) -> Step {
         if self.forced.is_some() && !self.leaving {
             self.trapped = v.room;
@@ -248,6 +261,10 @@ impl Flee {
                 .warning();
             }
             return step.warning();
+        }
+        if !self.leaving {
+            self.cornered = v.room;
+            return self.finish(format!("Flee: {why}; fighting back")).warning();
         }
         let hp = v.hp.map_or_else(String::new, |hp| format!("at {hp}% HP: "));
         let step = self.finish(format!("Flee: {why}"));
@@ -297,6 +314,9 @@ impl Mode for Flee {
             return Some(format!("{name} is here (flee from)"));
         }
         let hp = v.hp.filter(|&hp| hp < self.below)?;
+        if self.cornered.is_some() && self.cornered == v.room {
+            return None;
+        }
         let attacked = !v.presence.attackers.is_empty();
         // Fled already: Recover rests, unless a monster attacks again. Nothing to run from
         // in a quiet room either (HP lost to poison, say).
@@ -338,6 +358,7 @@ impl Mode for Flee {
             self.watch = Some(v.now + FLEE_WATCH);
         }
         let mut why = line;
+        let max_hops = v.flee_rooms();
         if let Some(until) = self.watch {
             let follower = self
                 .followed
@@ -354,16 +375,19 @@ impl Mode for Flee {
             match follower {
                 // A forced flee is over once nothing follows: it was not for HP.
                 None if self.forced.is_some() || !spawns_here(v.atlas, v.room, v.certain) => {
+                    // A new monster that comes in is a new flee, with every room again.
+                    self.hops = 0;
                     return self.finish(format!("Safe in {here}"));
                 }
-                None if self.hops >= FLEE_HOPS => {
+                None if self.hops >= max_hops => {
+                    self.hops = 0;
                     return self.finish(format!(
-                        "Fled {FLEE_HOPS} rooms: nothing followed into {here}"
+                        "Fled {max_hops} rooms: nothing followed into {here}"
                     ));
                 }
                 None => why = format!("Fleeing on: {here} spawns"),
-                Some(name) if self.hops >= FLEE_HOPS => {
-                    return self.corner(v, format!("followed by {name} through {FLEE_HOPS} rooms"));
+                Some(name) if self.hops >= max_hops => {
+                    return self.corner(v, format!("followed by {name} through {max_hops} rooms"));
                 }
                 Some(name) => why = format!("Followed by {name}"),
             }
@@ -373,9 +397,10 @@ impl Mode for Flee {
             && !spawns_here(v.atlas, v.room, v.certain)
         {
             // Nothing to run from, and nothing spawns here.
+            self.hops = 0;
             return self.finish(format!("Safe in {here}"));
-        } else if self.hops >= FLEE_HOPS {
-            return self.corner(v, format!("attacked again after fleeing {FLEE_HOPS} rooms"));
+        } else if self.hops >= max_hops {
+            return self.corner(v, format!("attacked again after fleeing {max_hops} rooms"));
         }
         let Some(from) = v.room.filter(|_| v.certain) else {
             return self.corner(v, "cornered: not sure which room this is".to_owned());

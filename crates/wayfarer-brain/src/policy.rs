@@ -24,8 +24,9 @@ pub const REST_UNTIL: i32 = 85;
 /// plan's "twice the hardest hit this fight" was dropped (John, 2026-10-19). `wayfarer brain
 /// --flee-below` overrides it for the live check only.
 pub const FLEE_BELOW: i32 = 25;
-/// Rooms Flee runs through while followed before it gives up (the prototype's three).
-pub const FLEE_HOPS: u32 = 3;
+/// Rooms Flee runs through while followed before it turns and fights: the default of
+/// `health.flee_rooms`.
+pub const FLEE_HOPS: u32 = 6;
 /// How long Flee waits at the prompt after a hop for a monster to follow
 /// (`kb/navigation.md` "Leaving a room": a follower comes in straight after).
 pub const FLEE_WATCH: Duration = Duration::from_millis(1500);

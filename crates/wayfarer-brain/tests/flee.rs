@@ -4,14 +4,16 @@
 mod game;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
 use game::arena::*;
 use game::*;
-use wayfarer_brain::policy::{self, Candidate, FLEE_HOPS};
+use wayfarer_brain::policy::{self, Candidate};
 use wayfarer_brain::{Brain, FixedClock};
 use wayfarer_parse::Parser;
 use wayfarer_proto::{BotAction, BotMode, BotState};
+use wayfarer_settings::{Layer, Overrides, Settings};
 use wayfarer_world::LockState;
 
 const RAT: &str = "large giant rat";
@@ -32,7 +34,19 @@ fn arena_door_open(monsters: &[&str], hp: i32) -> String {
 
 /// Fighting the rat in the Arena at full HP.
 async fn fighting() -> (Game, Run) {
-    let (mut g, run) = in_arena(&[RAT]).await;
+    fighting_with("").await
+}
+
+/// The same, the brain's settings being `text` (a TOML character file).
+async fn fighting_with(text: &str) -> (Game, Run) {
+    let over = Overrides::parse(text).unwrap();
+    let settings = Settings::resolve(&[(Layer::Character, &over)]).unwrap();
+    let clock = Arc::new(FixedClock(UNIX_EPOCH + Duration::from_secs(T0)));
+    let brain = Brain::new(world(), clock, None).with_settings(settings);
+    let (mut g, run) = Game::start_brain(SessionState::Realm, arena(&[RAT], 35), brain).await;
+    g.until(|m| matches!(m, ToGateway::MapView { .. }).then_some(()))
+        .await;
+    g.idle(Duration::from_secs(20)).await;
     start(&mut g, &[RAT], 35).await;
     g.expect("a rat", line(ENGAGED, 35));
     g.narrated("Fight: large giant rat").await;
@@ -91,6 +105,38 @@ async fn under_the_line_it_flees_keeps_running_when_followed_rests_and_returns()
         "{said:?}"
     );
     assert!(!said.iter().any(|n| n.starts_with("Stopped")), "{said:?}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_monster_that_comes_in_while_resting_under_the_line_starts_a_new_flee() {
+    let (mut g, run) = fighting().await;
+    g.expect(
+        "u",
+        format!("{}{}", at_hp(&room(NARROW_ROAD), 8), follows(8)),
+    );
+    g.expect("e", at_hp(&room(NARROW_PATH), 8));
+    g.output(&lunge(8)).await;
+    g.narrated("Safe in Newhaven, Narrow Path").await;
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(8)));
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Path")
+        .await;
+    // Another rat comes in and strikes while HP is still under the line: running again, from
+    // the start (not back where it came from), with every room to run through.
+    g.expect("e", at_hp(&room(VILLAGE_ENTRANCE), 8));
+    g.idle(Duration::from_secs(1)).await;
+    g.output(&lunge(8)).await;
+    g.narrated("Fleeing: HP 22%: east to Newhaven, Village Entrance")
+        .await;
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(8)));
+    g.narrated("Safe in Newhaven, Village Entrance").await;
+    g.narrated("Recover: resting to 85% in Newhaven, Village Entrance")
+        .await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(
+        played,
+        ["st", "look", "a rat", "u", "e", "rest", "e", "rest"]
+    );
+    assert_eq!(bot(&seen).state, BotState::Running);
 }
 
 #[tokio::test(start_paused = true)]
@@ -208,8 +254,8 @@ async fn a_shut_door_that_is_not_locked_is_opened_then_taken() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn followed_through_three_rooms_it_breaks_off_and_stops() {
-    let (mut g, run) = fighting().await;
+async fn followed_through_every_room_it_turns_and_fights_and_the_bot_goes_on() {
+    let (mut g, run) = fighting_with("[health]\nflee_rooms = 3\n").await;
     g.expect(
         "u",
         format!("{}{}", at_hp(&room(NARROW_ROAD), 8), follows(8)),
@@ -222,52 +268,40 @@ async fn followed_through_three_rooms_it_breaks_off_and_stops() {
         "e",
         format!("{}{}", at_hp(&room(VILLAGE_ENTRANCE), 8), follows(8)),
     );
-    g.expect("break", prompt(8));
     g.output(&lunge(8)).await;
-    let why = format!(
-        "Stopped at 22% HP: followed by large giant rat through {FLEE_HOPS} rooms; fight or run \
-         by hand"
-    );
-    let said = g.narrated(&why).await;
+    let why = "Flee: followed by large giant rat through 3 rooms; fighting back";
+    let said = g.narrated(why).await;
     assert!(
         said.contains(
             &"Followed by large giant rat: east to Newhaven, Village Entrance".to_owned()
         ),
         "{said:?}"
     );
-    g.idle(Duration::from_secs(60)).await;
+    g.freeze();
     let (seen, played) = g.close(run).await;
-    assert_eq!(played, ["st", "look", "a rat", "u", "e", "e", "break"]);
-    assert_eq!(bot(&seen).state, BotState::Stopped);
+    // No `break`, and the bot is not stopped: the rat is fought where it stands.
+    assert_eq!(played, ["st", "look", "a rat", "u", "e", "e"]);
+    assert_eq!(bot(&seen).state, BotState::Running);
     assert!(
         seen.iter()
-            .any(|m| matches!(m, ToGateway::Warning { text, .. } if *text == why)),
+            .any(|m| matches!(m, ToGateway::Warning { text, .. } if text == why)),
         "a warning"
     );
 }
 
 #[tokio::test(start_paused = true)]
-async fn cornered_it_breaks_off_and_stops_with_a_warning() {
+async fn cornered_it_fights_back_with_a_warning_and_the_bot_goes_on() {
     // Up is refused while in combat; the north door is locked (the pack, a cold start).
     let (mut g, run) = fighting().await;
     g.expect("u", line("You may not enter that room while in combat.", 8));
-    g.expect("break", prompt(8));
     g.output(&lunge(8)).await;
-    let why = "Stopped at 22% HP: cornered in Newhaven, Arena: no exit to flee by; fight or run \
-               by hand";
-    let said = g.narrated(why).await;
-    assert!(
-        said.contains(
-            &"Flee: cornered in Newhaven, Arena: no exit to flee by; breaking off".to_owned()
-        ),
-        "{said:?}"
-    );
+    let why = "Flee: cornered in Newhaven, Arena: no exit to flee by; fighting back";
+    g.narrated(why).await;
     g.output(&lunge(6)).await;
-    g.idle(Duration::from_secs(60)).await;
+    g.freeze();
     let (seen, played) = g.close(run).await;
-    assert_eq!(played, ["st", "look", "a rat", "u", "break"]);
-    let b = bot(&seen);
-    assert_eq!(b.state, BotState::Stopped);
+    assert_eq!(played, ["st", "look", "a rat", "u"]);
+    assert_eq!(bot(&seen).state, BotState::Running);
     assert!(
         seen.iter()
             .any(|m| matches!(m, ToGateway::Warning { text, .. } if text == why)),
