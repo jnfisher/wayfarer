@@ -220,6 +220,17 @@ pub(crate) fn now_ms() -> u64 {
         .map_or(0, |d| d.as_millis() as u64)
 }
 
+/// One line of `notes.log`: a notice or warning the brain sent about the session.
+#[derive(Serialize)]
+pub(crate) struct NoteRecord<'a> {
+    /// The session's latest output `seq` then.
+    pub seq: u64,
+    pub ts: u64,
+    /// `notice` or `warning`.
+    pub kind: &'static str,
+    pub text: &'a str,
+}
+
 /// An append-only file of JSON lines beside `output.log` (`sent.log`, `brain.log`), made on the
 /// first record. A failed write is reported once until one works again, and never stops the
 /// session.

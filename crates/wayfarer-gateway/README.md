@@ -163,8 +163,9 @@ Under the logs directory (`<data dir>/logs/`), one directory per character id:
 | `sent.bin` | Every byte sent: negotiation replies and input |
 | `sent.log` | Every line sent, one JSON object per line: `{"seq":12,"ts":1760000000000,"origin":"brain","text":"st"}`; `seq` is the output `seq` it followed, `origin` `ui`, `brain` or `script` (logon and log-off steps; `Gateway::send_line_as` names it, `send_line` is `ui`), the text masked as in `sent.bin` |
 | `brain.log` | What reached the brain about the session besides output and `sent`: `{"seq":..,"ts":..,"attached":true}` (or `false`) when a brain attached or went (`Gateway::note_brain`), `{"seq":..,"ts":..,"msg":{...}}` for a UI's control message, `user_input`, `keys_sent` and `logging_off` (`Gateway::note_to_brain`) |
+| `notes.log` | The brain's notices and warnings about the session: `{"seq":..,"ts":..,"kind":"notice","text":".."}` (`kind`: `notice` or `warning`; `Gateway::note_from_brain`). What the bot said it was doing, and why it stopped |
 
-All are append-only and survive restarts (`sent.log` and `brain.log` are made on their first
+All are append-only and survive restarts (`sent.log`, `brain.log` and `notes.log` are made on their first
 line). JSON escapes newlines, so a record is always
 one line: at start-up the gateway reads only the tail of `output.log` to find the last `seq`
 and carries on from it (a record cut short by a crash is dropped), and a history lookup on
