@@ -212,8 +212,10 @@ and works nothing out itself.
   **Cancel errand** while one runs, and **Spell plan…**, which lists the spells the class could
   learn and the character lacks, each at its best shop with the price in coins, the steps there and
   a tick (`✓`) where the cash on hand still covers it, then what the cash buys now and what all of
-  them cost; spells above the character's level are greyed ("needs level 9"). It only shows the
-  plan ([brain.md](brain.md) "Buying spells"); the `[x]` closes it. They are offered only while the bot is stopped or paused. The
+  them cost; spells above the character's level are greyed ("needs level 9"). Under the plan,
+  **buy spells** runs the shopping errand: it draws money from the Bank of Godfrey in Silvermere if
+  the cash falls short, walks to the shops, buys what the money covers (the cheapest first) and
+  reads the scrolls ([brain.md](brain.md) "Buying spells"); the `[x]` closes the plan. They are offered only while the bot is stopped or paused. The
   tile's narration line shows what the errand is doing, and a notice says what it did
   ([brain.md](brain.md) "Errands").
 - **Recent places**: with nothing typed, the go box lists where the character died (its gear

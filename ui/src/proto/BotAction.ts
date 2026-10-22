@@ -3,4 +3,4 @@
 /**
  * A `bot_control` request.
  */
-export type BotAction = "start" | "stop" | "pause" | "resume" | "pick_up_all" | "equip_all" | "cancel_errand";
+export type BotAction = "start" | "stop" | "pause" | "resume" | "pick_up_all" | "equip_all" | "buy_spells" | "cancel_errand";

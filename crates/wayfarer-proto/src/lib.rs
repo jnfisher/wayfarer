@@ -352,6 +352,9 @@ pub enum BotAction {
     PickUpAll,
     /// An errand: wear and wield what is carried, into empty slots only.
     EquipAll,
+    /// An errand: buy the spells the class lacks that the cash covers (the plan, `spell_plan`),
+    /// drawing from the Bank of Godfrey when it falls short, and read the scrolls.
+    BuySpells,
     /// End the errand in progress.
     CancelErrand,
 }

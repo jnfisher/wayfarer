@@ -11,6 +11,7 @@ use std::collections::{BTreeMap, VecDeque};
 
 use wayfarer_parse::helpers::Carried;
 use wayfarer_parse::typed::GameEvent;
+use wayfarer_world::Key;
 
 use crate::executor::{Action, Expect, Outcome};
 use crate::loot::{coin_word, limit_pct, room_for};
@@ -56,12 +57,17 @@ pub(crate) struct Ctx<'a> {
     pub load: Option<(u64, u64)>,
     /// `cash.max_encumbrance`.
     pub limit: &'a str,
+    /// The room the character is believed to be in, and whether a walk is in progress.
+    pub here: Option<Key>,
+    pub walking: bool,
 }
 
 /// What the errand does next.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ErrandNext {
     Send(Action),
+    /// Walk to a room (the session's walker); the errand is asked again when the walk ends.
+    Walk(Key),
     /// Nothing now: a command is in flight.
     Wait,
     /// Finished, with what to say.
@@ -383,6 +389,8 @@ mod tests {
             coins,
             load: None,
             limit: "heavy",
+            here: None,
+            walking: false,
         }
     }
 
@@ -402,7 +410,7 @@ mod tests {
                     }
                     ended(e, &a);
                 }
-                ErrandNext::Wait => panic!("waiting with nothing in flight"),
+                ErrandNext::Wait | ErrandNext::Walk(_) => panic!("waiting with nothing in flight"),
                 ErrandNext::Done(text) => {
                     sent.push(format!("= {text}"));
                     return sent;
@@ -550,5 +558,49 @@ mod tests {
         });
         e.outcome(&a, Outcome::TimedOut);
         assert!(matches!(e.step(&c), ErrandNext::Done(t) if t.contains("left: torch")));
+    }
+}
+
+/// The errand in progress: a simple one, or the spell shopping.
+#[derive(Debug)]
+pub(crate) enum Active {
+    Simple(Errand),
+    Shop(crate::shopping::Shopping),
+}
+
+impl Active {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Active::Simple(e) => e.kind().label(),
+            Active::Shop(_) => "Spells",
+        }
+    }
+
+    pub fn narration(&self) -> String {
+        match self {
+            Active::Simple(e) => e.narration(),
+            Active::Shop(s) => s.narration(),
+        }
+    }
+
+    pub fn step(&mut self, ctx: &Ctx) -> ErrandNext {
+        match self {
+            Active::Simple(e) => e.step(ctx),
+            Active::Shop(s) => s.step(ctx),
+        }
+    }
+
+    pub fn on_event(&mut self, ev: &GameEvent) {
+        match self {
+            Active::Simple(e) => e.on_event(ev),
+            Active::Shop(s) => s.on_event(ev),
+        }
+    }
+
+    pub fn outcome(&mut self, action: &Action, outcome: Outcome) {
+        match self {
+            Active::Simple(e) => e.outcome(action, outcome),
+            Active::Shop(s) => s.outcome(action, outcome),
+        }
     }
 }

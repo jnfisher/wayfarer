@@ -92,3 +92,74 @@ async fn the_plan_waits_for_the_class_and_the_spellbook() {
     assert!(said.contains("not known"), "{said}");
     g.close(run).await;
 }
+
+/// The steps of the route from the Arena to `to`, as the walker will type them with the rooms
+/// the game shows after each.
+fn route_from_arena(to: Key) -> Vec<(String, Key)> {
+    let a = atlas();
+    let t = wayfarer_world::Traveller::default();
+    wayfarer_world::route(&a.graph, ARENA, to, &t)
+        .expect("a way to the shop")
+        .into_iter()
+        .map(|st| (st.command, st.to))
+        .collect()
+}
+
+async fn done(g: &mut Game, starts: &str) -> String {
+    g.until(|m| match m {
+        ToGateway::Notice { text, .. } | ToGateway::Warning { text, .. }
+            if text.starts_with(starts) =>
+        {
+            Some(text.clone())
+        }
+        _ => None,
+    })
+    .await
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_shopping_errand_walks_to_the_shop_buys_what_is_free_and_reads_it() {
+    let (mut g, run) = in_arena(&[]).await;
+    g.expect("st", caster_status("Mage", 35, 20));
+    g.expect("look", arena(&[], 35));
+    g.expect(
+        "spells",
+        spells_screen(&[(1, 1, "mmis", "magic missile")], 35),
+    );
+    g.bot(BotAction::Start).await;
+    g.narrated("Starting in Newhaven, Arena: re-syncing").await;
+    g.narrated("re-synced").await;
+    g.bot(BotAction::Stop).await;
+    let (_, items) = plan(&mut g).await;
+    let free: Vec<_> = items.iter().filter(|i| i.usable && i.price == 0).collect();
+    assert!(!free.is_empty(), "{items:?}");
+    let shop_room = (free[0].map, free[0].room);
+    assert!(
+        free.iter().all(|i| (i.map, i.room) == shop_room),
+        "{free:?}"
+    );
+    // Script the walk to the shop and each free scroll; the bank, with no way to it from here,
+    // is left.
+    for (command, to) in route_from_arena(shop_room) {
+        g.expect(&command, room(to));
+    }
+    for i in &free {
+        g.expect(
+            &format!("buy {}", i.scroll),
+            line(&format!("You just bought {} for nothing.", i.scroll), 35),
+        );
+        g.expect(
+            &format!("read {}", i.scroll),
+            line(
+                &format!("You read {} and learn the spell {}.", i.scroll, i.spell),
+                35,
+            ),
+        );
+    }
+    g.bot(BotAction::BuySpells).await;
+    let text = done(&mut g, "Spells done").await;
+    for i in &free {
+        assert!(text.contains(&i.spell), "{text}");
+    }
+    g.close(run).await;
+}

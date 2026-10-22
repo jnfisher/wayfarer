@@ -313,6 +313,12 @@
           {/each}
         </ul>
         <p class="totals">{planTotals(plan)}</p>
+        <button
+          class="buy"
+          disabled={errands[0]?.disabled !== false || !plan.items.some((i) => i.usable)}
+          title="Withdraw from the Bank of Godfrey if the cash falls short, walk to the shops, buy what the money covers (the cheapest first) and read the scrolls"
+          onclick={() => client.botControl(info.id, "buy_spells")}>buy spells</button
+        >
       {/if}
     </div>
   {/if}
@@ -574,6 +580,14 @@
   }
   .plan li.buy {
     color: var(--vga-lightgreen);
+  }
+  .plan .buy {
+    margin-top: 2px;
+    background: var(--vga-lightgreen);
+    color: #000;
+  }
+  .plan .buy:disabled {
+    background: var(--vga-darkgray);
   }
   .plan .totals {
     margin: 2px 0 0;

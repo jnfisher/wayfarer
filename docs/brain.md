@@ -817,6 +817,25 @@ is bought or walked (the errand that does comes after the plan).
 - **Affordable**: the usable spells in price order, each marked while the cash still covers it
   with the cheaper ones before it ("buy what the money covers").
 
+**The shopping errand** (`bot_control` `buy_spells`, the plan's **buy spells** button) does it, with
+the bot stopped or paused like the other errands ("Errands"), and `cancel_errand` ends it:
+
+1. When the cash on hand is less than all the usable scrolls cost, it walks to the **Bank of
+   Godfrey in Silvermere** (the room of that name; never another bank, John 2026-10-22), sends
+   `bankbook`, reads the `On deposit:` line, and `withdraw`s the most the balance and the need
+   allow. A bank it cannot reach, or an empty balance, is noted and the shopping goes on with the
+   cash on hand.
+2. It picks the scrolls the cash now covers, the cheapest first ("if there is not enough cash, buy
+   what we can"; the others are listed as left with their price), groups them by shop and walks to
+   each shop, the nearest first, with the player's walker.
+3. In a shop it sends `buy <scroll>` and, on "You just bought ...", `read <scroll>`: "You read ...
+   and learn the spell ..." counts it learned. A refusal (cannot afford, not sold now, unknown),
+   "you already know this scroll" and an unreadable scroll are noted, not retried. A shop it cannot
+   reach is left and the next goes on.
+4. It says what it did: "Spells done: learned illuminate (spent 4 gold 1 silver 6 copper); left:
+   mend (8 gold)". Something attacking, or the bot starting, ends it ("Spells stopped: something is
+   attacking"), keeping what was bought.
+
 ## Coins and the attack command
 
 **Loot** is a mode between Flee and Recover: when nothing is attacking and the bot is not

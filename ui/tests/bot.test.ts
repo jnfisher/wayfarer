@@ -146,6 +146,9 @@ describe("the tile", () => {
     expect(document.querySelector(".plan .totals")?.textContent).toBe(
       "With 5 gold on hand: 1 of 2 usable now (4 gold); all 2 cost 12 gold",
     );
+    // Buying goes through the errand; Spell plan itself only shows.
+    await fireEvent.click(screen.getByRole("button", { name: "buy spells" }));
+    expect(botControl).toHaveBeenLastCalledWith("a", "buy_spells");
     await fireEvent.click(screen.getByRole("button", { name: "Close the spell plan" }));
     expect(screen.queryByRole("region", { name: "Spell plan" })).toBeNull();
   });

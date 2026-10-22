@@ -62,6 +62,9 @@ pub struct Atlas {
     /// The scrolls shops sell, and each class's (magery, magery level).
     pub scrolls: Vec<wayfarer_world::spellshop::ScrollOffer>,
     pub class_magery: HashMap<String, (i64, i64)>,
+    /// The Bank of Godfrey in Silvermere: where the spell shopping draws money, never another
+    /// bank (John, 2026-10-22).
+    pub godfrey: Option<Key>,
 }
 
 /// Room types (`kb/game-data.md` "Enumerations") and shop types (`kb/economy.md`).
@@ -124,6 +127,11 @@ impl Atlas {
             knowledge,
             spells: Spells::load(pack)?,
             scrolls: wayfarer_world::spellshop::load(pack)?,
+            godfrey: pack
+                .rooms_by_name("Bank of Godfrey")?
+                .into_iter()
+                .find(|r| r.room_type == 1)
+                .map(|r| (r.map, r.room)),
             class_magery: pack
                 .class_magery()?
                 .into_iter()

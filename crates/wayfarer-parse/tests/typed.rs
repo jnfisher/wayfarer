@@ -691,3 +691,38 @@ fn the_spell_list_and_the_casting_refusals() {
     assert_eq!(example("already_this_round"), GameEvent::AlreadyCast);
     assert_eq!(example("cast_fail"), GameEvent::CastFailed);
 }
+
+#[test]
+fn buying_reading_and_the_bank() {
+    assert_eq!(
+        example("bought"),
+        GameEvent::Bought {
+            item: "torch".into(),
+            copper: 25,
+        }
+    );
+    assert_eq!(example("buy_poor"), GameEvent::BuyRefused { why: "poor" });
+    assert_eq!(
+        example("buy_not_here"),
+        GameEvent::BuyRefused { why: "not_here" }
+    );
+    assert_eq!(
+        example("learn_scroll"),
+        GameEvent::Learned {
+            spell: "vine strike".into(),
+        }
+    );
+    assert_eq!(example("already_known"), GameEvent::AlreadyKnown);
+    // Same line as an item the game does not know how to use.
+    assert_eq!(
+        line("You don't know what to do with this!")[0],
+        GameEvent::LearnRefused
+    );
+    // The balance: the first line names the bank, the second is the amount.
+    assert!(matches!(example("bank_balance"), GameEvent::Other(_)));
+    assert_eq!(
+        line("On deposit: 1 gold crowns, 5 copper farthings")[0],
+        GameEvent::Deposit { copper: 105 }
+    );
+    assert_eq!(example("bank_withdraw"), GameEvent::Withdrew { copper: 5 });
+}
