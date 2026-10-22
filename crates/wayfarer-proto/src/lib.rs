@@ -355,6 +355,12 @@ pub enum BotAction {
     /// An errand: buy the spells the class lacks that the cash covers (the plan, `spell_plan`),
     /// drawing from the Bank of Godfrey when it falls short, and read the scrolls.
     BuySpells,
+    /// An errand: walk to the right trainer and `train` until it will not; the character stays
+    /// there (to train stats, which the bot never does).
+    Train,
+    /// An errand: walk to the room the character last died in, and pick up and equip what it
+    /// dropped.
+    RecoverPile,
     /// End the errand in progress.
     CancelErrand,
 }

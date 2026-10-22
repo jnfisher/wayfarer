@@ -794,6 +794,29 @@ do not apply: it is short, and the player stands by.
   weapon is readied, and only for the first; a taken slot is never emptied. "Equip done: wearing
   padded vest, holding short sword; left: iron helm".
 
+### Training and recovering the death pile
+
+Two errands go somewhere first (`trip.rs`), walking with the player's walker; one that cannot get
+there says so and stops ("Train stopped: could not get to Training Room").
+
+- **Train** (`bot_control` `train`): the trainer is a shop of type Training whose `trainclass` is
+  0 (any) or the character's class and whose `minlevel..maxlevel` holds the character's *next*
+  level (`kb/progression.md` "Training"), the cheapest by its markup, then the nearest by route:
+  the universal Training Room (no markup) for levels 1 to 10 over a class trainer's 4x, the
+  "Super <class>" trainer at 11, then the High Level and city trainers. The sysop's is left out. It
+  sends `train` there until the trainer will not ("not enough experience for the next level", "not
+  enough money", "this trainer does not teach the next level", ...), at most 20 levels, and says
+  what it paid ("Train done: 2 levels, paid 6 gold; stopped: not enough experience for the next
+  level. At Training Room: train stats here when ready"). **The character stays in the trainer's
+  room**: the bot never `train stats`, the guard refuses it, so the player spends the character
+  points there.
+- **Recover death pile** (`bot_control` `recover_pile`): walks to the room of the character's last
+  death (the recent places, kept whether or not a run was going), then runs Pick up all and Equip
+  all there ("Pick up done: ...; Equip done: ..."). With no death on record it says so.
+
+An errand in progress is asked again every half second even when the game says nothing, so a walk
+or a re-sync that ends quietly does not leave it waiting.
+
 ## Buying spells
 
 `spell_plan_request` is answered with a `spell_plan`: the spells the character's class could learn

@@ -65,6 +65,8 @@ pub struct Atlas {
     /// The Bank of Godfrey in Silvermere: where the spell shopping draws money, never another
     /// bank (John, 2026-10-22).
     pub godfrey: Option<Key>,
+    /// The shops where `train` takes a character up a level.
+    pub trainers: Vec<wayfarer_world::trainers::Trainer>,
 }
 
 /// Room types (`kb/game-data.md` "Enumerations") and shop types (`kb/economy.md`).
@@ -127,6 +129,7 @@ impl Atlas {
             knowledge,
             spells: Spells::load(pack)?,
             scrolls: wayfarer_world::spellshop::load(pack)?,
+            trainers: wayfarer_world::trainers::load(pack)?,
             godfrey: pack
                 .rooms_by_name("Bank of Godfrey")?
                 .into_iter()

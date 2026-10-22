@@ -20,6 +20,8 @@ use crate::loot::{coin_word, limit_pct, room_for};
 const COINS: [&str; 5] = ["runic", "platinum", "gold", "silver", "copper"];
 /// `get N <coin>` takes 1 to 99998 (`kb/economy.md`).
 const MOST_AT_ONCE: u64 = 99_998;
+/// Levels one Train errand takes at most.
+const MOST_LEVELS: u32 = 20;
 /// Copies of one item picked up (or worn) at most.
 const MOST_COPIES: u32 = 10;
 /// Words of items that are not worn: they are left alone by Equip all, whatever the game says.
@@ -32,6 +34,8 @@ const NOT_WORN: [&str; 8] = [
 pub(crate) enum ErrandKind {
     PickUp,
     Equip,
+    /// `train` until the trainer will not.
+    Train,
 }
 
 impl ErrandKind {
@@ -40,6 +44,7 @@ impl ErrandKind {
         match self {
             ErrandKind::PickUp => "Pick up",
             ErrandKind::Equip => "Equip",
+            ErrandKind::Train => "Train",
         }
     }
 }
@@ -92,6 +97,8 @@ enum Job {
     Wield {
         name: String,
     },
+    /// `train`.
+    Train,
 }
 
 impl Job {
@@ -101,6 +108,7 @@ impl Job {
             Job::Item { name } => format!("get {name}"),
             Job::Wear { name } => format!("wear {name}"),
             Job::Wield { name } => format!("wield {name}"),
+            Job::Train => "train".to_owned(),
         }
     }
 }
@@ -124,6 +132,8 @@ struct Heard {
     wear_failed: bool,
     not_weapon: bool,
     too_heavy: bool,
+    trained: Option<u64>,
+    train_refused: Option<&'static str>,
 }
 
 #[derive(Debug)]
@@ -139,6 +149,10 @@ pub(crate) struct Errand {
     skipped: Vec<String>,
     /// The game would not let the character carry more.
     full: bool,
+    /// Levels trained and the fees paid, for the summary; why the trainer stopped.
+    levels: u32,
+    fees: u64,
+    stopped: Option<&'static str>,
 }
 
 impl Errand {
@@ -152,6 +166,9 @@ impl Errand {
             done: Vec::new(),
             skipped: Vec::new(),
             full: false,
+            levels: 0,
+            fees: 0,
+            stopped: None,
         }
     }
 
@@ -166,6 +183,7 @@ impl Errand {
             (None, Stage::Start | Stage::Refreshing) => match self.kind {
                 ErrandKind::PickUp => "looking".to_owned(),
                 ErrandKind::Equip => "checking what is carried".to_owned(),
+                ErrandKind::Train => "training".to_owned(),
             },
             (None, Stage::Working) => "finishing".to_owned(),
         };
@@ -183,6 +201,12 @@ impl Errand {
                 let action = match self.kind {
                     ErrandKind::PickUp => Action::new("look", Expect::RoomSeen),
                     ErrandKind::Equip => Action::new("i", Expect::Prompt),
+                    // Nothing to look at first: the first `train` is the first job.
+                    ErrandKind::Train => {
+                        self.stage = Stage::Working;
+                        self.todo.push_back(Job::Train);
+                        return self.step(ctx);
+                    }
                 };
                 // Not a job: the answer makes them.
                 self.current = Some((
@@ -249,6 +273,7 @@ impl Errand {
                     }
                 }
             }
+            ErrandKind::Train => {}
             ErrandKind::Equip => {
                 self.weapon = ctx
                     .carried
@@ -284,6 +309,8 @@ impl Errand {
             GameEvent::WearFailed => heard.wear_failed = true,
             GameEvent::NotWielded => heard.not_weapon = true,
             GameEvent::CannotCarry => heard.too_heavy = true,
+            GameEvent::Trained { copper } => heard.trained = Some(*copper),
+            GameEvent::TrainRefused { why } => heard.train_refused = Some(why),
             _ => {}
         }
     }
@@ -329,6 +356,18 @@ impl Errand {
                     self.skipped.push(name);
                 }
             }
+            Job::Train => {
+                if let (Some(fee), false) = (heard.trained, timed_out) {
+                    self.levels += 1;
+                    self.fees += fee;
+                    // Another level may be due at once.
+                    if self.levels < MOST_LEVELS {
+                        self.todo.push_front(Job::Train);
+                    }
+                } else {
+                    self.stopped = Some(heard.train_refused.unwrap_or("no_answer"));
+                }
+            }
             Job::Wield { name } => {
                 if heard.wielded {
                     self.weapon = true;
@@ -346,6 +385,23 @@ impl Errand {
     }
 
     fn summary(&self) -> String {
+        if self.kind == ErrandKind::Train {
+            let why = match self.stopped {
+                Some("no_exp") => "not enough experience for the next level",
+                Some("no_money") => "not enough money for the next level",
+                Some("wrong_room") => "this is not the right trainer",
+                Some("band") => "this trainer does not teach the next level",
+                Some("capped") => "no further training is allowed",
+                Some(_) => "no answer",
+                None => "the most levels at once",
+            };
+            return format!(
+                "Train done: {} {}, paid {}; stopped: {why}",
+                self.levels,
+                if self.levels == 1 { "level" } else { "levels" },
+                crate::shopping::coin_text(self.fees)
+            );
+        }
         let list = |v: &[String]| {
             if v.is_empty() {
                 "nothing".to_owned()
@@ -566,6 +622,7 @@ mod tests {
 pub(crate) enum Active {
     Simple(Errand),
     Shop(crate::shopping::Shopping),
+    Trip(crate::trip::Trip),
 }
 
 impl Active {
@@ -573,6 +630,7 @@ impl Active {
         match self {
             Active::Simple(e) => e.kind().label(),
             Active::Shop(_) => "Spells",
+            Active::Trip(t) => t.label(),
         }
     }
 
@@ -580,6 +638,7 @@ impl Active {
         match self {
             Active::Simple(e) => e.narration(),
             Active::Shop(s) => s.narration(),
+            Active::Trip(t) => t.narration(),
         }
     }
 
@@ -587,6 +646,7 @@ impl Active {
         match self {
             Active::Simple(e) => e.step(ctx),
             Active::Shop(s) => s.step(ctx),
+            Active::Trip(t) => t.step(ctx),
         }
     }
 
@@ -594,6 +654,7 @@ impl Active {
         match self {
             Active::Simple(e) => e.on_event(ev),
             Active::Shop(s) => s.on_event(ev),
+            Active::Trip(t) => t.on_event(ev),
         }
     }
 
@@ -601,6 +662,7 @@ impl Active {
         match self {
             Active::Simple(e) => e.outcome(action, outcome),
             Active::Shop(s) => s.outcome(action, outcome),
+            Active::Trip(t) => t.outcome(action, outcome),
         }
     }
 }

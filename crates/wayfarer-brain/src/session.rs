@@ -223,6 +223,9 @@ struct TypedLine {
     at: Instant,
 }
 
+/// How soon an errand in progress is asked again with nothing happening.
+const ERRAND_POLL: Duration = Duration::from_millis(500);
+
 /// Whose action is in the executor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Owner {
@@ -2258,6 +2261,8 @@ impl Session {
             BotAction::PickUpAll
                 | BotAction::EquipAll
                 | BotAction::BuySpells
+                | BotAction::Train
+                | BotAction::RecoverPile
                 | BotAction::CancelErrand
         ) {
             self.errand_control(action, out);
@@ -2302,6 +2307,8 @@ impl Session {
             BotAction::PickUpAll
             | BotAction::EquipAll
             | BotAction::BuySpells
+            | BotAction::Train
+            | BotAction::RecoverPile
             | BotAction::CancelErrand => return,
         };
         self.say(says, out);
@@ -2392,17 +2399,95 @@ impl Session {
             let errand = match action {
                 BotAction::PickUpAll => Active::Simple(Errand::new(ErrandKind::PickUp)),
                 BotAction::EquipAll => Active::Simple(Errand::new(ErrandKind::Equip)),
-                _ => match self.shopping_errand() {
-                    Ok(e) => e,
-                    Err(why) => {
-                        out.push(self.warning(&why));
-                        return;
+                other => {
+                    let made = match other {
+                        BotAction::Train => self.training_errand(),
+                        BotAction::RecoverPile => self.pile_errand(),
+                        _ => self.shopping_errand(),
+                    };
+                    match made {
+                        Ok(e) => e,
+                        Err(why) => {
+                            out.push(self.warning(&why));
+                            return;
+                        }
                     }
-                },
+                }
             };
             out.push(self.notice(&format!("{} started", errand.label())));
             self.errand = Some(errand);
         }
+    }
+
+    /// Train: walk to the trainer that takes the character (the cheapest, then the nearest) and
+    /// `train` there; it stays, for the player to train stats.
+    fn training_errand(&self) -> Result<Active, String> {
+        let atlas = self
+            .atlas
+            .as_ref()
+            .ok_or("Train: the brain has no world pack")?;
+        let c = self.character.state();
+        let level = c
+            .level
+            .map(i64::from)
+            .ok_or("Train: the character's level is not known yet")?;
+        let class = c.class.as_ref().and_then(|n| atlas.classes.get(n).copied());
+        let here = self
+            .position
+            .best()
+            .ok_or("Train: the position is unknown")?;
+        let dist = distances(&atlas.graph, here, 10_000, &self.position.traveller);
+        let (trainer, room, _) =
+            wayfarer_world::trainers::choose(&atlas.trainers, class, level, |rooms| {
+                rooms
+                    .iter()
+                    .filter_map(|k| dist.get(k).map(|d| (*d, *k)))
+                    .min()
+            })
+            .ok_or_else(|| {
+                format!(
+                    "Train: no trainer takes level {} here, or none can be reached",
+                    level + 1
+                )
+            })?;
+        let name = trainer.name.clone();
+        let after = format!("At {name}: train stats here when ready");
+        Ok(Active::Trip(crate::trip::Trip::new(
+            "Train",
+            (room, name),
+            vec![Errand::new(ErrandKind::Train)],
+            Some(after),
+        )))
+    }
+
+    /// Recover death pile: walk to the room the character last died in, then pick up and equip.
+    fn pile_errand(&self) -> Result<Active, String> {
+        let atlas = self
+            .atlas
+            .as_ref()
+            .ok_or("Recover: the brain has no world pack")?;
+        let died = self
+            .ledger
+            .places()
+            .iter()
+            .find(|p| p.kind == StoredPlace::Death)
+            .ok_or("Recover: no death is on record for this character")?;
+        let name = atlas
+            .graph
+            .room(died.room)
+            .map_or_else(|| "where it died".to_owned(), |r| r.name.clone());
+        Ok(Active::Trip(crate::trip::Trip::new(
+            "Recover",
+            (
+                died.room,
+                format!("{name} ({}:{})", died.room.0, died.room.1),
+            ),
+            vec![
+                Errand::new(ErrandKind::PickUp),
+                Errand::new(ErrandKind::Equip),
+            ],
+            None,
+        )))
     }
 
     /// The spell shopping from the plan: the scrolls usable now, cheapest first, and the Bank of
@@ -3106,6 +3191,8 @@ impl Session {
             .chain(engaged)
             .chain(typed)
             .chain(self.ledger.deadline())
+            // An errand waits for a walk, a re-sync or the prompt: ask again soon, event or not.
+            .chain(self.errand.as_ref().map(|_| now + ERRAND_POLL))
             .chain(
                 self.settings_source
                     .reads_files()

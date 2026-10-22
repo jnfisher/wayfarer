@@ -42,6 +42,7 @@ mod shopping;
 mod spellcraft;
 mod stats;
 mod task;
+mod trip;
 mod walker;
 
 pub use brain::{Atlas, BUILD, Brain, BrainError, World};

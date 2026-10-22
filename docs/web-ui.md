@@ -209,7 +209,9 @@ and works nothing out itself.
 - **Errands**: the `[▼]` button in a tile's header (in the realm, with a brain attached) opens
   a menu: **Pick up all** (the coins and the items on the floor, copper included) and **Equip all**
   (wear and wield what is carried, into empty slots only; nothing worn is replaced), and
-  **Cancel errand** while one runs, and **Spell plan…**, which lists the spells the class could
+  **Train** (walk to the right trainer and train levels; it stays there so you can train stats),
+  **Recover death pile** (walk to where the character last died, pick up and equip; greyed with no
+  death on record), **Cancel errand** while one runs, and **Spell plan…**, which lists the spells the class could
   learn and the character lacks, each at its best shop with the price in coins, the steps there and
   a tick (`✓`) where the cash on hand still covers it, then what the cash buys now and what all of
   them cost; spells above the character's level are greyed ("needs level 9"). Under the plan,
