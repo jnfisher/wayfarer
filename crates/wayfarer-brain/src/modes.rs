@@ -205,6 +205,17 @@ impl View<'_> {
         self.settings.choice("combat.attack_command")
     }
 
+    /// Rooms Flee runs through while followed (`health.flee_rooms`).
+    pub fn flee_rooms(&self) -> u32 {
+        u32::try_from(self.settings.int("health.flee_rooms")).unwrap_or(crate::policy::FLEE_HOPS)
+    }
+
+    /// Cast a heal while recovering below this per cent HP (`spells.heal_resting_below_hp`,
+    /// 0 is off).
+    pub fn rest_heal_below(&self) -> i32 {
+        self.setting("spells.heal_resting_below_hp", 60)
+    }
+
     /// The most attack casts at one monster before the weapon takes over (0: no limit).
     pub fn max_casts(&self) -> u32 {
         u32::try_from(self.settings.int("spells.max_casts_per_monster")).unwrap_or(0)
@@ -737,7 +748,8 @@ impl Bot {
         if let Some(name) = self.fight.take_stalemate() {
             self.stalemate(name, &mut says);
         }
-        self.fight.set_cornered(self.flee.trapped_in(v.room));
+        self.fight
+            .set_cornered(self.flee.trapped_in(v.room) || self.flee.cornered_in(v.room));
         if let Some(t) = &mut self.task {
             t.observe(v);
             // Recover rests from, and walks back to, the stop Task is at or walking to.

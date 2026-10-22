@@ -17,9 +17,8 @@ use crate::policy::{REST_TRIES, REST_WAIT, RestAt, rest_at};
 /// Walks to a quiet room, and walks back, tried before giving up on each (a fight can stop a
 /// walk on the way).
 const WALKS: u32 = 2;
-/// Heals cast on the way to a rest, at most: more than this and the mana is better spent
-/// resting it back with the HP.
-const HEALS: u32 = 6;
+/// How long Recover leaves healing alone after the game says the mana is short.
+const NO_MANA_PAUSE: Duration = Duration::from_secs(30);
 /// One general spell goes per 5-s round (`kb/spells.md`).
 const HEAL_GAP: Duration = Duration::from_secs(5);
 
@@ -38,8 +37,7 @@ pub(crate) struct Recover {
     wait_until: Option<Instant>,
     /// Resting in a room that spawns after the walks out were stopped has been warned of.
     warned: bool,
-    /// Heals cast since Recover took control, and when the next may go.
-    heals: u32,
+    /// When the next heal may go (a round after the last, or after the mana ran short).
     heal_ready: Option<Instant>,
 }
 
@@ -76,18 +74,16 @@ impl Recover {
     /// A heal on the character, between fights: while HP is below the rest line, a heal
     /// spell and its mana are there, and not too many have gone. Resting waits for it.
     fn heal(&mut self, v: &View) -> Option<Step> {
-        if v.resting || v.poisoned || self.heals >= HEALS || v.hp? >= v.rest_below() {
+        let below = v.rest_heal_below();
+        if v.poisoned || below == 0 || v.hp? >= below {
             return None;
         }
         let spell = v.heal_spell()?;
-        if let Some(t) = self.heal_ready.filter(|&t| v.now < t) {
-            let secs = (t - v.now).as_secs() + 1;
-            return Some(Step::wait(format!(
-                "Recover: HP {}%, the next heal in {secs} s",
-                v.hp?
-            )));
+        // Between casts it rests (a cast ends a rest; the next prompt without `(Resting)` has
+        // it rest again).
+        if self.heal_ready.is_some_and(|t| v.now < t) {
+            return None;
         }
-        self.heals += 1;
         self.heal_ready = Some(v.now + HEAL_GAP);
         Some(Step::send(
             Action::new(spell.short.clone(), Expect::Prompt),
@@ -150,12 +146,12 @@ impl Mode for Recover {
             self.done();
             return Step::wait(format!("Recover: rested in {here}"));
         }
+        if let Some(step) = self.heal(v) {
+            return step;
+        }
         if v.resting {
             self.rests = 0;
             return Step::wait(format!("Recover: resting to {}% in {here}", v.rest_until()));
-        }
-        if let Some(step) = self.heal(v) {
-            return step;
         }
         // Every walk out was stopped on the way (a fight) and a quiet room is still near:
         // resting here goes against the quiet-room rule (`kb/pitfalls.md` 20, 24). Said once.
@@ -213,8 +209,8 @@ impl Mode for Recover {
 
     fn on_event(&mut self, ev: &GameEvent, now: Instant) {
         match ev {
-            // Out of mana: no more heals this time; the rest brings it back.
-            GameEvent::NoMana => self.heals = HEALS,
+            // Out of mana: no more heals for a while; the rest brings it back.
+            GameEvent::NoMana => self.heal_ready = Some(now + NO_MANA_PAUSE),
             GameEvent::TooSick => {
                 self.rests = 0;
                 self.wait_until = Some(now + REST_WAIT);

@@ -338,8 +338,9 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
 - **A monster that attacks while resting** wakes the bot: Fight takes the character (in the
   quiet room, if it is there), then Recover carries on and walks home when rested. One that
   arrives and doesn't attack leaves the rest alone.
-- **The bot stops itself** when Flee has no way out (below), when the character dies (`You have
-  been killed!`) and when the session leaves the realm, with a warning. Auto-combat goes on in
+- **The bot stops itself** when the character dies (`You have been killed!`) and when the
+  session leaves the realm, with a warning (and when a log-off under attack finds no way out,
+  "Flee", below). Auto-combat goes on in
   the game: the fight is the player's.
 - **Pause and take-over**: a line the player types that acts in the game (a move, `rest`,
   `get`, ...; "Typing beside the bot", below), or keys, pause the bot after the action in
@@ -348,8 +349,8 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
   (`F9`, `[►]`) re-syncs first, then narrates what it does next. **Stop** (`F10`, `[■]`)
   sends nothing more; a walk of the bot's stops after the move in flight.
 - **Constants** in this slice, settings in M4 (`docs/plan/04-settings.md` section 3): rest
-  below 60%, rest until 85%, flee below 25%, three rooms of fleeing, a 1.5 s watch for a
-  follower, a quiet room within 5 steps (`crates/wayfarer-brain/src/policy.rs`).
+  below 60%, rest until 85%, flee below 25%, a 1.5 s watch for a follower, a quiet room within
+  5 steps (`crates/wayfarer-brain/src/policy.rs`).
 
 Not in this slice: coins and loot, healers (spells are in "Spells", below), bash and the other attacks,
 "guard while paused" (paused means nothing is sent, Flee included), and a fight the bot thinks
@@ -377,15 +378,20 @@ sent yet is dropped, and Flee acts at the next prompt.
   locked (`The door is Closed!`) is opened first. Then it waits up to 1.5 s at the prompt for a
   follower: the monster's follow text (`The giant rat creeps in after you!`), a hostile monster
   arriving, or an attack. Followed, it hops again; not followed, and nothing spawns here, it is
-  **safe**; not followed but in a room that spawns, it hops on toward a quiet one. Three hops at
-  most while HP stays under the line.
+  **safe**; not followed but in a room that spawns, it hops on toward a quiet one. At most
+  `health.flee_rooms` hops (6) while HP stays under the line.
 - **After**: Recover takes over, whatever the HP: it rests where Flee got to (walking to a quiet
-  room within 5 steps if it must) to 85%, then walks back home, and Fight carries on there. A
-  monster that attacks again while HP is still under the line sets off another flee.
+  room within 5 steps if it must) to 85%, healing as it rests if it has a heal and the mana
+  (`spells.heal_resting_below_hp`, "Spells"), then walks back home, and Fight carries on there.
+  A monster that comes in and attacks while HP is still under the line sets off another flee,
+  with all its rooms again.
 - **Cornered**: with no exit to take (the position not sure of the room, every exit refused,
-  locked or gated), or still followed after the third hop, it sends `break` if the character is
-  fighting and the bot stops itself with a warning: "Stopped at 22% HP: cornered in Newhaven,
-  Arena: no exit to flee by; fight or run by hand".
+  locked or gated), or still followed after the last hop, the character turns and fights what
+  attacks it, healing in the fight as the settings allow (`spells.heal_in_combat_below_hp`), and
+  the bot goes on, with a warning: "Flee: followed by large giant rat through 6 rooms; fighting
+  back". Flee does not take control again in that room until HP is over the line. Only a
+  log-off under attack that finds no way out still ends in `break` and a stopped bot, so that
+  the log-off can go on.
 - **Whatever the HP**: a monster to *flee from* seen in the room (listed, or arriving; whether
   or not it attacks), and a stalemate, set a flee off at full HP too ("Monster rules", below):
   "Fleeing: gigantic black ooze is here (flee from): south to ...", "Fleeing: stalemate with
@@ -649,6 +655,7 @@ rest_until_hp = 92
 |---|---|---|---|
 | `bot.style` | `"balanced"` | careful, balanced, bold | How far to move the three HP lines (flee below / rest below / rest until) from the class's: Careful adds 5 / 10 / 5, Bold takes them off, Balanced leaves them. A line set in a file beats the preset |
 | `health.flee_below_hp` | 25 | 0–90 | Flee takes control below this per cent of the maximum HP |
+| `health.flee_rooms` | 6 | 1–30 | Rooms Flee runs through while a monster keeps following, before the character turns and fights |
 | `health.rest_below_hp` | 60 | 10–99 | Recover takes control below this per cent |
 | `health.rest_until_hp` | 85 | 20–100 | Recover rests until this per cent |
 | `movement.search_limit` | 300 | 1–1000 | Searches for a hidden exit before the walker gives it up |
@@ -793,11 +800,13 @@ scroll read since is found the next time.
   fight, whatever the mana. A heal in the middle does not start the count again; a new
   monster does. A cast line counts as the character's own combat, so a
   fight fought with a spell does not lapse after 12 s of "no blows" and start over.
-- **Heals between fights.** Recover casts the cheapest heal that covers the HP that are missing
-  (else the strongest it can pay for) while HP is below `health.rest_below_hp`, one per 5 s (a
-  round is 5 s), at most six per rest, before it walks to a quiet room and rests: a Cleric at
-  57% heals itself instead of waiting several minutes. Resting is still how it reaches
-  `health.rest_until_hp`. `spells.heal` `off` makes it only rest.
+- **Heals while recovering.** Recover casts the cheapest heal that covers the HP that are
+  missing (else the strongest it can pay for) while HP is below `spells.heal_resting_below_hp`
+  (60%; 0 turns it off), one per round (5 s), before it walks to a quiet room, and again while
+  it rests: a cast ends the rest and it rests again at once, so the heals come between the
+  rest's regeneration, as long as the mana lasts (`You do not have enough mana` stops them for
+  30 s). A Cleric at 57% heals itself instead of waiting several minutes. Resting is still how
+  it reaches `health.rest_until_hp`. `spells.heal` `off` makes it only rest.
 - **Heals in a fight.** Below `spells.heal_in_combat_below_hp` (50%) Fight casts a heal instead
   of waiting, once per 5 s (a round). Heals cost no energy (`energy` 0 in the pack), so the
   point is to heal between rounds and be engaged again before the next one: the cast ends

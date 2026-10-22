@@ -136,7 +136,7 @@ async fn a_cast_the_game_refuses_falls_back_to_the_weapon() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_cleric_heals_before_it_rests_a_round_apart() {
+async fn a_cleric_heals_then_rests_and_heals_again_while_resting() {
     let (mut g, run) = in_arena(&[]).await;
     // 10 of 35 is 28%: below the 60% line. A heal averages about 5, the mana is 20.
     start_caster(&mut g, "Cleric", &CLERIC_SPELLS, &[], 10, 20).await;
@@ -144,19 +144,40 @@ async fn a_cleric_heals_before_it_rests_a_round_apart() {
         "mihe",
         format!("You cast minor healing, for 5\r\n{}", prompt(15)),
     );
-    g.expect(
-        "mihe",
-        format!("You cast minor healing, for 5\r\n{}", prompt(20)),
-    );
-    g.expect(
-        "mihe",
-        format!("You cast minor healing, for 11\r\n{}", prompt(31)),
-    );
+    // A round has not passed: it goes on to a quiet room and rests there.
+    g.expect("u", at_hp(&room(NARROW_ROAD), 15));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(15)));
     g.narrated("Recover: HP 28%, casting minor healing").await;
-    g.narrated("Recover: HP 42%, the next heal in 5 s").await;
-    g.narrated("Waiting here").await;
+    g.narrated("Recover: walking to Newhaven, Narrow Road to rest (Newhaven, Arena spawns)")
+        .await;
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
+        .await;
+    // Resting, HP 18 of 35 (51%) is under the line: a round later it heals again, which ends
+    // the rest, and rests again.
+    g.expect(
+        "mihe",
+        format!("You cast minor healing, for 5\r\n{}", prompt(23)),
+    );
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(23)));
+    g.output(&resting(18)).await;
+    g.idle(Duration::from_secs(6)).await;
     let (_, played) = g.close(run).await;
-    assert_eq!(played, ["st", "look", "spells", "mihe", "mihe", "mihe"]);
+    assert_eq!(
+        played,
+        ["st", "look", "spells", "mihe", "u", "rest", "mihe", "rest"]
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn heal_while_resting_at_0_leaves_the_rest_alone() {
+    let (mut g, run) = in_arena_with(&[], "[spells]\nheal_resting_below_hp = 0\n").await;
+    start_caster(&mut g, "Cleric", &CLERIC_SPELLS, &[], 20, 20).await;
+    g.expect("u", at_hp(&room(NARROW_ROAD), 20));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
+        .await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "spells", "u", "rest"]);
 }
 
 #[tokio::test(start_paused = true)]

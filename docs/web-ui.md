@@ -68,8 +68,8 @@ controls, just left of the server:
 
 **Start** plays the character where it stands: it fights what comes, keeps auto-combat on,
 rests when HP is low (in the nearest quiet room if this one spawns, then walks back), and
-flees below 25% HP to a room where nothing spawns, rests there and walks back; it stops itself
-with a warning only when there is no way out ([brain.md](brain.md) "Flee"). **Typing beside
+flees below 25% HP to a room where nothing spawns, rests there and walks back; when a monster
+follows it through every room it turns and fights it ([brain.md](brain.md) "Flee"). **Typing beside
 it**: talk and look (`gossip hi`, `st`, `look`, `who`) goes between the bot's commands and does
 not pause it; a line that acts (`n`, `rest`, `buy sword`) pauses it after the command in flight
 ("You took over Waydeva" in the dev panel), then goes; so do keys, and clicking a room on the
