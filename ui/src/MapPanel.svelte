@@ -1,6 +1,9 @@
 <script lang="ts" module>
   /** The last Alt+G the go box answered, kept while the panel is unmounted (another tab). */
   let handledGo = 0;
+  /** How many loops the list shows, and how long after the last ask a move of the character asks again. */
+  const LOOPS_SHOWN = 12;
+  const LOOPS_REFRESH_MS = 5000;
 </script>
 
 <script lang="ts">
@@ -25,7 +28,6 @@
     type ViewState,
   } from "./lib/map";
   import { centreOn, FIND_DEBOUNCE_MS, goRows, MIN_QUERY, moveChoice, type FoundMessage, type GoRow } from "./lib/goto";
-  import { LOOP_RADII, shownLoops } from "./lib/loopsearch";
   import { FONT_FAMILY } from "./lib/theme";
   import type { CharacterState, GeneratedLoop, LoopStop, MapRoom, MegaMudLoop, RoomKey, SessionInfo } from "./proto";
 
@@ -41,9 +43,9 @@
     onstop: (session: string) => void;
     /** The brain's last `loops` for it. */
     loops?: Loops;
-    /** Ask for the loops within `radius` steps of `anchor` (the character's room if left out),
-     * through doors or not. */
-    onloops?: (session: string, doors: boolean, radius?: number, anchor?: RoomKey) => void;
+    /** Ask for the nearest loops, at most `limit`, those matching `query` if given (`radius`:
+     * how far the generated ones are made around the character). */
+    onloops?: (session: string, radius?: number, query?: string, limit?: number) => void;
     /** Walk a loop once (a generated loop's id, or a MegaMud loop's file). */
     onwalkloop?: (session: string, id: string) => void;
     /** Run a loop (by id or file), passing by the stops in `skip` (the unticked ones). */
@@ -184,10 +186,9 @@
   const position = $derived(character?.position);
   const known = $derived(position?.room !== undefined);
   const walking = $derived(character?.walking);
-  // The loops list: open or not, through doors or not, the loop hovered and the one picked
+  // The loops list: open or not, the loop hovered and the one picked
   // (a generated loop's id, or `mm:` and a MegaMud file).
   let loopsOpen = $state(false);
-  let doors = $state(true);
   let hoverLoop = $state<string | null>(null);
   let pickedLoop = $state<string | null>(null);
 
@@ -272,34 +273,35 @@
     return `${loops.radius} steps around ${r?.name || `${a.map}:${a.room}`}`;
   });
 
-  // Searching the list, how far around to look, and the place it is around when the player
-  // picked one in the go box (else the character's room).
+  // The list is the nearest loops, from the character's room, nearest first: the ones that
+  // match what is typed, from anywhere the character can walk to. The brain does the finding.
   let loopQuery = $state("");
-  let radius = $state<number>(LOOP_RADIUS);
-  let anchor = $state<RoomKey | null>(null);
-  const shown = $derived(shownLoops(loops && loops.session === session?.id ? loops : undefined, loopQuery));
-  /** The list is around a room the character has left. */
-  const stale = $derived(
-    !anchor && !!loops && position?.room !== undefined && keyOf({ map: position.map ?? 0, room: position.room }) !== keyOf(loops.anchor),
-  );
+  let loopTimer: ReturnType<typeof setTimeout> | undefined;
+  let lastAsked = 0;
+
+  /** The loops of the brain's last answer, nearest first (generated, the player's own and MegaMud's together). */
+  type Entry = { key: string; kind: "generated" | "custom" | "megamud"; distance: number; g?: GeneratedLoop; m?: MegaMudLoop };
+  const entries = $derived.by((): Entry[] => {
+    if (!loops || loops.session !== session?.id) return [];
+    const far = Number.MAX_SAFE_INTEGER;
+    const all: Entry[] = [
+      ...loops.generated.map((g): Entry => ({ key: g.id, kind: "generated", distance: g.distance ?? far, g })),
+      ...(loops.custom ?? []).map((g): Entry => ({ key: g.id, kind: "custom", distance: g.distance ?? far, g })),
+      ...loops.megamud.map((m): Entry => ({ key: `mm:${m.file}`, kind: "megamud", distance: m.distance ?? far, m })),
+    ];
+    const name = (e: Entry) => (e.g?.name ?? e.m?.description ?? "").toLowerCase();
+    return all.sort((x, y) => x.distance - y.distance || name(x).localeCompare(name(y)));
+  });
 
   function askLoops() {
-    if (session) onloops?.(session.id, doors, radius, anchor ?? undefined);
+    lastAsked = Date.now();
+    if (session) onloops?.(session.id, LOOP_RADIUS, loopQuery.trim() || undefined, LOOPS_SHOWN);
   }
 
-  /** The loops around the character's room again. */
-  function nearMe() {
-    anchor = null;
-    askLoops();
-  }
-
-  /** The loops around a place found in the go box. */
-  function loopsNear(row: GoRow) {
-    const r = row.room;
-    if (!r) return;
-    anchor = { map: r.map, room: r.room };
-    loopsOpen = true;
-    askLoops();
+  /** Ask after a pause in the typing. */
+  function askLoopsSoon(ms = FIND_DEBOUNCE_MS) {
+    clearTimeout(loopTimer);
+    loopTimer = setTimeout(askLoops, ms);
   }
 
   // Opening the list asks again, so it is around where the character is now.
@@ -313,8 +315,19 @@
       e.preventDefault();
       e.stopPropagation();
       loopQuery = "";
+      askLoopsSoon(0);
     }
   }
+
+  // The character moves on while the list is open and standing still: the nearest are not the
+  // same, so ask again (not more than every few seconds).
+  $effect(() => {
+    const room = position?.room;
+    if (!loopsOpen || room === undefined || walking) return;
+    untrack(() => {
+      if (Date.now() - lastAsked > LOOPS_REFRESH_MS) askLoopsSoon(1500);
+    });
+  });
 
   /** Pick a loop to keep it drawn (again to let it go), showing the floor of its first stop. */
   function pickLoop(id: string) {
@@ -537,7 +550,6 @@
                   {/if}
                   {#if chosen === i && row.room}
                     <button class="walk" onclick={() => go(row)}>go</button>
-                    <button class="walk" onclick={() => loopsNear(row)} title="List the loops around this place">loops near</button>
                     {#if base}
                       <button class="walk" onclick={() => stage(row)} title={`Put this room in a loop made from ${base.name}`}
                         >add to loop</button
@@ -559,87 +571,68 @@
           placeholder="find a loop by name, file, author or stop…"
           aria-label="Find a loop"
           bind:value={loopQuery}
+          oninput={() => askLoopsSoon()}
           onkeydown={onloopkeydown}
         />
-        <label title="Loops through doors too"><input type="checkbox" bind:checked={doors} onchange={askLoops} /> doors</label>
-        <label title="How far from the character's room to look for loops">
-          within
-          <select bind:value={radius} onchange={askLoops} aria-label="Loop radius">
-            {#each LOOP_RADII as r (r)}
-              <option value={r}>{r}</option>
-            {/each}
-          </select>
-          steps
-        </label>
-        <button onclick={() => nearMe()} class:attention={stale} title="The loops around the character's room now">near me</button>
-      </div>
-      <div class="dim around">
-        {#if loops}
-          {loopsAround}{#if anchor} (picked on the map; “near me” goes back){/if}
-          {#if stale}
-            <span class="maybe">you have moved: “near me” refreshes the list</span>
-          {/if}
-          {#if loopQuery.trim()}
-            · {shown.count} of {shown.total} match
-          {/if}
-        {/if}
       </div>
       {#if loopsOpen}
-        {#if !loops}
+        {#if !loops || loops.session !== session?.id}
           <p class="dim">Asking the brain…</p>
         {:else}
-          <ul aria-label="Generated loops">
-            {#each shown.generated as l (l.id)}
-              <li class:on={pickedLoop === l.id}>
+          <div class="dim around">
+            {#if loopQuery.trim()}
+              {entries.length} nearest of {loops.matches} matching “{loopQuery.trim()}”
+            {:else}
+              the {entries.length} nearest of {loops.matches} loops
+            {/if}
+            · nearest first, from {loopsAround}
+          </div>
+          <ul aria-label="Loops">
+            {#each entries as e (e.key)}
+              {@const l = e.g}
+              {@const m = e.m}
+              <li class:on={pickedLoop === e.key}>
+                <span class="dist" title="Steps from the character to the nearest room of this loop">{e.distance === Number.MAX_SAFE_INTEGER ? "?" : e.distance}</span>
                 <button
                   class="pick"
-                  aria-pressed={pickedLoop === l.id}
-                  title={stopsTip(l.stops)}
-                  onclick={() => pickLoop(l.id)}
-                  onpointerenter={() => (hoverLoop = l.id)}
+                  aria-pressed={pickedLoop === e.key}
+                  title={stopsTip((l ?? m)!.stops)}
+                  onclick={() => pickLoop(e.key)}
+                  onpointerenter={() => (hoverLoop = e.key)}
                   onpointerleave={() => (hoverLoop = null)}
-                  onfocus={() => (hoverLoop = l.id)}
-                  onblur={() => (hoverLoop = null)}>{l.name}</button
+                  onfocus={() => (hoverLoop = e.key)}
+                  onblur={() => (hoverLoop = null)}>{l ? l.name : m!.file}</button
                 >
-                <span class="dim">{loopText(l)}</span>
-                <button class="walk" onclick={() => session && onwalkloop?.(session.id, l.id)}>walk once</button>
-                {@render runAndStops(l, pickedLoop === l.id)}
+                {#if l}
+                  <span class="dim">{e.kind === "custom" ? "mine, " : ""}{loopText(l)}</span>
+                  <button class="walk" onclick={() => session && onwalkloop?.(session.id, l.id)}>walk once</button>
+                  {@render runAndStops(l, pickedLoop === e.key)}
+                  {#if e.kind === "custom"}
+                    <button class="walk" title="Forget this loop" onclick={() => session && ondeleteloop?.(session.id, l.id)}
+                      >delete</button
+                    >
+                  {/if}
+                {:else if m}
+                  <span class="dim">{m.description}, {m.stops.length} stops, {m.steps} steps</span>
+                  <button class="walk" onclick={() => session && onwalkloop?.(session.id, m.file)}>walk once</button>
+                  {#if m.runnable}
+                    {@render runAndStops(mmRunnable(m), pickedLoop === e.key)}
+                  {:else}
+                    <button class="run" disabled title={m.reason}>run</button>
+                    <span class="dim reason">{m.reason}</span>
+                  {/if}
+                {/if}
               </li>
             {:else}
               <li class="dim">
                 {#if loopQuery.trim()}
-                  No generated loop matches “{loopQuery.trim()}”{#if radius < 30}; try a wider radius{/if}.
+                  No loop matches “{loopQuery.trim()}”.
                 {:else}
-                  No hunt rooms in reach.
+                  No loops in reach.
                 {/if}
               </li>
             {/each}
           </ul>
-          {#if shown.custom.length > 0}
-            <div class="dim">My loops</div>
-            <ul aria-label="My loops">
-              {#each loops.custom ?? [] as c (c.id)}
-                <li class:on={pickedLoop === c.id}>
-                  <button
-                    class="pick"
-                    aria-pressed={pickedLoop === c.id}
-                    title={stopsTip(c.stops)}
-                    onclick={() => pickLoop(c.id)}
-                    onpointerenter={() => (hoverLoop = c.id)}
-                    onpointerleave={() => (hoverLoop = null)}
-                    onfocus={() => (hoverLoop = c.id)}
-                    onblur={() => (hoverLoop = null)}>{c.name}</button
-                  >
-                  <span class="dim">{loopText(c)}</span>
-                  <button class="walk" onclick={() => session && onwalkloop?.(session.id, c.id)}>walk once</button>
-                  {@render runAndStops(c, pickedLoop === c.id)}
-                  <button class="walk" title="Forget this loop" onclick={() => session && ondeleteloop?.(session.id, c.id)}
-                    >delete</button
-                  >
-                </li>
-              {/each}
-            </ul>
-          {/if}
           {#if base}
             <div class="make" aria-label="Make a loop from {base.name}">
               <span class="dim">Make a loop from {base.name}:</span>
@@ -669,33 +662,6 @@
               >
               <span class="dim">Rooms to add: find them in the go box, then “add to loop”.</span>
             </div>
-          {/if}
-          {#if shown.megamud.length > 0}
-            <div class="dim">MegaMud, verified</div>
-            <ul aria-label="MegaMud loops">
-              {#each shown.megamud as m (m.file)}
-                <li class:on={pickedLoop === `mm:${m.file}`}>
-                  <button
-                    class="pick"
-                    aria-pressed={pickedLoop === `mm:${m.file}`}
-                    title={stopsTip(m.stops)}
-                    onclick={() => pickLoop(`mm:${m.file}`)}
-                    onpointerenter={() => (hoverLoop = `mm:${m.file}`)}
-                    onpointerleave={() => (hoverLoop = null)}
-                    onfocus={() => (hoverLoop = `mm:${m.file}`)}
-                    onblur={() => (hoverLoop = null)}>{m.file}</button
-                  >
-                  <span class="dim">{m.description}, {m.stops.length} stops, {m.steps} steps</span>
-                  <button class="walk" onclick={() => session && onwalkloop?.(session.id, m.file)}>walk once</button>
-                  {#if m.runnable}
-                    {@render runAndStops(mmRunnable(m), pickedLoop === `mm:${m.file}`)}
-                  {:else}
-                    <button class="run" disabled title={m.reason}>run</button>
-                    <span class="dim reason">{m.reason}</span>
-                  {/if}
-                </li>
-              {/each}
-            </ul>
           {/if}
         {/if}
       {/if}
@@ -830,14 +796,10 @@
   .loops .around {
     padding: 2px 0;
   }
-  .loops .attention {
-    background: var(--vga-yellow);
-  }
-  .loops select {
-    font: inherit;
-    color: var(--vga-lightgray);
-    background: #000;
-    border: 1px solid var(--frame);
+  .loops .dist {
+    min-width: 3ch;
+    text-align: right;
+    color: var(--vga-lightgreen);
   }
   .loops .head {
     display: flex;

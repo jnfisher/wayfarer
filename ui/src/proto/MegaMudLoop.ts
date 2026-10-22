@@ -27,4 +27,8 @@ stops: Array<LoopStop>,
  * Whether `run_loop` runs it for this character; `reason` says why not ("nothing to hunt
  * on it", or a leg between two stops no route takes).
  */
-runnable: boolean, reason?: string, };
+runnable: boolean, reason?: string, 
+/**
+ * Steps from the character to the nearest room of the loop, as for [`GeneratedLoop`].
+ */
+distance?: number, };

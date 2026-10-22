@@ -50,6 +50,8 @@ impl Game {
             anchor: None,
             radius: 8,
             doors: None,
+            query: None,
+            limit: None,
         })
         .await;
         self.until(|m| match m {

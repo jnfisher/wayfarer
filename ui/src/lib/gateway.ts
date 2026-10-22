@@ -216,15 +216,16 @@ export class GatewayClient {
     return this.send({ type: "map_request", session, radius: clampRadius(radius) });
   }
 
-  /** Ask for the loops within `radius` steps of the character, or of `anchor` (clamped to 1-30),
-   * through doors unless `doors` is false. */
-  requestLoops(session: string, radius = LOOP_RADIUS, doors = true, anchor?: RoomKey): boolean {
+  /** Ask for the nearest loops, at most `limit`, those matching `query` if given, from anywhere
+   * the character can walk to; `radius` (clamped to 1-30) is how far around it the generated
+   * ones are made. */
+  requestLoops(session: string, radius = LOOP_RADIUS, query?: string, limit?: number): boolean {
     return this.send({
       type: "loops_request",
       session,
       radius: clampRadius(radius),
-      doors,
-      ...(anchor ? { anchor } : {}),
+      ...(query ? { query } : {}),
+      ...(limit ? { limit } : {}),
     });
   }
 

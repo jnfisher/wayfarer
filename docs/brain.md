@@ -216,10 +216,19 @@ The first of the three loop sources (`docs/plan/03-engine.md` section 4): loops 
 the world data, beside MegaMud's verified loops. A UI lists them, walks one once so the player
 can watch the route, and runs one ("Running a loop", below).
 
-`loops_request {session, anchor?, radius, doors?}` answers with `loops` (`docs/protocol.md`):
+`loops_request {session, anchor?, radius, doors?, query?, limit?}` answers with `loops`
+(`docs/protocol.md`). The answer is the **nearest** loops, nearest first, at most `limit`
+(12; 50 at most): each loop's `distance` is the steps from the believed room (or `anchor`) to the
+nearest room of its walk, by a breadth-first walk over the whole world by exits the character
+may take. The generated loops come from the area (below); MegaMud's verified loops and the
+player's own come from anywhere the character can walk to, so a search finds a loop however far
+it is, and `matches` says how many matched before the cut. A `query` keeps the loops whose
+name, file, description, author or any stop's room name holds every word of it (any case); it
+also widens the area the loops are generated over to 30 steps. A loop the character cannot
+walk to at all is left out.
 
-- **The area**: the rooms within `radius` steps (at most 30) of `anchor`, the believed room
-  by default, by exits the character may take: a gated exit outside its level, class or race,
+- **The area** of the generated loops: the rooms within `radius` steps (at most 30) of
+  `anchor`, the believed room by default, by exits the character may take: a gated exit outside its level, class or race,
   or a locked door it cannot open ("Walking"), leaves what is behind it out, and with
   `doors: false` so does every door.
 - **Hunt rooms**: the area's rooms whose spawn pool (`genmonster`, or the room's `mongroup`

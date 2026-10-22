@@ -251,6 +251,8 @@ impl Gateway {
             }),
             radius,
             doors: None,
+            query: None,
+            limit: None,
         })
         .await
     }

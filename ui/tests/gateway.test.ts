@@ -184,12 +184,12 @@ describe("handshake", () => {
     r.last().open();
     r.last().receive(welcome(session("kasimir", 0)));
     expect(r.client.requestLoops("kasimir")).toBe(true);
-    expect(r.client.requestLoops("kasimir", 99, false)).toBe(true);
+    expect(r.client.requestLoops("kasimir", 99, "keep courtyard", 12)).toBe(true);
     expect(r.client.walkLoop("kasimir", "1:2140:8:doors:0")).toBe(true);
     expect(r.client.runLoop("kasimir", "1:2140:8:doors:0", [{ map: 1, room: 2156 }])).toBe(true);
     expect(r.last().sent.slice(-4)).toEqual([
-      { type: "loops_request", session: "kasimir", radius: 8, doors: true },
-      { type: "loops_request", session: "kasimir", radius: 30, doors: false },
+      { type: "loops_request", session: "kasimir", radius: 8 },
+      { type: "loops_request", session: "kasimir", radius: 30, query: "keep courtyard", limit: 12 },
       { type: "walk_loop", session: "kasimir", id: "1:2140:8:doors:0" },
       { type: "run_loop", session: "kasimir", id: "1:2140:8:doors:0", skip: [{ map: 1, room: 2156 }] },
     ]);

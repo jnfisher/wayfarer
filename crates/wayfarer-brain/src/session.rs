@@ -19,7 +19,9 @@ use wayfarer_proto::{
 use wayfarer_settings::{Layer, Settings};
 use wayfarer_store::{BotRecord, BotState, CustomLoop, EventKind, Store};
 use wayfarer_world::loops::{Area, circuits, hunt_rooms, megamud_through, stop_room};
-use wayfarer_world::{self as world, HuntRoom, Key, MmLoop, PlaceKind, Reach, Traveller, route};
+use wayfarer_world::{
+    self as world, HuntRoom, Key, MmLoop, PlaceKind, Reach, Traveller, distances, route,
+};
 
 use crate::boss::boss_status;
 use crate::brain::Atlas;
@@ -114,6 +116,24 @@ fn parse_loop_id(id: &str, t: &Traveller) -> Option<(LoopsKey, usize)> {
 }
 
 /// A hunt room as a loop's stop on the wire.
+/// How many loops a `loops_request` sends unless it asks for another number, and the most.
+const LOOPS_SHOWN: usize = 12;
+const MOST_LOOPS_SHOWN: usize = 50;
+
+/// Whether every word of `query` (any case) is in one of `texts`; an empty query matches.
+fn loop_matches<'a>(query: &str, texts: impl IntoIterator<Item = &'a str>) -> bool {
+    let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+    if words.is_empty() {
+        return true;
+    }
+    let hay = texts
+        .into_iter()
+        .map(str::to_lowercase)
+        .collect::<Vec<_>>()
+        .join("\n");
+    words.iter().all(|w| hay.contains(w.as_str()))
+}
+
 fn loop_stop(h: &HuntRoom) -> LoopStop {
     LoopStop {
         map: h.key.0,
@@ -144,6 +164,7 @@ fn mm_as_loop(l: &MmLoop) -> GeneratedLoop {
         path: l.rooms.iter().copied().map(room_key).collect(),
         steps: u32::try_from(l.path.verification.steps_checked).unwrap_or(0),
         doors: 0,
+        distance: None,
     }
 }
 
@@ -1438,12 +1459,17 @@ impl Session {
         });
     }
 
-    /// `loops_request`: the loops of the area around `anchor` (the believed room by default).
+    /// `loops_request`: the loops nearest the character (or `anchor`), nearest first, at most
+    /// `limit`; with a `query`, the ones that match it, from anywhere in the world the
+    /// character can walk to. Distance is the steps from the anchor to the nearest room of the
+    /// loop's walk.
     pub fn loops_request(
         &mut self,
         anchor: Option<Key>,
         radius: u32,
         doors: bool,
+        query: &str,
+        limit: Option<u32>,
         out: &mut Vec<ToGateway>,
     ) {
         let Some(atlas) = self.atlas.clone() else {
@@ -1461,7 +1487,17 @@ impl Session {
             )));
             return;
         }
-        let radius = radius.min(MAX_LOOP_RADIUS);
+        let query = query.trim();
+        let limit = limit
+            .map_or(LOOPS_SHOWN, |n| n as usize)
+            .clamp(1, MOST_LOOPS_SHOWN);
+        // A search looks wide: the loops generated over the area go out to the largest radius.
+        let radius = if query.is_empty() {
+            radius
+        } else {
+            MAX_LOOP_RADIUS
+        }
+        .min(MAX_LOOP_RADIUS);
         self.position
             .refresh(&atlas, &self.character.snapshot(), self.clock.instant());
         let key = LoopsKey {
@@ -1473,39 +1509,102 @@ impl Session {
             doors,
         };
         let generated = self.generated(&atlas, key);
-        let area = Area { anchor, radius }.rooms(&atlas.graph, &self.loop_traveller(doors));
-        let megamud = megamud_through(&atlas.mm_loops, &area)
-            .into_iter()
-            .map(|l| {
-                let reason = self.mm_not_runnable(&atlas, l);
-                MegaMudLoop {
-                    file: l.path.file.clone(),
-                    description: l.path.description.clone(),
-                    author: l.path.author.clone(),
-                    path: l.rooms.iter().copied().map(room_key).collect(),
-                    steps: u32::try_from(l.path.verification.steps_checked).unwrap_or(0),
-                    exact: u32::try_from(l.path.verification.steps_exact).unwrap_or(0),
-                    stops: l.hunt.iter().map(loop_stop).collect(),
-                    runnable: reason.is_none(),
-                    reason,
-                }
-            })
-            .collect();
-        let mut generated = generated.as_ref().clone();
-        let mut megamud: Vec<MegaMudLoop> = megamud;
-        // The player's own loops with a stop in the area.
-        let mut custom: Vec<GeneratedLoop> = self
+        // Steps from the character to every room it can walk to: a loop's distance is the
+        // least of its rooms'.
+        let dist = distances(&atlas.graph, anchor, 10_000, &self.loop_traveller(doors));
+        let near = |path: &[wayfarer_proto::RoomKey]| {
+            path.iter()
+                .filter_map(|k| dist.get(&(k.map, k.room)).copied())
+                .min()
+        };
+        enum Pick {
+            Generated(usize),
+            Megamud(usize),
+            Custom(usize),
+        }
+        let mut picks: Vec<(u32, String, Pick)> = Vec::new();
+        for (i, l) in generated.iter().enumerate() {
+            let names = l.stops.iter().map(|s| s.name.as_str());
+            if let Some(d) = near(&l.path)
+                && loop_matches(query, std::iter::once(l.name.as_str()).chain(names))
+            {
+                picks.push((d, l.name.to_lowercase(), Pick::Generated(i)));
+            }
+        }
+        let mm = megamud_through(&atlas.mm_loops, &dist);
+        for (i, l) in mm.iter().enumerate() {
+            let d = l.rooms.iter().filter_map(|k| dist.get(k).copied()).min();
+            let names = l.hunt.iter().map(|h| h.name.as_str());
+            let texts = [
+                l.path.file.as_str(),
+                l.path.description.as_str(),
+                l.path.author.as_str(),
+            ];
+            if let Some(d) = d
+                && loop_matches(query, texts.into_iter().chain(names))
+            {
+                picks.push((d, l.path.description.to_lowercase(), Pick::Megamud(i)));
+            }
+        }
+        let custom_all: Vec<GeneratedLoop> = self
             .ledger
             .custom_loops()
             .iter()
-            .filter(|c| c.stops.iter().any(|k| area.contains_key(k)))
             .map(|c| self.custom_as_loop(&atlas, c))
             .collect();
-        for stops in generated
+        for (i, l) in custom_all.iter().enumerate() {
+            let names = l.stops.iter().map(|s| s.name.as_str());
+            let stops: Vec<wayfarer_proto::RoomKey> = l
+                .stops
+                .iter()
+                .map(|s| wayfarer_proto::RoomKey {
+                    map: s.map,
+                    room: s.room,
+                })
+                .collect();
+            if let Some(d) = near(&l.path).or_else(|| near(&stops))
+                && loop_matches(query, std::iter::once(l.name.as_str()).chain(names))
+            {
+                picks.push((d, l.name.to_lowercase(), Pick::Custom(i)));
+            }
+        }
+        picks.sort_by(|a, b| (a.0, &a.1).cmp(&(b.0, &b.1)));
+        let matches = u32::try_from(picks.len()).unwrap_or(u32::MAX);
+        picks.truncate(limit);
+        let (mut gen_out, mut mm_out, mut custom_out) = (Vec::new(), Vec::new(), Vec::new());
+        for (d, _, pick) in picks {
+            match pick {
+                Pick::Generated(i) => gen_out.push(GeneratedLoop {
+                    distance: Some(d),
+                    ..generated[i].clone()
+                }),
+                Pick::Custom(i) => custom_out.push(GeneratedLoop {
+                    distance: Some(d),
+                    ..custom_all[i].clone()
+                }),
+                Pick::Megamud(i) => {
+                    let l = mm[i];
+                    let reason = self.mm_not_runnable(&atlas, l);
+                    mm_out.push(MegaMudLoop {
+                        file: l.path.file.clone(),
+                        description: l.path.description.clone(),
+                        author: l.path.author.clone(),
+                        path: l.rooms.iter().copied().map(room_key).collect(),
+                        steps: u32::try_from(l.path.verification.steps_checked).unwrap_or(0),
+                        exact: u32::try_from(l.path.verification.steps_exact).unwrap_or(0),
+                        stops: l.hunt.iter().map(loop_stop).collect(),
+                        runnable: reason.is_none(),
+                        reason,
+                        distance: Some(d),
+                    });
+                }
+            }
+        }
+        for stops in gen_out
             .iter_mut()
             .map(|l| &mut l.stops)
-            .chain(megamud.iter_mut().map(|l| &mut l.stops))
-            .chain(custom.iter_mut().map(|l| &mut l.stops))
+            .chain(mm_out.iter_mut().map(|l| &mut l.stops))
+            .chain(custom_out.iter_mut().map(|l| &mut l.stops))
         {
             self.mark_bosses(&atlas, stops);
         }
@@ -1514,9 +1613,10 @@ impl Session {
             anchor: room_key(anchor),
             radius,
             doors,
-            generated,
-            megamud,
-            custom,
+            generated: gen_out,
+            megamud: mm_out,
+            custom: custom_out,
+            matches,
         });
     }
 
@@ -1625,6 +1725,7 @@ impl Session {
                 steps: u32::try_from(l.length).unwrap_or(u32::MAX),
                 doors: u32::try_from(l.steps.iter().filter(|s| s.door.is_some()).count())
                     .unwrap_or(u32::MAX),
+                distance: None,
             })
             .collect();
         let wire = Arc::new(wire);
@@ -1723,6 +1824,7 @@ impl Session {
             path,
             steps,
             doors,
+            distance: None,
         }
     }
 

@@ -225,6 +225,7 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                     ],
                     steps: 2,
                     doors: 1,
+                    distance: Some(1),
                 }],
                 megamud: vec![MegaMudLoop {
                     file: "NARNLOO2.mp".into(),
@@ -261,10 +262,12 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                     ],
                     runnable: true,
                     reason: None,
+                    distance: Some(1),
                 }],
                 custom: vec![],
+                matches: 2,
             },
-            r#"{"type":"loops","session":"kasimir","anchor":{"map":1,"room":2140},"radius":8,"doors":true,"generated":[{"id":"1:2140:8:doors:0","name":"Newhaven","stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0,"bosses":[]},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1,"bosses":[]}],"path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"doors":1}],"megamud":[{"file":"NARNLOO2.mp","description":"Newhaven Arena","author":"Spork ZSpoon","path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"exact":2,"stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0,"bosses":[]},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1,"bosses":[]}],"runnable":true}],"custom":[]}"#,
+            r#"{"type":"loops","session":"kasimir","anchor":{"map":1,"room":2140},"radius":8,"doors":true,"generated":[{"id":"1:2140:8:doors:0","name":"Newhaven","stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0,"bosses":[]},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1,"bosses":[]}],"path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"doors":1,"distance":1}],"megamud":[{"file":"NARNLOO2.mp","description":"Newhaven Arena","author":"Spork ZSpoon","path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"exact":2,"stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0,"bosses":[]},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1,"bosses":[]}],"runnable":true,"distance":1}],"custom":[],"matches":2}"#,
         ),
         (
             ToGateway::Stats {
@@ -394,10 +397,12 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
             ToGateway::LoopsRequest {
                 session: "kasimir".into(),
                 anchor: None,
-                radius: 8,
-                doors: None,
+                radius: 15,
+                doors: Some(true),
+                query: Some("keep courtyard".into()),
+                limit: Some(12),
             },
-            r#"{"type":"loops_request","session":"kasimir","radius":8}"#,
+            r#"{"type":"loops_request","session":"kasimir","radius":15,"doors":true,"query":"keep courtyard","limit":12}"#,
         ),
         (
             ToGateway::WalkLoop {
@@ -759,6 +764,18 @@ fn optional_fields_may_be_left_out() {
         assert_eq!(msg.to_json(), json);
         assert_eq!(ToGateway::from_json(json).unwrap(), msg);
     }
+    // A loops request with only a radius: no query, no limit, the character's room.
+    assert_eq!(
+        ToGateway::from_json(r#"{"type":"loops_request","session":"kasimir","radius":8}"#).unwrap(),
+        ToGateway::LoopsRequest {
+            session: "kasimir".into(),
+            anchor: None,
+            radius: 8,
+            doors: None,
+            query: None,
+            limit: None,
+        }
+    );
     // An explicit null reads the same as a missing field.
     assert_eq!(
         ToGateway::from_json(r#"{"type":"subscribe","sessions":null}"#).unwrap(),
