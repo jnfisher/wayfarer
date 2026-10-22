@@ -58,7 +58,7 @@
   const narration = $derived(narrationLine(c?.bot));
   const link = $derived(linkButton(info.state));
   const errand = $derived(c?.errand ?? undefined);
-  const errands = $derived(errandItems(c?.bot, errand));
+  const errands = $derived(errandItems(c?.bot, errand, c?.places ?? []));
   /** The errand menu is open. */
   let menuOpen = $state(false);
   /** The spell plan is showing. */

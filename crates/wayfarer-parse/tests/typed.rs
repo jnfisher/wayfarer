@@ -726,3 +726,24 @@ fn buying_reading_and_the_bank() {
     );
     assert_eq!(example("bank_withdraw"), GameEvent::Withdrew { copper: 5 });
 }
+
+#[test]
+fn training_and_what_the_trainer_refuses() {
+    assert_eq!(example("trained"), GameEvent::Trained { copper: 50 });
+    assert_eq!(
+        example("train_no_exp"),
+        GameEvent::TrainRefused { why: "no_exp" }
+    );
+    assert_eq!(
+        example("train_no_money"),
+        GameEvent::TrainRefused { why: "no_money" }
+    );
+    assert_eq!(
+        example("train_level_band"),
+        GameEvent::TrainRefused { why: "band" }
+    );
+    assert_eq!(
+        example("train_wrong_room"),
+        GameEvent::TrainRefused { why: "wrong_room" }
+    );
+}

@@ -2,7 +2,7 @@
 // narration line under it, and what F9 and F10 do. The glyphs are the VGA font's own (code page
 // 437 has ► and ■ but no pause sign, so pause is ║).
 
-import type { Bot, BotAction, SessionAction } from "../proto";
+import type { Bot, BotAction, Place, SessionAction } from "../proto";
 
 export interface BotButton {
   action: BotAction;
@@ -105,7 +105,11 @@ export function menuWidth(state: string, hasBrain: boolean): number {
  * The entries of a tile's errand menu: pick up all and equip all (not while the bot runs or an
  * errand is on), and cancel while one is.
  */
-export function errandItems(bot: Bot | undefined, errand: string | undefined): ErrandItem[] {
+export function errandItems(
+  bot: Bot | undefined,
+  errand: string | undefined,
+  places: Place[] = [],
+): ErrandItem[] {
   const busy = errand !== undefined;
   const running = bot?.state === "running";
   const why = busy ? "An errand is in progress" : running ? "Stop or pause the bot first" : "";
@@ -123,6 +127,23 @@ export function errandItems(bot: Bot | undefined, errand: string | undefined): E
       disabled: busy || running,
     },
   ];
+  const died = places.some((p) => p.kind === "death");
+  items.push(
+    {
+      action: "train",
+      label: "Train",
+      title: why || "Walk to the right trainer and train levels; stays there for you to train stats",
+      disabled: busy || running,
+    },
+    {
+      action: "recover_pile",
+      label: "Recover death pile",
+      title:
+        why ||
+        (died ? "Walk to where the character last died, pick up what is there and equip it" : "No death on record"),
+      disabled: busy || running || !died,
+    },
+  );
   items.push({
     action: "spell_plan",
     label: "Spell plan…",

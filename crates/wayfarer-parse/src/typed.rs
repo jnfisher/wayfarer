@@ -365,6 +365,17 @@ pub enum GameEvent {
     Withdrew {
         copper: u64,
     },
+    /// `trained`: `You hand over 5 silver nobles and you receive training to attain level 2.`,
+    /// the fee in copper.
+    Trained {
+        copper: u64,
+    },
+    /// The trainer would not train: `no_exp` (`You do not have the required experience to train
+    /// yet!`), `no_money`, `wrong_room` (not a trainer, or another class's), `band` (the next
+    /// level is outside what the trainer teaches) or `capped`.
+    TrainRefused {
+        why: &'static str,
+    },
     /// `wear_fail`: `You may not wear that item!`, `You have no more room to wear that item!`
     /// or `<item> may not be worn!`.
     WearFailed,
@@ -731,6 +742,14 @@ impl GameEvent {
             "bank_withdraw" => G::Withdrew {
                 copper: int(ev, "n").map_or(0, |n| u64::try_from(n).unwrap_or(0)),
             },
+            "trained" => G::Trained {
+                copper: coins_copper(&parse_carrying(ev.text("paid").unwrap_or_default()).0),
+            },
+            "train_no_exp" => G::TrainRefused { why: "no_exp" },
+            "train_no_money" => G::TrainRefused { why: "no_money" },
+            "train_wrong_room" => G::TrainRefused { why: "wrong_room" },
+            "train_level_band" => G::TrainRefused { why: "band" },
+            "train_capped" => G::TrainRefused { why: "capped" },
             "wear_fail" => G::WearFailed,
             "weapon_forbidden" => G::NotWielded,
             "picked_up_coins" => match int(ev, "n") {

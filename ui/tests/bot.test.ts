@@ -106,15 +106,22 @@ describe("the tile", () => {
     expect(errandItems(stopped, undefined).map((i) => [i.label, i.disabled])).toEqual([
       ["Pick up all", false],
       ["Equip all", false],
+      ["Train", false],
+      ["Recover death pile", true],
       ["Spell plan…", false],
     ]);
-    expect(errandItems(running, undefined).map((i) => i.disabled)).toEqual([true, true, false]);
+    expect(errandItems(running, undefined).map((i) => i.disabled)).toEqual([true, true, true, true, false]);
     expect(errandItems(paused, "Pick up: get torch").map((i) => i.label)).toEqual([
       "Pick up all",
       "Equip all",
+      "Train",
+      "Recover death pile",
       "Spell plan…",
       "Cancel errand",
     ]);
+    // Recovering the pile needs a death on record.
+    const died = [{ at: "2026-10-22T12:00:00Z", kind: "death", map: 1, room: 1217, name: "Slum Street" }];
+    expect(errandItems(stopped, undefined, died).find((i) => i.action === "recover_pile")?.disabled).toBe(false);
   });
 
   it("shows the spell plan the brain sends after Spell plan… is picked", async () => {
