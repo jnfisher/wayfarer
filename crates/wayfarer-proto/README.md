@@ -59,6 +59,7 @@ Client → gateway:
 {"type":"input_keys","session":"kasimir","bytes":[13]}
 {"type":"history_request","session":"kasimir","after_seq":42,"max_chunks":2000}
 {"type":"subscribe","sessions":["kasimir"]}
+{"type":"session_control","session":"kasimir","action":"log_off"}
 {"type":"resync","session":"kasimir"}
 {"type":"state_request","session":"kasimir"}
 {"type":"walk_to","session":"kasimir","map":1,"room":2150}

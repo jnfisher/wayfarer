@@ -4,7 +4,7 @@
   import { FitAddon } from "@xterm/addon-fit";
   import { WebglAddon } from "@xterm/addon-webgl";
   import "@xterm/xterm/css/xterm.css";
-  import { botButtons, narrationLine } from "./lib/bot";
+  import { botButtons, linkButton, narrationLine } from "./lib/bot";
   import { keyBytes, type GatewayClient } from "./lib/gateway";
   import { HEADER_CELL_PX, bar, expText, fitHeader, levelClass, roomText } from "./lib/header";
   import { InputHistory } from "./lib/input";
@@ -51,6 +51,7 @@
   const mana = $derived(bar(c?.mana, c?.mana_max));
   const buttons = $derived(botButtons(c?.bot));
   const narration = $derived(narrationLine(c?.bot));
+  const link = $derived(linkButton(info.state));
   const shown = $derived(
     fitHeader(
       { number, name: info.name, server: info.server, state: info.state, character: c },
@@ -234,6 +235,16 @@
       <span class="frame">{" ═ "}</span>
     {/if}
     <span class="badge {info.state}">{info.state}</span>
+    {#if link}
+      <button
+        class="ctl link {link.action}"
+        title={link.title}
+        onclick={(e) => {
+          e.stopPropagation();
+          client.sessionControl(info.id, link.action);
+        }}>[{link.label}]</button
+      >
+    {/if}
     {#if !c}
       <span class="nobrain">{" no brain"}</span>
     {/if}
@@ -438,6 +449,12 @@
   }
   header .ctl.start,
   header .ctl.resume {
+    color: var(--vga-lightgreen);
+  }
+  header .ctl.link {
+    margin-left: 1ch;
+  }
+  header .ctl.connect {
     color: var(--vga-lightgreen);
   }
   header .ctl.stop {

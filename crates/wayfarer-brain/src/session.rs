@@ -14,7 +14,7 @@ use wayfarer_parse::typed::GameEvent;
 use wayfarer_parse::{Event, Parser, Registry};
 use wayfarer_proto::{
     BotAction, CharacterState, Chunk, Found, FoundKind, FoundRoom, GeneratedLoop, LoopStop,
-    MegaMudLoop, Place, RoomKey, SessionId, SessionInfo, SessionState, ToGateway,
+    MegaMudLoop, Place, RoomKey, SessionAction, SessionId, SessionInfo, SessionState, ToGateway,
 };
 use wayfarer_settings::{Layer, Settings};
 use wayfarer_store::{BotRecord, BotState, CustomLoop, EventKind, PlaceKind as StoredPlace, Store};
@@ -353,6 +353,8 @@ pub(crate) struct Session {
     down: bool,
     /// The notice that the character is mortally wounded has been given, until it is not.
     wounded_noted: bool,
+    /// The connection was dropped at the hang-up line and the realm has not been left yet.
+    hung_up: bool,
     /// The gateway is logging the character off (`logging_off`): nothing more is sent.
     leaving: bool,
     /// The gateway is logging the character off, and it was attacked: the bot flees first,
@@ -455,6 +457,7 @@ impl Session {
             last_combat: now,
             down: false,
             wounded_noted: false,
+            hung_up: false,
             leaving: false,
             flee_out: false,
             typed: VecDeque::new(),
@@ -2196,6 +2199,36 @@ impl Session {
         self.flush_views(out);
     }
 
+    /// With the bot running, under the hang-up line (`health.hangup_below_hp`) and something
+    /// hitting the character: the gateway drops the connection (`health.hangup`). A clean
+    /// log-off cannot finish under attack, and below 0 nothing else can be done.
+    fn check_hangup(&mut self, out: &mut Vec<ToGateway>) {
+        if self.state != SessionState::Realm {
+            self.hung_up = false;
+            return;
+        }
+        if self.hung_up || self.bot.stopped() || !self.settings.bool("health.hangup") {
+            return;
+        }
+        let c = self.character.state();
+        let Some(pct) = hp_percent(c.hp, c.hp_max) else {
+            return;
+        };
+        let line = i32::try_from(self.settings.int("health.hangup_below_hp")).unwrap_or(10);
+        if pct >= line || (self.presence.attackers.is_empty() && c.in_combat != Some(true)) {
+            return;
+        }
+        self.hung_up = true;
+        let why = format!("hung up at {pct}% HP (under {line}%): something was hitting it");
+        out.push(self.warning(&format!("Hanging up: HP {pct}%, under the {line}% line")));
+        let says = self.bot.stop(&why, true);
+        self.say(says, out);
+        out.push(ToGateway::SessionControl {
+            session: self.id.clone(),
+            action: SessionAction::HangUp,
+        });
+    }
+
     /// At 0 HP or below the game refuses every move, attack, cast and rest ("You may not do
     /// that while you are mortally wounded!"), and monsters keep hitting: the character is
     /// left alone until it is above 0 again (helped) or reborn. A walk is dropped without
@@ -2600,6 +2633,7 @@ impl Session {
 
     fn drive(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
         self.refresh_settings(out);
+        self.check_hangup(out);
         self.lie_still(out);
         if let Some((action, outcome)) = self.executor.finished(self.at_prompt, now)
             && let Some(atlas) = self.atlas.clone()

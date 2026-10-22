@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { botButtons, botKeyAction, botWidth, narrationLine } from "../src/lib/bot";
+import { botButtons, botKeyAction, botWidth, linkButton, narrationLine } from "../src/lib/bot";
 import type { Bot, CharacterState } from "../src/proto";
 
 // xterm needs a real canvas; these tests only look at the header and the narration line.
@@ -67,7 +67,8 @@ describe("the bot's controls", () => {
 
 describe("the tile", () => {
   const botControl = vi.fn();
-  const client = { sendLine: vi.fn(), sendKeys: vi.fn(), botControl } as never;
+  const sessionControl = vi.fn();
+  const client = { sendLine: vi.fn(), sendKeys: vi.fn(), botControl, sessionControl } as never;
   const sinks = { attach: () => () => {} } as never;
   const info = { id: "a", name: "Waydeva", server: "127.0.0.1:2323", state: "realm", last_seq: 0 } as const;
 
@@ -83,6 +84,21 @@ describe("the tile", () => {
     return render(Tile, { ...props, character }).container;
   }
 
+  it("has a log off button in the realm, and a connect button once closed or lost", async () => {
+    sessionControl.mockClear();
+    tile({ bot: stopped });
+    await fireEvent.click(screen.getByRole("button", { name: "[log off]" }));
+    expect(sessionControl).toHaveBeenCalledWith("a", "log_off");
+    cleanup();
+    for (const state of ["closed", "lost"] as const) {
+      render(Tile, { info: { ...info, state }, number: 1, focused: false, zoom: 0, offline: null, client, sinks, onfocus() {}, onhelp() {}, character: null });
+      await fireEvent.click(screen.getByRole("button", { name: "[connect]" }));
+      cleanup();
+    }
+    expect(sessionControl.mock.calls).toEqual([["a", "log_off"], ["a", "connect"], ["a", "connect"]]);
+    expect(linkButton("connecting")).toBeNull();
+  });
+
   it("has a start button and no narration while stopped", async () => {
     const el = tile({ bot: stopped });
     expect(el.querySelector(".narration")).toBeNull();
@@ -93,7 +109,7 @@ describe("the tile", () => {
   it("shows the narration under the header while running, with pause and stop", async () => {
     const el = tile({ bot: running });
     expect(el.querySelector("header + .narration")?.textContent).toBe("Fight: large giant rat");
-    expect([...el.querySelectorAll("header .ctl")].map((b) => b.textContent)).toEqual(["[║]", "[■]"]);
+    expect([...el.querySelectorAll("header .ctl:not(.link)")].map((b) => b.textContent)).toEqual(["[║]", "[■]"]);
     await fireEvent.click(screen.getByRole("button", { name: "pause the bot" }));
     await fireEvent.click(screen.getByRole("button", { name: "stop the bot" }));
     expect(botControl.mock.calls).toEqual([
@@ -112,7 +128,7 @@ describe("the tile", () => {
   it("has no controls without a bot (no world pack, or no brain)", () => {
     for (const character of [{}, null]) {
       const el = tile(character);
-      expect(el.querySelector("header .ctl")).toBeNull();
+      expect(el.querySelector("header .ctl:not(.link)")).toBeNull();
       cleanup();
     }
   });

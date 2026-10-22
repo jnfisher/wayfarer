@@ -5,9 +5,9 @@ use wayfarer_proto::{
     Bot, BotAction, BotMode, BotState, CharacterState, Chunk, ClientKind, CoinCount, Coins,
     DecodeError, Encumbrance, ExitKind, ExpSample, Family, Found, FoundKind, FoundRoom,
     GeneratedLoop, LoopStop, MapExit, MapRoom, MegaMudLoop, MonsterRuleEntry, MonsterRuleKind,
-    PROTOCOL, ParseCounts, Position, RoomKey, RoomKind, RuleSource, RunSummary, SessionInfo,
-    SessionState, SettingChange, SettingKind, SettingRow, SettingValue, SettingsFile, Stats,
-    ToClient, ToGateway, Walking, WorldPackInfo, protocol_mismatch,
+    PROTOCOL, ParseCounts, Position, RoomKey, RoomKind, RuleSource, RunSummary, SessionAction,
+    SessionInfo, SessionState, SettingChange, SettingKind, SettingRow, SettingValue, SettingsFile,
+    Stats, ToClient, ToGateway, Walking, WorldPackInfo, protocol_mismatch,
 };
 
 fn kasimir(state: SessionState, last_seq: u64) -> SessionInfo {
@@ -646,6 +646,13 @@ fn to_gateway() -> Vec<(ToGateway, &'static str)> {
                 sessions: Some(vec!["kasimir".into()]),
             },
             r#"{"type":"subscribe","sessions":["kasimir"]}"#,
+        ),
+        (
+            ToGateway::SessionControl {
+                session: "kasimir".into(),
+                action: SessionAction::LogOff,
+            },
+            r#"{"type":"session_control","session":"kasimir","action":"log_off"}"#,
         ),
     ]
     .into_iter()

@@ -196,6 +196,12 @@ and works nothing out itself.
   room before the lair so you can look before going in, and the walk bar says `one room
   short of Large Wooden Room (boss: minotaur chieftain)`. Untick it to walk in. `Esc`
   clears the box; `Esc` again closes it.
+- **Connecting and logging off**: the tile's header has **[log off]** while the character is
+  connected (logon, menu or realm) and **[connect]** when it is `closed` or `lost`. **log off**
+  logs the character off cleanly, as the gateway does when it stops (the brain is told and stops
+  the bot first), and the session stays closed, not reconnected, until **connect**; **connect**
+  opens the connection and runs the logon again. After a hang-up (`health.hangup`,
+  [brain.md](brain.md) "Flee") the tile shows `closed` the same way.
 - **Recent places**: with nothing typed, the go box lists where the character died (its gear
   is in that room), fled from and was stopped in, newest first, ten at most, each with how long
   ago, the room's name and `map:room` (`died 12 m ago: Slum Street 1:1217`; a flee says from

@@ -179,6 +179,14 @@ describe("handshake", () => {
     expect(r.last().sent.at(-1)).toEqual({ type: "bot_control", session: "kasimir", action: "pause" });
   });
 
+  it("sends session_control", () => {
+    const r = rig();
+    r.last().open();
+    r.last().receive(welcome(session("kasimir", 0)));
+    expect(r.client.sessionControl("kasimir", "log_off")).toBe(true);
+    expect(r.last().sent.at(-1)).toEqual({ type: "session_control", session: "kasimir", action: "log_off" });
+  });
+
   it("asks for loops and walks one", () => {
     const r = rig();
     r.last().open();
