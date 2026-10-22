@@ -185,10 +185,9 @@ LJNSPELL.C:48). Every timer runs 11 rounds.
   cleared first; a backstab says nothing to the room), your energy goes to 0, and the monster may
   start to follow you (never a charmed monster or an angel; always a Neutral, Good or Lawful Good
   one; any other on `genrdn(1,100) < followpct`; a guard already following someone stays with
-  them). The first blow comes with the next energy round (LJNCOMBT.C:2420-2642). So an `a` typed
-  into a fight that is already running prints `*Combat Off*` first and cuts energy above one round
-  (LJNCMDA.C:332-336, LJNACMB.C:871-883), then the new attack zeroes it: the carried remainder is
-  lost (pitfall 31). The blow loop only runs inside auto-combat, so the `You must rest before
+  them). The first blow comes with the next energy round (LJNCOMBT.C:2420-2642). An `a` typed
+  into a fight that is already running prints `*Combat Off*` then `*Combat Engaged*` and carries
+  the fight on with the new attack. The blow loop only runs inside auto-combat, so the `You must rest before
   you may attack again.` branch of this function (no `\r`) cannot be reached (LJNCOMBT.C:2778-2780). [C]
 - **Guarded monsters.** Attacking a monster with the Guarded by Monster ability makes it and every
   guard of that kind in the room start following you, and the last guard found takes the fight:
@@ -330,8 +329,7 @@ LJNSPELL.C:48). Every timer runs 11 rounds.
   saves mana for heals (John's hunch, confirmed by the model).
 
 ## Auto-combat etiquette (John, observed)
-- Re-issuing `a`/`bash`/a spell while auto-combat runs **restarts it** ("*Combat Off*" then
-  "*Combat Engaged*"). The swing timer resets, so the first round has fewer swings and the
-  fractional energy carried into the next round is lost. Issue one command per target and let
-  auto-combat run.
+- Re-issuing `a`/`bash`/a spell while auto-combat runs just changes what the fight does ("*Combat
+  Off*" then "*Combat Engaged*"): rounds run on a global timer and nothing is reset (John). One
+  command per target is enough, and a different attack or a spell can be sent at any time.
 - But don't stand idle while something hits you: if attacked and not engaged, engage at once.

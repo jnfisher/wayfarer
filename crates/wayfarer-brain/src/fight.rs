@@ -1,7 +1,5 @@
 //! Fight (docs/brain.md "Fight here"): attack what is here, once, and let auto-combat run. It
-//! never leaves the room. One `a <word>` per target: no attack command goes while engaged (the
-//! executor's guard), since a repeat restarts the swing timer (`kb/pitfalls.md` 31, 41). The
-//! fight ends with `*Combat Off*` or a kill, or lapses unannounced (pitfall 42, the session's
+//! never leaves the room. One attack command per target; the fight ends with `*Combat Off*` or a kill, or lapses unannounced (pitfall 42, the session's
 //! quiet rule); then it looks again and picks the next. The monster rules keep it off some
 //! monsters ([`target`]).
 //!
@@ -258,8 +256,7 @@ impl Fight {
     }
 
     /// The spell has been cast as often as `spells.max_casts_per_monster` allows at this
-    /// monster: the attack command is sent at it, which restarts auto-combat with the weapon
-    /// (`kb/combat.md`; the executor lets this one attack through in combat, [`Action::switching`]).
+    /// monster: the attack command is sent at it, which carries on the fight with the weapon.
     fn enough_casts(&mut self, v: &View) -> Option<Step> {
         if !spell_fight_is_over(v.max_casts(), self.spell_fight, self.casts, self.switched) {
             return None;
@@ -270,7 +267,7 @@ impl Fight {
         let t = self.target.clone().unwrap_or_else(|| "it".to_owned());
         let attack = format!("{} {}", v.attack_command(), attack_word(&t));
         Some(Step::send(
-            Action::new(attack, Expect::Engaged).switching(),
+            Action::new(attack, Expect::Engaged),
             format!("Fight: {} casts at {t}, now the weapon", self.casts),
         ))
     }

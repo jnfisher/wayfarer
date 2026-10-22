@@ -755,14 +755,13 @@ impl Connection {
 
     /// A line typed for `session`: to the brain as `user_input` if it arbitrates the session
     /// and this is a UI, otherwise to the game.
-    async fn line(&self, session: SessionId, text: String, force: bool) -> Option<ToClient> {
+    async fn line(&self, session: SessionId, text: String) -> Option<ToClient> {
         let (session, text) = match self.ui_arbitrator(&session) {
             Some(brain) => {
                 let msg = ToClient::UserInput {
                     session,
                     text,
                     from: format!("ui-{}", self.id),
-                    force,
                 };
                 self.hub.gateway().note_to_brain(&msg);
                 // A brain gone meanwhile: the line goes straight through after all.
@@ -803,12 +802,7 @@ impl Connection {
             // Input arbitration (docs/plan/02-architecture.md): a UI's line for a session the
             // brain arbitrates goes to the brain as `user_input`, which decides when it goes;
             // any other line (the brain's own included) goes straight to the game.
-            ToGateway::InputLine { session, text } => self.line(session, text, false).await,
-            ToGateway::UserInput {
-                session,
-                text,
-                force,
-            } => self.line(session, text, force).await,
+            ToGateway::InputLine { session, text } => self.line(session, text).await,
             // Keys always go straight through; the brain hears of them, to pause.
             ToGateway::InputKeys { session, bytes } => {
                 if let Err(e) = gateway.send_keys(&session, &bytes).await {

@@ -12,17 +12,16 @@ use wayfarer_proto::{BotAction, BotState};
 
 impl Game {
     /// A line the player typed, as the gateway forwards it to a brain that arbitrates.
-    async fn user_input(&self, text: &str, force: bool) {
-        self.send(user_input(text, force)).await;
+    async fn user_input(&self, text: &str) {
+        self.send(user_input(text)).await;
     }
 }
 
-fn user_input(text: &str, force: bool) -> ToClient {
+fn user_input(text: &str) -> ToClient {
     ToClient::UserInput {
         session: ID.into(),
         text: text.into(),
         from: "ui-1".into(),
-        force,
     }
 }
 
@@ -54,11 +53,11 @@ async fn talk_goes_at_the_next_prompt_and_the_bot_keeps_fighting() {
     g.narrated("Fight: large giant rat").await;
     // Engaged, nothing in flight, at a prompt: it goes at once.
     g.expect("gossip hi", line("You gossip: hi", 35));
-    g.user_input("gossip hi", false).await;
+    g.user_input("gossip hi").await;
     g.round("The large giant rat lunges at you!", 33).await;
     // A look, mid-fight, the same way.
     g.expect("l", arena(&["large giant rat"], 33));
-    g.user_input("l", false).await;
+    g.user_input("l").await;
     g.round("You whap large giant rat for 6 damage!", 33).await;
     // The bot fights on: the kill, then its own look.
     g.expect("look", arena(&[], 33));
@@ -84,7 +83,7 @@ async fn a_line_that_is_no_command_and_no_exit_phrase_is_talk_and_pauses_nothing
     start(&mut g, &[], 35).await;
     g.narrated("Waiting here").await;
     g.expect("heya", at_hp(&arena(&[], 35), 35));
-    g.user_input("heya", false).await;
+    g.user_input("heya").await;
     g.idle(Duration::from_secs(5)).await;
     let (seen, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "heya"]);
@@ -106,7 +105,7 @@ async fn talk_typed_while_the_bots_action_is_in_flight_goes_after_its_answer() {
     g.expect("who", line("Current Adventurers", 35));
     // `who` comes while `a rat` is in flight: it waits for the answer and its prompt (the fake
     // game fails the test if two lines are ever in flight at once).
-    g.after_cmd = Some(("a rat".into(), user_input("who", false)));
+    g.after_cmd = Some(("a rat".into(), user_input("who")));
     g.narrated("Fight: large giant rat").await;
     g.round("The large giant rat lunges at you!", 33).await;
     let (seen, played) = g.close(run).await;
@@ -120,7 +119,7 @@ async fn talk_goes_between_the_steps_of_the_bots_walk() {
     // 20 of 35: Recover walks up to the Narrow Road and rests there.
     start(&mut g, &[], 20).await;
     g.expect("u", at_hp(&room(NARROW_ROAD), 20));
-    g.after_cmd = Some(("u".into(), user_input("gossip hi", false)));
+    g.after_cmd = Some(("u".into(), user_input("gossip hi")));
     g.expect("gossip hi", line("You gossip: hi", 20));
     g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
     g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
@@ -136,7 +135,7 @@ async fn an_act_pauses_the_bot_after_the_action_in_flight_then_goes() {
     let (mut g, run) = in_arena(&["large giant rat"]).await;
     start(&mut g, &["large giant rat"], 35).await;
     g.expect("a rat", line(ENGAGED, 35));
-    g.after_cmd = Some(("a rat".into(), user_input("u", false)));
+    g.after_cmd = Some(("a rat".into(), user_input("u")));
     g.expect("u", at_hp(&room(NARROW_ROAD), 35));
     let said = g.narrated("Paused: you took over").await;
     assert!(
@@ -161,35 +160,15 @@ async fn an_act_pauses_the_bot_after_the_action_in_flight_then_goes() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_attack_while_engaged_is_held_and_force_sends_it() {
+async fn an_attack_typed_while_engaged_pauses_the_bot_and_goes() {
     let (mut g, run) = in_arena(&["large giant rat", "fat giant rat"]).await;
     start(&mut g, &["large giant rat", "fat giant rat"], 35).await;
     g.expect("a rat", line(ENGAGED, 35));
     g.narrated("Fight: large giant rat").await;
     g.round("The large giant rat lunges at you!", 34).await;
-    g.user_input("a fat", false).await;
-    let held = g
-        .until(|m| match m {
-            ToGateway::InputHeld {
-                session,
-                text,
-                reason,
-            } => Some((session.clone(), text.clone(), reason.clone())),
-            _ => None,
-        })
-        .await;
-    assert_eq!(
-        held,
-        (
-            ID.to_owned(),
-            "a fat".to_owned(),
-            "no attack command while combat is engaged".to_owned()
-        )
-    );
-    g.round("The large giant rat lunges at you!", 33).await;
-    // `send anyway`: the bot pauses, and the attack goes.
-    g.expect("a fat", line(ENGAGED, 33));
-    g.user_input("a fat", true).await;
+    // The player's own attack is theirs to type: an act, the bot pauses, the line goes.
+    g.expect("a fat", line(ENGAGED, 34));
+    g.user_input("a fat").await;
     g.narrated("Paused: you took over").await;
     g.idle(Duration::from_secs(10)).await;
     let (seen, played) = g.close(run).await;
@@ -205,16 +184,11 @@ async fn an_attack_out_of_combat_is_an_act() {
     // Out of combat after the quiet spell the re-sync's prompt started.
     g.idle(Duration::from_secs(30)).await;
     g.expect("a rat", line(ENGAGED, 35));
-    g.user_input("a rat", false).await;
+    g.user_input("a rat").await;
     g.narrated("Paused: you took over").await;
     let (seen, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "a rat"]);
-    assert!(
-        !seen
-            .iter()
-            .any(|m| matches!(m, ToGateway::InputHeld { .. })),
-        "held"
-    );
+    assert_eq!(bot(&seen).state, BotState::Paused);
 }
 
 #[tokio::test(start_paused = true)]
@@ -245,7 +219,7 @@ async fn stopped_the_brain_arbitrates_nothing_and_a_late_line_goes_straight() {
         .await;
     // A line the gateway forwarded before it heard: it goes at once, as the player's.
     g.expect("n", line("You cannot go that way!", 35));
-    g.user_input("n", false).await;
+    g.user_input("n").await;
     g.idle(Duration::from_secs(5)).await;
     let (seen, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "n"]);
@@ -254,23 +228,16 @@ async fn stopped_the_brain_arbitrates_nothing_and_a_late_line_goes_straight() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_attack_typed_while_the_bots_attack_is_in_flight_is_held_once_that_engages() {
+async fn an_attack_typed_while_the_bots_attack_is_in_flight_goes_after_its_answer() {
     let (mut g, run) = in_arena(&["large giant rat", "fat giant rat"]).await;
     start(&mut g, &["large giant rat", "fat giant rat"], 35).await;
     g.expect("a rat", line(ENGAGED, 35));
-    // Not engaged yet when it comes: an act, so the bot pauses; engaged when it would go.
-    g.after_cmd = Some(("a rat".into(), user_input("a fat", false)));
+    g.expect("a fat", line(ENGAGED, 35));
+    g.after_cmd = Some(("a rat".into(), user_input("a fat")));
     g.narrated("Paused: you took over").await;
-    let held = g
-        .until(|m| match m {
-            ToGateway::InputHeld { text, .. } => Some(text.clone()),
-            _ => None,
-        })
-        .await;
-    assert_eq!(held, "a fat");
     g.idle(Duration::from_secs(10)).await;
     let (seen, played) = g.close(run).await;
-    assert_eq!(played, ["st", "look", "a rat"]);
+    assert_eq!(played, ["st", "look", "a rat", "a fat"]);
     assert_eq!(bot(&seen).state, BotState::Paused);
 }
 
@@ -283,12 +250,12 @@ async fn a_line_waiting_when_logging_off_starts_is_dropped_and_nothing_typed_goe
     g.round("The large giant rat lunges at you!", 20).await;
     // The rat's line with no prompt after it: talk waits for one.
     g.output("The large giant rat lunges at you!\r\n").await;
-    g.user_input("gossip hi", false).await;
+    g.user_input("gossip hi").await;
     // Under attack: the log-off flees first, up to the Narrow Road.
     g.expect("u", at_hp(&room(NARROW_ROAD), 18));
     g.send(ToClient::LoggingOff { session: ID.into() }).await;
     // A line typed mid-flee is refused as well.
-    g.user_input("gossip bye", false).await;
+    g.user_input("gossip bye").await;
     g.output(&prompt(20)).await;
     g.until(|m| matches!(m, ToGateway::ReadyToLeave { .. }).then_some(()))
         .await;

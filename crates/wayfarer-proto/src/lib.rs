@@ -11,7 +11,7 @@
 //! `position` and `walking`), the bot's first slice (`bot_control`, the character's `bot`), and loops (`loops_request`,
 //! `loops`, `walk_loop`); M3 adds Task mode (`run_loop`, the bot's `task`), the log-off handshake (`logging_off`, `ready_to_leave`) and
 //! statistics (the character's `run`, `stats_request`, `stats`), and typing beside the bot
-//! (`user_input`, `keys_sent`, `arbitrate`, `input_held`), and go to (`find`, `found`,
+//! (`user_input`, `keys_sent`, `arbitrate`), and go to (`find`, `found`,
 //! `walk_to`'s `stop_short`, `walking`'s `short_of`). [`Family`] says who may send what.
 //! Adding a variant later bumps nothing; removing or changing one bumps [`PROTOCOL`].
 
@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 /// The protocol version both sides send in the handshake. A mismatch is refused.
-pub const PROTOCOL: u32 = 1;
+pub const PROTOCOL: u32 = 2;
 
 /// A session's id: a short string from the gateway's config (the character key, e.g.
 /// `"kasimir"`), stable across restarts.
@@ -841,11 +841,6 @@ pub enum ToClient {
         files: Vec<SettingsFile>,
         rows: Vec<SettingRow>,
     },
-    InputHeld {
-        session: SessionId,
-        text: String,
-        reason: String,
-    },
     Found {
         session: SessionId,
         query: String,
@@ -971,15 +966,11 @@ pub enum ToClient {
     },
     /// To the brain only: a line a UI typed for a session the brain arbitrates (`arbitrate`),
     /// which the gateway did not send to the game. The brain decides when it goes, and what
-    /// the bot does meanwhile. `from` names the UI connection (`ui-3`); `force`: send it even
-    /// if it was held (`input_held`), the UI's `send anyway`.
+    /// the bot does meanwhile. `from` names the UI connection (`ui-3`).
     UserInput {
         session: SessionId,
         text: String,
         from: String,
-        #[serde(default, skip_serializing_if = "is_false")]
-        #[ts(as = "Option<bool>", optional)]
-        force: bool,
     },
     /// To the brain only: a UI's raw keys went to the game for a session the brain arbitrates
     /// (they always go straight through): the bot pauses.
@@ -1025,16 +1016,6 @@ pub enum ToGateway {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         sessions: Option<Vec<SessionId>>,
-    },
-    /// A line of input as `input_line`, with `force`: the UI's `send anyway` for a line the
-    /// brain held (`input_held`). For a session the brain arbitrates it goes to the brain as
-    /// `user_input`; otherwise straight to the game.
-    UserInput {
-        session: SessionId,
-        text: String,
-        #[serde(default, skip_serializing_if = "is_false")]
-        #[ts(as = "Option<bool>", optional)]
-        force: bool,
     },
 
     /// UI → brain: re-sync the character (`st`, `exp`, `i`, look).
@@ -1244,14 +1225,6 @@ pub enum ToGateway {
         files: Vec<SettingsFile>,
         rows: Vec<SettingRow>,
     },
-    /// Brain → UIs: a line the player typed was not sent: it would break a rule while the bot
-    /// plays (an attack while combat is engaged). The UI shows it with a `send anyway`, which
-    /// sends `user_input` with `force`.
-    InputHeld {
-        session: SessionId,
-        text: String,
-        reason: String,
-    },
     /// Brain → UIs: the answer to a `find`, best first: those with no way there last, then the
     /// better match of the name, then the nearer; at most 30.
     Found {
@@ -1308,7 +1281,6 @@ impl ToClient {
         "loops",
         "stats",
         "settings",
-        "input_held",
         "found",
         "resync",
         "state_request",
@@ -1356,7 +1328,6 @@ impl ToClient {
             Self::Loops { .. } => "loops",
             Self::Stats { .. } => "stats",
             Self::Settings { .. } => "settings",
-            Self::InputHeld { .. } => "input_held",
             Self::Found { .. } => "found",
             Self::Resync { .. } => "resync",
             Self::StateRequest { .. } => "state_request",
@@ -1398,7 +1369,6 @@ impl ToClient {
             | Self::Loops { session, .. }
             | Self::Stats { session, .. }
             | Self::Settings { session, .. }
-            | Self::InputHeld { session, .. }
             | Self::Found { session, .. }
             | Self::Find { session, .. }
             | Self::SetMonsterRule { session, .. }
@@ -1450,7 +1420,6 @@ impl ToGateway {
         "input_keys",
         "history_request",
         "subscribe",
-        "user_input",
         "resync",
         "state_request",
         "walk_to",
@@ -1478,7 +1447,6 @@ impl ToGateway {
         "loops",
         "stats",
         "settings",
-        "input_held",
         "found",
         "ready_to_leave",
         "arbitrate",
@@ -1492,7 +1460,6 @@ impl ToGateway {
             Self::InputKeys { .. } => "input_keys",
             Self::HistoryRequest { .. } => "history_request",
             Self::Subscribe { .. } => "subscribe",
-            Self::UserInput { .. } => "user_input",
             Self::Resync { .. } => "resync",
             Self::StateRequest { .. } => "state_request",
             Self::WalkTo { .. } => "walk_to",
@@ -1520,7 +1487,6 @@ impl ToGateway {
             Self::Loops { .. } => "loops",
             Self::Stats { .. } => "stats",
             Self::Settings { .. } => "settings",
-            Self::InputHeld { .. } => "input_held",
             Self::Found { .. } => "found",
             Self::ReadyToLeave { .. } => "ready_to_leave",
             Self::Arbitrate { .. } => "arbitrate",
@@ -1534,8 +1500,7 @@ impl ToGateway {
             | Self::InputLine { .. }
             | Self::InputKeys { .. }
             | Self::HistoryRequest { .. }
-            | Self::Subscribe { .. }
-            | Self::UserInput { .. } => Family::Gateway,
+            | Self::Subscribe { .. } => Family::Gateway,
             Self::Resync { .. }
             | Self::StateRequest { .. }
             | Self::WalkTo { .. }
@@ -1563,7 +1528,6 @@ impl ToGateway {
             | Self::Loops { .. }
             | Self::Stats { .. }
             | Self::Settings { .. }
-            | Self::InputHeld { .. }
             | Self::Found { .. } => Family::Brain,
             Self::ReadyToLeave { .. } | Self::Arbitrate { .. } => Family::BrainToGateway,
         }
@@ -1721,15 +1685,6 @@ impl ToGateway {
                 files,
                 rows,
             },
-            Self::InputHeld {
-                session,
-                text,
-                reason,
-            } => ToClient::InputHeld {
-                session,
-                text,
-                reason,
-            },
             Self::Found {
                 session,
                 query,
@@ -1744,7 +1699,6 @@ impl ToGateway {
             | Self::InputKeys { .. }
             | Self::HistoryRequest { .. }
             | Self::Subscribe { .. }
-            | Self::UserInput { .. }
             | Self::ReadyToLeave { .. }
             | Self::Arbitrate { .. } => return None,
         })

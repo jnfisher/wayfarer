@@ -52,8 +52,7 @@ telepaths); death, unconsciousness and the death pile; chat; errors and refusals
 - One action in flight per character, except moves along a known route, which may be pipelined
   a few steps ahead the way MegaMud ran paths, cancelled the moment a room disagrees with the
   belief or combat starts.
-- Hard guards live here, so no mode can break them: never `train stats`; no attack command
-  while auto-combat is engaged. Only the rules in `01-goals.md` ("Rules") are guards; every
+- Hard guards live here, so no mode can break them: never `train stats`. Only the rules in `01-goals.md` ("Rules") are guards; every
   other safety policy is a setting with a default.
 
 ## 4. The mode stack

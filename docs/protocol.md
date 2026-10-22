@@ -104,12 +104,10 @@ send. Live output carries on after the gap; the client fetches the gap with `his
 |---|---|
 | `input_line {session, text}` | A line of input; the gateway adds the line ending |
 | `input_keys {session, bytes}` | Raw bytes (an array of 0–255), sent straight through and never line-buffered: the character editor, `Hit any key` |
-| `user_input {session, text, force?}` | A line as `input_line`, with `force: true` for the UI's `send anyway` of a line the brain held (`input_held`, below) |
 
 ```json
 {"type":"input_line","session":"kasimir","text":"look north"}
 {"type":"input_keys","session":"kasimir","bytes":[13]}
-{"type":"user_input","session":"kasimir","text":"a rat","force":true}
 ```
 
 Any client may send input, the brain included. It goes straight to the game, except a UI's
@@ -136,7 +134,7 @@ typed line always comes after its `sent`. UIs never get `sent`.
 | `logging_off {session}` | gateway → brain | The gateway is stopping and is about to log this session off (sent only for a session in the realm). The brain stops playing the character and answers `ready_to_leave` |
 | `ready_to_leave {session}` | brain → gateway | The brain sends the session nothing more: the log-off may start. The gateway waits for it up to 30 s after `logging_off`, or until the brain goes; never relayed, and refused from a UI |
 | `arbitrate {session, on}` | brain → gateway | Whether the brain arbitrates the session's input: on while its bot runs or is paused, off when it stops. Never relayed, and refused from a UI |
-| `user_input {session, text, from, force?}` | gateway → brain | A line a UI typed (`input_line`, or `user_input` with `force`) for a session the brain arbitrates; the gateway sent nothing to the game. `from` names the UI's connection (`ui-3`). The brain's own `input_line` is never turned into one |
+| `user_input {session, text, from}` | gateway → brain | A line a UI typed (`input_line`) for a session the brain arbitrates; the gateway sent nothing to the game. `from` names the UI's connection (`ui-3`). The brain's own `input_line` is never turned into one |
 | `keys_sent {session}` | gateway → brain | A UI's `input_keys` went to the game for a session the brain arbitrates |
 
 ```json
@@ -146,7 +144,7 @@ typed line always comes after its `sent`. UIs never get `sent`.
 {"type":"logging_off","session":"kasimir"}
 {"type":"ready_to_leave","session":"kasimir"}
 {"type":"arbitrate","session":"kasimir","on":true}
-{"type":"user_input","session":"kasimir","text":"a rat","from":"ui-3","force":true}
+{"type":"user_input","session":"kasimir","text":"a rat","from":"ui-3"}
 {"type":"keys_sent","session":"kasimir"}
 ```
 
@@ -170,7 +168,6 @@ to every UI. It relays by message type and never reads `fields` or `patch`.
 | `loops {session, anchor, radius, doors, generated, megamud}` | The answer to a `loops_request`: the loops of the area (below) |
 | `settings {session, layer, files, rows}` | The character's settings, answering `settings_request` and `settings_save`: `files` the settings files of the character (`layer`: `mine`, `server`, `character`; `path`; `exists`), and `rows` every setting: `key`, `label`, `help`, `group`, `tier` (`essential`, `standard`, `advanced`), `kind` (`{kind: "int", min, max}`, `{kind: "bool"}` or `{kind: "choice", options}`), `unit`, `default`, `value` (in force), `source` (`default`, `preset`, `mine`, `server`, `character`), `own` (what the asked-for layer's file sets, if it does) and `megamud` |
 | `stats {session, runs, samples}` | The answer to a `stats_request`: the character's last ten runs, newest first, and the newest run's samples (below) |
-| `input_held {session, text, reason}` | A line the player typed was not sent: it would break a rule while the bot plays (an attack while combat is engaged). The UI shows it with a `send anyway`, which sends `user_input` with `force` |
 | `found {session, query, results}` | The answer to a `find`: rooms, well-known places and monsters by name, best first (below) |
 
 ```json
@@ -184,7 +181,6 @@ to every UI. It relays by message type and never reads `fields` or `patch`.
 {"type":"loops","session":"kasimir","anchor":{"map":1,"room":2140},"radius":8,"doors":true,"generated":[{"id":"1:2140:8:doors:0","name":"Newhaven","stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0,"bosses":[]},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1,"bosses":[]}],"path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"doors":1}],"megamud":[{"file":"NARNLOO2.mp","description":"Newhaven Arena","author":"Spork ZSpoon","path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"exact":2,"stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0,"bosses":[]},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1,"bosses":[]}],"runnable":true}],"custom":[]}
 {"type":"stats","session":"kasimir","runs":[{"started_at":"2026-10-19T12:00:00Z","minutes":2,"exp_per_hour":540,"kills":2,"deaths":0,"flees":0,"rests":1,"exp_gained":18}],"samples":[{"at":"2026-10-19T12:01:00Z","exp":355,"hp":30}]}
 {"type":"settings","session":"kasimir","layer":"character","files":[{"layer":"mine","path":"/data/settings.toml","exists":false},{"layer":"character","path":"/data/characters/kasimir.toml","exists":true}],"rows":[{"key":"health.flee_below_hp","label":"Flee below","help":"Leave the fight and run when HP falls below this.","group":"health","tier":"essential","kind":{"kind":"int","min":0,"max":90},"unit":"%","default":25,"value":35,"source":"character","own":35,"megamud":"HP Run If Below"}]}
-{"type":"input_held","session":"kasimir","text":"a rat","reason":"no attack command while combat is engaged"}
 {"type":"found","session":"kasimir","query":"chief","results":[{"kind":"monster","name":"minotaur chieftain","rooms":[{"map":1,"room":1865,"name":"Large Wooden Room","steps":46,"boss":true}],"count":1,"monsters":["minotaur chieftain"]}]}
 ```
 

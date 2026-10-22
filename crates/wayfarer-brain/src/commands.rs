@@ -432,8 +432,8 @@ pub enum Kind {
     Talk,
     /// It acts in the game: the bot pauses after the action in flight, then it goes.
     Act,
-    /// An attack: held while combat is engaged, since it would restart the swing timer
-    /// (`kb/combat.md`); otherwise an act.
+    /// An attack: an act like any other for the bot (it pauses), whether or not combat is
+    /// engaged.
     Attack,
     /// No command: a text exit's phrase or speech (`kb/screen-parsing.md` "Typing commands",
     /// step 5). Treated as an act, since `borrow skiff` moves.

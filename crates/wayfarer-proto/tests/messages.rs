@@ -323,14 +323,6 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
             r#"{"type":"settings","session":"kasimir","layer":"character","files":[{"layer":"mine","path":"/data/settings.toml","exists":false},{"layer":"character","path":"/data/characters/kasimir.toml","exists":true}],"rows":[{"key":"health.flee_below_hp","label":"Flee below","help":"Leave the fight and run when HP falls below this.","group":"health","tier":"essential","kind":{"kind":"int","min":0,"max":90},"unit":"%","default":25,"value":35,"source":"character","own":35,"megamud":"HP Run If Below"}]}"#,
         ),
         (
-            ToGateway::InputHeld {
-                session: "kasimir".into(),
-                text: "a rat".into(),
-                reason: "no attack command while combat is engaged".into(),
-            },
-            r#"{"type":"input_held","session":"kasimir","text":"a rat","reason":"no attack command while combat is engaged"}"#,
-        ),
-        (
             ToGateway::Found {
                 session: "kasimir".into(),
                 query: "chief".into(),
@@ -598,9 +590,8 @@ fn to_client() -> Vec<(ToClient, &'static str)> {
                 session: "kasimir".into(),
                 text: "a rat".into(),
                 from: "ui-3".into(),
-                force: true,
             },
-            r#"{"type":"user_input","session":"kasimir","text":"a rat","from":"ui-3","force":true}"#,
+            r#"{"type":"user_input","session":"kasimir","text":"a rat","from":"ui-3"}"#,
         ),
         (
             ToClient::KeysSent {
@@ -650,14 +641,6 @@ fn to_gateway() -> Vec<(ToGateway, &'static str)> {
                 sessions: Some(vec!["kasimir".into()]),
             },
             r#"{"type":"subscribe","sessions":["kasimir"]}"#,
-        ),
-        (
-            ToGateway::UserInput {
-                session: "kasimir".into(),
-                text: "a rat".into(),
-                force: true,
-            },
-            r#"{"type":"user_input","session":"kasimir","text":"a rat","force":true}"#,
         ),
     ]
     .into_iter()
@@ -771,14 +754,6 @@ fn optional_fields_may_be_left_out() {
             },
             r#"{"type":"character","session":"kasimir","state":{}}"#,
         ),
-        (
-            ToGateway::UserInput {
-                session: "kasimir".into(),
-                text: "st".into(),
-                force: false,
-            },
-            r#"{"type":"user_input","session":"kasimir","text":"st"}"#,
-        ),
     ];
     for (msg, json) in cases {
         assert_eq!(msg.to_json(), json);
@@ -891,7 +866,7 @@ fn families_say_who_may_send_what() {
             | "stats_reset" | "settings_request" | "settings_save" | "save_loop"
             | "delete_loop" | "find" | "set_monster_rule" => Family::Control,
             "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
-            | "map_view" | "loops" | "stats" | "settings" | "input_held" | "found" => Family::Brain,
+            | "map_view" | "loops" | "stats" | "settings" | "found" => Family::Brain,
             "ready_to_leave" | "arbitrate" => Family::BrainToGateway,
             _ => Family::Gateway,
         };

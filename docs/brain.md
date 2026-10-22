@@ -207,10 +207,8 @@ for the map panel's go box (`docs/web-ui.md`, "The map").
   at once with the same narration. Looking into a dead boss's room brings it back
   (`kb/pitfalls.md` 51): stopping short does not look in.
 
-**The guards** live in the executor every action goes through, so nothing the bot ever does can
-break them: no attack command (`a`, `bash rat`, `bs`, ...) unless the character is known to be
-out of combat (engaged, or not known either way, refuses it), and never `train stats`
-(`docs/plan/01-goals.md` "Rules").
+**The guard** lives in the executor every action goes through, so nothing the bot ever does can
+break it: never `train stats` (`docs/plan/01-goals.md` "Rules").
 
 ## Loops
 
@@ -557,7 +555,7 @@ against silvermere's oracle, `tests/fixtures/command-words/`) and sends it as it
 |---|---|---|
 | Talk and look | `gossip`, `broadcast` (`br`, `'`, `-`), `auction`, `whisper` (`/`), `>`, `broadgang`; `look` (not at a direction), `st`, `exp`, `i`, `health`, `who`/`scan`, `help`/`?`, `wealth`, `spells`, `exits`, `keys`, `topten`, `version`; `set`; an empty line | Goes at the next prompt with nothing in flight, between the bot's actions: the bot's next action waits for the prompt after it. The bot keeps going, unpaused. Its output is parsed like any (a `st` refreshes HP), and confirms none of the bot's actions, which only go once it is answered |
 | Acts | moves, `cast`, `rest`, `get`, `drop`, `buy`, `sell`, `wear`, `wield`, `open`, `search`, `look <dir>` (it shows the next room), `bash <dir>`, `x`, ... | The bot pauses after the action in flight ("You took over Waydeva", "Paused: you took over"), a walk stops after its move in flight, then the line goes the same way. Resume with `F9` |
-| Attacks | `a`/`attack`/`au`, `bash` (`aa`, `allout`, `force`), `backstab` (`bs`), `killblow` (`kil`), `punch` (`pu`, `purg`) | While combat is engaged (or not known to be over) the line is held: not sent, and the UIs get `input_held` with the reason ("no attack command while combat is engaged": it would restart the swing timer, `kb/combat.md`); the tile shows it with `send anyway`, which sends it again with `force` and then it goes as an act. Out of combat, an act. An attack typed while the bot's own action is in flight is checked again when its turn comes, and held then if that action engaged |
+| Attacks | `a`/`attack`/`au`, `bash` (`aa`, `allout`, `force`), `backstab` (`bs`), `killblow` (`kil`), `punch` (`pu`, `purg`) | An act, whether or not combat is engaged: the bot pauses after the action in flight, then the line goes |
 | No command | `borrow skiff`, `hello there`, `say hi`, `heya` (MajorMUD has no SAY: talking is a line the parser does not take) | A text exit's phrase moves the character, so it is an act (the bot pauses) if it may be one: if the position is in doubt, or the line is a Text exit's phrase of a room the character may be in. Otherwise (the position is sure and no exit of the room takes the line) it is talk, and pauses nothing |
 
 - **Keys** (`input_keys`) always go straight to the game; the gateway tells the brain
@@ -791,11 +789,9 @@ scroll read since is found the next time.
   casts of the attack spell at one monster to spend a little mana on each fight: auto-combat
   casts the spell every round on its own, so after that many casts (counted from the game's
   own cast lines, a failed cast too) Fight sends the attack command at the same monster
-  (`a rat`), which restarts auto-combat with the weapon (`kb/combat.md`), for the rest of
-  that monster's fight, whatever the mana. This is the one attack the executor lets through
-  while combat is engaged (John, 2026-10-21; it restarts the swing timer once, which the
-  rule against attacking in combat is there to avoid otherwise). A heal in the middle does
-  not start the count again; a new monster does. A cast line counts as the character's own combat, so a
+  (`a rat`), which carries the fight on with the weapon, for the rest of that monster's
+  fight, whatever the mana. A heal in the middle does not start the count again; a new
+  monster does. A cast line counts as the character's own combat, so a
   fight fought with a spell does not lapse after 12 s of "no blows" and start over.
 - **Heals between fights.** Recover casts the cheapest heal that covers the HP that are missing
   (else the strongest it can pay for) while HP is below `health.rest_below_hp`, one per 5 s (a

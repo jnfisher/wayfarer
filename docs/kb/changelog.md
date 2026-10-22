@@ -169,3 +169,6 @@
   45 carry actions (32 searches for a Hidden exit, 10 `pull lever`, three others), 412 are not
   a direction, none waits or attacks; 7 loops pass no room worth hunting [C, the reference zip
   walked through the stock world by the world pack's builder].
+- **2026-10-21**: `combat.md` and pitfall 31: re-issuing an attack or a spell in a fight does not
+  reset anything (rounds run on a global timer); the rule against attacking in combat, and the
+  held-line machinery built on it, are gone [F, John].

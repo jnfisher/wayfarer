@@ -57,10 +57,6 @@ a card wants to reuse a prototype behaviour, the card says so and why.
 
 **Game facts that become guards** (the game punishes the alternative, `kb/`):
 
-- No attack command while auto-combat is engaged: it restarts the swing timer
-  (`kb/combat.md`). The one exception is the deliberate change from an attack spell to the
-  weapon after `spells.max_casts_per_monster` casts (John, 2026-10-21): one attack, which
-  restarts auto-combat with the weapon.
 - Log off cleanly; dropping in the realm is punished (`kb/connection.md`).
 
 **Prototype policies that become settings with defaults, not rules:**

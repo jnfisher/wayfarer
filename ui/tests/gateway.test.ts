@@ -427,36 +427,6 @@ describe("reconnect", () => {
   });
 });
 
-describe("typing beside the bot", () => {
-  it("hands a held line on and sends it anyway with force", () => {
-    const held: string[] = [];
-    const sockets: FakeSocket[] = [];
-    const client = new GatewayClient({
-      url: "ws://gateway.test/ws",
-      socket: (url) => {
-        const s = new FakeSocket(url);
-        sockets.push(s);
-        return s;
-      },
-      events: { inputHeld: (id, text, reason) => held.push(`${id}: ${text} (${reason})`) },
-    });
-    client.connect();
-    const socket = sockets[0];
-    socket.open();
-    expect(client.sendAnyway("kasimir", "a rat")).toBe(false);
-    socket.receive(welcome(session("kasimir", 0)));
-    socket.receive({
-      type: "input_held",
-      session: "kasimir",
-      text: "a rat",
-      reason: "no attack command while combat is engaged",
-    });
-    expect(held).toEqual(["kasimir: a rat (no attack command while combat is engaged)"]);
-    expect(client.sendAnyway("kasimir", "a rat")).toBe(true);
-    expect(socket.sent.at(-1)).toEqual({ type: "user_input", session: "kasimir", text: "a rat", force: true });
-  });
-});
-
 describe("helpers", () => {
   it("builds the WebSocket URL from the page's location", () => {
     expect(gatewayUrl({ protocol: "http:", host: "127.0.0.1:7373" })).toBe("ws://127.0.0.1:7373/ws");
