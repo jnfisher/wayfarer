@@ -181,7 +181,8 @@ and works nothing out itself.
   characters can walk at once; the panel shows the focused one.
 - **Go to**: the map only shows its 15 steps, so for anywhere farther there is the **go**
   box (`Alt+G`, or the `go` button on the tools line). Type part of a name, two letters or
-  more (`woo`, `chief`, `skali`): the list under the box fills as you type, from the brain
+  more (`woo`, `chief`, `skali`), or a room by its number, `1:1217` (`1217` alone is a room on
+  the character's own map; the hover on the map shows each room's `map:room`): the list under the box fills as you type, from the brain
   ([brain.md](brain.md), "Go to"), best first. It holds room names (`Wooden Passage, 63
   rooms, nearest 43 steps`; `▸` opens the group onto its nearest 20 rooms), well-known places
   (shops, banks and trainers by their room name, and MegaMud's named rooms when the world

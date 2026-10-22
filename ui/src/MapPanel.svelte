@@ -543,7 +543,7 @@
           bind:value={query}
           {oninput}
           onkeydown={ongokeydown}
-          placeholder="go to: part of a name (woo, chief, skali)"
+          placeholder="go to: part of a name (woo, chief) or map:room (1:1217)"
           aria-label="Go to"
           spellcheck="false"
           autocomplete="off"
