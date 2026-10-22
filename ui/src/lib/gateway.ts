@@ -218,13 +218,12 @@ export class GatewayClient {
 
   /** Ask for the nearest loops, at most `limit`, those matching `query` if given, from anywhere
    * the character can walk to; `radius` (clamped to 1-30) is how far around it the generated
-   * ones are made; through doors unless `doors` is false. */
-  requestLoops(session: string, radius = LOOP_RADIUS, doors = true, query?: string, limit?: number): boolean {
+   * ones are made. */
+  requestLoops(session: string, radius = LOOP_RADIUS, query?: string, limit?: number): boolean {
     return this.send({
       type: "loops_request",
       session,
       radius: clampRadius(radius),
-      doors,
       ...(query ? { query } : {}),
       ...(limit ? { limit } : {}),
     });

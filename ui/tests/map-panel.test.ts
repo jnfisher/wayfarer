@@ -137,11 +137,10 @@ describe("the map panel", () => {
     const { onloops } = mount({ character: here });
     expect(screen.queryByText("walk once")).toBeNull();
     await fireEvent.click(screen.getByRole("button", { name: "loops ▸" }));
-    expect(onloops).toHaveBeenCalledWith("aria", true, 8, undefined, 12);
+    expect(onloops).toHaveBeenCalledWith("aria", 8, undefined, 12);
     expect(screen.getByText("Asking the brain…")).toBeTruthy();
-    // Without doors.
-    await fireEvent.click(screen.getByRole("checkbox", { name: "doors" }));
-    expect(onloops).toHaveBeenLastCalledWith("aria", false, 8, undefined, 12);
+    // No doors checkbox: a door the character can open never leaves a loop out.
+    expect(screen.queryByRole("checkbox", { name: "doors" })).toBeNull();
   });
 
   it("asks again each time the list is opened, so it is around where the character is now", async () => {
@@ -172,13 +171,13 @@ describe("the map panel", () => {
     // Not at once: after the pause in the typing.
     expect(onloops).not.toHaveBeenCalled();
     await new Promise((r) => setTimeout(r, 500));
-    expect(onloops).toHaveBeenCalledWith("aria", true, 8, "keep courtyard", 12);
+    expect(onloops).toHaveBeenCalledWith("aria", 8, "keep courtyard", 12);
     expect(screen.getByText(/nearest of 3 matching “keep courtyard”/)).toBeTruthy();
     onloops.mockClear();
     await fireEvent.keyDown(find, { key: "Escape" });
     expect((find as HTMLInputElement).value).toBe("");
     await new Promise((r) => setTimeout(r, 50));
-    expect(onloops).toHaveBeenCalledWith("aria", true, 8, undefined, 12);
+    expect(onloops).toHaveBeenCalledWith("aria", 8, undefined, 12);
   });
 
   it("says when nothing matches", async () => {

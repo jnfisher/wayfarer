@@ -203,14 +203,15 @@ and works nothing out itself.
   somewhere in a loop's name, MegaMud file, description, author or the name of one of its
   stops (`keep courtyard`); the brain looks through all the loops the character can walk to,
   however far, and the list becomes the 12 nearest that match ("12 nearest of 41 matching
-  ..."). Escape clears it. **doors** leaves out what is behind a door. The list mixes the
+  ..."). Escape clears it. A door never leaves a loop out when the character can open it or
+  bash it; only a door it can neither bash nor pick (a key it does not hold) does. The list mixes the
   loops generated over the hunt rooms (each with its stops, steps and doors; hover the name
   for the stops, arena and lair marked), those of your own (marked "mine") and, when the
   world pack has MegaMud's paths, MegaMud's verified loops. Hovering a loop draws it on the map in yellow with each stop's
   number; clicking its name keeps it drawn (click again to let it go). **walk once** walks a
   loop, generated or MegaMud's: to its nearest stop, round the others and back, a walk per stop, with the
   route and **stop** in the bar as for any walk; the dev panel has the stops as they come
-  (`Loop stop 2/3: Dungeon, Entrance`). With **doors** off what is behind a door is left out;
+  (`Loop stop 2/3: Dungeon, Entrance`).
   A MegaMud loop is listed by
   its file, with its description and how many stops it has (its hunt rooms; hover the file for
   them). Picking a loop shows the floor of its first stop: the Newhaven loop is down the

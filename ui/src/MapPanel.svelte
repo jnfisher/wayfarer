@@ -43,9 +43,9 @@
     onstop: (session: string) => void;
     /** The brain's last `loops` for it. */
     loops?: Loops;
-    /** Ask for the nearest loops, at most `limit`, those matching `query` if given, through
-     * doors or not (`radius`: how far the generated ones are made around the character). */
-    onloops?: (session: string, doors: boolean, radius?: number, query?: string, limit?: number) => void;
+    /** Ask for the nearest loops, at most `limit`, those matching `query` if given (`radius`:
+     * how far the generated ones are made around the character). */
+    onloops?: (session: string, radius?: number, query?: string, limit?: number) => void;
     /** Walk a loop once (a generated loop's id, or a MegaMud loop's file). */
     onwalkloop?: (session: string, id: string) => void;
     /** Run a loop (by id or file), passing by the stops in `skip` (the unticked ones). */
@@ -186,10 +186,9 @@
   const position = $derived(character?.position);
   const known = $derived(position?.room !== undefined);
   const walking = $derived(character?.walking);
-  // The loops list: open or not, through doors or not, the loop hovered and the one picked
+  // The loops list: open or not, the loop hovered and the one picked
   // (a generated loop's id, or `mm:` and a MegaMud file).
   let loopsOpen = $state(false);
-  let doors = $state(true);
   let hoverLoop = $state<string | null>(null);
   let pickedLoop = $state<string | null>(null);
 
@@ -296,7 +295,7 @@
 
   function askLoops() {
     lastAsked = Date.now();
-    if (session) onloops?.(session.id, doors, LOOP_RADIUS, loopQuery.trim() || undefined, LOOPS_SHOWN);
+    if (session) onloops?.(session.id, LOOP_RADIUS, loopQuery.trim() || undefined, LOOPS_SHOWN);
   }
 
   /** Ask after a pause in the typing. */
@@ -575,7 +574,6 @@
           oninput={() => askLoopsSoon()}
           onkeydown={onloopkeydown}
         />
-        <label title="Loops through doors too"><input type="checkbox" bind:checked={doors} onchange={askLoops} /> doors</label>
       </div>
       {#if loopsOpen}
         {#if !loops || loops.session !== session?.id}
