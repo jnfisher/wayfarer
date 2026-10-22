@@ -24,6 +24,7 @@
     ZOOM_RESET_KEYS,
   } from "./lib/keys";
   import { LOOP_RADIUS, MAP_RADIUS, type Loops, type MapView } from "./lib/map";
+  import { chip, dockSessions, loadMinimized, saveMinimized } from "./lib/minimized";
   import type { FoundMessage } from "./lib/goto";
   import {
     drag,
@@ -132,13 +133,43 @@
       helpArea = null;
       return;
     }
-    const r = document.querySelectorAll(".grid > .tile")[focused]?.getBoundingClientRect();
+    const r = document
+      .querySelector(`.grid > .tile[data-session="${sessions[focused]?.id}"]`)
+      ?.getBoundingClientRect();
     helpArea = r
       ? { left: r.left, top: r.top, width: r.width, height: r.height }
       : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
   }
 
-  const grid = $derived(tileGrid(sessions.length, gridWidth, gridHeight));
+  // Tiles minimized to the dock stay mounted (their terminals keep running) but take no cell.
+  let minimized = $state.raw<Set<string>>(new Set(loadMinimized(browserStorage())));
+  function setMinimized(id: string, on: boolean) {
+    const next = new Set(minimized);
+    if (on) next.add(id);
+    else next.delete(id);
+    minimized = next;
+    saveMinimized(browserStorage(), next);
+  }
+  /** Minimize a tile; the focus moves to a tile still showing. */
+  function minimize(i: number) {
+    const id = sessions[i]?.id;
+    if (!id) return;
+    setMinimized(id, true);
+    if (i === focused) {
+      const next = sessions.findIndex((s) => !minimized.has(s.id));
+      if (next >= 0) focused = next;
+    }
+  }
+  /** Bring a tile back where it was, and focus it. */
+  function restore(i: number) {
+    const id = sessions[i]?.id;
+    if (!id) return;
+    setMinimized(id, false);
+    focused = i;
+  }
+  const docked = $derived(dockSessions(sessions, minimized));
+  const shown = $derived(sessions.length - docked.length);
+  const grid = $derived(tileGrid(shown, gridWidth, gridHeight));
 
   // Column and row weights per grid shape, kept in the browser until settings exist (C-013).
   const GAP = 6;
@@ -356,7 +387,9 @@
       const n = Number(e.code.slice(5)) - 1;
       if (n < sessions.length) {
         e.preventDefault();
-        focused = n;
+        // Alt+n on a minimized tile brings it back.
+        if (minimized.has(sessions[n].id)) restore(n);
+        else focused = n;
       }
       return;
     }
@@ -416,6 +449,8 @@
           onhelp={toggleHelp}
           character={brain.attached ? (brain.characters[info.id] ?? {}) : null}
           plan={plansBySession[info.id]}
+          hidden={minimized.has(info.id)}
+          onminimize={() => minimize(i)}
         />
       {:else}
         <p class="empty">
@@ -516,6 +551,18 @@
       </aside>
     {/if}
   </div>
+  {#if docked.length > 0}
+    <!-- The minimized tiles: one chip each, in their order; a click brings the tile back. -->
+    <div class="dock" role="toolbar" aria-label="Minimized characters">
+      {#each docked as info (info.id)}
+        {@const n = sessions.findIndex((s) => s.id === info.id)}
+        {@const c = chip(info, brain.attached ? brain.characters[info.id] : null)}
+        <button class="chip {c.tone}" title="Bring {info.name} back (Alt+{n + 1})" onclick={() => restore(n)}>
+          {n + 1} {c.text}{c.running ? " ►" : ""}
+        </button>
+      {/each}
+    </div>
+  {/if}
 </main>
 
 {#if helpArea}
@@ -597,6 +644,34 @@
     background: var(--vga-lightcyan);
   }
   /* The tiles, and the dev panel to their right when it is open. */
+  /* The bar of minimized characters, under the tiles. */
+  .dock {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1ch;
+    padding: 0 1ch;
+    line-height: 16px;
+    background: var(--vga-lightgray);
+  }
+  .chip {
+    font: inherit;
+    line-height: 16px;
+    padding: 0 1ch;
+    color: #000;
+    background: var(--vga-lightgray);
+    border: none;
+    cursor: pointer;
+  }
+  .chip:hover {
+    background: var(--vga-lightcyan);
+  }
+  .chip.warn {
+    background: var(--vga-yellow);
+  }
+  .chip.bad {
+    color: var(--vga-white);
+    background: var(--vga-red);
+  }
   .body {
     flex: 1;
     min-height: 0;

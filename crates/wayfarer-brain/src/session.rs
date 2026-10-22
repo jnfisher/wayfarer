@@ -737,6 +737,20 @@ impl Session {
                 if let Some(errand) = &mut self.errand {
                     errand.on_event(&typed);
                 }
+                // The items carried: the Item exits they open may be routed through.
+                if let GameEvent::Inventory { items, .. } = &typed {
+                    self.position.traveller.items = items
+                        .iter()
+                        .filter_map(|i| atlas.item_numbers.get(&i.name.to_lowercase()).copied())
+                        .collect();
+                }
+                // The keys carried: the Key exits they turn may be routed through.
+                if let GameEvent::Keys { keys } = &typed {
+                    self.position.traveller.keys = keys
+                        .iter()
+                        .filter_map(|k| atlas.item_numbers.get(&k.to_lowercase()).copied())
+                        .collect();
+                }
                 let says = self.bot.event(&typed, now);
                 self.say(says, out);
                 self.learn(now, out);
@@ -1790,7 +1804,7 @@ impl Session {
                     "no way from {} to {}: {}",
                     name(a),
                     name(b),
-                    why_unreachable(g, &t, a, b)
+                    why_unreachable(g, &t, &atlas.item_names, a, b)
                 )
             })
         })
@@ -2107,7 +2121,13 @@ impl Session {
                 let name = atlas.graph.room(k).map_or("", |r| r.name.as_str());
                 format!(
                     " (the nearest, {name}: {})",
-                    why_unreachable(&atlas.graph, &self.position.traveller, from, k)
+                    why_unreachable(
+                        &atlas.graph,
+                        &self.position.traveller,
+                        &atlas.item_names,
+                        from,
+                        k,
+                    )
                 )
             });
             out.push(self.warning(&format!(

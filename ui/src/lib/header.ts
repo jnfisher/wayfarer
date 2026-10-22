@@ -59,6 +59,9 @@ export function roomText(c: CharacterState): string {
 export type HeaderItem = "server" | "room" | "exp" | "mana" | "hp" | "level";
 export const DROP_ORDER: HeaderItem[] = ["server", "room", "exp", "mana", "hp", "level"];
 
+/** Cells of the minimize button `[▬]`, with the space before it. */
+export const MINIMIZE_CELLS = 4;
+
 export interface HeaderText {
   number: number;
   name: string;
@@ -89,7 +92,9 @@ export function fixedWidth(h: HeaderText): number {
   const start = 3 + String(h.number).length + 1 + h.name.length; // "╔═ 1 Name"
   const fill = 3; // " ═ " at its narrowest
   const bot = botWidth(h.character?.bot); // "[║][■] ═ "
-  const badge = h.state.length + 2 + linkWidth(h.state) + menuWidth(h.state, h.character !== null); // "realm [log off] [▼]"
+  // "realm [log off] [▼] [▬]"
+  const badge =
+    h.state.length + 2 + linkWidth(h.state) + menuWidth(h.state, h.character !== null) + MINIMIZE_CELLS;
   const noBrain = h.character ? 0 : 9; // " no brain"
   const end = 3; // " ═╗"
   return start + fill + bot + badge + noBrain + end;

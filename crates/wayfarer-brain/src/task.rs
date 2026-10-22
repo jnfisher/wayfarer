@@ -58,7 +58,13 @@ pub fn passed_left(now: Instant, passed_at: Option<Instant>, passed_for: Duratio
 /// Why no route reaches `to` from `from`: the first exit the traveller `t` may not take on
 /// the way a traveller with no strength, no refusals, no gate checked and every hidden exit
 /// would go.
-pub(crate) fn why_unreachable(g: &RoomGraph, t: &Traveller, from: Key, to: Key) -> String {
+pub(crate) fn why_unreachable(
+    g: &RoomGraph,
+    t: &Traveller,
+    keys: &std::collections::HashMap<i64, String>,
+    from: Key,
+    to: Key,
+) -> String {
     let mut open = Traveller {
         level: None,
         class: None,
@@ -100,7 +106,7 @@ pub(crate) fn why_unreachable(g: &RoomGraph, t: &Traveller, from: Key, to: Key) 
         format!("the exit {dir} of {at} was refused")
     } else if e.hidden() {
         format!("the hidden exit {dir} of {at} is not known")
-    } else if let Some(need) = gate_need(&e) {
+    } else if let Some(need) = gate_need(&e, keys) {
         format!("the exit {dir} of {at} {need}")
     } else {
         "no route known".to_owned()
@@ -108,7 +114,10 @@ pub(crate) fn why_unreachable(g: &RoomGraph, t: &Traveller, from: Key, to: Key) 
 }
 
 /// What a gated exit asks that the traveller does not have: "is for level 10 only".
-fn gate_need(e: &wayfarer_world::Edge) -> Option<String> {
+fn gate_need(
+    e: &wayfarer_world::Edge,
+    keys: &std::collections::HashMap<i64, String>,
+) -> Option<String> {
     use wayfarer_world::{ExitType, Gate};
     Some(match e.gate {
         Gate::Level { min, max } if min == max => format!("is for level {min} only"),
@@ -119,7 +128,10 @@ fn gate_need(e: &wayfarer_world::Edge) -> Option<String> {
         Gate::Item { .. } => "needs an item".to_owned(),
         Gate::Toll { crowns } => format!("takes a toll of {crowns}"),
         Gate::Spell | Gate::Cast { .. } => "needs a spell".to_owned(),
-        Gate::Key => "needs a key".to_owned(),
+        Gate::Key { item } => match keys.get(&item) {
+            Some(name) => format!("needs the {name}"),
+            None => "needs a key".to_owned(),
+        },
         Gate::Ability { .. } => "needs an ability".to_owned(),
         Gate::None if e.kind == ExitType::RemoteAction => "is opened from elsewhere".to_owned(),
         Gate::None if e.kind == ExitType::Text => "takes a phrase not known".to_owned(),
@@ -443,7 +455,13 @@ impl Task {
             1 => "one stop".to_owned(),
             n => format!("{n} stops"),
         };
-        let why = why_unreachable(&v.atlas.graph, v.traveller, from, self.stops[first].key);
+        let why = why_unreachable(
+            &v.atlas.graph,
+            v.traveller,
+            &v.atlas.item_names,
+            from,
+            self.stops[first].key,
+        );
         let text = format!("Skipping {stops} it cannot reach this round: {why}");
         if self.unreachable_said.as_ref() != Some(&text) {
             self.notes.push(text.clone());
