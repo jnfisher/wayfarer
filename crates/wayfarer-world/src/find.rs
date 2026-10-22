@@ -261,6 +261,30 @@ impl Finder {
         if query.chars().count() < MIN_QUERY {
             return Vec::new();
         }
+        if let Some(key) = room_key(&query, from)
+            && let Some(room) = graph.room(key)
+        {
+            let reach = match from.map(|f| distances(graph, f, u32::MAX, traveller)) {
+                None => Reach::Far,
+                Some(r) => match r.get(&key) {
+                    Some(&d) if d <= NEAR_STEPS => Reach::Steps(d),
+                    Some(_) => Reach::Far,
+                    None => Reach::NoRoute,
+                },
+            };
+            return vec![Found {
+                kind: FoundKind::Rooms,
+                name: room.name.clone(),
+                rooms: vec![FoundRoom {
+                    key,
+                    name: room.name.clone(),
+                    reach,
+                    boss: self.is_boss_lair(key),
+                }],
+                count: 1,
+                bosses: Vec::new(),
+            }];
+        }
         let mut hits: Vec<(&Entry, u8)> = self
             .entries
             .iter()
@@ -344,6 +368,16 @@ impl Finder {
     }
 }
 
+/// A room named by its number: `1:1217`, or `1217` for a room on the character's own map
+/// (map 1 when its place is not known).
+fn room_key(query: &str, from: Option<Key>) -> Option<Key> {
+    let num = |t: &str| t.trim().parse().ok();
+    match query.split_once(':') {
+        Some((map, room)) => Some((num(map)?, num(room)?)),
+        None => Some((from.map_or(1, |f| f.0), num(query)?)),
+    }
+}
+
 fn rank(qa: u8, a: &Found, qb: u8, b: &Found) -> Ordering {
     let lost = |f: &Found| f.reach() == Reach::NoRoute;
     lost(a)
@@ -357,6 +391,15 @@ fn rank(qa: u8, a: &Found, qb: u8, b: &Found) -> Ordering {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_room_is_named_by_its_number() {
+        assert_eq!(room_key("1:1217", Some((9, 5))), Some((1, 1217)));
+        assert_eq!(room_key("1217", Some((9, 5))), Some((9, 1217)));
+        assert_eq!(room_key("1217", None), Some((1, 1217)));
+        assert_eq!(room_key("slum", None), None);
+        assert_eq!(room_key("1:x", None), None);
+    }
 
     #[test]
     fn quality_prefers_the_whole_name_then_its_start_then_a_word() {
