@@ -188,6 +188,13 @@
   }
 </script>
 
+<svelte:window
+  onclick={() => (menuOpen = false)}
+  onkeydown={(e) => {
+    if (e.key === 'Escape') menuOpen = false;
+  }}
+/>
+
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <section
   class="tile"
@@ -268,29 +275,6 @@
             menuOpen = !menuOpen;
           }}>[▼]</button
         >
-        {#if menuOpen}
-          <ul class="errands" role="menu" aria-label="Errands">
-            {#each errands as item (item.action)}
-              <li role="none">
-                <button
-                  role="menuitem"
-                  disabled={item.disabled}
-                  title={item.title}
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    menuOpen = false;
-                    if (item.action === "spell_plan") {
-                      planOpen = true;
-                      client.requestSpellPlan(info.id);
-                    } else {
-                      client.botControl(info.id, item.action);
-                    }
-                  }}>{item.label}</button
-                >
-              </li>
-            {/each}
-          </ul>
-        {/if}
       </span>
     {/if}
     {#if !c}
@@ -298,6 +282,29 @@
     {/if}
     <span class="frame">{" ═╗"}</span>
   </header>
+    {#if menuOpen}
+      <ul class="errands" role="menu" aria-label="Errands">
+        {#each errands as item (item.action)}
+          <li role="none">
+            <button
+              role="menuitem"
+              disabled={item.disabled}
+              title={item.title}
+              onclick={(e) => {
+                e.stopPropagation();
+                menuOpen = false;
+                if (item.action === "spell_plan") {
+                  planOpen = true;
+                  client.requestSpellPlan(info.id);
+                } else {
+                  client.botControl(info.id, item.action);
+                }
+              }}>{item.label}</button
+            >
+          </li>
+        {/each}
+      </ul>
+    {/if}
   {#if planOpen}
     <div class="plan" role="region" aria-label="Spell plan">
       <div class="head">
@@ -529,10 +536,11 @@
     position: relative;
     margin-left: 1ch;
   }
+  /* Outside the header, which clips what overflows it. */
   ul.errands {
     position: absolute;
-    right: 0;
-    top: 100%;
+    right: var(--cell);
+    top: 16px;
     z-index: 5;
     margin: 0;
     padding: 2px 0;
