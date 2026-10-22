@@ -8,7 +8,7 @@ use std::collections::{BTreeSet, HashSet};
 
 use wayfarer_world::loops::{MmLoop, hunt_rooms, megamud_loops};
 use wayfarer_world::{
-    Area, ExitType, Key, Monsters, PathKnowledge, RoomGraph, Traveller, WorldPack,
+    Area, ExitType, Key, Monsters, PathKnowledge, RoomGraph, Traveller, WorldPack, pocket_exits,
 };
 
 /// The Chieftain's Large Wooden Room: a boss lair the Wooden Passages loop never enters.
@@ -212,4 +212,17 @@ fn a_text_exit_the_pack_names_keeps_its_own_phrase() {
     assert_eq!(g.learn_phrases(&k), 0);
     let e = g.edge(KEEP_TREE, UP).unwrap();
     assert_eq!(e.command, "climb tree");
+}
+
+#[test]
+fn a_room_shut_in_with_only_a_hidden_way_out_may_search_for_it() {
+    let m = mm();
+    let t = Traveller::default();
+    // 9:841, 842 and 843 are a pocket: the only ways out are the hidden exits east of 841 and
+    // of 843; the way in was a hidden exit too, which no verified path takes.
+    let out = pocket_exits(&m.graph, (9, 841), 60, &t);
+    assert_eq!(out, BTreeSet::from([((9, 841), 2), ((9, 843), 2)]));
+    // The Hidden Keep's own way in (9:819 and the rest are reachable from the whole keep): a
+    // large reach is not a pocket.
+    assert!(pocket_exits(&m.graph, (9, 819), 60, &t).is_empty());
 }

@@ -169,6 +169,10 @@ and works nothing out itself.
   moves. Drag to pan; once panned (or on another level) it stays where you put it, and a
   `centre` button brings it back. The mouse wheel zooms between three sizes (the VGA font at
   8, 12 and 16 px; 16 to start), about the pointer.
+- **Where it is**: the upper right corner of the map shows the room the brain believes the
+  character is in, `map:room` (`1:1217`), with `(1 of 2)` when it cannot tell which of two or more
+  rooms it is (the lowest is shown). When it is lost the panel says "position unknown: re-sync or
+  look" in place of the map.
 - **Hover** a room for its name, `map:room` and kind, whether monsters spawn there, its exits
   in view (with their kind) and whether the character was there.
 - **Walking**: click a room and the character walks there, confirming each step

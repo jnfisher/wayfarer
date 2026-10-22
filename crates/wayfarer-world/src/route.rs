@@ -2,7 +2,7 @@
 //! "Routing"; the prototype's `World.path`).
 
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, VecDeque};
 
 use crate::nav::{Category, Edge, ExitType, Gate, Key, LockState, RoomGraph};
 
@@ -296,6 +296,42 @@ pub fn distances(graph: &RoomGraph, from: Key, radius: u32, t: &Traveller) -> Ha
         }
     }
     out.extend(seen.into_iter().map(|(i, d)| (graph.key_at(i), d)));
+    out
+}
+
+/// The Hidden exits out of a small pocket: when everything the traveller can reach from `from`
+/// is `cap` rooms or fewer, the Hidden exits that lead out of it, (room, direction). Such a
+/// pocket (a room behind a hidden door that was entered some other way) has no other way out, so
+/// those exits are as good as known. Empty when the reach is larger than `cap`.
+pub fn pocket_exits(
+    graph: &RoomGraph,
+    from: Key,
+    cap: usize,
+    t: &Traveller,
+) -> BTreeSet<(Key, u8)> {
+    let mut out = BTreeSet::new();
+    let Some(src) = graph.ix(from) else {
+        return out;
+    };
+    let mut seen = HashSet::from([src]);
+    let mut queue = VecDeque::from([src]);
+    while let Some(cur) = queue.pop_front() {
+        for e in graph.edges_at(cur) {
+            if t.can_take(e) && seen.insert(e.to_ix) {
+                if seen.len() > cap {
+                    return out;
+                }
+                queue.push_back(e.to_ix);
+            }
+        }
+    }
+    for &ix in &seen {
+        for e in graph.edges_at(ix) {
+            if e.hidden() && !seen.contains(&e.to_ix) {
+                out.insert((graph.key_at(ix), e.dir));
+            }
+        }
+    }
     out
 }
 

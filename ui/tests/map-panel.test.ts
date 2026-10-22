@@ -133,6 +133,19 @@ describe("the map panel", () => {
     expect(onstop).toHaveBeenCalledWith("aria");
   });
 
+  it("shows the map:room the character is in, and says when it is lost", () => {
+    mount({ character: here });
+    expect(screen.getByRole("status", { name: "Location" }).textContent?.trim()).toBe("1:10");
+    cleanup();
+    // Unsure which of two rooms: the lowest is shown, with how many there could be.
+    mount({ character: { position: { map: 9, room: 841, candidates: 2 } } });
+    expect(screen.getByRole("status", { name: "Location" }).textContent?.trim()).toBe("9:841 (1 of 2)");
+    cleanup();
+    // Lost: the panel says so in place of the map.
+    mount({ character: {} });
+    expect(screen.getByText(/position unknown/)).toBeTruthy();
+  });
+
   it("opens the loops list, asking the brain for the nearest", async () => {
     const { onloops } = mount({ character: here });
     expect(screen.queryByText("walk once")).toBeNull();

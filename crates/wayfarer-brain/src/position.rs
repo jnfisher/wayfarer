@@ -9,13 +9,17 @@ use std::time::Duration;
 use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
 use wayfarer_proto::{CharacterState, ExitKind, MapExit, MapRoom, RoomKey, ToGateway};
-use wayfarer_world::{Belief, DirSet, Key, LockState, SegmentKind, Traveller, layout, mm};
+use wayfarer_world::{
+    Belief, DirSet, Key, LockState, SegmentKind, Traveller, layout, mm, pocket_exits,
+};
 
 use crate::brain::Atlas;
 
 /// How long a hidden exit found by a `search` shows: it hides again after one step of 300
 /// fast ticks, about five minutes (`kb/navigation.md` "Hidden"). After that the walker
 /// searches for it again.
+/// A reach of this many rooms or fewer is a sealed pocket: its Hidden exits out are taken as known.
+pub const POCKET_ROOMS: usize = 60;
 pub const HIDDEN_FOR: Duration = Duration::from_secs(5 * 60);
 
 /// A room as the game showed it: its title (when it was not lost behind a prompt), the
@@ -49,6 +53,8 @@ pub(crate) struct Position {
     pub visited: HashSet<Key>,
     /// When each hidden exit in the traveller's `found` was found.
     found_at: BTreeMap<(Key, u8), Instant>,
+    /// The room whose pocket was last looked at ([`POCKET_ROOMS`]).
+    pocket_at: Option<Key>,
     /// Moves that went to the game and whose rooms have not come yet, oldest first: one, or
     /// two with a move pipelined ahead of the first.
     moving: VecDeque<String>,
@@ -278,6 +284,15 @@ impl Position {
         self.traveller.level = c.level.map(i64::from);
         self.traveller.class = c.class.as_ref().and_then(|n| atlas.classes.get(n).copied());
         self.traveller.race = c.race.as_ref().and_then(|n| atlas.races.get(n).copied());
+        // Shut in with only a hidden way out (a room entered some other way): it is searched for.
+        if self.belief.certain()
+            && let Some(k) = self.belief.best()
+            && self.pocket_at != Some(k)
+        {
+            self.pocket_at = Some(k);
+            let exits = pocket_exits(&atlas.graph, k, POCKET_ROOMS, &self.traveller);
+            self.traveller.searchable.extend(exits);
+        }
     }
 
     /// The believed room: the lowest key among the candidates.

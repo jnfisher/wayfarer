@@ -731,6 +731,11 @@
       {/if}
     </div>
     <div class="canvas" bind:clientWidth={width} bind:clientHeight={height}>
+      <div class="here" class:lost={position?.map == null} role="status" aria-label="Location" title="Where the brain believes the character is: map:room">
+        {position?.map != null && position.room != null ? `${position.map}:${position.room}` : "unknown"}{(position?.candidates ?? 0) > 1
+          ? ` (1 of ${position?.candidates})`
+          : ""}
+      </div>
       {#if view}
         <canvas
           bind:this={canvas}
@@ -981,6 +986,19 @@
     flex: 1;
     min-height: 0;
     overflow: hidden;
+  }
+  .here {
+    position: absolute;
+    top: 2px;
+    right: 1ch;
+    z-index: 1;
+    padding: 0 1ch;
+    background: var(--vga-black);
+    color: var(--vga-lightcyan);
+    pointer-events: none;
+  }
+  .here.lost {
+    color: var(--vga-lightred);
   }
   canvas {
     position: absolute;
