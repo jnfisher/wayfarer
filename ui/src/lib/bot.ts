@@ -87,3 +87,41 @@ export function linkWidth(state: string): number {
   const b = linkButton(state);
   return b ? b.label.length + 3 : 0;
 }
+
+export interface ErrandItem {
+  action: BotAction;
+  label: string;
+  title: string;
+  disabled: boolean;
+}
+
+/** Cells the errand menu button `[▼]` takes, with the space before it; 0 when there is none. */
+export function menuWidth(state: string, hasBrain: boolean): number {
+  return hasBrain && state === "realm" ? 4 : 0;
+}
+
+/**
+ * The entries of a tile's errand menu: pick up all and equip all (not while the bot runs or an
+ * errand is on), and cancel while one is.
+ */
+export function errandItems(bot: Bot | undefined, errand: string | undefined): ErrandItem[] {
+  const busy = errand !== undefined;
+  const running = bot?.state === "running";
+  const why = busy ? "An errand is in progress" : running ? "Stop or pause the bot first" : "";
+  const items: ErrandItem[] = [
+    {
+      action: "pick_up_all",
+      label: "Pick up all",
+      title: why || "Take the coins and the items on the floor here",
+      disabled: busy || running,
+    },
+    {
+      action: "equip_all",
+      label: "Equip all",
+      title: why || "Wear and wield what is carried, into empty slots only",
+      disabled: busy || running,
+    },
+  ];
+  if (busy) items.push({ action: "cancel_errand", label: "Cancel errand", title: errand, disabled: false });
+  return items;
+}

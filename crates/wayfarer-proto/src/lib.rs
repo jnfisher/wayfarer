@@ -166,6 +166,10 @@ pub struct CharacterState {
     /// or not the bot was running; absent without a world pack.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub places: Option<Vec<Place>>,
+    /// What the errand in progress is doing (`pick_up_all`, `equip_all`); absent when there is
+    /// none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub errand: Option<String>,
 }
 
 /// A room the character is remembered to have been in, and why (`CharacterState::places`).
@@ -344,6 +348,12 @@ pub enum BotAction {
     Pause,
     /// Re-sync, then carry on.
     Resume,
+    /// An errand: pick up the coins and items in the room (with the bot stopped or paused).
+    PickUpAll,
+    /// An errand: wear and wield what is carried, into empty slots only.
+    EquipAll,
+    /// End the errand in progress.
+    CancelErrand,
 }
 
 /// A room of the world pack: its map and room number.

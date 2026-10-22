@@ -206,6 +206,12 @@ and works nothing out itself.
   the bot first), and the session stays closed, not reconnected, until **connect**; **connect**
   opens the connection and runs the logon again. After a hang-up (`health.hangup`,
   [brain.md](brain.md) "Flee") the tile shows `closed` the same way.
+- **Errands**: the `[▼]` button in a tile's header (in the realm, with a brain attached) opens
+  a menu: **Pick up all** (the coins and the items on the floor, copper included) and **Equip all**
+  (wear and wield what is carried, into empty slots only; nothing worn is replaced), and
+  **Cancel errand** while one runs. They are offered only while the bot is stopped or paused. The
+  tile's narration line shows what the errand is doing, and a notice says what it did
+  ([brain.md](brain.md) "Errands").
 - **Recent places**: with nothing typed, the go box lists where the character died (its gear
   is in that room), fled from and was stopped in, newest first, ten at most, each with how long
   ago, the room's name and `map:room` (`died 12 m ago: Slum Street 1:1217`; a flee says from

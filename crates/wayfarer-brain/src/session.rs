@@ -29,6 +29,7 @@ use crate::character::{Character, merge_patch};
 use crate::clock::Clock;
 use crate::commands::{Kind, classify};
 use crate::custom;
+use crate::errand::{Ctx, Errand, ErrandKind, ErrandNext};
 use crate::executor::{Action, Executor};
 use crate::modes::{Bot, Do, Presence, View};
 use crate::policy::{COMBAT_QUIET, hp_percent};
@@ -227,6 +228,7 @@ struct TypedLine {
 enum Owner {
     Walker,
     Bot,
+    Errand,
 }
 
 /// What a re-sync step did, for the brain to report.
@@ -353,6 +355,8 @@ pub(crate) struct Session {
     down: bool,
     /// The notice that the character is mortally wounded has been given, until it is not.
     wounded_noted: bool,
+    /// The errand the player started (pick up all, equip all), with the bot stopped or paused.
+    errand: Option<Errand>,
     /// The connection was dropped at the hang-up line and the realm has not been left yet.
     hung_up: bool,
     /// The gateway is logging the character off (`logging_off`): nothing more is sent.
@@ -457,6 +461,7 @@ impl Session {
             last_combat: now,
             down: false,
             wounded_noted: false,
+            errand: None,
             hung_up: false,
             leaving: false,
             flee_out: false,
@@ -726,6 +731,9 @@ impl Session {
             if let Some(atlas) = self.atlas.clone() {
                 self.presence.event(&atlas, &typed);
                 self.sighted(&typed, now, out);
+                if let Some(errand) = &mut self.errand {
+                    errand.on_event(&typed);
+                }
                 let says = self.bot.event(&typed, now);
                 self.say(says, out);
                 self.learn(now, out);
@@ -2163,8 +2171,21 @@ impl Session {
             out.push(self.warning("bot: the brain has no world pack"));
             return;
         };
+        if matches!(
+            action,
+            BotAction::PickUpAll | BotAction::EquipAll | BotAction::CancelErrand
+        ) {
+            self.errand_control(action, out);
+            self.drive(now, out);
+            self.flush_views(out);
+            return;
+        }
         let says = match action {
             BotAction::Start => {
+                if self.errand.is_some() {
+                    out.push(self.warning("bot: an errand is in progress; cancel it first"));
+                    return;
+                }
                 if self.state != SessionState::Realm {
                     out.push(self.warning("bot: the character is not in the realm"));
                     return;
@@ -2192,6 +2213,8 @@ impl Session {
                 }
                 says
             }
+            // Handled above.
+            BotAction::PickUpAll | BotAction::EquipAll | BotAction::CancelErrand => return,
         };
         self.say(says, out);
         self.bot_held(out);
@@ -2251,6 +2274,107 @@ impl Session {
             out.push(self.warning(&format!(
                 "Mortally wounded (HP {hp}): nothing can be done until it is helped or reborn; waiting"
             )));
+        }
+    }
+
+    /// `pick_up_all`, `equip_all` and `cancel_errand`.
+    fn errand_control(&mut self, action: BotAction, out: &mut Vec<ToGateway>) {
+        let kind = match action {
+            BotAction::PickUpAll => ErrandKind::PickUp,
+            BotAction::EquipAll => ErrandKind::Equip,
+            _ => {
+                if let Some(e) = self.errand.take() {
+                    self.executor.cancel();
+                    if self.owner == Some(Owner::Errand) {
+                        self.owner = None;
+                    }
+                    out.push(self.notice(&format!("{} cancelled", e.kind().label())));
+                }
+                return;
+            }
+        };
+        if self.state != SessionState::Realm {
+            out.push(self.warning("errand: the character is not in the realm"));
+        } else if self.bot.running() {
+            out.push(self.warning("errand: stop or pause the bot first"));
+        } else if self.errand.is_some() {
+            out.push(self.warning("errand: one is in progress; cancel it first"));
+        } else if self.mortally_wounded() {
+            out.push(self.warning("errand: the character is mortally wounded"));
+        } else {
+            self.errand = Some(Errand::new(kind));
+            out.push(self.notice(&format!("{} started", kind.label())));
+        }
+    }
+
+    /// Give the errand its next command when nothing is in flight and the game is at a prompt;
+    /// end it when it is done, or when something attacks.
+    fn errand_tick(&mut self, out: &mut Vec<ToGateway>) {
+        if self.errand.is_none() {
+            return;
+        }
+        let attacked =
+            !self.presence.attackers.is_empty() || self.character.state().in_combat == Some(true);
+        if self.bot.running() || attacked || self.mortally_wounded() {
+            let e = self.errand.take().expect("an errand");
+            self.executor.cancel();
+            if self.owner == Some(Owner::Errand) {
+                self.owner = None;
+            }
+            let why = if self.bot.running() {
+                "the bot started"
+            } else {
+                "something is attacking"
+            };
+            out.push(self.warning(&format!("{} stopped: {why}", e.kind().label())));
+            return;
+        }
+        if self.state != SessionState::Realm
+            || !self.live()
+            || !self.at_prompt
+            || self.executor.busy()
+            || self.walker.walking()
+            || self.resync != Resync::Off
+        {
+            return;
+        }
+        let c = self.character.state();
+        let coins: std::collections::BTreeMap<String, u64> = c
+            .coins
+            .as_ref()
+            .map(|c| {
+                c.carried
+                    .iter()
+                    .map(|k| (crate::loot::coin_word(&k.coin).to_owned(), k.count))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let load = c
+            .encumbrance
+            .as_ref()
+            .and_then(|e| Some((u64::from(e.current?), u64::from(e.max?))));
+        let ctx = Ctx {
+            floor: &self.presence.floor,
+            floor_items: &self.presence.floor_items,
+            carried: &self.character.items,
+            coins: &coins,
+            load,
+            limit: self.settings.choice("cash.max_encumbrance"),
+        };
+        let next = self.errand.as_mut().expect("an errand").step(&ctx);
+        match next {
+            ErrandNext::Send(action) => match self.executor.submit(action) {
+                Ok(()) => self.owner = Some(Owner::Errand),
+                Err(guard) => {
+                    self.errand = None;
+                    out.push(self.warning(&format!("refused: {}", guard.describe())));
+                }
+            },
+            ErrandNext::Wait => {}
+            ErrandNext::Done(text) => {
+                self.errand = None;
+                out.push(self.notice(&text));
+            }
         }
     }
 
@@ -2640,6 +2764,11 @@ impl Session {
         {
             tracing::debug!(session = %self.id, cmd = %action.command, ?outcome, "action done");
             match self.owner.take() {
+                Some(Owner::Errand) => {
+                    if let Some(errand) = &mut self.errand {
+                        errand.outcome(&action, outcome);
+                    }
+                }
                 Some(Owner::Bot) => {
                     let says = self.bot.outcome(&action, outcome);
                     self.say(says, out);
@@ -2689,6 +2818,7 @@ impl Session {
             self.bot.forget();
         }
         self.bot_tick(now, out);
+        self.errand_tick(out);
         self.flee_out_done(out);
         // The player's line first: the bot's next action waits for the prompt after it.
         if self.send_typed(now, out) {
@@ -2749,6 +2879,7 @@ impl Session {
             s.bot = Some(bot);
             s.run = self.ledger.snapshot();
             s.places = Some(self.places());
+            s.errand = self.errand.as_ref().map(Errand::narration);
         }
         s
     }

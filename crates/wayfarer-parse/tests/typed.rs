@@ -620,7 +620,7 @@ fn unknown_and_other() {
 #[test]
 fn coins_on_the_floor_and_picked_up() {
     let got = line("You notice 12 gold crowns, 3 silver nobles, torch here.");
-    let GameEvent::RoomItems { coins } = &got[0] else {
+    let GameEvent::RoomItems { coins, items } = &got[0] else {
         panic!("{got:?}")
     };
     assert_eq!(
@@ -629,6 +629,10 @@ fn coins_on_the_floor_and_picked_up() {
             .map(|(c, n)| (c.as_str(), *n))
             .collect::<Vec<_>>(),
         [("gold crowns", 12), ("silver nobles", 3)]
+    );
+    assert_eq!(
+        items.iter().map(|i| i.name.as_str()).collect::<Vec<_>>(),
+        ["torch"]
     );
     assert_eq!(
         example("picked_up_coins"),

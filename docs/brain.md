@@ -773,6 +773,27 @@ shows them ([web-ui.md](web-ui.md) "The stats"). `stats_reset` ends the current 
 another at once with its numbers at zero (the old run stays in the list, its loop carried
 over): the way to measure a stretch of play without stopping the bot. With no run it warns.
 
+## Errands
+
+An errand is a one-shot job the player starts from the `[▼]` menu on a tile
+([web-ui.md](web-ui.md)): `bot_control` `pick_up_all`, `equip_all` and `cancel_errand`. It runs only
+with the bot stopped or paused (the player is playing; starting the bot, or anything attacking
+the character, ends it with a warning, "Pick up stopped: something is attacking"), one at a time,
+in the realm. Like the bot it sends a command only when nothing is in flight and the game is at a
+prompt, and the snapshot's `errand` carries its narration (`Pick up: get torch`). Flee and Fight
+do not apply: it is short, and the player stands by.
+
+- **Pick up all** sends `look`, then `get N <coin>` for each coin on the floor, runic down to
+  copper (copper too, unlike the bot's loot, but under the same `cash.max_encumbrance` load
+  limit), then `get <item>` once for each copy of each thing lying there (ten at most). "You
+  cannot carry that much!" ends the pickups: the rest are left and the summary says so ("Pick
+  up done: 5 gold, torch; left: anvil (the load is too much)").
+- **Equip all** sends `i`, then `wear <item>` for each carried item that is not already worn or
+  held, leaving torches, lanterns, scrolls, potions, elixirs, flasks, keys and bread alone. A
+  `wear` the game refuses ("may not be worn", "no more room") is tried as `wield <item>` when no
+  weapon is readied, and only for the first; a taken slot is never emptied. "Equip done: wearing
+  padded vest, holding short sword; left: iron helm".
+
 ## Coins and the attack command
 
 **Loot** is a mode between Flee and Recover: when nothing is attacking and the bot is not
