@@ -531,3 +531,30 @@ fn not_sure_of_the_room_no_candidate() {
     assert!(policy::flee_exits(&a, Some(ARENA), false, &BTreeSet::new(), &none).is_empty());
     assert!(policy::flee_exits(&a, None, true, &BTreeSet::new(), &none).is_empty());
 }
+
+#[tokio::test(start_paused = true)]
+async fn mortally_wounded_it_sends_nothing_and_says_so_once() {
+    let (mut g, run) = fighting().await;
+    g.round("The large giant rat lunges at you!", -4).await;
+    g.round("You may not do that while you are mortally wounded!", -6)
+        .await;
+    let sent = |g: &Game| {
+        g.seen
+            .iter()
+            .filter(|m| matches!(m, ToGateway::InputLine { .. }))
+            .count()
+    };
+    let before = sent(&g);
+    for hp in [-8, -9, -11] {
+        g.round("The large giant rat bites you!", hp).await;
+    }
+    g.idle(Duration::from_secs(120)).await;
+    assert_eq!(sent(&g), before);
+    let (seen, _) = g.close(run).await;
+    let said = notices(&seen);
+    let hurt = said
+        .iter()
+        .filter(|n| n.starts_with("Mortally wounded"))
+        .count();
+    assert_eq!(hurt, 1, "{said:?}");
+}
