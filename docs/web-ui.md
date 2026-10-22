@@ -99,7 +99,7 @@ and `■` but no pause sign, so pause is `[║]`.
 | `Up`, `Down`, `Enter` in the go box | Choose a row (the map centres on its room when in view) and walk there; a boss lair's row has a ticked `stop short` box: the walk stops one room before it |
 | `Esc` in the go box | Clear it; `Esc` again closes it |
 | Mouse wheel, drag on the map | Zoom (three sizes), pan; `centre` goes back to the character |
-| `loops`, under the map | The loops around the character: hover or pick one to draw it in yellow, `walk once` walks it, `run` hunts round it (untick a stop to pass it by) |
+| `loops`, beside `go` | The loops around the character, with a box to find one by name, file, author or a stop: hover or pick one to draw it in yellow, `walk once` walks it, `run` hunts round it (untick a stop to pass it by) |
 | `F10`, or `[►]` and `[■]` in the tile's header | Start the focused character's bot where it stands (fight what comes, rest when low), or stop it |
 | `F9`, or `[║]` and `[►]` in the tile's header | Pause or resume the focused character's bot; a line you type pauses it too |
 | `Alt+S`, or the `stats` button | Open the drawer on the stats of the focused character's runs: exp per hour, kills, deaths and flees, now and for the last runs; or close it (on a Mac, `Option`) |
@@ -195,16 +195,24 @@ and works nothing out itself.
   room before the lair so you can look before going in, and the walk bar says `one room
   short of Large Wooden Room (boss: minotaur chieftain)`. Untick it to walk in. `Esc`
   clears the box; `Esc` again closes it.
-- **Loops**: `▸ loops` under the map opens the list of loops around the character
-  ([brain.md](brain.md), "Loops"): those generated over the hunt rooms within 8 steps of
-  the room it is in, each with its stops, steps and doors (hover the name for the stops,
+- **Loops**: `loops ▸`, beside `go` above the map, opens the list of loops around the
+  character ([brain.md](brain.md), "Loops"). Opening it asks the brain again, so it is
+  around the room the character is in now; if the character moves on while it is open a
+  line says so and **near me** refreshes it. The box at the top **finds a loop**: every word
+  you type must be somewhere in a loop's name, MegaMud file, description, author or the
+  name of one of its stops (`keep courtyard`), the count says how many match, and Escape
+  clears it. **within 8 / 15 / 30 steps** widens the area the loops are listed for, and
+  **doors** leaves out what is behind a door. To look somewhere else, find the place in the
+  go box and press **loops near** on it: the list is then around that place until **near
+  me** brings it back. The list has: those generated over the hunt rooms within the
+  radius of the room, each with its stops, steps and doors (hover the name for the stops,
   arena and lair marked), and, when the world pack has MegaMud's paths, MegaMud's verified
   loops through those rooms. Hovering a loop draws it on the map in yellow with each stop's
   number; clicking its name keeps it drawn (click again to let it go). **walk once** walks a
   loop, generated or MegaMud's: to its nearest stop, round the others and back, a walk per stop, with the
   route and **stop** in the bar as for any walk; the dev panel has the stops as they come
-  (`Loop stop 2/3: Dungeon, Entrance`). **doors** off leaves out what is behind a door;
-  **here** asks again around the room the character is in now. A MegaMud loop is listed by
+  (`Loop stop 2/3: Dungeon, Entrance`). With **doors** off what is behind a door is left out;
+  A MegaMud loop is listed by
   its file, with its description and how many stops it has (its hunt rooms; hover the file for
   them). Picking a loop shows the floor of its first stop: the Newhaven loop is down the
   stairs from the Narrow Road, the Arena and the two Lairs north of it.
@@ -222,7 +230,7 @@ and works nothing out itself.
   ("Loop Newhaven: to stop 2/3 Dungeon, Entrance (one step, one door)", "Stop 1/3 cleared: 1
   large giant rat").
 
-  ![The loops list under the map, the Newhaven loop picked: the Arena and two Lairs, numbered, on level -1](images/web-ui-map-loops.png)
+  ![The loops list, the Newhaven loop picked: the Arena and two Lairs, numbered, on level -1](images/web-ui-map-loops.png)
 - **Your own loops**: with a loop picked, "Make a loop from X" takes a name and **save as my
   loop**, which keeps a copy of the loop's stops under that name; to change it first, find a room
   in the go box (`Alt+G`), press **add to loop** on its row, and give the number of the stop it

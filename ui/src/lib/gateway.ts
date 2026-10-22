@@ -216,10 +216,16 @@ export class GatewayClient {
     return this.send({ type: "map_request", session, radius: clampRadius(radius) });
   }
 
-  /** Ask for the loops within `radius` steps of the character (clamped to 1-30), through doors
-   * unless `doors` is false. */
-  requestLoops(session: string, radius = LOOP_RADIUS, doors = true): boolean {
-    return this.send({ type: "loops_request", session, radius: clampRadius(radius), doors });
+  /** Ask for the loops within `radius` steps of the character, or of `anchor` (clamped to 1-30),
+   * through doors unless `doors` is false. */
+  requestLoops(session: string, radius = LOOP_RADIUS, doors = true, anchor?: RoomKey): boolean {
+    return this.send({
+      type: "loops_request",
+      session,
+      radius: clampRadius(radius),
+      doors,
+      ...(anchor ? { anchor } : {}),
+    });
   }
 
   /** Set the player's monster rule for names holding `pattern` (any case), or remove it
