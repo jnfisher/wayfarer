@@ -787,6 +787,16 @@ scroll read since is found the next time.
   the game falls back to melee itself. A cast the game refuses (`You do not have enough mana`,
   `You have already cast a spell this round!`) is not the target's fault: the fight uses the
   weapon for 12 s.
+- **Casts per monster.** `spells.max_casts_per_monster` (0, the default, is no limit) caps the
+  casts of the attack spell at one monster to spend a little mana on each fight: auto-combat
+  casts the spell every round on its own, so after that many casts (counted from the game's
+  own cast lines, a failed cast too) Fight sends the attack command at the same monster
+  (`a rat`), which restarts auto-combat with the weapon (`kb/combat.md`), for the rest of
+  that monster's fight, whatever the mana. This is the one attack the executor lets through
+  while combat is engaged (John, 2026-10-21; it restarts the swing timer once, which the
+  rule against attacking in combat is there to avoid otherwise). A heal in the middle does
+  not start the count again; a new monster does. A cast line counts as the character's own combat, so a
+  fight fought with a spell does not lapse after 12 s of "no blows" and start over.
 - **Heals between fights.** Recover casts the cheapest heal that covers the HP that are missing
   (else the strongest it can pay for) while HP is below `health.rest_below_hp`, one per 5 s (a
   round is 5 s), at most six per rest, before it walks to a quiet room and rests: a Cleric at

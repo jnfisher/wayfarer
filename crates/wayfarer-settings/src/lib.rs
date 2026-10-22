@@ -273,6 +273,17 @@ pub const CATALOGUE: &[Setting] = &[
         megamud: None,
     },
     Setting {
+        key: "spells.max_casts_per_monster",
+        label: "Most attack casts at one monster",
+        help: "Cast the attack spell at most this many times at one monster, then attack it with your attack command instead, whatever the mana: a way to spend a little mana on each fight. 0 is no limit: the spell goes on while the mana lasts.",
+        kind: Kind::Int { min: 0, max: 50 },
+        default: Value::Int(0),
+        unit: "casts",
+        tier: Tier::Standard,
+        group: Group::Spells,
+        megamud: Some("Casts Per Monster"),
+    },
+    Setting {
         key: "spells.heal",
         label: "Healing spells",
         help: "Auto: a character with a healing spell casts it on itself between fights, before it rests, and in a fight below the line next. Off: it only rests.",

@@ -356,9 +356,9 @@ pub(crate) struct Session {
 }
 
 /// The events of the character's own auto-combat: its engaging and its blows, hits, misses,
-/// glances and dodged swings. A monster's blows are not among them: a monster attacks a
+/// glances and dodged swings, and its spells (a cast or a failed one). A monster's blows are not among them: a monster attacks a
 /// character that is not fighting back (`kb/combat.md`, "engage at once").
-const OWN_COMBAT: [&str; 7] = [
+const OWN_COMBAT: [&str; 10] = [
     "combat_engaged",
     "you_hit",
     "you_miss",
@@ -366,6 +366,11 @@ const OWN_COMBAT: [&str; 7] = [
     "you_dodged",
     "pvp_dodges",
     "smashed_it",
+    // A fight fought with a spell has these where a weapon's has blows: without them the fight
+    // would lapse after `COMBAT_QUIET` and the bot would attack again, restarting it.
+    "you_cast_generic",
+    "spell_cast_you",
+    "cast_fail",
 ];
 
 impl Session {

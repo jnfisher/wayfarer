@@ -42,6 +42,10 @@ pub struct Action {
     pub command: String,
     pub expect: Expect,
     pub timeout: Duration,
+    /// A deliberate change of weapon in a fight (an attack typed while engaged, which restarts
+    /// the swing timer once): the one attack the guard lets through in combat
+    /// ([`Action::switching`]).
+    pub switch: bool,
 }
 
 impl Action {
@@ -50,7 +54,16 @@ impl Action {
             command: command.into(),
             expect,
             timeout: ACTION_TIMEOUT,
+            switch: false,
         }
+    }
+
+    /// The attack changes how the fight is fought (from a spell to the weapon after the casts
+    /// `spells.max_casts_per_monster` allows): the game restarts auto-combat with it, and the
+    /// executor lets it go though combat is engaged. The only such case (John, 2026-10-21).
+    pub fn switching(mut self) -> Action {
+        self.switch = true;
+        self
     }
 }
 
@@ -252,7 +265,14 @@ impl Executor {
     /// Queue an action to go at the next prompt boundary. A guard refuses it; so does a busy
     /// executor (one action at a time), which is a caller's bug.
     pub fn submit(&mut self, action: Action, in_combat: Option<bool>) -> Result<(), Guard> {
-        guard(&action.command, in_combat)?;
+        guard(
+            &action.command,
+            if action.switch {
+                Some(false)
+            } else {
+                in_combat
+            },
+        )?;
         debug_assert_eq!(self.state, State::Idle, "one action at a time");
         self.state = State::Queued(action);
         Ok(())
@@ -440,6 +460,24 @@ mod tests {
             Err(Guard::AttackInCombat)
         );
         assert!(!ex.busy());
+        // The one exception: the deliberate change from a spell to the weapon.
+        assert_eq!(
+            ex.submit(
+                Action::new("a rat", Expect::Engaged).switching(),
+                Some(true)
+            ),
+            Ok(())
+        );
+        assert!(ex.busy());
+        // It does not let anything else through: training stats stays refused.
+        let mut ex = Executor::default();
+        assert_eq!(
+            ex.submit(
+                Action::new("train stats", Expect::Prompt).switching(),
+                Some(true)
+            ),
+            Err(Guard::TrainStats)
+        );
     }
 
     #[test]
