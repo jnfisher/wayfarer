@@ -470,11 +470,15 @@ impl Brain {
                 anchor,
                 radius,
                 doors,
+                query,
+                limit,
             } => match self.sessions.get_mut(&session) {
                 Some(s) => s.loops_request(
                     anchor.map(|k| (k.map, k.room)),
                     radius,
                     doors.unwrap_or(true),
+                    query.as_deref().unwrap_or_default(),
+                    limit,
                     out,
                 ),
                 None => out.push(no_session("loops_request", &session)),

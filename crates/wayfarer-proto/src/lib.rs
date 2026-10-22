@@ -534,6 +534,11 @@ pub struct GeneratedLoop {
     pub steps: u32,
     /// Doors on the way (each opened, or bashed when locked).
     pub doors: u32,
+    /// Steps from the character to the nearest room of the loop, when asked for from a
+    /// position (`loops_request`); the list is in this order.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub distance: Option<u32>,
 }
 
 /// One of MegaMud's loops through the area, only ever one whose verification walk reached the
@@ -557,6 +562,9 @@ pub struct MegaMudLoop {
     pub runnable: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// Steps from the character to the nearest room of the loop, as for [`GeneratedLoop`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub distance: Option<u32>,
 }
 
 /// A character's coins.
@@ -822,9 +830,12 @@ pub enum ToClient {
         doors: bool,
         generated: Vec<GeneratedLoop>,
         megamud: Vec<MegaMudLoop>,
-        /// The loops the player made (`save_loop`) with a stop in the area, by name.
+        /// The loops the player made (`save_loop`), by name.
         #[serde(default)]
         custom: Vec<GeneratedLoop>,
+        /// How many loops matched the request before it was cut to its `limit`.
+        #[serde(default)]
+        matches: u32,
     },
     Stats {
         session: SessionId,
@@ -886,6 +897,15 @@ pub enum ToClient {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         doors: Option<bool>,
+        /// Only the loops whose name, file, description, author or a stop's room name holds
+        /// every word of this (any case), from anywhere in the world.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        query: Option<String>,
+        /// The most loops to send, the nearest first (12 if left out, 50 at most).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        limit: Option<u32>,
     },
     WalkLoop {
         session: SessionId,
@@ -1064,6 +1084,15 @@ pub enum ToGateway {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         doors: Option<bool>,
+        /// Only the loops whose name, file, description, author or a stop's room name holds
+        /// every word of this (any case), from anywhere in the world.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        query: Option<String>,
+        /// The most loops to send, the nearest first (12 if left out, 50 at most).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        limit: Option<u32>,
     },
     /// UI → brain: walk a loop once (a generated loop's id, or a MegaMud loop's file), from its stop nearest the character round to
     /// that stop again; `walk_stop` stops it, and `walk_to` replaces it.
@@ -1204,9 +1233,12 @@ pub enum ToGateway {
         doors: bool,
         generated: Vec<GeneratedLoop>,
         megamud: Vec<MegaMudLoop>,
-        /// The loops the player made (`save_loop`) with a stop in the area, by name.
+        /// The loops the player made (`save_loop`), by name.
         #[serde(default)]
         custom: Vec<GeneratedLoop>,
+        /// How many loops matched the request before it was cut to its `limit`.
+        #[serde(default)]
+        matches: u32,
     },
     /// Brain → UIs: the answer to a `stats_request`: the last ten runs, newest first, and the
     /// newest run's samples.
@@ -1559,11 +1591,15 @@ impl ToGateway {
                 anchor,
                 radius,
                 doors,
+                query,
+                limit,
             } => ToClient::LoopsRequest {
                 session,
                 anchor,
                 radius,
                 doors,
+                query,
+                limit,
             },
             Self::WalkLoop { session, id } => ToClient::WalkLoop { session, id },
             Self::RunLoop { session, id, skip } => ToClient::RunLoop { session, id, skip },
@@ -1656,6 +1692,7 @@ impl ToGateway {
                 generated,
                 megamud,
                 custom,
+                matches,
             } => ToClient::Loops {
                 session,
                 anchor,
@@ -1664,6 +1701,7 @@ impl ToGateway {
                 generated,
                 megamud,
                 custom,
+                matches,
             },
             Self::Stats {
                 session,

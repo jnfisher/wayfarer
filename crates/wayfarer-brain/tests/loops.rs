@@ -4,7 +4,7 @@
 mod game;
 
 use game::*;
-use wayfarer_proto::{BossStatus, GeneratedLoop};
+use wayfarer_proto::{BossStatus, GeneratedLoop, MegaMudLoop};
 
 /// North of the Dungeon Entrance: a Lair of cave bears.
 const SMALL_CAVERN: Key = (1, 2156);
@@ -17,6 +17,8 @@ impl Game {
             anchor: None,
             radius: 8,
             doors,
+            query: None,
+            limit: None,
         })
         .await;
         self.until(|m| match m {
@@ -38,13 +40,80 @@ impl Game {
     }
 }
 
+/// A `loops_request` with a `query` and a `limit`: the three kinds, and how many matched.
+async fn loops_matching(
+    g: &mut Game,
+    query: &str,
+    limit: Option<u32>,
+) -> (Vec<GeneratedLoop>, Vec<MegaMudLoop>, u32) {
+    g.send(ToClient::LoopsRequest {
+        session: ID.into(),
+        anchor: None,
+        radius: 15,
+        doors: None,
+        query: Some(query.into()),
+        limit,
+    })
+    .await;
+    g.until(|m| match m {
+        ToGateway::Loops {
+            generated,
+            megamud,
+            matches,
+            ..
+        } => Some((generated.clone(), megamud.clone(), *matches)),
+        ToGateway::Warning { text, .. } => panic!("{text}"),
+        _ => None,
+    })
+    .await
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_search_finds_the_matching_loops_from_anywhere_nearest_first_and_cuts_the_list() {
+    let (mut g, run) = Game::start(SessionState::Realm, VILLAGE_ENTRANCE).await;
+    // Nothing asked for: the nearest dozen at most, each with its distance, nearest first.
+    let (generated, megamud, matches) = loops_matching(&mut g, "", None).await;
+    let mut near: Vec<(u32, String)> = generated
+        .iter()
+        .map(|l| (l.distance.expect("a distance"), l.name.clone()))
+        .chain(
+            megamud
+                .iter()
+                .map(|m| (m.distance.expect("a distance"), m.file.clone())),
+        )
+        .collect();
+    assert!(near.len() <= 12 && matches >= u32::try_from(near.len()).unwrap());
+    let sorted = {
+        let mut v = near.clone();
+        v.sort_by_key(|(d, _)| *d);
+        v
+    };
+    near.sort_by_key(|(d, _)| *d);
+    assert_eq!(near, sorted);
+    // A word of one loop's description finds it, wherever it is; a word nothing has finds none.
+    let (_, megamud, matches) = loops_matching(&mut g, "cave bear", None).await;
+    assert!(
+        megamud.iter().any(|m| m.file == "NARNLOO3.mp"),
+        "{:?}",
+        megamud.iter().map(|m| &m.file).collect::<Vec<_>>()
+    );
+    assert!(matches >= 1);
+    let (generated, megamud, matches) = loops_matching(&mut g, "no such place zzz", None).await;
+    assert_eq!((generated.len(), megamud.len(), matches), (0, 0, 0));
+    // The limit cuts the list, and `matches` still says how many there were.
+    let (generated, megamud, all) = loops_matching(&mut g, "", Some(2)).await;
+    assert_eq!(generated.len() + megamud.len(), 2);
+    assert!(all > 2, "{all}");
+    g.close(run).await;
+}
+
 #[tokio::test(start_paused = true)]
 async fn the_loops_of_the_area_around_the_character() {
     let (mut g, run) = Game::start(SessionState::Realm, VILLAGE_ENTRANCE).await;
     let (generated, megamud) = g.loops_request(None).await;
     // The fixture pack's MegaMud loops through Newhaven: NARNLOO2.mp, NARNLOO3.mp and
-    // Narnloop.mp (`megamud.rs`).
-    assert_eq!(megamud, 3);
+    // Narnloop.mp (`megamud.rs`), and others further off, up to the twelve nearest.
+    assert!((3..=12).contains(&megamud), "{megamud}");
     assert_eq!(generated.len(), 1);
     let l = &generated[0];
     assert_eq!(

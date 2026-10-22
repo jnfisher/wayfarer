@@ -33,6 +33,8 @@ impl Game {
             anchor: None,
             radius,
             doors: None,
+            query: None,
+            limit: None,
         })
         .await;
         self.until(|m| match m {
@@ -166,14 +168,24 @@ async fn the_loops_through_newhaven_list_their_stops_and_whether_they_run() {
     let (mut g, run) = Game::start(SessionState::Realm, VILLAGE_ENTRANCE).await;
     let mm = g.megamud_loops(8).await;
     let files: Vec<&str> = mm.iter().map(|l| l.file.as_str()).collect();
-    assert_eq!(files, ["NARNLOO2.mp", "NARNLOO3.mp", "Narnloop.mp"]);
-    let narn3 = &mm[1];
+    for f in ["NARNLOO2.mp", "NARNLOO3.mp", "Narnloop.mp"] {
+        assert!(files.contains(&f), "{f} in {files:?}");
+    }
+    let near: Vec<u32> = mm.iter().map(|l| l.distance.expect("a distance")).collect();
+    assert!(
+        near.windows(2).all(|w| w[0] <= w[1]),
+        "nearest first: {near:?}"
+    );
+    let narn3 = mm.iter().find(|l| l.file == "NARNLOO3.mp").unwrap();
     assert_eq!(narn3.description, "Newhaven Arena (cave bear)");
     let stops: Vec<Key> = narn3.stops.iter().map(|s| (s.map, s.room)).collect();
     assert_eq!(stops, [ARENA, DUNGEON_ENTRANCE, (1, 2156)]);
     assert!(narn3.stops[0].arena && narn3.stops[2].lair);
+    let newhaven = ["NARNLOO2.mp", "NARNLOO3.mp", "Narnloop.mp"];
     assert!(
-        mm.iter().all(|l| l.runnable && l.reason.is_none()),
+        mm.iter()
+            .filter(|l| newhaven.contains(&l.file.as_str()))
+            .all(|l| l.runnable && l.reason.is_none()),
         "{mm:?}"
     );
     g.close(run).await;

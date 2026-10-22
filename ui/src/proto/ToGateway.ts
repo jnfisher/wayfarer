@@ -19,7 +19,16 @@ import type { WorldPackInfo } from "./WorldPackInfo";
 /**
  * Client → gateway.
  */
-export type ToGateway = { "type": "hello", protocol: number, client: ClientKind, token?: string, } | { "type": "input_line", session: string, text: string, } | { "type": "input_keys", session: string, bytes: Array<number>, } | { "type": "history_request", session: string, after_seq?: number, before_seq?: number, max_chunks: number, } | { "type": "subscribe", sessions?: Array<string>, } | { "type": "resync", session: string, } | { "type": "state_request", session?: string, } | { "type": "walk_to", session: string, map: number, room: number, stop_short?: boolean, } | { "type": "walk_stop", session: string, } | { "type": "map_request", session: string, radius?: number, } | { "type": "bot_control", session: string, action: BotAction, } | { "type": "loops_request", session: string, anchor?: RoomKey, radius: number, doors?: boolean, } | { "type": "walk_loop", session: string, id: string, } | { "type": "run_loop", session: string, id: string, skip?: Array<RoomKey>, } | { "type": "stats_request", session: string, } | { "type": "stats_reset", session: string, } | { "type": "settings_request", session: string, 
+export type ToGateway = { "type": "hello", protocol: number, client: ClientKind, token?: string, } | { "type": "input_line", session: string, text: string, } | { "type": "input_keys", session: string, bytes: Array<number>, } | { "type": "history_request", session: string, after_seq?: number, before_seq?: number, max_chunks: number, } | { "type": "subscribe", sessions?: Array<string>, } | { "type": "resync", session: string, } | { "type": "state_request", session?: string, } | { "type": "walk_to", session: string, map: number, room: number, stop_short?: boolean, } | { "type": "walk_stop", session: string, } | { "type": "map_request", session: string, radius?: number, } | { "type": "bot_control", session: string, action: BotAction, } | { "type": "loops_request", session: string, anchor?: RoomKey, radius: number, doors?: boolean, 
+/**
+ * Only the loops whose name, file, description, author or a stop's room name holds
+ * every word of this (any case), from anywhere in the world.
+ */
+query?: string, 
+/**
+ * The most loops to send, the nearest first (12 if left out, 50 at most).
+ */
+limit?: number, } | { "type": "walk_loop", session: string, id: string, } | { "type": "run_loop", session: string, id: string, skip?: Array<RoomKey>, } | { "type": "stats_request", session: string, } | { "type": "stats_reset", session: string, } | { "type": "settings_request", session: string, 
 /**
  * The layer to show the player's own values of: `mine`, `server` or `character`
  * (left out: `character`).
@@ -34,9 +43,13 @@ layer: string, changes: Array<SettingChange>, } | { "type": "save_loop", session
  */
 level: number, rooms: Array<MapRoom>, exits: Array<MapExit>, route?: Array<RoomKey>, } | { "type": "loops", session: string, anchor: RoomKey, radius: number, doors: boolean, generated: Array<GeneratedLoop>, megamud: Array<MegaMudLoop>, 
 /**
- * The loops the player made (`save_loop`) with a stop in the area, by name.
+ * The loops the player made (`save_loop`), by name.
  */
-custom: Array<GeneratedLoop>, } | { "type": "stats", session: string, runs: Array<RunSummary>, samples: Array<ExpSample>, } | { "type": "settings", session: string, 
+custom: Array<GeneratedLoop>, 
+/**
+ * How many loops matched the request before it was cut to its `limit`.
+ */
+matches: number, } | { "type": "stats", session: string, runs: Array<RunSummary>, samples: Array<ExpSample>, } | { "type": "settings", session: string, 
 /**
  * The layer whose own values `own` shows.
  */

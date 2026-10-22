@@ -21,4 +21,9 @@ path: Array<RoomKey>, steps: number,
 /**
  * Doors on the way (each opened, or bashed when locked).
  */
-doors: number, };
+doors: number, 
+/**
+ * Steps from the character to the nearest room of the loop, when asked for from a
+ * position (`loops_request`); the list is in this order.
+ */
+distance?: number, };

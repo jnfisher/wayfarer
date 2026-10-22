@@ -471,7 +471,7 @@
             {goAsked}
             onstop={(id) => client.walkStop(id)}
             loops={focusedId ? loopsBySession[focusedId] : undefined}
-            onloops={(id, doors, radius, anchor) => client.requestLoops(id, radius ?? LOOP_RADIUS, doors, anchor)}
+            onloops={(id, doors, radius, query, limit) => client.requestLoops(id, radius ?? LOOP_RADIUS, doors, query, limit)}
             onwalkloop={(id, loop) => client.walkLoop(id, loop)}
             onrunloop={(id, loop, skip) => client.runLoop(id, loop, skip)}
             onsaveloop={(id, name, base, stops) => client.saveLoop(id, name, base, stops)}
