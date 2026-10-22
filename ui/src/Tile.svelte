@@ -316,12 +316,12 @@
       {:else}
         <ul>
           {#each plan.items as item (item.spell)}
-            <li class:later={!item.usable} class:buy={item.affordable}>{item.affordable ? "✓ " : "  "}{planRow(item)}</li>
+            <li class:later={!item.usable} class:affordable={item.affordable}>{item.affordable ? "✓ " : "  "}{planRow(item)}</li>
           {/each}
         </ul>
         <p class="totals">{planTotals(plan)}</p>
         <button
-          class="buy"
+          class="buy-btn"
           disabled={errands[0]?.disabled !== false || !plan.items.some((i) => i.usable)}
           title="Withdraw from the Bank of Godfrey if the cash falls short, walk to the shops, buy what the money covers (the cheapest first) and read the scrolls"
           onclick={() => client.botControl(info.id, "buy_spells")}>buy spells</button
@@ -586,15 +586,15 @@
   .plan li.later {
     color: var(--vga-darkgray);
   }
-  .plan li.buy {
+  .plan li.affordable {
     color: var(--vga-lightgreen);
   }
-  .plan .buy {
+  .plan .buy-btn {
     margin-top: 2px;
     background: var(--vga-lightgreen);
     color: #000;
   }
-  .plan .buy:disabled {
+  .plan .buy-btn:disabled {
     background: var(--vga-darkgray);
   }
   .plan .totals {
