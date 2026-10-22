@@ -315,6 +315,13 @@ async fn a_run_counts_kills_and_ends_with_a_death() {
         .map(|e| e.kind)
         .collect();
     assert_eq!(kinds, [EventKind::Kill, EventKind::Death]);
+    // Where it died is kept, with the stop after it, though the run is over.
+    let places = as_ui_sees(&seen).places.unwrap();
+    let kinds: Vec<_> = places.iter().map(|p| p.kind.as_str()).collect();
+    assert_eq!(kinds, ["stopped", "death"], "{places:?}");
+    assert_eq!(places[1].detail, None);
+    assert!(!places[1].name.is_empty(), "{places:?}");
+    assert_eq!(store.places(ID, 10).unwrap().len(), 2);
 }
 
 #[tokio::test(start_paused = true)]

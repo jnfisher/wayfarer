@@ -14,10 +14,10 @@ use wayfarer_parse::typed::GameEvent;
 use wayfarer_parse::{Event, Parser, Registry};
 use wayfarer_proto::{
     BotAction, CharacterState, Chunk, Found, FoundKind, FoundRoom, GeneratedLoop, LoopStop,
-    MegaMudLoop, RoomKey, SessionId, SessionInfo, SessionState, ToGateway,
+    MegaMudLoop, Place, RoomKey, SessionId, SessionInfo, SessionState, ToGateway,
 };
 use wayfarer_settings::{Layer, Settings};
-use wayfarer_store::{BotRecord, BotState, CustomLoop, EventKind, Store};
+use wayfarer_store::{BotRecord, BotState, CustomLoop, EventKind, PlaceKind as StoredPlace, Store};
 use wayfarer_world::loops::{Area, circuits, hunt_rooms, megamud_through, stop_room};
 use wayfarer_world::{
     self as world, HuntRoom, Key, MmLoop, PlaceKind, Reach, Traveller, distances, route,
@@ -36,7 +36,7 @@ use crate::position::Position;
 use crate::rules::{self, RuleBook, Sightings};
 use crate::session_settings::SettingsSource;
 use crate::spellcraft::{SpellRow, Spellbook};
-use crate::stats::{Ledger, unix};
+use crate::stats::{Ledger, rfc3339_at, unix};
 use crate::task::{Task, TaskLoop, why_unreachable};
 use crate::walker::{MAX_SEARCHES, Next, Say, Walker};
 
@@ -863,7 +863,10 @@ impl Session {
                 self.ledger.event(EventKind::Kill, 0, dead, room);
             }
             GameEvent::ExpGain { amount } => self.ledger.exp(*amount, room),
-            GameEvent::YouKilled => self.ledger.event(EventKind::Death, 0, None, room),
+            GameEvent::YouKilled => {
+                self.ledger.event(EventKind::Death, 0, None, room);
+                self.ledger.place(StoredPlace::Death, None, room);
+            }
             GameEvent::Resting { .. } => self.ledger.event(EventKind::Rest, 0, None, room),
             _ => {}
         }
@@ -983,6 +986,11 @@ impl Session {
         }
         let mut record = self.bot.record();
         record.monster_rules = self.rules.stored();
+        if self.ledger.stopping(&record) {
+            let why = self.bot.snapshot().narration;
+            let room = self.position.best();
+            self.ledger.place(StoredPlace::Stopped, Some(&why), room);
+        }
         if self.ledger.save(record, self.clock.instant()) {
             self.publish_patch(out);
         }
@@ -1072,6 +1080,7 @@ impl Session {
             let room = self.position.best();
             self.ledger
                 .event(EventKind::Flee, i64::from(hp), who.as_deref(), room);
+            self.ledger.place(StoredPlace::Flee, who.as_deref(), room);
             let says = self.bot.leave();
             self.say(says, out);
             self.flee_out = true;
@@ -2282,6 +2291,7 @@ impl Session {
             let room = self.position.best();
             self.ledger
                 .event(EventKind::Flee, i64::from(hp), who.as_deref(), room);
+            self.ledger.place(StoredPlace::Flee, who.as_deref(), room);
         }
         match act {
             Some(Do::Send(action)) => match self.executor.submit(action) {
@@ -2640,6 +2650,28 @@ impl Session {
         }
     }
 
+    /// The places the character died, fled and stopped in, with the rooms' names.
+    fn places(&self) -> Vec<Place> {
+        let name = |k: Key| {
+            self.atlas
+                .as_ref()
+                .and_then(|a| a.graph.room(k))
+                .map_or_else(String::new, |r| r.name.clone())
+        };
+        self.ledger
+            .places()
+            .iter()
+            .map(|p| Place {
+                at: rfc3339_at(p.at),
+                kind: p.kind.name().to_owned(),
+                map: p.room.0,
+                room: p.room.1,
+                name: name(p.room),
+                detail: p.detail.clone(),
+            })
+            .collect()
+    }
+
     /// The character with the session's position and walk.
     pub fn snapshot(&self) -> CharacterState {
         let mut s = self.character.snapshot();
@@ -2652,6 +2684,7 @@ impl Session {
             bot.monster_rules = self.rules.wire();
             s.bot = Some(bot);
             s.run = self.ledger.snapshot();
+            s.places = Some(self.places());
         }
         s
     }

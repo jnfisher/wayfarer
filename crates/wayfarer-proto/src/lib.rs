@@ -162,6 +162,27 @@ pub struct CharacterState {
     /// The bot's current run, from Start to Stop or a death; absent when there is none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run: Option<RunStats>,
+    /// Where the character died, fled from and stopped, newest first (at most ten), whether
+    /// or not the bot was running; absent without a world pack.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub places: Option<Vec<Place>>,
+}
+
+/// A room the character is remembered to have been in, and why (`CharacterState::places`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct Place {
+    /// RFC 3339.
+    pub at: String,
+    /// `death` (its gear is in the room), `flee` or `stopped`.
+    pub kind: String,
+    pub map: i64,
+    pub room: i64,
+    /// The room's name; empty when the world pack does not know it.
+    pub name: String,
+    /// What happened: who it fled from, why the bot stopped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub detail: Option<String>,
 }
 
 /// A run's numbers so far (`docs/plan/03-engine.md` section 2): recomputed on each event and

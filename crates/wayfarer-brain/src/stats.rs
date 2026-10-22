@@ -10,7 +10,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::Instant;
 use wayfarer_proto::{ExpSample, RunStats, RunSummary};
 use wayfarer_store::{
-    BotRecord, BotState, CustomLoop, Event, EventKind, Run, Sample, Store, Totals,
+    BotRecord, BotState, CustomLoop, Event, EventKind, Place, PlaceKind, Run, Sample, Store, Totals,
 };
 use wayfarer_world::Key;
 
@@ -20,6 +20,8 @@ use crate::clock::{Clock, rfc3339};
 pub const SAMPLE_EVERY: Duration = Duration::from_secs(60);
 /// How many runs a `stats` message lists.
 pub const STATS_RUNS: usize = 10;
+/// How many places the snapshot lists.
+pub const PLACES_SHOWN: usize = 10;
 /// The shortest time a run's exp per hour is taken over, so the first kill of a run is not
 /// thousands an hour.
 const RATE_FLOOR: i64 = 60;
@@ -30,7 +32,7 @@ pub(crate) fn unix(t: SystemTime) -> i64 {
         .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
 }
 
-fn rfc3339_at(secs: i64) -> String {
+pub(crate) fn rfc3339_at(secs: i64) -> String {
     rfc3339(UNIX_EPOCH + Duration::from_secs(u64::try_from(secs).unwrap_or(0)))
 }
 
@@ -64,6 +66,8 @@ pub(crate) struct Ledger {
     bosses: std::collections::BTreeMap<String, i64>,
     /// Custom loops made since the brain attached, by id (the store has the rest).
     custom: std::collections::BTreeMap<String, CustomLoop>,
+    /// The last places of the character, newest first: the store's, and those since.
+    places: Vec<Place>,
 }
 
 impl Ledger {
@@ -79,8 +83,12 @@ impl Ledger {
             next_sample: None,
             bosses: std::collections::BTreeMap::new(),
             custom: std::collections::BTreeMap::new(),
+            places: Vec::new(),
         };
         ledger.saved = ledger.with(|s, id| s.bot(id)).flatten();
+        ledger.places = ledger
+            .with(|s, id| s.places(id, PLACES_SHOWN))
+            .unwrap_or_default();
         ledger
     }
 
@@ -155,6 +163,42 @@ impl Ledger {
         let mut loops: Vec<CustomLoop> = loops.into_values().collect();
         loops.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.id.cmp(&b.id)));
         loops
+    }
+
+    /// Remember where the character died, fled or was stopped, a run or not. The same thing
+    /// in the same room as the last time is not listed twice.
+    pub fn place(&mut self, kind: PlaceKind, detail: Option<&str>, room: Option<Key>) {
+        let Some(room) = room else { return };
+        if self
+            .places
+            .first()
+            .is_some_and(|p| p.kind == kind && p.room == room)
+        {
+            return;
+        }
+        let place = Place {
+            at: self.now(),
+            kind,
+            room,
+            detail: detail.map(str::to_owned),
+        };
+        self.with(|s, id| s.add_place(id, &place));
+        self.places.insert(0, place);
+        self.places.truncate(PLACES_SHOWN);
+    }
+
+    /// The last places, newest first.
+    pub fn places(&self) -> &[Place] {
+        &self.places
+    }
+
+    /// Whether saving `bot` is the bot stopping, from running or paused.
+    pub fn stopping(&self, bot: &BotRecord) -> bool {
+        bot.state == BotState::Stopped
+            && self
+                .saved
+                .as_ref()
+                .is_some_and(|b| b.state != BotState::Stopped)
     }
 
     /// The bosses the character killed, by lower-case name, with when (unix seconds): the

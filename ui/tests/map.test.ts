@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  agoText,
   carryPan,
   clampRadius,
   COLOURS,
@@ -314,6 +315,14 @@ describe("a loop stop's tooltip", () => {
     regen: 0,
     bosses: [] as { name: string; regen_hours: number; up_in_minutes?: number }[],
   };
+
+  it("says how long ago a time was", () => {
+    const now = Date.parse("2026-10-22T12:00:00Z");
+    expect(agoText("2026-10-22T11:59:40Z", now)).toBe("just now");
+    expect(agoText("2026-10-22T11:55:00Z", now)).toBe("5 m ago");
+    expect(agoText("2026-10-22T09:50:00Z", now)).toBe("2 h 10 m ago");
+    expect(agoText("2026-10-19T12:00:00Z", now)).toBe("3 d ago");
+  });
 
   it("says how long minutes are", () => {
     expect(minutesText(45)).toBe("45 m");

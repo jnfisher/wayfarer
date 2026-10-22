@@ -91,12 +91,23 @@ const MIGRATIONS: &[&str] = &[
          based_on TEXT,
          updated_at INTEGER NOT NULL
      );",
+    // 5: where the character died, fled and stopped, whether or not the bot was running.
+    "CREATE TABLE places (
+         id INTEGER PRIMARY KEY,
+         session TEXT NOT NULL,
+         at INTEGER NOT NULL,
+         kind TEXT NOT NULL,
+         map INTEGER NOT NULL,
+         room INTEGER NOT NULL,
+         detail TEXT
+     );
+     CREATE INDEX places_session ON places (session, at);",
 ];
 
 /// The schema version this build writes.
 pub const SCHEMA_VERSION: u32 = MIGRATIONS.len() as u32;
 
-const TABLES: [&str; 7] = [
+const TABLES: [&str; 8] = [
     "bot_state",
     "runs",
     "events",
@@ -104,6 +115,7 @@ const TABLES: [&str; 7] = [
     "monster_rules",
     "boss_kills",
     "custom_loops",
+    "places",
 ];
 
 #[derive(Debug)]
@@ -309,6 +321,52 @@ impl EventKind {
             _ => return Err(Error::Bad(format!("event kind {s:?}"))),
         })
     }
+}
+
+/// Why a room is remembered as a place the character was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlaceKind {
+    /// The character was killed here: its gear is in the room.
+    Death,
+    /// The character started to flee from here.
+    Flee,
+    /// The bot stopped or gave up here.
+    Stopped,
+}
+
+impl PlaceKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            PlaceKind::Death => "death",
+            PlaceKind::Flee => "flee",
+            PlaceKind::Stopped => "stopped",
+        }
+    }
+
+    fn parse(s: &str) -> Result<Self> {
+        Ok(match s {
+            "death" => PlaceKind::Death,
+            "flee" => PlaceKind::Flee,
+            "stopped" => PlaceKind::Stopped,
+            _ => return Err(Error::Bad(format!("place kind {s:?}"))),
+        })
+    }
+
+    /// The name on the wire.
+    pub fn name(self) -> &'static str {
+        self.as_str()
+    }
+}
+
+/// A room the character is remembered to have been in, and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Place {
+    /// Unix seconds.
+    pub at: i64,
+    pub kind: PlaceKind,
+    pub room: Key,
+    /// What happened: who it fled from, why the bot stopped.
+    pub detail: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -588,6 +646,50 @@ impl Store {
             .prepare("SELECT monster, killed_at FROM boss_kills WHERE session = ?1")?;
         let rows = q.query_map(params![session], |r| Ok((r.get(0)?, r.get(1)?)))?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Remember a place of `session`.
+    pub fn add_place(&self, session: &str, place: &Place) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO places (session, at, kind, map, room, detail) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                session,
+                place.at,
+                place.kind.as_str(),
+                place.room.0,
+                place.room.1,
+                place.detail
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// The session's last `limit` places, newest first.
+    pub fn places(&self, session: &str, limit: usize) -> Result<Vec<Place>> {
+        let mut q = self.conn.prepare(
+            "SELECT at, kind, map, room, detail FROM places WHERE session = ?1
+             ORDER BY id DESC LIMIT ?2",
+        )?;
+        let rows = q.query_map(params![session, limit as i64], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, i64>(3)?,
+                r.get::<_, Option<String>>(4)?,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (at, kind, map, room, detail) = row?;
+            out.push(Place {
+                at,
+                kind: PlaceKind::parse(&kind)?,
+                room: (map, room),
+                detail,
+            });
+        }
+        Ok(out)
     }
 
     /// Save the bot's state for `session`, replacing what was there (its monster rules too).
