@@ -179,7 +179,10 @@ pub enum Gate {
     Cast {
         spell: i64,
     },
-    Key,
+    /// `exitpar1` the number of the key item that turns it.
+    Key {
+        item: i64,
+    },
     Ability {
         ability: i64,
         min: i64,
@@ -366,7 +369,7 @@ impl RoomGraph {
                     ExitType::Toll => Gate::Toll { crowns: p[0] },
                     ExitType::Spell => Gate::Spell,
                     ExitType::Cast => Gate::Cast { spell: p[0] },
-                    ExitType::Key => Gate::Key,
+                    ExitType::Key => Gate::Key { item: p[0] },
                     ExitType::Ability => Gate::Ability {
                         ability: p[0],
                         min: p[1],

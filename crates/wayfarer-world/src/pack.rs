@@ -403,6 +403,26 @@ impl WorldPack {
             .optional()?)
     }
 
+    /// Every item of a type (`kb/game-data.md` "Item types"), by number.
+    pub fn items_of_type(&self, item_type: i64) -> Result<Vec<Item>, Error> {
+        let mut st = self.conn.prepare_cached(
+            "SELECT number, name, type, weight, cost, currency, raw FROM items \
+             WHERE type = ?1 ORDER BY number",
+        )?;
+        let rows = st.query_map([item_type], |r| {
+            Ok(Item {
+                number: r.get(0)?,
+                name: r.get(1)?,
+                item_type: r.get(2)?,
+                weight: r.get(3)?,
+                cost: r.get(4)?,
+                currency: r.get(5)?,
+                raw: r.get(6)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
     pub fn spell(&self, number: i64) -> Result<Option<Spell>, Error> {
         Ok(self
             .conn

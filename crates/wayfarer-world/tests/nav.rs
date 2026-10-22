@@ -591,3 +591,57 @@ fn a_hidden_exit_known_to_the_traveller_is_routed_through() {
     let r2 = route(&g, HIDDEN_KEEP, COURTYARD_DOOR, &known).unwrap();
     assert_eq!(commands(&r2), commands(&r));
 }
+
+#[test]
+fn a_key_exit_is_taken_with_its_key_and_a_hidden_one_as_a_last_resort() {
+    use wayfarer_world::{distances, distances_any, route_or_search};
+    let (_pack, g) = graph();
+    // Thrag's Gigantic Cavern, 1:1810: in by a Key exit east of the Guardroom (1:1794; the large
+    // iron key, item 476); the Small Room (1:1797) joins it by Hidden exits no verified path takes.
+    let (guardroom, small_room, cavern) = ((1, 1794), (1, 1797), (1, 1810));
+    let plain = Traveller::default();
+    // The Small Room is only reached from the cavern, so the Key exit is the way in: without the
+    // key there is no route, hidden exits or not.
+    assert!(route(&g, guardroom, cavern, &plain).is_none());
+    // The key makes it one step through the Key exit.
+    let with_key = Traveller {
+        keys: BTreeSet::from([476]),
+        ..Traveller::default()
+    };
+    let r = route(&g, guardroom, cavern, &with_key).unwrap();
+    assert_eq!(
+        r.iter().map(|s| s.exit_type).collect::<Vec<_>>(),
+        [ExitType::Key]
+    );
+    // From the Small Room it is one hidden step up: no route by known exits, one as a last
+    // resort (a walk the player asks for), each costing a search.
+    assert!(route(&g, small_room, cavern, &plain).is_none());
+    let r = route_or_search(&g, small_room, cavern, &plain).unwrap();
+    assert_eq!(r.len(), 1);
+    assert_eq!(r[0].exit_type, ExitType::Hidden);
+    // Reach counts it; the plain distances do not.
+    assert!(!distances(&g, small_room, u32::MAX, &plain).contains_key(&cavern));
+    assert_eq!(
+        distances_any(&g, small_room, u32::MAX, &plain).get(&cavern),
+        Some(&1)
+    );
+    // A traveller allowed every hidden exit finds it with the plain route too.
+    let mut all = Traveller::default();
+    all.allow.insert(Category::Hidden);
+    assert!(route(&g, small_room, cavern, &all).is_some());
+}
+
+#[test]
+fn an_item_exit_is_taken_with_the_item_carried() {
+    let (_pack, g) = graph();
+    // 1:1541 up 8 to 1:1490 asks for the rope and grapple (item 191).
+    let (below, above) = ((1, 1541), (1, 1490));
+    assert!(route(&g, below, above, &Traveller::default()).is_none());
+    let with = Traveller {
+        items: BTreeSet::from([191]),
+        ..Traveller::default()
+    };
+    let r = route(&g, below, above, &with).expect("a way with the rope");
+    assert_eq!(r.len(), 1);
+    assert_eq!(r[0].exit_type, ExitType::Item);
+}

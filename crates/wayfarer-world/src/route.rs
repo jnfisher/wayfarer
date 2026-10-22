@@ -67,6 +67,11 @@ pub struct Traveller {
     /// Hidden exits showing now: found by a `search`, they hide again after about five
     /// minutes (the caller forgets them).
     pub found: BTreeSet<(Key, u8)>,
+    /// The numbers of the key items the character holds: a Key exit they turn can be taken.
+    pub keys: BTreeSet<i64>,
+    /// The numbers of the items carried that Item exits ask for (a rope and grapple, a room
+    /// ticket): the exits they open can be taken.
+    pub items: BTreeSet<i64>,
     /// Hidden exits known to be there, to be searched for when not showing: found once this
     /// session, or named by a loop's path.
     pub searchable: BTreeSet<(Key, u8)>,
@@ -162,11 +167,11 @@ impl Traveller {
             Gate::Class { only, barred } => one_of(self.class, only, barred),
             Gate::Race { only, barred } => one_of(self.race, only, barred),
             Gate::Alignment { min, max } => self.evil.is_none_or(|v| v >= min && v <= max),
-            Gate::Item { .. } => self.allows(Category::Item),
+            Gate::Item { item } => self.allows(Category::Item) || self.items.contains(&item),
             Gate::Toll { .. } => self.allows(Category::Toll),
             Gate::Spell => self.allows(Category::Spell),
             Gate::Cast { .. } => self.allows(Category::Cast),
-            Gate::Key => self.allows(Category::Key),
+            Gate::Key { item } => self.allows(Category::Key) || self.keys.contains(&item),
             Gate::Ability { .. } => self.allows(Category::Ability),
         };
         gate_ok
@@ -215,6 +220,42 @@ pub fn route_within(
     to: Key,
     t: &Traveller,
     within: impl Fn(Key) -> bool,
+) -> Option<Route> {
+    route_core(graph, from, to, t, &within)
+}
+
+/// [`route`], and when no route takes only the exits the traveller knows, the Hidden exits of the
+/// pack count as a last resort (each costs a search): a room whose way in or out is a hidden exit
+/// no verified path takes can be reached by searching for it, and is not "no route". For a
+/// walk the player asked for; a loop's legs stay with the exits its path knows.
+pub fn route_or_search(graph: &RoomGraph, from: Key, to: Key, t: &Traveller) -> Option<Route> {
+    route_within_or_search(graph, from, to, t, |_| true)
+}
+
+/// [`route_or_search`] through the rooms `within` accepts only.
+pub fn route_within_or_search(
+    graph: &RoomGraph,
+    from: Key,
+    to: Key,
+    t: &Traveller,
+    within: impl Fn(Key) -> bool,
+) -> Option<Route> {
+    route_core(graph, from, to, t, &within).or_else(|| {
+        if t.allows(Category::Hidden) {
+            return None;
+        }
+        let mut any = t.clone();
+        any.allow.insert(Category::Hidden);
+        route_core(graph, from, to, &any, &within)
+    })
+}
+
+fn route_core(
+    graph: &RoomGraph,
+    from: Key,
+    to: Key,
+    t: &Traveller,
+    within: &dyn Fn(Key) -> bool,
 ) -> Option<Route> {
     let (src, dst) = (graph.ix(from)?, graph.ix(to)?);
     let mut best: HashMap<u32, u32> = HashMap::from([(src, 0)]);
@@ -272,6 +313,25 @@ pub fn route_within(
     }
     steps.reverse();
     Some(steps)
+}
+
+/// [`distances`], and beyond them the rooms only the pack's Hidden exits lead to, as far as a
+/// route would take them ([`route_within`]'s last resort): what is reachable at all.
+pub fn distances_any(
+    graph: &RoomGraph,
+    from: Key,
+    radius: u32,
+    t: &Traveller,
+) -> HashMap<Key, u32> {
+    let mut out = distances(graph, from, radius, t);
+    if !t.allows(Category::Hidden) {
+        let mut any = t.clone();
+        any.allow.insert(Category::Hidden);
+        for (k, d) in distances(graph, from, radius, &any) {
+            out.entry(k).or_insert(d);
+        }
+    }
+    out
 }
 
 /// Steps to every room within `radius` steps of `from` (breadth first) by exits the

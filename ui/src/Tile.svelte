@@ -34,6 +34,10 @@
     character?: CharacterState | null;
     /** The brain's last spell plan for the character. */
     plan?: SpellPlan;
+    /** Minimized to the dock: kept running, but not shown. */
+    hidden?: boolean;
+    /** The `[▬]` button: minimize this tile. */
+    onminimize?: () => void;
   }
 
   let {
@@ -48,6 +52,8 @@
     onhelp,
     character = null,
     plan,
+    hidden = false,
+    onminimize,
   }: Props = $props();
 
   let headerWidth = $state(0);
@@ -198,7 +204,9 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <section
   class="tile"
+  data-session={info.id}
   class:focused
+  class:hidden
   onclick={() => {
     onfocus();
     focusInput();
@@ -261,6 +269,17 @@
           e.stopPropagation();
           client.sessionControl(info.id, link.action);
         }}>[{link.label}]</button
+      >
+    {/if}
+    {#if onminimize}
+      <button
+        class="ctl minimize"
+        aria-label="Minimize {info.name}"
+        title="Minimize to the bar at the bottom (click its name there to bring it back)"
+        onclick={(e) => {
+          e.stopPropagation();
+          onminimize?.();
+        }}>[▬]</button
       >
     {/if}
     {#if c && info.state === "realm"}
@@ -531,6 +550,12 @@
   header .ctl.start,
   header .ctl.resume {
     color: var(--vga-lightgreen);
+  }
+  .tile.hidden {
+    display: none;
+  }
+  header .ctl.minimize {
+    margin-left: 1ch;
   }
   header .menu {
     position: relative;

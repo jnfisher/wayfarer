@@ -376,6 +376,11 @@ pub enum GameEvent {
     TrainRefused {
         why: &'static str,
     },
+    /// `inv_keys` / `inv_no_keys`: the keys carried, by name (`You have the following keys:
+    /// brass key, bone key.`).
+    Keys {
+        keys: Vec<String>,
+    },
     /// `wear_fail`: `You may not wear that item!`, `You have no more room to wear that item!`
     /// or `<item> may not be worn!`.
     WearFailed,
@@ -750,6 +755,16 @@ impl GameEvent {
             "train_wrong_room" => G::TrainRefused { why: "wrong_room" },
             "train_level_band" => G::TrainRefused { why: "band" },
             "train_capped" => G::TrainRefused { why: "capped" },
+            "inv_keys" => G::Keys {
+                keys: ev
+                    .text("keys")
+                    .unwrap_or_default()
+                    .split(", ")
+                    .map(|k| k.trim().to_owned())
+                    .filter(|k| !k.is_empty())
+                    .collect(),
+            },
+            "inv_no_keys" => G::Keys { keys: Vec::new() },
             "wear_fail" => G::WearFailed,
             "weapon_forbidden" => G::NotWielded,
             "picked_up_coins" => match int(ev, "n") {

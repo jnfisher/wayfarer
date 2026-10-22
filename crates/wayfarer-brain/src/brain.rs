@@ -65,11 +65,17 @@ pub struct Atlas {
     /// The Bank of Godfrey in Silvermere: where the spell shopping draws money, never another
     /// bank (John, 2026-10-22).
     pub godfrey: Option<Key>,
+    /// Key items by lower-case name and by number: the keys a character holds, and the key a
+    /// Key exit asks for.
+    pub item_numbers: HashMap<String, i64>,
+    pub item_names: HashMap<i64, String>,
     /// The shops where `train` takes a character up a level.
     pub trainers: Vec<wayfarer_world::trainers::Trainer>,
 }
 
 /// Room types (`kb/game-data.md` "Enumerations") and shop types (`kb/economy.md`).
+/// Item type of a key.
+const ITEM_KEY: i64 = 7;
 const ROOM_SHOP: i64 = 1;
 const ROOM_ARENA: i64 = 2;
 const ROOM_LAIR: i64 = 3;
@@ -116,6 +122,25 @@ impl Atlas {
             }
         }
         let by_name = |v: Vec<(i64, String)>| v.into_iter().map(|(n, s)| (s, n)).collect();
+        // The keys, and the items Item exits ask for: by number, to know what is carried.
+        let mut item_names: HashMap<i64, String> = pack
+            .items_of_type(ITEM_KEY)?
+            .into_iter()
+            .map(|i| (i.number, i.name))
+            .collect();
+        let wanted: std::collections::BTreeSet<i64> = graph
+            .all_edges()
+            .iter()
+            .filter_map(|e| match e.gate {
+                wayfarer_world::Gate::Item { item } => Some(item),
+                _ => None,
+            })
+            .collect();
+        for n in wanted {
+            if let Some(item) = pack.item(n)? {
+                item_names.insert(n, item.name);
+            }
+        }
         let monsters = Monsters::load(pack)?;
         let mm_loops = wayfarer_world::loops::megamud_loops(pack, &graph, &monsters)?;
         Ok(Atlas {
@@ -129,6 +154,11 @@ impl Atlas {
             knowledge,
             spells: Spells::load(pack)?,
             scrolls: wayfarer_world::spellshop::load(pack)?,
+            item_numbers: item_names
+                .iter()
+                .map(|(n, name)| (name.to_lowercase(), *n))
+                .collect(),
+            item_names,
             trainers: wayfarer_world::trainers::load(pack)?,
             godfrey: pack
                 .rooms_by_name("Bank of Godfrey")?

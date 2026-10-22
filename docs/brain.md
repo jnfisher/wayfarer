@@ -140,6 +140,19 @@ progress (after the move in flight).
   times; then the exit is marked refused and the route planned again. A locked door whose odds
   are nil for the character is given up at once, with no `bash`: "The door east is beyond my
   strength (needs more than 999)", the exit marked refused, the route planned again.
+- **Keys and items**: a Key exit (exit type 2, `exitpar1` the key's item number) is routed through
+  only when the character holds that key (the `You have the following keys:` line of `i`), and an
+  Item exit (`exitpar1` the item, a rope and grapple, a room ticket) only when the item is carried
+  (the `i` list). At a Key exit's shut door the walker sends `use <key name>` (twice at most), then
+  moves again; an Item exit just works while the item is carried. Without them the exit is not
+  taken, and the reason names it: "the exit east of Stone Passageway, Guardroom needs the large iron
+  key" (Thrag's cavern, 1:1810, is in by that key and nothing else).
+- **Hidden exits as a last resort**: when no route takes only the exits known, a walk the player
+  asked for (`walk_to`, the go box, an errand) may use the pack's Hidden exits (`route_or_search`),
+  each costing a search, and `find` counts a room only hidden exits lead to as reachable
+  (`distances_any`) instead of "no route". A route through known exits is never given up for one
+  through an unknown hidden exit, and a loop's legs and the loop list keep to the exits its path
+  knows.
 - **Hidden exits**: a route takes a Hidden exit the character knows of: one it found this
   session (a `search` of its own or the player's), one an exits line showed (`secret passage
   south`: found lately by anyone), one a loop's path names, or, when the character is shut

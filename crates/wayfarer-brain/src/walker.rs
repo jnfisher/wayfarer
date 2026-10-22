@@ -16,7 +16,9 @@
 
 use wayfarer_parse::typed::Refusal;
 use wayfarer_proto::{BossLair, RoomKey, Walking};
-use wayfarer_world::{Belief, ExitType, Key, Route, Step, mm, route, route_within};
+use wayfarer_world::{
+    Belief, ExitType, Key, Route, Step, mm, route_or_search, route_within_or_search,
+};
 
 use crate::brain::Atlas;
 use crate::executor::{Action, Confirmed, Expect, Outcome, Refused};
@@ -79,6 +81,8 @@ enum Doing {
     Move,
     Open,
     Bash,
+    /// `use <key>` at a Key exit the character holds the key of.
+    UseKey,
     Search,
     /// `look` after a search that found nothing: is the exit showing after all?
     Recheck,
@@ -96,6 +100,9 @@ struct Walk {
     /// Moves confirmed over the whole walk.
     confirmed: u32,
     bashes: u32,
+    /// `use <key>` commands at the step in progress, and the key's name.
+    key_tries: u32,
+    key: Option<String>,
     /// `search` commands at the step in progress that found nothing.
     searches: u32,
     /// The step in progress's hidden exit was found by a search: move.
@@ -173,6 +180,24 @@ fn room_name(atlas: &Atlas, k: Key) -> String {
         .graph
         .room(k)
         .map_or_else(|| format!("{}/{}", k.0, k.1), |r| r.name.clone())
+}
+
+/// `use <key>` at one Key exit before the walker gives it up.
+const MAX_KEY_TRIES: u32 = 2;
+
+/// The name of the key that turns the Key exit of `step`, when the character holds it.
+fn key_for(pos: &Position, atlas: &Atlas, step: &Step) -> Option<String> {
+    let e = atlas
+        .graph
+        .edges(step.from)
+        .iter()
+        .find(|e| e.dir == step.dir)?;
+    match e.gate {
+        wayfarer_world::Gate::Key { item } if pos.traveller.keys.contains(&item) => {
+            atlas.item_names.get(&item).cloned()
+        }
+        _ => None,
+    }
 }
 
 /// Why the locked door of `step` is beyond the character, if its odds are nil: "The door east
@@ -310,7 +335,7 @@ impl Walker {
             next.warning(format!("Not walking to {name}: the position is unknown"));
             return next;
         };
-        let Some(mut r) = route(&atlas.graph, from, to, &pos.traveller) else {
+        let Some(mut r) = route_or_search(&atlas.graph, from, to, &pos.traveller) else {
             next.warning(format!(
                 "Not walking to {name}: no way there from {}",
                 room_name(atlas, from)
@@ -360,6 +385,8 @@ impl Walker {
             doing: Doing::Move,
             confirmed: 0,
             bashes: 0,
+            key_tries: 0,
+            key: None,
             searches: 0,
             searched: false,
             relocations: 0,
@@ -447,6 +474,7 @@ impl Walker {
                     w.next += 1;
                     w.confirmed += 1;
                     w.bashes = 0;
+                    w.key_tries = 0;
                     w.searches = 0;
                     w.searched = false;
                     advanced = true;
@@ -470,6 +498,17 @@ impl Walker {
                     }
                 }
             }
+            // A Key exit the character holds the key of is turned with `use <key>`, twice at most.
+            (Doing::Move, Outcome::Refused(Refused::DoorClosed { .. }))
+                if step.exit_type == ExitType::Key
+                    && w.key_tries < MAX_KEY_TRIES
+                    && key_for(pos, atlas, &step).is_some() =>
+            {
+                w.key_tries += 1;
+                w.key = key_for(pos, atlas, &step);
+                Ok(Doing::UseKey)
+            }
+            (Doing::UseKey, Outcome::Confirmed(Confirmed::Prompt)) => Ok(Doing::Move),
             (Doing::Move, Outcome::Refused(Refused::DoorClosed { locked: false })) => {
                 Ok(Doing::Open)
             }
@@ -681,6 +720,10 @@ impl Walk {
         match doing {
             Doing::Move => Action::new(step.command.clone(), Expect::RoomSeen),
             Doing::Open => Action::new(format!("open {dir}"), Expect::DoorOpened),
+            Doing::UseKey => Action::new(
+                format!("use {}", self.key.clone().unwrap_or_default()),
+                Expect::Prompt,
+            ),
             Doing::Bash => {
                 self.bashes += 1;
                 Action::new(format!("bash {dir}"), Expect::BashResult)
@@ -710,7 +753,7 @@ impl Walk {
         };
         // A walk stopping short of a boss lair never plans through it.
         let lair = self.short_of.as_ref().map(|l| l.key);
-        let r = route_within(&atlas.graph, from, self.to, &pos.traveller, |k| {
+        let r = route_within_or_search(&atlas.graph, from, self.to, &pos.traveller, |k| {
             Some(k) != lair
         });
         let Some(r) = r else {

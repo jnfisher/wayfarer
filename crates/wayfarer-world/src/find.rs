@@ -12,7 +12,7 @@ use crate::Error;
 use crate::monsters::Monsters;
 use crate::nav::RoomGraph;
 use crate::pack::{Monster, Waypoint, WorldPack};
-use crate::route::{Traveller, distances};
+use crate::route::{Traveller, distances_any};
 use crate::walk::Key;
 
 /// Results a query returns at most.
@@ -264,7 +264,7 @@ impl Finder {
         if let Some(key) = room_key(&query, from)
             && let Some(room) = graph.room(key)
         {
-            let reach = match from.map(|f| distances(graph, f, u32::MAX, traveller)) {
+            let reach = match from.map(|f| distances_any(graph, f, u32::MAX, traveller)) {
                 None => Reach::Far,
                 Some(r) => match r.get(&key) {
                     Some(&d) if d <= NEAR_STEPS => Reach::Steps(d),
@@ -307,7 +307,7 @@ impl Finder {
         // Every room the traveller can reach: one breadth-first pass over at most the whole
         // graph (some milliseconds), so "no route" is true and not a guess.
         let reached = match from {
-            Some(f) if !hits.is_empty() => Some(distances(graph, f, u32::MAX, traveller)),
+            Some(f) if !hits.is_empty() => Some(distances_any(graph, f, u32::MAX, traveller)),
             _ => None,
         };
         let reach = |k: Key| -> Reach {

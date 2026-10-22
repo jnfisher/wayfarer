@@ -85,6 +85,18 @@ describe("the tile", () => {
     return render(Tile, { ...props, character }).container;
   }
 
+  it("minimizes with its button and is hidden while minimized", async () => {
+    const onminimize = vi.fn();
+    const props = { info, number: 1, focused: false, zoom: 0, offline: null, client, sinks, onfocus() {}, onhelp() {}, onminimize };
+    const r = render(Tile, { ...props, character: null });
+    await fireEvent.click(screen.getByRole("button", { name: "Minimize Waydeva" }));
+    expect(onminimize).toHaveBeenCalledOnce();
+    expect(r.container.querySelector("section.tile.hidden")).toBeNull();
+    await r.rerender({ ...props, character: null, hidden: true });
+    expect(r.container.querySelector("section.tile.hidden")).not.toBeNull();
+    expect(r.container.querySelector("section.tile")?.getAttribute("data-session")).toBe("a");
+  });
+
   it("has an errand menu in the realm that starts an errand, and shows its progress", async () => {
     botControl.mockClear();
     tile({ bot: stopped });

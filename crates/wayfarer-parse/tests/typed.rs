@@ -747,3 +747,20 @@ fn training_and_what_the_trainer_refuses() {
         GameEvent::TrainRefused { why: "wrong_room" }
     );
 }
+
+#[test]
+fn the_keys_carried() {
+    assert_eq!(
+        example("inv_keys"),
+        GameEvent::Keys {
+            keys: vec!["brass key".into()],
+        }
+    );
+    assert_eq!(
+        line("You have the following keys:  large iron key, bone key.")[0],
+        GameEvent::Keys {
+            keys: vec!["large iron key".into(), "bone key".into()],
+        }
+    );
+    assert_eq!(example("inv_no_keys"), GameEvent::Keys { keys: vec![] });
+}

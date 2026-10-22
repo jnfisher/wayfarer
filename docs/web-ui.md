@@ -206,6 +206,14 @@ and works nothing out itself.
   the bot first), and the session stays closed, not reconnected, until **connect**; **connect**
   opens the connection and runs the logon again. After a hang-up (`health.hangup`,
   [brain.md](brain.md) "Flee") the tile shows `closed` the same way.
+- **Minimizing a tile**: the `[▬]` button in a tile's header hides the tile to a bar at the bottom
+  of the page, one chip per minimized character (`2 Waydeva 65/65 ►`: its number, name and HP, in
+  the HP colours, or `closed` while it is not in the realm; `►` when the bot is playing it). The
+  other tiles share the room. Click the chip, or press `Alt+n` for its number, to bring the tile
+  back where it was (the tiles keep their order and numbers). A minimized character carries on:
+  its terminal keeps receiving output and its bot keeps playing, so idle or following characters can
+  be put away. The minimized set is kept in the browser. Minimizing the focused tile moves the focus
+  to one still showing.
 - **Errands**: the `[▼]` button in a tile's header (in the realm, with a brain attached) opens
   a menu: **Pick up all** (the coins and the items on the floor, copper included) and **Equip all**
   (wear and wield what is carried, into empty slots only; nothing worn is replaced), and
