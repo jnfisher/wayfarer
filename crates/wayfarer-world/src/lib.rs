@@ -35,7 +35,7 @@ pub use loops::{Area, HuntRoom, Loop, MmLoop, generate, hunt_rooms, megamud_loop
 pub use monsters::{DEFAULT_RULES, MonsterRule, MonsterRules, Monsters, huntable};
 pub use nav::{Category, DirSet, Edge, ExitType, Gate, Key, LockState, RoomGraph};
 pub use pack::WorldPack;
-pub use route::{Costs, Route, Step, Traveller, distances, route, route_within};
+pub use route::{Costs, Route, Step, Traveller, distances, pocket_exits, route, route_within};
 pub use spells::{SpellDef, SpellKind, Spells};
 
 #[derive(Debug, thiserror::Error)]

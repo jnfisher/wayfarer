@@ -142,7 +142,10 @@ progress (after the move in flight).
   strength (needs more than 999)", the exit marked refused, the route planned again.
 - **Hidden exits**: a route takes a Hidden exit the character knows of: one it found this
   session (a `search` of its own or the player's), one an exits line showed (`secret passage
-  south`: found lately by anyone), or one a loop's path names. Arriving in the room, if the
+  south`: found lately by anyone), one a loop's path names, or, when the character is shut
+  in a pocket (60 rooms or fewer reachable, say a room entered by a hidden way that was not
+  remembered), the hidden exits out of the pocket: without that a restart in such a room
+  left every loop "unreachable". Arriving in the room, if the
   exit is not in the room's `Obvious exits` and was not found in the last five minutes, it
   sends `search <dir>` ("Searching for the hidden exit north") and waits for the answer: "You
   found an exit to the north!" and it moves; "You notice nothing different to the north." and
