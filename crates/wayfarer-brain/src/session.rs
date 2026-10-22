@@ -27,7 +27,7 @@ use crate::character::{Character, merge_patch};
 use crate::clock::Clock;
 use crate::commands::{Kind, classify};
 use crate::custom;
-use crate::executor::{Action, Executor, Guard};
+use crate::executor::{Action, Executor};
 use crate::modes::{Bot, Do, Presence, View};
 use crate::policy::{COMBAT_QUIET, hp_percent};
 use crate::position::Position;
@@ -199,8 +199,6 @@ struct TypedLine {
     text: String,
     /// When it came.
     at: Instant,
-    /// An attack not forced: held if combat is engaged when it would go.
-    guarded: bool,
 }
 
 /// Whose action is in the executor.
@@ -1149,16 +1147,9 @@ impl Session {
     /// `user_input`: a line the player typed while the brain arbitrates the session (its bot
     /// running or paused). Talk and look waits for a prompt with nothing in flight and goes
     /// between the bot's actions; an act pauses the bot after the action in flight (and stops
-    /// a walk), then goes the same way; an attack while combat is engaged is held, unless
-    /// `force` (`input_held`). With the bot stopped meanwhile, or out of the realm, the line
-    /// goes at once, as the gateway would have sent it.
-    pub fn user_input(
-        &mut self,
-        text: String,
-        force: bool,
-        now: Instant,
-        out: &mut Vec<ToGateway>,
-    ) {
+    /// a walk), then goes the same way. With the bot stopped meanwhile, or out of the realm,
+    /// the line goes at once, as the gateway would have sent it.
+    pub fn user_input(&mut self, text: String, now: Instant, out: &mut Vec<ToGateway>) {
         if self.leaving || self.flee_out {
             out.push(self.not_sent(&text));
             return;
@@ -1171,16 +1162,8 @@ impl Session {
         if kind == Kind::Unknown && self.is_chat(&text) {
             kind = Kind::Talk;
         }
-        tracing::info!(session = %self.id, %text, ?kind, force, "typed beside the bot");
-        let line = TypedLine {
-            text,
-            at: now,
-            guarded: kind == Kind::Attack && !force,
-        };
-        if line.guarded && self.combat(now) != Some(false) {
-            self.hold(line.text, out);
-            return;
-        }
+        tracing::info!(session = %self.id, %text, ?kind, "typed beside the bot");
+        let line = TypedLine { text, at: now };
         if kind != Kind::Talk {
             if self.walker.walking() {
                 self.stop_walk("you typed a line", out);
@@ -1200,17 +1183,6 @@ impl Session {
         self.atlas.as_ref().is_some_and(|atlas| {
             self.position.belief.certain() && !self.position.is_move(atlas, text)
         })
-    }
-
-    /// Not sent: an attack while combat is engaged (or not known to be over) would restart the
-    /// swing timer. The UIs show it with a `send anyway`.
-    fn hold(&self, text: String, out: &mut Vec<ToGateway>) {
-        tracing::info!(session = %self.id, %text, "held: combat is engaged");
-        out.push(ToGateway::InputHeld {
-            session: self.id.clone(),
-            text,
-            reason: Guard::AttackInCombat.describe().to_owned(),
-        });
     }
 
     /// `keys_sent`: the player's keys went straight to the game; the bot pauses after the
@@ -1273,10 +1245,6 @@ impl Session {
             return false;
         }
         let line = self.typed.pop_front().expect("a typed line");
-        if line.guarded && self.combat(now) != Some(false) {
-            self.hold(line.text, out);
-            return self.send_typed(now, out);
-        }
         self.send_own(&line.text, now, out);
         // A re-sync command after it waits for an idle prompt, as after any typed line.
         if let Resync::Want { idle, .. } = &mut self.resync {
@@ -1359,7 +1327,7 @@ impl Session {
             && self.position.belief.certain()
             && in_combat == Some(false)
             && self.typed.is_empty()
-            && self.executor.submit_ahead(action, in_combat)
+            && self.executor.submit_ahead(action)
         {
             self.walker.went_ahead();
         }
@@ -2214,7 +2182,7 @@ impl Session {
                 .event(EventKind::Flee, i64::from(hp), who.as_deref(), room);
         }
         match act {
-            Some(Do::Send(action)) => match self.executor.submit(action, in_combat) {
+            Some(Do::Send(action)) => match self.executor.submit(action) {
                 Ok(()) => self.owner = Some(Owner::Bot),
                 Err(guard) => {
                     out.push(self.warning(&format!("refused: {}", guard.describe())));
@@ -2274,8 +2242,7 @@ impl Session {
         self.map_dirty |= next.route_changed;
         let ahead = next.ahead;
         if let Some(action) = next.action {
-            let in_combat = self.combat(self.clock.instant());
-            match self.executor.submit(action, in_combat) {
+            match self.executor.submit(action) {
                 Ok(()) => self.owner = Some(Owner::Walker),
                 Err(guard) => {
                     out.push(self.warning(&format!("refused: {}", guard.describe())));

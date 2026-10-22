@@ -428,11 +428,10 @@ impl Brain {
                 session,
                 text,
                 from,
-                force,
             } => match self.sessions.get_mut(&session) {
                 Some(s) => {
                     tracing::debug!(%session, %from, "user_input");
-                    s.user_input(text, force, now, out);
+                    s.user_input(text, now, out);
                 }
                 None => out.push(no_session("user_input", &session)),
             },

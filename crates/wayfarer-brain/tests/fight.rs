@@ -363,8 +363,7 @@ fn every_attack_refusal_line_refuses_the_attack() {
         events.extend(parser.finish());
         let mut ex = Executor::default();
         let now = tokio::time::Instant::now();
-        ex.submit(Action::new("a rat", Expect::Engaged), Some(false))
-            .unwrap();
+        ex.submit(Action::new("a rat", Expect::Engaged)).unwrap();
         ex.take_ready(now);
         for ev in &events {
             ex.event(&GameEvent::from_event(ev));

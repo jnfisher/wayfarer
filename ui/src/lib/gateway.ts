@@ -88,8 +88,6 @@ export interface GatewayEvents {
   stats?(stats: Stats): void;
   /** A character's settings, for the settings tab. */
   settings?(settings: SettingsMessage): void;
-  /** A line the player typed was held by the brain (an attack while combat is engaged). */
-  inputHeld?(session: string, text: string, reason: string): void;
   /** What a `find` found, for the map panel's go box. */
   found?(found: FoundMessage): void;
 }
@@ -171,11 +169,6 @@ export class GatewayClient {
   /** Send a line of input; false when not connected. */
   sendLine(session: string, text: string): boolean {
     return this.send({ type: "input_line", session, text });
-  }
-
-  /** Send a line the brain held (`input_held`) anyway; false when not connected. */
-  sendAnyway(session: string, text: string): boolean {
-    return this.send({ type: "user_input", session, text, force: true });
   }
 
   /** Send raw key bytes; false when not connected. */
@@ -413,9 +406,6 @@ export class GatewayClient {
         break;
       case "settings":
         this.opts.events.settings?.(message);
-        break;
-      case "input_held":
-        this.opts.events.inputHeld?.(message.session, message.text, message.reason);
         break;
       case "found":
         this.opts.events.found?.(message);

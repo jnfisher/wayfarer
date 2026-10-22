@@ -47,7 +47,7 @@ Gateway → client:
 {"type":"brain_state","attached":true}
 {"type":"brain_lagged","missed":17}
 {"type":"logging_off","session":"kasimir"}
-{"type":"user_input","session":"kasimir","text":"a rat","from":"ui-3","force":true}
+{"type":"user_input","session":"kasimir","text":"a rat","from":"ui-3"}
 {"type":"keys_sent","session":"kasimir"}
 ```
 
@@ -59,7 +59,6 @@ Client → gateway:
 {"type":"input_keys","session":"kasimir","bytes":[13]}
 {"type":"history_request","session":"kasimir","after_seq":42,"max_chunks":2000}
 {"type":"subscribe","sessions":["kasimir"]}
-{"type":"user_input","session":"kasimir","text":"a rat","force":true}
 {"type":"resync","session":"kasimir"}
 {"type":"state_request","session":"kasimir"}
 {"type":"walk_to","session":"kasimir","map":1,"room":2150}
@@ -92,7 +91,6 @@ Brain → gateway → UIs (the same JSON both ways):
 {"type":"loops","session":"kasimir","anchor":{"map":1,"room":2140},"radius":8,"doors":true,"generated":[{"id":"1:2140:8:doors:0","name":"Newhaven","stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0,"bosses":[]},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1,"bosses":[]}],"path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"doors":1}],"megamud":[{"file":"NARNLOO2.mp","description":"Newhaven Arena","author":"Spork ZSpoon","path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"exact":2,"stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0,"bosses":[]},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1,"bosses":[]}],"runnable":true}],"custom":[]}
 {"type":"stats","session":"kasimir","runs":[{"started_at":"2026-10-19T12:00:00Z","minutes":2,"exp_per_hour":540,"kills":2,"deaths":0,"flees":0,"rests":1,"exp_gained":18}],"samples":[{"at":"2026-10-19T12:01:00Z","exp":355,"hp":30}]}
 {"type":"settings","session":"kasimir","layer":"character","files":[{"layer":"mine","path":"/data/settings.toml","exists":false},{"layer":"character","path":"/data/characters/kasimir.toml","exists":true}],"rows":[{"key":"health.flee_below_hp","label":"Flee below","help":"Leave the fight and run when HP falls below this.","group":"health","tier":"essential","kind":{"kind":"int","min":0,"max":90},"unit":"%","default":25,"value":35,"source":"character","own":35,"megamud":"HP Run If Below"}]}
-{"type":"input_held","session":"kasimir","text":"a rat","reason":"no attack command while combat is engaged"}
 {"type":"found","session":"kasimir","query":"chief","results":[{"kind":"monster","name":"minotaur chieftain","rooms":[{"map":1,"room":1865,"name":"Large Wooden Room","steps":46,"boss":true}],"count":1,"monsters":["minotaur chieftain"]}]}
 ```
 

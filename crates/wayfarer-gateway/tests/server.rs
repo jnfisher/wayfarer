@@ -934,29 +934,17 @@ async fn a_session_the_brain_arbitrates_sends_its_ui_lines_to_the_brain_and_its_
         session,
         text,
         from,
-        force,
     } = recv_where(&mut brain, |m| matches!(m, ToClient::UserInput { .. })).await
     else {
         unreachable!()
     };
-    assert_eq!(
-        (session.as_str(), text.as_str(), force),
-        (ID, "gossip hi", false)
-    );
+    assert_eq!((session.as_str(), text.as_str()), (ID, "gossip hi"));
     assert!(from.starts_with("ui-"), "{from}");
-    // `send anyway`: the same, with `force`.
-    send(
-        &mut ui,
-        &ToGateway::UserInput {
-            session: ID.into(),
-            text: "a rat".into(),
-            force: true,
-        },
-    )
-    .await;
+    // An attack is a line like any other.
+    send(&mut ui, &line("a rat")).await;
     let got = recv_where(&mut brain, |m| matches!(m, ToClient::UserInput { .. })).await;
     assert!(
-        matches!(&got, ToClient::UserInput { text, force: true, .. } if text == "a rat"),
+        matches!(&got, ToClient::UserInput { text, .. } if text == "a rat"),
         "{got:?}"
     );
     // Keys go to the game, and the brain hears of them.

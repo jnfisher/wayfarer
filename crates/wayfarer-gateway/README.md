@@ -131,7 +131,7 @@ sender ends it). The rules are the same either way:
   it gets `error "no brain attached"`. A UI sending a brain message, or the brain sending a
   control one, gets an `error` and the message is dropped.
 - **Input arbitration**: input goes straight to the game from any client, except a UI's line
-  (`input_line`, or `user_input` with `force`) for a session the brain arbitrates: that goes to
+  (`input_line`) for a session the brain arbitrates: that goes to
   the brain as `user_input {from: "ui-<n>"}`, and nothing goes to the game. The brain turns a
   session on and off with `arbitrate {session, on}`; the set lives with the brain's
   registration, so it is empty for a new brain and gone the moment the brain detaches (lines go

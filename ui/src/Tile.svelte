@@ -30,10 +30,6 @@
     onhelp: () => void;
     /** What the brain knows of the character; null when no brain is attached. */
     character?: CharacterState | null;
-    /** The last line the brain held (`input_held`), shown with a `send anyway`. */
-    held?: { text: string; reason: string } | null;
-    /** The held line was sent anyway, dismissed, or another line was typed. */
-    onheld?: () => void;
   }
 
   let {
@@ -47,8 +43,6 @@
     onfocus,
     onhelp,
     character = null,
-    held = null,
-    onheld = () => {},
   }: Props = $props();
 
   let headerWidth = $state(0);
@@ -169,7 +163,6 @@
       onhelp();
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (held) onheld();
       client.sendLine(info.id, line);
       history.push(line);
       line = "";
@@ -255,29 +248,6 @@
       <div class="offline">{offline}</div>
     {/if}
   </div>
-  {#if held}
-    <div class="held" title={held.reason}>
-      <span class="what">held: <span class="text">{held.text}</span> ({held.reason})</span>
-      <button
-        class="anyway"
-        title="Send it to the game anyway; the bot pauses"
-        onclick={(e) => {
-          e.stopPropagation();
-          if (held && client.sendAnyway(info.id, held.text)) onheld();
-          focusInput();
-        }}>send anyway</button
-      >
-      <button
-        title="Forget it"
-        aria-label="Dismiss the held line"
-        onclick={(e) => {
-          e.stopPropagation();
-          onheld();
-          focusInput();
-        }}>×</button
-      >
-    </div>
-  {/if}
   <footer>
     <span class="prompt">{keys ? "keys" : ">"}</span>
     <input
@@ -507,24 +477,6 @@
     text-align: center;
     color: var(--vga-white);
     background: var(--vga-red);
-  }
-  .held {
-    display: flex;
-    align-items: stretch;
-    border-top: 1px solid var(--frame);
-    line-height: 16px;
-    color: var(--vga-yellow);
-  }
-  .held .what {
-    flex: 1;
-    min-width: 0;
-    padding: 2px 1ch;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-  .held .text {
-    color: var(--vga-white);
   }
   footer {
     display: flex;
