@@ -314,3 +314,14 @@ async fn a_boss_stop_says_whether_the_boss_should_be_up() {
     assert_eq!(boss.up_in_minutes, Some(24 * 60), "{boss:?}");
     g.close(run).await;
 }
+
+#[tokio::test(start_paused = true)]
+async fn shut_in_a_hidden_pocket_the_loops_beyond_it_are_still_listed() {
+    // 9:841 in the Bandit Keep: its only way out is a hidden exit no verified path takes, and
+    // many Hallways look alike, so the room may be one of several.
+    let (mut g, run) = Game::start(SessionState::Realm, (9, 841)).await;
+    let (_, megamud, _) = loops_matching(&mut g, "hkeploop", None).await;
+    let files: Vec<_> = megamud.iter().map(|m| m.file.as_str()).collect();
+    assert!(files.contains(&"HKEPLOOP.mp"), "{files:?}");
+    g.close(run).await;
+}
