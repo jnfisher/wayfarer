@@ -351,6 +351,8 @@ pub(crate) struct Session {
     last_combat: Instant,
     /// Knocked down (`smashed_you`) and not up yet (`rises`): no blows, but not quiet either.
     down: bool,
+    /// The notice that the character is mortally wounded has been given, until it is not.
+    wounded_noted: bool,
     /// The gateway is logging the character off (`logging_off`): nothing more is sent.
     leaving: bool,
     /// The gateway is logging the character off, and it was attacked: the bot flees first,
@@ -452,6 +454,7 @@ impl Session {
             loop_walk: None,
             last_combat: now,
             down: false,
+            wounded_noted: false,
             leaving: false,
             flee_out: false,
             typed: VecDeque::new(),
@@ -2193,6 +2196,31 @@ impl Session {
         self.flush_views(out);
     }
 
+    /// At 0 HP or below the game refuses every move, attack, cast and rest ("You may not do
+    /// that while you are mortally wounded!"), and monsters keep hitting: the character is
+    /// left alone until it is above 0 again (helped) or reborn. A walk is dropped without
+    /// counting as a failed one.
+    fn mortally_wounded(&self) -> bool {
+        self.state == SessionState::Realm && self.character.state().hp.is_some_and(|hp| hp <= 0)
+    }
+
+    fn lie_still(&mut self, out: &mut Vec<ToGateway>) {
+        if !self.mortally_wounded() {
+            self.wounded_noted = false;
+            return;
+        }
+        if self.walker.walking() {
+            self.stop_walk("mortally wounded", out);
+        }
+        if !self.wounded_noted {
+            self.wounded_noted = true;
+            let hp = self.character.state().hp.unwrap_or(0);
+            out.push(self.warning(&format!(
+                "Mortally wounded (HP {hp}): nothing can be done until it is helped or reborn; waiting"
+            )));
+        }
+    }
+
     /// Forget the action in flight (it will not be answered): its owner learns nothing more.
     fn cancel(&mut self, out: &mut Vec<ToGateway>) {
         self.executor.cancel();
@@ -2236,6 +2264,7 @@ impl Session {
     /// The bot decides, if it is running and the game is at a prompt with nothing in flight.
     fn bot_tick(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
         if !self.bot.running()
+            || self.mortally_wounded()
             || self.state != SessionState::Realm
             || !self.live()
             || !self.at_prompt
@@ -2571,6 +2600,7 @@ impl Session {
 
     fn drive(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
         self.refresh_settings(out);
+        self.lie_still(out);
         if let Some((action, outcome)) = self.executor.finished(self.at_prompt, now)
             && let Some(atlas) = self.atlas.clone()
         {

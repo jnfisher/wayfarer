@@ -411,6 +411,12 @@ sent yet is dropped, and Flee acts at the next prompt.
 - Narrated as it goes: "Fleeing: HP 22%: up to Newhaven, Narrow Road", "Followed by large giant
   rat: east to Newhaven, Narrow Path", "Flee: in Newhaven, Narrow Path, watching for
   followers", "Safe in Newhaven, Narrow Path". The snapshot's `bot.mode` is `flee` meanwhile.
+- **Mortally wounded** (HP 0 or below): the game refuses every move, attack, cast, rest and `x`
+  ("You may not do that while you are mortally wounded!") while monsters go on hitting, and
+  nothing a script can send helps (only another player's help, or rebirth at -200). The brain
+  sends nothing for the bot or a walk then (a walk is dropped, not counted as a failed leg
+  of a loop), warns once, "Mortally wounded (HP -36): nothing can be done until it is helped
+  or reborn; waiting", and acts again when HP is above 0. What the player types still goes.
 - **Paused or stopped**, nothing is sent: Flee does not act either (until "guard while paused",
   M4).
 - **The live check's flee line**: `wayfarer brain --flee-below 100` (hidden, test only) raises
