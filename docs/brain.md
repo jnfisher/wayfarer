@@ -794,6 +794,29 @@ do not apply: it is short, and the player stands by.
   weapon is readied, and only for the first; a taken slot is never emptied. "Equip done: wearing
   padded vest, holding short sword; left: iron helm".
 
+## Buying spells
+
+`spell_plan_request` is answered with a `spell_plan`: the spells the character's class could learn
+that it does not know, each at its best shop, and what they would cost. It only reads: nothing
+is bought or walked (the errand that does comes after the plan).
+
+- **Where the spells are**: a scroll is an item of type 9 with ability 42 ("Link to Spell"),
+  whose value is the spell's number (`kb/spells.md` "Learning"). A shop sells it when the slot's
+  `maxqty` is above 0 (a 0 slot only resells what players sold). The pack's scrolls are read
+  once, with each shop's room (`wayfarer_world::spellshop`).
+- **What a class can learn**: the spell's magery is the class's, its magery level is at most the
+  class's, and its level is at most the character's. Those above the character's level are listed
+  after, marked "needs level N". Alignment is not checked.
+- **What it lacks**: not in the `spells` screen's rows (the re-sync reads them): the plan waits
+  for the class and the spellbook ("spell plan: the spellbook is not known yet").
+- **The best shop** for a spell: the cheapest it can be reached at, then the nearest by route
+  from the believed room; a shop with no way there is listed with no steps.
+- **Prices** are in copper: the item's cost in its currency, plus the shop's markup, then the
+  Charm discount (`kb/economy.md` "Prices"; a Charm not known counts as 50). `cash` is the coins
+  carried, in copper (the bank is not counted: its balance is read at the bank).
+- **Affordable**: the usable spells in price order, each marked while the cash still covers it
+  with the cheaper ones before it ("buy what the money covers").
+
 ## Coins and the attack command
 
 **Loot** is a mode between Flee and Recover: when nothing is attacking and the bot is not

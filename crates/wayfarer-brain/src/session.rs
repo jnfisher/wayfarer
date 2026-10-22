@@ -1010,6 +1010,75 @@ impl Session {
         }
     }
 
+    /// `spell_plan_request`: the spells the class could learn and the character lacks, each at
+    /// its best shop ([`wayfarer_world::spellshop::plan`]), from where the character is.
+    pub fn spell_plan(&self, out: &mut Vec<ToGateway>) {
+        let Some(atlas) = &self.atlas else {
+            out.push(self.warning("spell plan: the brain has no world pack"));
+            return;
+        };
+        let c = self.character.state();
+        let Some(class) = c.class.as_deref() else {
+            out.push(self.warning("spell plan: the character's class is not known yet"));
+            return;
+        };
+        let Some(&(magery, magery_level)) = atlas.class_magery.get(class) else {
+            out.push(self.warning(&format!("spell plan: no spells for a {class}")));
+            return;
+        };
+        let Some(here) = self.position.best() else {
+            out.push(self.warning("spell plan: the position is unknown"));
+            return;
+        };
+        if self.spell_rows.is_empty() {
+            out.push(self.warning(
+                "spell plan: the spellbook is not known yet (re-sync, or wait for the first `spells`)",
+            ));
+            return;
+        }
+        let who = wayfarer_world::spellshop::Learner {
+            magery,
+            magery_level,
+            level: c.level.map_or(1, i64::from),
+            charm: c.stats.as_ref().and_then(|s| s.charm).map(i64::from),
+        };
+        let known: Vec<String> = self.spell_rows.iter().map(|r| r.3.clone()).collect();
+        // The coins on hand, in copper.
+        let cash = c.coins.as_ref().map_or(0, |coins| {
+            coins
+                .carried
+                .iter()
+                .map(|k| k.count * wayfarer_world::spellshop::unit(coin_currency(&k.coin)))
+                .sum::<u64>()
+        });
+        let dist = distances(&atlas.graph, here, 10_000, &self.position.traveller);
+        let items = wayfarer_world::spellshop::plan(&atlas.scrolls, who, &known, cash, |rooms| {
+            rooms
+                .iter()
+                .filter_map(|k| dist.get(k).map(|d| (*d, *k)))
+                .min()
+        });
+        out.push(ToGateway::SpellPlan {
+            session: self.id.clone(),
+            cash,
+            items: items
+                .into_iter()
+                .map(|i| wayfarer_proto::SpellPlanItem {
+                    spell: i.spell,
+                    spell_level: i.spell_level,
+                    scroll: i.scroll,
+                    shop: i.shop,
+                    map: i.room.0,
+                    room: i.room.1,
+                    price: i.price,
+                    steps: i.steps,
+                    usable: i.usable,
+                    affordable: i.affordable,
+                })
+                .collect(),
+        });
+    }
+
     /// `stats_request`.
     pub fn stats_request(&self, out: &mut Vec<ToGateway>) {
         let (runs, samples) = self.ledger.summaries();
@@ -3063,6 +3132,17 @@ pub(crate) fn event_message(session: &str, ev: &Event) -> ToGateway {
         cat: ev.cat.clone(),
         fields,
         line: ev.line.clone(),
+    }
+}
+
+/// The currency number of a coin by the game's name (`gold crowns`): 0 copper to 4 runic.
+fn coin_currency(coin: &str) -> i64 {
+    match crate::loot::coin_word(coin) {
+        "silver" => 1,
+        "gold" => 2,
+        "platinum" => 3,
+        "runic" => 4,
+        _ => 0,
     }
 }
 

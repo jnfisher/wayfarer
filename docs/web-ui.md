@@ -209,7 +209,11 @@ and works nothing out itself.
 - **Errands**: the `[▼]` button in a tile's header (in the realm, with a brain attached) opens
   a menu: **Pick up all** (the coins and the items on the floor, copper included) and **Equip all**
   (wear and wield what is carried, into empty slots only; nothing worn is replaced), and
-  **Cancel errand** while one runs. They are offered only while the bot is stopped or paused. The
+  **Cancel errand** while one runs, and **Spell plan…**, which lists the spells the class could
+  learn and the character lacks, each at its best shop with the price in coins, the steps there and
+  a tick (`✓`) where the cash on hand still covers it, then what the cash buys now and what all of
+  them cost; spells above the character's level are greyed ("needs level 9"). It only shows the
+  plan ([brain.md](brain.md) "Buying spells"); the `[x]` closes it. They are offered only while the bot is stopped or paused. The
   tile's narration line shows what the errand is doing, and a notice says what it did
   ([brain.md](brain.md) "Errands").
 - **Recent places**: with nothing typed, the go box lists where the character died (its gear

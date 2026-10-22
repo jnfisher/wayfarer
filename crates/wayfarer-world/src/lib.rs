@@ -22,6 +22,7 @@ pub mod pack;
 pub mod route;
 pub mod schema;
 pub mod spells;
+pub mod spellshop;
 pub mod walk;
 
 use std::path::PathBuf;

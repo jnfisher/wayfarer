@@ -42,6 +42,7 @@ export type { SettingKind } from "./SettingKind";
 export type { SettingRow } from "./SettingRow";
 export type { SettingValue } from "./SettingValue";
 export type { SettingsFile } from "./SettingsFile";
+export type { SpellPlanItem } from "./SpellPlanItem";
 export type { Stats } from "./Stats";
 export type { Task } from "./Task";
 export type { ToClient } from "./ToClient";

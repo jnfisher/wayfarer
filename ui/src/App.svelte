@@ -8,6 +8,7 @@
   import SettingsPanel from "./SettingsPanel.svelte";
   import StatsPanel from "./StatsPanel.svelte";
   import type { SettingsMessage } from "./lib/settings";
+  import type { SpellPlan } from "./lib/spells";
   import { STATS_REFRESH_MS, type Stats } from "./lib/stats";
   import { PAUSE_KEY, START_KEY, botKeyAction } from "./lib/bot";
   import {
@@ -92,6 +93,8 @@
   let mapViews = $state.raw<Record<string, MapView>>({});
   // The brain's last `loops` per session.
   let loopsBySession = $state.raw<Record<string, Loops>>({});
+  // The brain's last `spell_plan` per session, for the tiles' errand menus.
+  let plansBySession = $state.raw<Record<string, SpellPlan>>({});
   // The brain's last `stats` per session.
   let statsBySession = $state.raw<Record<string, Stats>>({});
   // The brain's last `settings` per session, for the settings tab.
@@ -264,6 +267,9 @@
       stats: (stats) => {
         statsBySession = { ...statsBySession, [stats.session]: stats };
       },
+      spellPlan: (plan) => {
+        plansBySession = { ...plansBySession, [plan.session]: plan };
+      },
       settings: (settings) => {
         settingsBySession = { ...settingsBySession, [settings.session]: settings };
       },
@@ -409,6 +415,7 @@
           onfocus={() => (focused = i)}
           onhelp={toggleHelp}
           character={brain.attached ? (brain.characters[info.id] ?? {}) : null}
+          plan={plansBySession[info.id]}
         />
       {:else}
         <p class="empty">

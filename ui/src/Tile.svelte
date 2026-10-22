@@ -12,6 +12,8 @@
   import { TERM_COLS, TERM_ROWS, fitFontSize } from "./lib/layout";
   import type { TerminalSinks } from "./lib/sinks";
   import { FONT_FAMILY, FONT_NAME, VGA_THEME } from "./lib/theme";
+  import type { SpellPlan } from "./lib/spells";
+  import { planRow, planTotals } from "./lib/spells";
   import type { CharacterState, SessionInfo } from "./proto";
 
   interface Props {
@@ -30,6 +32,8 @@
     onhelp: () => void;
     /** What the brain knows of the character; null when no brain is attached. */
     character?: CharacterState | null;
+    /** The brain's last spell plan for the character. */
+    plan?: SpellPlan;
   }
 
   let {
@@ -43,6 +47,7 @@
     onfocus,
     onhelp,
     character = null,
+    plan,
   }: Props = $props();
 
   let headerWidth = $state(0);
@@ -56,6 +61,8 @@
   const errands = $derived(errandItems(c?.bot, errand));
   /** The errand menu is open. */
   let menuOpen = $state(false);
+  /** The spell plan is showing. */
+  let planOpen = $state(false);
   const shown = $derived(
     fitHeader(
       { number, name: info.name, server: info.server, state: info.state, character: c },
@@ -272,7 +279,12 @@
                   onclick={(e) => {
                     e.stopPropagation();
                     menuOpen = false;
-                    client.botControl(info.id, item.action);
+                    if (item.action === "spell_plan") {
+                      planOpen = true;
+                      client.requestSpellPlan(info.id);
+                    } else {
+                      client.botControl(info.id, item.action);
+                    }
                   }}>{item.label}</button
                 >
               </li>
@@ -286,6 +298,24 @@
     {/if}
     <span class="frame">{" ═╗"}</span>
   </header>
+  {#if planOpen}
+    <div class="plan" role="region" aria-label="Spell plan">
+      <div class="head">
+        <span>Spell plan</span>
+        <button class="ctl" aria-label="Close the spell plan" onclick={() => (planOpen = false)}>[x]</button>
+      </div>
+      {#if !plan}
+        <p>Asking the brain…</p>
+      {:else}
+        <ul>
+          {#each plan.items as item (item.spell)}
+            <li class:later={!item.usable} class:buy={item.affordable}>{item.affordable ? "✓ " : "  "}{planRow(item)}</li>
+          {/each}
+        </ul>
+        <p class="totals">{planTotals(plan)}</p>
+      {/if}
+    </div>
+  {/if}
   {#if errand}
     <div class="narration errand" title="An errand: cancel it from the [▼] menu">{errand}</div>
   {:else if narration !== null}
@@ -518,6 +548,36 @@
   }
   ul.errands button:disabled {
     color: var(--vga-darkgray);
+  }
+  .plan {
+    max-height: 40%;
+    overflow-y: auto;
+    padding: 2px 1ch;
+    background: var(--vga-black);
+    border-bottom: 1px solid var(--vga-darkgray);
+    font-size: 0.9em;
+  }
+  .plan .head {
+    display: flex;
+    justify-content: space-between;
+    color: var(--vga-lightcyan);
+  }
+  .plan ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    white-space: pre;
+    color: var(--vga-lightgray);
+  }
+  .plan li.later {
+    color: var(--vga-darkgray);
+  }
+  .plan li.buy {
+    color: var(--vga-lightgreen);
+  }
+  .plan .totals {
+    margin: 2px 0 0;
+    color: var(--vga-yellow, #ff5);
   }
   .narration.errand {
     color: var(--vga-lightcyan);

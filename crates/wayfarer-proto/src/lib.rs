@@ -756,6 +756,30 @@ impl Family {
     }
 }
 
+/// A spell the character lacks and where to buy it (`spell_plan`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct SpellPlanItem {
+    pub spell: String,
+    /// The character level the spell needs.
+    pub spell_level: i64,
+    /// The scroll's name.
+    pub scroll: String,
+    pub shop: String,
+    /// The shop's room nearest the character.
+    pub map: i64,
+    pub room: i64,
+    /// What it costs the character, in copper.
+    pub price: u64,
+    /// Steps to the shop; absent when there is no way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub steps: Option<u32>,
+    /// The character's level is high enough to read it now.
+    pub usable: bool,
+    /// The cash on hand covers it, cheapest first, with those before it.
+    pub affordable: bool,
+}
+
 /// What a `session_control` asks of a session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
@@ -887,6 +911,14 @@ pub enum ToClient {
         runs: Vec<RunSummary>,
         samples: Vec<ExpSample>,
     },
+    /// Brain → UIs: the answer to a `spell_plan_request`: the spells the character's class could
+    /// learn that it does not know, each at its best shop: those it can read now first (the
+    /// cheapest first), then those for a higher level. `cash` is the copper on hand.
+    SpellPlan {
+        session: SessionId,
+        cash: u64,
+        items: Vec<SpellPlanItem>,
+    },
     /// Brain → UIs: the character's settings, answering `settings_request` and `settings_save`
     /// (and sent again when the files change): every setting with its effective value, where
     /// the value comes from, and the value the `layer` file itself holds.
@@ -964,6 +996,10 @@ pub enum ToClient {
         skip: Option<Vec<RoomKey>>,
     },
     StatsRequest {
+        session: SessionId,
+    },
+    /// UI → brain: the spells the character lacks and where to buy them (a `spell_plan`).
+    SpellPlanRequest {
         session: SessionId,
     },
     StatsReset {
@@ -1058,10 +1094,16 @@ pub enum ToGateway {
         token: Option<String>,
     },
     /// A line of input; the gateway adds the line ending.
-    InputLine { session: SessionId, text: String },
+    InputLine {
+        session: SessionId,
+        text: String,
+    },
     /// Raw key bytes, sent straight through and never line-buffered (the character editor,
     /// `Hit any key`).
-    InputKeys { session: SessionId, bytes: Vec<u8> },
+    InputKeys {
+        session: SessionId,
+        bytes: Vec<u8>,
+    },
     /// Ask for stored output. `after_seq`: the chunks after it (after a reconnect, the last
     /// `seq` seen). `before_seq`: the chunks just before it (scrolling back). Neither: the
     /// latest chunks.
@@ -1090,7 +1132,9 @@ pub enum ToGateway {
     },
 
     /// UI → brain: re-sync the character (`st`, `exp`, `i`, look).
-    Resync { session: SessionId },
+    Resync {
+        session: SessionId,
+    },
     /// UI → brain: send a fresh `character` snapshot (of one session, or of all) and a
     /// `brain_info`.
     StateRequest {
@@ -1110,7 +1154,9 @@ pub enum ToGateway {
         stop_short: Option<bool>,
     },
     /// UI → brain: stop walking after the move in flight.
-    WalkStop { session: SessionId },
+    WalkStop {
+        session: SessionId,
+    },
     /// UI → brain: send a `map_view` now, of the rooms within `radius` steps (15 when left
     /// out; later automatic views use the same radius).
     MapRequest {
@@ -1147,7 +1193,10 @@ pub enum ToGateway {
     },
     /// UI → brain: walk a loop once (a generated loop's id, or a MegaMud loop's file), from its stop nearest the character round to
     /// that stop again; `walk_stop` stops it, and `walk_to` replaces it.
-    WalkLoop { session: SessionId, id: String },
+    WalkLoop {
+        session: SessionId,
+        id: String,
+    },
     /// UI → brain: run a loop (Task mode; `id` is a generated loop's id or a MegaMud loop's
     /// file, `Mwodloop.mp`): walk to its nearest stop, then round its
     /// stops in order, fighting at each, passing by those in `skip` and those whose respawn
@@ -1162,12 +1211,19 @@ pub enum ToGateway {
         skip: Option<Vec<RoomKey>>,
     },
     /// UI → brain: send a `stats` message with the character's last runs.
-    StatsRequest { session: SessionId },
+    StatsRequest {
+        session: SessionId,
+    },
+    SpellPlanRequest {
+        session: SessionId,
+    },
     /// UI → brain: end the character's current run and start a new one now, with its numbers
     /// at zero (exp/hr, kills, deaths, flees, rests). The ended run stays in the history. A
     /// notice says so, and a `stats` message follows. Nothing happens without a run (the bot
     /// stopped): a warning says so.
-    StatsReset { session: SessionId },
+    StatsReset {
+        session: SessionId,
+    },
     /// UI → brain: send a `settings` message for the character, with the values of `layer`
     /// (`mine`, `server` or `character`; left out: `character`) as that layer's file holds them.
     SettingsRequest {
@@ -1201,10 +1257,16 @@ pub enum ToGateway {
         stops: Vec<RoomKey>,
     },
     /// UI → brain: delete a custom loop (`custom:...`).
-    DeleteLoop { session: SessionId, id: String },
+    DeleteLoop {
+        session: SessionId,
+        id: String,
+    },
     /// UI → brain: find rooms, well-known places and monsters whose name holds `query` (two
     /// characters or more, any case); the brain answers with `found`.
-    Find { session: SessionId, query: String },
+    Find {
+        session: SessionId,
+        query: String,
+    },
     /// UI → brain: set the player's rule for monsters whose name holds `pattern` (any case),
     /// or remove it (`rule` null). Stored with the bot's record; the bot's `monster_rules`
     /// shows the result.
@@ -1298,6 +1360,14 @@ pub enum ToGateway {
         runs: Vec<RunSummary>,
         samples: Vec<ExpSample>,
     },
+    /// Brain → UIs: the answer to a `spell_plan_request`: the spells the character's class could
+    /// learn that it does not know, each at its best shop: those it can read now first (the
+    /// cheapest first), then those for a higher level. `cash` is the copper on hand.
+    SpellPlan {
+        session: SessionId,
+        cash: u64,
+        items: Vec<SpellPlanItem>,
+    },
     /// Brain → UIs: the character's settings, answering `settings_request` and `settings_save`
     /// (and sent again when the files change): every setting with its effective value, where
     /// the value comes from, and the value the `layer` file itself holds.
@@ -1318,12 +1388,17 @@ pub enum ToGateway {
 
     /// Brain → gateway: the answer to `logging_off`: the brain sends the session nothing more,
     /// and the log-off may start.
-    ReadyToLeave { session: SessionId },
+    ReadyToLeave {
+        session: SessionId,
+    },
     /// Brain → gateway: whether the brain arbitrates the session's input (its bot is running
     /// or paused): while it does, a UI's lines go to the brain as `user_input` and its keys are
     /// reported with `keys_sent`. Off for every session when a brain attaches, and again when
     /// it goes.
-    Arbitrate { session: SessionId, on: bool },
+    Arbitrate {
+        session: SessionId,
+        on: bool,
+    },
 }
 
 /// Why a received message could not be decoded. The receiver reports it (an `error` reply)
@@ -1363,6 +1438,7 @@ impl ToClient {
         "map_view",
         "loops",
         "stats",
+        "spell_plan",
         "settings",
         "found",
         "resync",
@@ -1375,6 +1451,7 @@ impl ToClient {
         "walk_loop",
         "run_loop",
         "stats_request",
+        "spell_plan_request",
         "stats_reset",
         "settings_request",
         "settings_save",
@@ -1410,6 +1487,7 @@ impl ToClient {
             Self::MapView { .. } => "map_view",
             Self::Loops { .. } => "loops",
             Self::Stats { .. } => "stats",
+            Self::SpellPlan { .. } => "spell_plan",
             Self::Settings { .. } => "settings",
             Self::Found { .. } => "found",
             Self::Resync { .. } => "resync",
@@ -1422,6 +1500,7 @@ impl ToClient {
             Self::WalkLoop { .. } => "walk_loop",
             Self::RunLoop { .. } => "run_loop",
             Self::StatsRequest { .. } => "stats_request",
+            Self::SpellPlanRequest { .. } => "spell_plan_request",
             Self::StatsReset { .. } => "stats_reset",
             Self::SettingsRequest { .. } => "settings_request",
             Self::SettingsSave { .. } => "settings_save",
@@ -1451,6 +1530,7 @@ impl ToClient {
             | Self::MapView { session, .. }
             | Self::Loops { session, .. }
             | Self::Stats { session, .. }
+            | Self::SpellPlan { session, .. }
             | Self::Settings { session, .. }
             | Self::Found { session, .. }
             | Self::Find { session, .. }
@@ -1464,6 +1544,7 @@ impl ToClient {
             | Self::WalkLoop { session, .. }
             | Self::RunLoop { session, .. }
             | Self::StatsRequest { session }
+            | Self::SpellPlanRequest { session }
             | Self::StatsReset { session }
             | Self::SettingsRequest { session, .. }
             | Self::SettingsSave { session, .. }
@@ -1514,6 +1595,7 @@ impl ToGateway {
         "walk_loop",
         "run_loop",
         "stats_request",
+        "spell_plan_request",
         "stats_reset",
         "settings_request",
         "settings_save",
@@ -1530,6 +1612,7 @@ impl ToGateway {
         "map_view",
         "loops",
         "stats",
+        "spell_plan",
         "settings",
         "found",
         "ready_to_leave",
@@ -1555,6 +1638,7 @@ impl ToGateway {
             Self::WalkLoop { .. } => "walk_loop",
             Self::RunLoop { .. } => "run_loop",
             Self::StatsRequest { .. } => "stats_request",
+            Self::SpellPlanRequest { .. } => "spell_plan_request",
             Self::StatsReset { .. } => "stats_reset",
             Self::SettingsRequest { .. } => "settings_request",
             Self::SettingsSave { .. } => "settings_save",
@@ -1571,6 +1655,7 @@ impl ToGateway {
             Self::MapView { .. } => "map_view",
             Self::Loops { .. } => "loops",
             Self::Stats { .. } => "stats",
+            Self::SpellPlan { .. } => "spell_plan",
             Self::Settings { .. } => "settings",
             Self::Found { .. } => "found",
             Self::ReadyToLeave { .. } => "ready_to_leave",
@@ -1597,6 +1682,7 @@ impl ToGateway {
             | Self::WalkLoop { .. }
             | Self::RunLoop { .. }
             | Self::StatsRequest { .. }
+            | Self::SpellPlanRequest { .. }
             | Self::StatsReset { .. }
             | Self::SettingsRequest { .. }
             | Self::SettingsSave { .. }
@@ -1613,6 +1699,7 @@ impl ToGateway {
             | Self::MapView { .. }
             | Self::Loops { .. }
             | Self::Stats { .. }
+            | Self::SpellPlan { .. }
             | Self::Settings { .. }
             | Self::Found { .. } => Family::Brain,
             Self::ReadyToLeave { .. } | Self::Arbitrate { .. } => Family::BrainToGateway,
@@ -1658,6 +1745,7 @@ impl ToGateway {
             Self::WalkLoop { session, id } => ToClient::WalkLoop { session, id },
             Self::RunLoop { session, id, skip } => ToClient::RunLoop { session, id, skip },
             Self::StatsRequest { session } => ToClient::StatsRequest { session },
+            Self::SpellPlanRequest { session } => ToClient::SpellPlanRequest { session },
             Self::StatsReset { session } => ToClient::StatsReset { session },
             Self::SettingsRequest { session, layer } => {
                 ToClient::SettingsRequest { session, layer }
@@ -1765,6 +1853,15 @@ impl ToGateway {
                 session,
                 runs,
                 samples,
+            },
+            Self::SpellPlan {
+                session,
+                cash,
+                items,
+            } => ToClient::SpellPlan {
+                session,
+                cash,
+                items,
             },
             Self::Settings {
                 session,

@@ -89,7 +89,8 @@ export function linkWidth(state: string): number {
 }
 
 export interface ErrandItem {
-  action: BotAction;
+  /** A `bot_control` action, or `spell_plan`: a read-only plan, asked for with its own message. */
+  action: BotAction | "spell_plan";
   label: string;
   title: string;
   disabled: boolean;
@@ -122,6 +123,12 @@ export function errandItems(bot: Bot | undefined, errand: string | undefined): E
       disabled: busy || running,
     },
   ];
+  items.push({
+    action: "spell_plan",
+    label: "Spell plan…",
+    title: "Which spells the class lacks, where to buy them and what they cost",
+    disabled: false,
+  });
   if (busy) items.push({ action: "cancel_errand", label: "Cancel errand", title: errand, disabled: false });
   return items;
 }
