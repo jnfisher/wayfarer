@@ -16,6 +16,7 @@ import type { SessionState } from "./SessionState";
 import type { SettingChange } from "./SettingChange";
 import type { SettingRow } from "./SettingRow";
 import type { SettingsFile } from "./SettingsFile";
+import type { SpellPlanItem } from "./SpellPlanItem";
 import type { WorldPackInfo } from "./WorldPackInfo";
 
 /**
@@ -29,7 +30,7 @@ custom: Array<GeneratedLoop>,
 /**
  * How many loops matched the request before it was cut to its `limit`.
  */
-matches: number, } | { "type": "stats", session: string, runs: Array<RunSummary>, samples: Array<ExpSample>, } | { "type": "settings", session: string, 
+matches: number, } | { "type": "stats", session: string, runs: Array<RunSummary>, samples: Array<ExpSample>, } | { "type": "spell_plan", session: string, cash: number, items: Array<SpellPlanItem>, } | { "type": "settings", session: string, 
 /**
  * The layer whose own values `own` shows.
  */
@@ -42,7 +43,7 @@ query?: string,
 /**
  * The most loops to send, the nearest first (12 if left out, 50 at most).
  */
-limit?: number, } | { "type": "walk_loop", session: string, id: string, } | { "type": "run_loop", session: string, id: string, skip?: Array<RoomKey>, } | { "type": "stats_request", session: string, } | { "type": "stats_reset", session: string, } | { "type": "settings_request", session: string, 
+limit?: number, } | { "type": "walk_loop", session: string, id: string, } | { "type": "run_loop", session: string, id: string, skip?: Array<RoomKey>, } | { "type": "stats_request", session: string, } | { "type": "spell_plan_request", session: string, } | { "type": "stats_reset", session: string, } | { "type": "settings_request", session: string, 
 /**
  * The layer to show the player's own values of: `mine`, `server` or `character`
  * (left out: `character`).

@@ -23,6 +23,7 @@ import type {
 import { clampRadius, LOOP_RADIUS, type Loops, type MapView } from "./map";
 import { MIN_QUERY, type FoundMessage } from "./goto";
 import type { SettingsMessage } from "./settings";
+import type { SpellPlan } from "./spells";
 import type { Stats } from "./stats";
 
 /** The part of the browser's `WebSocket` the client uses. */
@@ -87,6 +88,8 @@ export interface GatewayEvents {
   loops?(loops: Loops): void;
   /** A character's last runs, for the stats tab. */
   stats?(stats: Stats): void;
+  /** The spells a character lacks and where to buy them, for the tile's errand menu. */
+  spellPlan?(plan: SpellPlan): void;
   /** A character's settings, for the settings tab. */
   settings?(settings: SettingsMessage): void;
   /** What a `find` found, for the map panel's go box. */
@@ -241,6 +244,11 @@ export class GatewayClient {
   setMonsterRule(session: string, pattern: string, rule: MonsterRuleKind | null): boolean {
     const p = pattern.trim();
     return p.length >= 2 && this.send({ type: "set_monster_rule", session, pattern: p, rule });
+  }
+
+  /** Ask for the spells the character lacks (a `spell_plan` answer); false when not connected. */
+  requestSpellPlan(session: string): boolean {
+    return this.send({ type: "spell_plan_request", session });
   }
 
   /** Ask for the character's last runs (a `stats` answer); false when not connected. */
@@ -416,6 +424,9 @@ export class GatewayClient {
         break;
       case "stats":
         this.opts.events.stats?.(message);
+        break;
+      case "spell_plan":
+        this.opts.events.spellPlan?.(message);
         break;
       case "settings":
         this.opts.events.settings?.(message);

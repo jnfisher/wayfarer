@@ -59,6 +59,9 @@ pub struct Atlas {
     pub finder: Finder,
     /// The attack and heal spells of the player classes.
     pub spells: Spells,
+    /// The scrolls shops sell, and each class's (magery, magery level).
+    pub scrolls: Vec<wayfarer_world::spellshop::ScrollOffer>,
+    pub class_magery: HashMap<String, (i64, i64)>,
 }
 
 /// Room types (`kb/game-data.md` "Enumerations") and shop types (`kb/economy.md`).
@@ -120,6 +123,12 @@ impl Atlas {
             mm_loops,
             knowledge,
             spells: Spells::load(pack)?,
+            scrolls: wayfarer_world::spellshop::load(pack)?,
+            class_magery: pack
+                .class_magery()?
+                .into_iter()
+                .map(|(name, magery, level)| (name, (magery, level)))
+                .collect(),
         })
     }
 }
@@ -517,6 +526,10 @@ impl Brain {
             } => match self.sessions.get_mut(&session) {
                 Some(s) => s.set_monster_rule(&pattern, rule.map(rules::from_wire), now, out),
                 None => out.push(no_session("set_monster_rule", &session)),
+            },
+            ToClient::SpellPlanRequest { session } => match self.sessions.get(&session) {
+                Some(s) => s.spell_plan(out),
+                None => out.push(no_session("spell_plan_request", &session)),
             },
             ToClient::StatsRequest { session } => match self.sessions.get(&session) {
                 Some(s) => s.stats_request(out),

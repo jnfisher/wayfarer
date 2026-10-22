@@ -7,7 +7,7 @@ use wayfarer_proto::{
     GeneratedLoop, LoopStop, MapExit, MapRoom, MegaMudLoop, MonsterRuleEntry, MonsterRuleKind,
     PROTOCOL, ParseCounts, Position, RoomKey, RoomKind, RuleSource, RunSummary, SessionAction,
     SessionInfo, SessionState, SettingChange, SettingKind, SettingRow, SettingValue, SettingsFile,
-    Stats, ToClient, ToGateway, Walking, WorldPackInfo, protocol_mismatch,
+    SpellPlanItem, Stats, ToClient, ToGateway, Walking, WorldPackInfo, protocol_mismatch,
 };
 
 fn kasimir(state: SessionState, last_seq: u64) -> SessionInfo {
@@ -293,6 +293,25 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
             r#"{"type":"stats","session":"kasimir","runs":[{"started_at":"2026-10-19T12:00:00Z","minutes":2,"exp_per_hour":540,"kills":2,"deaths":0,"flees":0,"rests":1,"exp_gained":18}],"samples":[{"at":"2026-10-19T12:01:00Z","exp":355,"hp":30}]}"#,
         ),
         (
+            ToGateway::SpellPlan {
+                session: "kasimir".into(),
+                cash: 520,
+                items: vec![SpellPlanItem {
+                    spell: "mend".into(),
+                    spell_level: 3,
+                    scroll: "scroll of mend".into(),
+                    shop: "Newhaven Spell Shop".into(),
+                    map: 1,
+                    room: 2144,
+                    price: 800,
+                    steps: Some(12),
+                    usable: true,
+                    affordable: false,
+                }],
+            },
+            r#"{"type":"spell_plan","session":"kasimir","cash":520,"items":[{"spell":"mend","spell_level":3,"scroll":"scroll of mend","shop":"Newhaven Spell Shop","map":1,"room":2144,"price":800,"steps":12,"usable":true,"affordable":false}]}"#,
+        ),
+        (
             ToGateway::Settings {
                 session: "kasimir".into(),
                 layer: "character".into(),
@@ -424,6 +443,12 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
                 session: "kasimir".into(),
             },
             r#"{"type":"stats_request","session":"kasimir"}"#,
+        ),
+        (
+            ToGateway::SpellPlanRequest {
+                session: "kasimir".into(),
+            },
+            r#"{"type":"spell_plan_request","session":"kasimir"}"#,
         ),
         (
             ToGateway::StatsReset {
@@ -887,10 +912,10 @@ fn families_say_who_may_send_what() {
         let want = match msg.type_name() {
             "resync" | "state_request" | "walk_to" | "walk_stop" | "map_request"
             | "bot_control" | "loops_request" | "walk_loop" | "run_loop" | "stats_request"
-            | "stats_reset" | "settings_request" | "settings_save" | "save_loop"
-            | "delete_loop" | "find" | "set_monster_rule" => Family::Control,
+            | "spell_plan_request" | "stats_reset" | "settings_request" | "settings_save"
+            | "save_loop" | "delete_loop" | "find" | "set_monster_rule" => Family::Control,
             "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
-            | "map_view" | "loops" | "stats" | "settings" | "found" => Family::Brain,
+            | "map_view" | "loops" | "stats" | "spell_plan" | "settings" | "found" => Family::Brain,
             "ready_to_leave" | "arbitrate" => Family::BrainToGateway,
             _ => Family::Gateway,
         };

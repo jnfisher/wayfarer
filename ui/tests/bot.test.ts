@@ -31,6 +31,7 @@ vi.mock("@xterm/addon-webgl", () => ({
 vi.mock("@xterm/xterm/css/xterm.css", () => ({}));
 
 import Tile from "../src/Tile.svelte";
+import type { SpellPlan } from "../src/lib/spells";
 
 const stopped: Bot = { state: "stopped", mode: "idle", narration: "" };
 const running: Bot = { state: "running", mode: "fight", narration: "Fight: large giant rat" };
@@ -101,13 +102,52 @@ describe("the tile", () => {
     expect(botControl).toHaveBeenLastCalledWith("a", "cancel_errand");
   });
 
-  it("offers the errands only while the bot is not running", () => {
+  it("offers the errands only while the bot is not running, and the spell plan always", () => {
     expect(errandItems(stopped, undefined).map((i) => [i.label, i.disabled])).toEqual([
       ["Pick up all", false],
       ["Equip all", false],
+      ["Spell plan…", false],
     ]);
-    expect(errandItems(running, undefined).every((i) => i.disabled)).toBe(true);
-    expect(errandItems(paused, "Pick up: get torch").map((i) => i.label)).toEqual(["Pick up all", "Equip all", "Cancel errand"]);
+    expect(errandItems(running, undefined).map((i) => i.disabled)).toEqual([true, true, false]);
+    expect(errandItems(paused, "Pick up: get torch").map((i) => i.label)).toEqual([
+      "Pick up all",
+      "Equip all",
+      "Spell plan…",
+      "Cancel errand",
+    ]);
+  });
+
+  it("shows the spell plan the brain sends after Spell plan… is picked", async () => {
+    const requestSpellPlan = vi.fn();
+    const planClient = { sendLine: vi.fn(), sendKeys: vi.fn(), botControl, requestSpellPlan } as never;
+    const props = { info, number: 1, focused: false, zoom: 0, offline: null, client: planClient, sinks, onfocus() {}, onhelp() {} };
+    const r = render(Tile, { ...props, character: { bot: stopped } });
+    await fireEvent.click(screen.getByRole("button", { name: "Errands" }));
+    await fireEvent.click(screen.getByRole("menuitem", { name: "Spell plan…" }));
+    expect(requestSpellPlan).toHaveBeenCalledWith("a");
+    expect(screen.getByText("Asking the brain…")).toBeTruthy();
+    const plan: SpellPlan = {
+      type: "spell_plan",
+      session: "a",
+      cash: 500,
+      items: [
+        { spell: "illuminate", spell_level: 2, scroll: "scroll of illuminate", shop: "Newhaven Spell Shop", map: 1, room: 2144, price: 400, steps: 12, usable: true, affordable: true },
+        { spell: "mend", spell_level: 3, scroll: "scroll of mend", shop: "Newhaven Spell Shop", map: 1, room: 2144, price: 800, steps: 12, usable: true, affordable: false },
+        { spell: "firebolt", spell_level: 9, scroll: "scroll of firebolt", shop: "Mage Spell Shop", map: 1, room: 2200, price: 5000, usable: false, affordable: false },
+      ],
+    };
+    await r.rerender({ ...props, character: { bot: stopped }, plan });
+    const rows = [...document.querySelectorAll(".plan li")].map((li) => li.textContent);
+    expect(rows).toEqual([
+      "✓ illuminate: 4 gold, Newhaven Spell Shop, 12 steps",
+      "  mend: 8 gold, Newhaven Spell Shop, 12 steps",
+      "  firebolt (needs level 9): 50 gold, Mage Spell Shop, no way there",
+    ]);
+    expect(document.querySelector(".plan .totals")?.textContent).toBe(
+      "With 5 gold on hand: 1 of 2 usable now (4 gold); all 2 cost 12 gold",
+    );
+    await fireEvent.click(screen.getByRole("button", { name: "Close the spell plan" }));
+    expect(screen.queryByRole("region", { name: "Spell plan" })).toBeNull();
   });
 
   it("has a log off button in the realm, and a connect button once closed or lost", async () => {
