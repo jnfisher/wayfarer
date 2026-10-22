@@ -888,6 +888,49 @@ async fn brain_says(brain: &mut Client, ui: &mut Client, msg: ToGateway) {
     recv_where(ui, |m| *m == want).await;
 }
 
+#[tokio::test]
+async fn the_brains_notices_and_warnings_about_a_session_are_kept_in_notes_log() {
+    let dir = tempfile::tempdir().unwrap();
+    let rig = Rig::start(dir.path(), None).await;
+    let mut ui = rig.welcomed().await;
+    let mut brain = rig.brain().await;
+    assert_eq!(recv(&mut ui).await, ToClient::BrainState { attached: true });
+    for msg in [
+        ToGateway::Notice {
+            session: Some(ID.into()),
+            text: "Fight: large giant rat".into(),
+        },
+        ToGateway::Warning {
+            session: Some(ID.into()),
+            text: "Stopped: the loop cannot go round".into(),
+        },
+        // About no session, or not a notice: not kept.
+        ToGateway::Notice {
+            session: None,
+            text: "re-attached".into(),
+        },
+    ] {
+        brain_says(&mut brain, &mut ui, msg).await;
+    }
+    let text = std::fs::read_to_string(dir.path().join("logs").join(ID).join("notes.log")).unwrap();
+    let lines: Vec<serde_json::Value> = text
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    let kept: Vec<(&str, &str)> = lines
+        .iter()
+        .map(|l| (l["kind"].as_str().unwrap(), l["text"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        kept,
+        [
+            ("notice", "Fight: large giant rat"),
+            ("warning", "Stopped: the loop cannot go round")
+        ]
+    );
+    assert!(lines[0]["ts"].as_u64().unwrap() > 0 && lines[0]["seq"].is_u64());
+}
+
 /// Read exactly `want` from the game, and nothing more for a moment.
 async fn game_reads(game: &mut TcpStream, want: &[u8]) {
     let mut got = vec![0u8; want.len()];

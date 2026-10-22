@@ -155,6 +155,11 @@ in the realm: ...".
 - `brain.log`: when a brain attached and went, and every message that reached it about this
   character other than its output (a browser's walk, bot and loop controls, typed lines the
   brain arbitrates, `logging_off`), one JSON line each.
+- `notes.log`: the brain's notices and warnings about this character, one JSON line each:
+  `{"seq":..,"ts":..,"kind":"notice"|"warning","text":".."}`, `seq` the latest output `seq` then.
+  What the bot said it was doing ("Fight: large giant rat", "Loop Newhaven: to stop 2/3 ...")
+  and why it stopped or paused ("Stopped: ...", "Paused: you took over"); the tile and the dev
+  panel show the same lines only while they are open. Not part of a replay's input.
 
 Together they are a recording that `wayfarer replay` plays back ([replay.md](replay.md)).
 

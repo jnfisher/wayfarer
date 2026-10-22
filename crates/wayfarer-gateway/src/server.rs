@@ -717,10 +717,12 @@ impl Connection {
             }
             _ => {}
         }
+        let original = (family == Family::Brain).then(|| msg.clone());
         let msg = msg
             .into_relayed()
             .expect("control and brain messages are relayed");
-        if family == Family::Brain {
+        if let (Family::Brain, Some(original)) = (family, original) {
+            self.hub.gateway().note_from_brain(&original);
             // No UI listening is fine.
             let _ = self.hub.inner.relay.send(msg);
             return None;

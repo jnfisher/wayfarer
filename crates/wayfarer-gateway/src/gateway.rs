@@ -9,11 +9,11 @@ use std::time::Duration;
 
 use futures_util::{FutureExt, Stream, StreamExt};
 use tokio::sync::{broadcast, mpsc, oneshot};
-use wayfarer_proto::{SessionInfo, SessionState, ToClient};
+use wayfarer_proto::{SessionInfo, SessionState, ToClient, ToGateway};
 use wayfarer_telnet::Capture;
 
 use crate::config::{Config, ConfigError, Credentials, Paths};
-use crate::log::{History, HistoryQuery, LineLog, OutputLog, now_ms};
+use crate::log::{History, HistoryQuery, LineLog, NoteRecord, OutputLog, now_ms};
 use crate::replay::BrainRecord;
 use crate::session::{
     self, Command, Connect, Origin, Output, Running, Slot, SlotParts, StateChange, Tcp,
@@ -142,6 +142,7 @@ impl Gateway {
                 log,
                 sent_log: LineLog::new(dir.join("sent.log")),
                 brain_log: LineLog::new(dir.join("brain.log")),
+                notes_log: LineLog::new(dir.join("notes.log")),
                 login: credentials.get(&c.id).cloned(),
                 script,
                 read_buffer: options.read_buffer,
@@ -382,6 +383,31 @@ impl Gateway {
                 ts: now_ms(),
                 attached: None,
                 msg: Some(msg.clone()),
+            });
+        }
+    }
+
+    /// Record in its session's `notes.log` a notice or warning the brain sent about it (what the
+    /// bot said it was doing, and why it stopped), with the session's latest output `seq`. Other
+    /// messages, and notices about no session, are not recorded.
+    pub fn note_from_brain(&self, msg: &ToGateway) {
+        let (session, kind, text) = match msg {
+            ToGateway::Notice {
+                session: Some(session),
+                text,
+            } => (session, "notice", text),
+            ToGateway::Warning {
+                session: Some(session),
+                text,
+            } => (session, "warning", text),
+            _ => return,
+        };
+        if let Ok(slot) = self.slot(session) {
+            slot.notes_log.append(&NoteRecord {
+                seq: slot.log.last_seq(),
+                ts: now_ms(),
+                kind,
+                text,
             });
         }
     }

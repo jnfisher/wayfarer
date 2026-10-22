@@ -133,6 +133,9 @@ pub(crate) struct Slot {
     pub sent_log: LineLog,
     /// What reached the brain about this session besides output and `sent` (`replay.rs`).
     pub brain_log: LineLog,
+    /// The brain's own notices and warnings about this session (`notes.log`): what the bot
+    /// said it was doing and why it stopped.
+    pub notes_log: LineLog,
     pub output: broadcast::Sender<Output>,
     /// The character's account: the logon script's `{user}` and `{password}`, and a line that
     /// is exactly the password is masked in `sent.bin`.
@@ -168,6 +171,7 @@ pub(crate) struct SlotParts {
     pub log: OutputLog,
     pub sent_log: LineLog,
     pub brain_log: LineLog,
+    pub notes_log: LineLog,
     pub login: Option<Login>,
     pub script: Option<Arc<Script>>,
     pub read_buffer: usize,
@@ -187,6 +191,7 @@ impl Slot {
             log: p.log,
             sent_log: p.sent_log,
             brain_log: p.brain_log,
+            notes_log: p.notes_log,
             output: broadcast::channel(p.subscriber_capacity.max(1)).0,
             login: p.login,
             script: p.script,
