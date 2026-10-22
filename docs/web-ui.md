@@ -205,26 +205,30 @@ and works nothing out itself.
   however far, and the list becomes the 12 nearest that match ("12 nearest of 41 matching
   ..."). Escape clears it. A door never leaves a loop out when the character can open it or
   bash it; only a door it can neither bash nor pick (a key it does not hold) does. The list mixes the
-  loops generated over the hunt rooms (each with its stops, steps and doors; hover the name
-  for the stops, arena and lair marked), those of your own (marked "mine") and, when the
-  world pack has MegaMud's paths, MegaMud's verified loops. Hovering a loop draws it on the map in yellow with each stop's
+  loops generated over the hunt rooms, those of your own (marked "mine") and, when the
+  world pack has MegaMud's paths, MegaMud's verified loops. Each loop is one line, its
+  distance, its name and its buttons, with a smaller line under it (steps, stops and doors;
+  for MegaMud's, the file first); a long name is cut short, and hovering the line shows all of
+  it: the full description, file and author, the distance and the stops (arena and lair
+  marked). Loops at the same distance come with what can run first, then the shorter, then by
+  name. The list scrolls inside its own area, which takes at most about a third of the map,
+  with the search box kept at the top. Hovering a loop draws it on the map in yellow with each stop's
   number; clicking its name keeps it drawn (click again to let it go). **walk once** walks a
   loop, generated or MegaMud's: to its nearest stop, round the others and back, a walk per stop, with the
   route and **stop** in the bar as for any walk; the dev panel has the stops as they come
   (`Loop stop 2/3: Dungeon, Entrance`).
   A MegaMud loop is listed by
-  its file, with its description and how many stops it has (its hunt rooms; hover the file for
-  them). Picking a loop shows the floor of its first stop: the Newhaven loop is down the
+  its description, with its file under it. Picking a loop shows the floor of its first stop: the Newhaven loop is down the
   stairs from the Narrow Road, the Arena and the two Lairs north of it.
 - **Running a loop**: **run** beside a loop, generated or MegaMud's, makes the bot hunt round it
   ([brain.md](brain.md), "Running a loop"): it walks to the loop's nearest ticked stop, fights
-  what is there, and goes on to the next, round and round with no respawn clock. Picking a loop lists its stops, each with a tick; hover a stop for the
+  what is there, and goes on to the next, round and round with no respawn clock. **stops ▸** under a loop lists its stops, each with a tick (the list scrolls, and starts folded away); hover a stop for the
   monsters it spawns and how soon they come back after a kill; for a boss, whether it should be
   up ("minotaur chieftain should be up in 1 h 20 m", from this character's own kills). A MegaMud loop the brain says
   cannot run for this character has its **run** greyed out and the reason beside it ("nothing
   to hunt on it", or the leg no route takes and why). An unticked stop is passed by
   (the Minotaur Chieftain's room is the case for it). While the bot runs the loop, the list
-  says `running: stop 2/3` in place of **run**, the stop it is at or walking to is lit, and the
+  shows `▶ 2/3` in place of **run** and a green bar beside the row, the stop it is at or walking to is lit in the stops list, and the
   ticks are the bot's: a tick changed then goes to the bot at once. Pause and resume (`F9`),
   and stop (`F10`), work as for "fight here"; the tile's narration says what it is doing
   ("Loop Newhaven: to stop 2/3 Dungeon, Entrance (one step, one door)", "Stop 1/3 cleared: 1

@@ -266,11 +266,12 @@
   function runLoop(l: Runnable) {
     if (session) onrunloop?.(session.id, l.id, skipOf(l, skipped(l)));
   }
+  /** The room the list is measured from. */
   const loopsAround = $derived.by(() => {
     if (!loops) return "";
     const a = loops.anchor;
     const r = view?.rooms.find((x) => keyOf(x) === keyOf(a));
-    return `${loops.radius} steps around ${r?.name || `${a.map}:${a.room}`}`;
+    return r?.name || `${a.map}:${a.room}`;
   });
 
   // The list is the nearest loops, from the character's room, nearest first: the ones that
@@ -289,9 +290,32 @@
       ...(loops.custom ?? []).map((g): Entry => ({ key: g.id, kind: "custom", distance: g.distance ?? far, g })),
       ...loops.megamud.map((m): Entry => ({ key: `mm:${m.file}`, kind: "megamud", distance: m.distance ?? far, m })),
     ];
-    const name = (e: Entry) => (e.g?.name ?? e.m?.description ?? "").toLowerCase();
-    return all.sort((x, y) => x.distance - y.distance || name(x).localeCompare(name(y)));
+    const label = (e: Entry) => (e.g ? e.g.name : (e.m?.description || e.m?.file || "")).toLowerCase();
+    const steps = (e: Entry) => (e.g ?? e.m)!.steps;
+    const cannot = (e: Entry) => (e.m && !e.m.runnable ? 1 : 0);
+    // Nearest first; among equals, what can run, then the shorter, then by the name shown.
+    return all.sort(
+      (x, y) => x.distance - y.distance || cannot(x) - cannot(y) || steps(x) - steps(y) || label(x).localeCompare(label(y)),
+    );
   });
+
+  /** The loops whose stops are listed (collapsed by default: a loop can have dozens). */
+  let stopsOpen = $state.raw<Set<string>>(new Set());
+  function toggleStops(key: string) {
+    const next = new Set(stopsOpen);
+    if (!next.delete(key)) next.add(key);
+    stopsOpen = next;
+  }
+
+  /** The whole description of a row, for its tooltip: name, file, author, how far, the stops. */
+  function rowTip(e: Entry): string {
+    const head: string[] = [];
+    if (e.g) head.push(e.g.name, loopText(e.g));
+    if (e.m) head.push(e.m.description || e.m.file, `${e.m.file}${e.m.author ? ` by ${e.m.author}` : ""}`, loopText(e.m));
+    if (e.distance !== Number.MAX_SAFE_INTEGER) head.push(`${e.distance} ${e.distance === 1 ? "step" : "steps"} from the character`);
+    if (e.m && !e.m.runnable) head.push(`cannot be run: ${e.m.reason}`);
+    return `${head.join("\n")}\n\n${stopsTip((e.g ?? e.m)!.stops)}`;
+  }
 
   function askLoops() {
     lastAsked = Date.now();
@@ -462,25 +486,27 @@
   const route = $derived(walkText(walking));
 </script>
 
-<!-- A loop's run button (or that it is running), and its stops to tick while picked or running. -->
-{#snippet runAndStops(l: Runnable, picked: boolean)}
+<!-- A loop's run button, or that it is running; its stops to tick are listed under its row. -->
+{#snippet runButton(l: Runnable)}
   {#if task?.loop_id === l.id}
-    <span class="running">running: stop {task.stop + 1}/{task.stops.length}</span>
+    <span class="running" title="The bot is running this loop">▶ {task.stop + 1}/{task.stops.length}</span>
   {:else}
     <button class="run" onclick={() => runLoop(l)} title="Hunt round this loop: fight at each ticked stop">run</button>
   {/if}
-  {#if picked || task?.loop_id === l.id}
-    <ul class="stops" aria-label={`Stops of ${l.name}`}>
-      {#each l.stops as s, i (keyOf(s))}
-        <li class:at={task?.loop_id === l.id && task.stop === i}>
-          <label title={stopTip(s)}>
-            <input type="checkbox" checked={!skipped(l).includes(keyOf(s))} onchange={() => toggleStop(l, s)} />
-            {i + 1}. {s.name}
-          </label>
-        </li>
-      {/each}
-    </ul>
-  {/if}
+{/snippet}
+
+<!-- A loop's stops, with a tick for each: pass by the ones unticked. -->
+{#snippet stopList(l: Runnable)}
+  <ul class="stops" aria-label={`Stops of ${l.name}`}>
+    {#each l.stops as s, i (keyOf(s))}
+      <li class:at={task?.loop_id === l.id && task.stop === i}>
+        <label title={stopTip(s)}>
+          <input type="checkbox" checked={!skipped(l).includes(keyOf(s))} onchange={() => toggleStop(l, s)} />
+          {i + 1}. {s.name}
+        </label>
+      </li>
+    {/each}
+  </ul>
 {/snippet}
 
 <div class="map">
@@ -591,36 +617,44 @@
             {#each entries as e (e.key)}
               {@const l = e.g}
               {@const m = e.m}
-              <li class:on={pickedLoop === e.key}>
-                <span class="dist" title="Steps from the character to the nearest room of this loop">{e.distance === Number.MAX_SAFE_INTEGER ? "?" : e.distance}</span>
-                <button
-                  class="pick"
-                  aria-pressed={pickedLoop === e.key}
-                  title={stopsTip((l ?? m)!.stops)}
-                  onclick={() => pickLoop(e.key)}
-                  onpointerenter={() => (hoverLoop = e.key)}
-                  onpointerleave={() => (hoverLoop = null)}
-                  onfocus={() => (hoverLoop = e.key)}
-                  onblur={() => (hoverLoop = null)}>{l ? l.name : m!.file}</button
-                >
-                {#if l}
-                  <span class="dim">{e.kind === "custom" ? "mine, " : ""}{loopText(l)}</span>
-                  <button class="walk" onclick={() => session && onwalkloop?.(session.id, l.id)}>walk once</button>
-                  {@render runAndStops(l, pickedLoop === e.key)}
-                  {#if e.kind === "custom"}
-                    <button class="walk" title="Forget this loop" onclick={() => session && ondeleteloop?.(session.id, l.id)}
-                      >delete</button
-                    >
-                  {/if}
-                {:else if m}
-                  <span class="dim">{m.description}, {m.stops.length} stops, {m.steps} steps</span>
-                  <button class="walk" onclick={() => session && onwalkloop?.(session.id, m.file)}>walk once</button>
-                  {#if m.runnable}
-                    {@render runAndStops(mmRunnable(m), pickedLoop === e.key)}
-                  {:else}
-                    <button class="run" disabled title={m.reason}>run</button>
-                    <span class="dim reason">{m.reason}</span>
-                  {/if}
+              {@const r = l ?? (m ? mmRunnable(m) : undefined)!}
+              {@const running = task?.loop_id === r.id}
+              <li class="row" class:on={pickedLoop === e.key} class:isrunning={running}>
+                <div class="line">
+                  <span class="dist" title="Steps from the character to the nearest room of this loop">{e.distance === Number.MAX_SAFE_INTEGER ? "?" : e.distance}</span>
+                  <button
+                    class="pick"
+                    aria-pressed={pickedLoop === e.key}
+                    title={rowTip(e)}
+                    onclick={() => pickLoop(e.key)}
+                    onpointerenter={() => (hoverLoop = e.key)}
+                    onpointerleave={() => (hoverLoop = null)}
+                    onfocus={() => (hoverLoop = e.key)}
+                    onblur={() => (hoverLoop = null)}>{l ? l.name : m!.description || m!.file}</button
+                  >
+                  <span class="acts">
+                    <button class="walk" onclick={() => session && onwalkloop?.(session.id, r.id)}>walk once</button>
+                    {#if m && !m.runnable}
+                      <button class="run" disabled title={m.reason}>run</button>
+                    {:else}
+                      {@render runButton(r)}
+                    {/if}
+                    {#if e.kind === "custom" && l}
+                      <button class="walk" title="Forget this loop" onclick={() => session && ondeleteloop?.(session.id, l.id)}
+                        >delete</button
+                      >
+                    {/if}
+                  </span>
+                </div>
+                <div class="meta dim" title={rowTip(e)}>
+                  {#if m}{`${m.file} · `}{/if}{#if e.kind === "custom"}{"mine · "}{/if}{loopText(l ?? m!)}
+                  {#if m && !m.runnable}<span class="reason">{` · ${m.reason}`}</span>{/if}
+                  <button class="stopsbtn" aria-expanded={stopsOpen.has(e.key)} onclick={() => toggleStops(e.key)}
+                    >stops {stopsOpen.has(e.key) ? "▾" : "▸"}</button
+                  >
+                </div>
+                {#if stopsOpen.has(e.key)}
+                  {@render stopList(r)}
                 {/if}
               </li>
             {:else}
@@ -782,8 +816,56 @@
   }
   .loops {
     padding: 2px 1ch;
-    max-height: 45%;
+    max-height: 38%;
     overflow-y: auto;
+  }
+  .loops .head {
+    position: sticky;
+    top: 0;
+    background: #000;
+    z-index: 1;
+  }
+  .loops li.row {
+    display: block;
+    padding: 1px 0;
+  }
+  .loops .line {
+    display: flex;
+    align-items: center;
+    gap: 1ch;
+    white-space: nowrap;
+  }
+  .loops .line .pick {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: left;
+  }
+  .loops .acts {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 1ch;
+  }
+  .loops .meta {
+    padding-left: 4ch;
+    font-size: 0.85em;
+    line-height: 1.2;
+  }
+  .loops .meta .reason {
+    color: var(--vga-lightred, #f55);
+  }
+  .loops .stopsbtn {
+    background: none;
+    color: var(--vga-lightgray);
+    padding: 0 0 0 1ch;
+  }
+  .loops li.isrunning .running {
+    color: var(--vga-lightgreen);
+  }
+  .loops li.isrunning {
+    border-left: 2px solid var(--vga-lightgreen);
   }
   .loops .filter {
     flex: 1 1 18ch;
@@ -842,8 +924,9 @@
     color: var(--vga-lightgreen);
   }
   .loops ul.stops {
-    flex-basis: 100%;
-    padding-left: 2ch;
+    padding-left: 4ch;
+    max-height: 12em;
+    overflow-y: auto;
   }
   .loops .make {
     display: flex;
