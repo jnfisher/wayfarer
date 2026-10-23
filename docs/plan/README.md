@@ -29,6 +29,7 @@ or test time.
 | [07-development-and-testing.md](07-development-and-testing.md) | Watching the bot live while it is built, never restarting the server, test layers |
 | [08-packaging.md](08-packaging.md) | One-file installers, signing, updates, the headless build |
 | [09-milestones.md](09-milestones.md) | Milestones in build order |
+| [10-party-play.md](10-party-play.md) | Parties: forming, separation, party rests and flees, healing members, the Parties panel |
 | [tasks/](tasks/README.md) | The task cards: wave 1 (M0) written; how cards run; conventions |
 
 Reference: `kb/megamud.md` (what MegaMud did, its settings catalogue and data formats),
