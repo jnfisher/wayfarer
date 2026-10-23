@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { bar, expText, fitHeader, fixedWidth, itemWidths, type HeaderText } from "../src/lib/header";
+import { DROP_ORDER, ROOM_MIN, bar, controlsWidth, expText, fitHeader, fixedWidth, itemWidths, type HeaderText } from "../src/lib/header";
 import type { CharacterState } from "../src/proto";
 
 // xterm needs a real canvas; the header tests only look at the header.
@@ -75,19 +75,30 @@ describe("expText", () => {
 
 describe("fitHeader", () => {
   const h: HeaderText = { number: 1, name: "Waydeva", server: "127.0.0.1:2323", state: "realm", character: FULL };
-  const all = () => fixedWidth(h) + Object.values(itemWidths(h)).reduce((a, b) => a + b, 0);
+  const w = itemWidths(h);
+  const first = () => fixedWidth(h) + DROP_ORDER.reduce((a, i) => a + (w[i] ?? 0), 0);
 
   it("keeps everything when it fits, or before the header is measured", () => {
-    expect([...fitHeader(h, all())].sort()).toEqual(["exp", "hp", "level", "mana", "room", "server"]);
-    expect(fitHeader(h, 0).size).toBe(6);
+    expect([...fitHeader(h, 200)].sort()).toEqual(["exp", "hp", "level", "mana", "server"]);
+    expect(fitHeader(h, 0).size).toBe(5);
   });
 
-  it("drops from the right: server, room, exp, mana, hp, level", () => {
-    const w = itemWidths(h);
-    expect([...fitHeader(h, all() - 1)].sort()).toEqual(["exp", "hp", "level", "mana", "room"]);
-    expect([...fitHeader(h, all() - w.server! - w.room!)].sort()).toEqual(["exp", "hp", "level", "mana"]);
+  it("drops the first row from the right: exp, mana, hp, level", () => {
+    const cols = Math.max(first(), controlsWidth(h) + w.server!);
+    expect([...fitHeader(h, cols)].sort()).toEqual(["exp", "hp", "level", "mana", "server"]);
+    const less = cols - (cols - first()) - 1;
+    expect(fitHeader(h, less).has("exp")).toBe(false);
     expect([...fitHeader(h, fixedWidth(h) + w.level!)]).toEqual(["level"]);
     expect(fitHeader(h, 10).size).toBe(0);
+  });
+
+  it("drops the server from the second row before the room gets under its least", () => {
+    const cols = controlsWidth(h) + w.server!;
+    expect(fitHeader(h, cols).has("server")).toBe(true);
+    expect(fitHeader(h, cols - 1).has("server")).toBe(false);
+    // The party chip takes room too.
+    expect(fitHeader(h, cols, 20).has("server")).toBe(false);
+    expect(controlsWidth(h)).toBeGreaterThan(ROOM_MIN);
   });
 
   it("has only the server to drop without a brain", () => {
@@ -96,19 +107,10 @@ describe("fitHeader", () => {
     expect(fitHeader(m0, 20).size).toBe(0);
   });
 
-  it("counts the cells of the header's design line", () => {
-    // The card's example, from ╔ to ╗ with one cell of fill.
-    const line =
-      "╔═ 1 Waydeva  L3 Warrior ═ HP ███████░░░ 28/40  MA ░░░░░░░░░░ 0/0 ═ 1,230 (45%) ═ Town Square ═ 127.0.0.1:2323 ═  realm  [log off] [▼] [▬] ═╗";
-    expect(all()).toBe([...line].length);
-  });
-
-  it("keeps room for the bot's buttons", () => {
-    const running = { ...h, character: { ...FULL, bot: { state: "running", mode: "fight", narration: "" } } } as const;
-    const line =
-      "╔═ 1 Waydeva  L3 Warrior ═ HP ███████░░░ 28/40  MA ░░░░░░░░░░ 0/0 ═ 1,230 (45%) ═ Town Square ═ [║][■] ═ 127.0.0.1:2323 ═  realm  [log off] [▼] [▬] ═╗";
-    const width = fixedWidth(running) + Object.values(itemWidths(running)).reduce((a, b) => a + b, 0);
-    expect(width).toBe([...line].length);
+  it("counts the cells of the first row's design line", () => {
+    // From ╔ to ╗ with the fill at its narrowest.
+    const line = "╔═ 1 Waydeva  L3 Warrior ═ HP ███████░░░ 28/40  MA ░░░░░░░░░░ 0/0 ═ 1,230 (45%) ═ ═╗";
+    expect(first()).toBe([...line].length);
   });
 });
 
@@ -126,7 +128,8 @@ describe("the tile header", () => {
   function header(character: CharacterState | null | undefined) {
     const props = { info, number: 1, focused: false, zoom: 0, offline: null, client, sinks, onfocus() {}, onhelp() {} };
     const { container } = render(Tile, character === undefined ? props : { ...props, character });
-    const el = container.querySelector("header")!;
+    // Both rows: the frame's top and the controls under it.
+    const el = container.querySelector("section")!;
     const text = (cls: string) => [...el.querySelectorAll(`.${cls}`)].map((s) => s.textContent);
     return { el, text };
   }
@@ -160,7 +163,8 @@ describe("the tile header", () => {
   it("is the M0 header plus `no brain` without a brain", () => {
     for (const character of [null, undefined]) {
       const { el, text } = header(character);
-      expect(el.querySelector(".level, .bar, .exp, .room")).toBeNull();
+      expect(el.querySelector(".level, .bar, .exp")).toBeNull();
+      expect(text("room")).toEqual([""]);
       expect(text("server")).toEqual(["127.0.0.1:2323"]);
       expect(text("nobrain")).toEqual([" no brain"]);
       cleanup();
@@ -168,8 +172,8 @@ describe("the tile header", () => {
   });
 
   it("starts with ╔ and ends with ╗", () => {
-    const { el } = header(FULL);
-    expect(el.firstElementChild!.textContent).toBe("╔═ ");
-    expect(el.lastElementChild!.textContent).toBe(" ═╗");
+    const top = header(FULL).el.querySelector("header")!;
+    expect(top.firstElementChild!.textContent).toBe("╔═ ");
+    expect(top.lastElementChild!.textContent).toBe("═╗");
   });
 });

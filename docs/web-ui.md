@@ -15,24 +15,28 @@ screen). Each tile is framed in the font's double lines, with a header on the to
 ## The header
 
 ```
-╔═ 1 Waydeva  L3 Warrior ═ HP ███████░░░ 28/40  MA ░░░░░░░░░░ 0/0 ═ 1,230 (45%) ═ Town Square ═ 127.0.0.1:2323 ═ realm ═╗
+╔═ 1 Waydeva  L3 Warrior ═ HP ███████░░░ 28/40  MA ░░░░░░░░░░ 0/0 ═ 1,230 (45%) ═════════════╗
+║ Town Square                     Following Penny │ [║][■] │ 127.0.0.1:2323 │ realm [▬] [▼] ║
 ```
 
-From the left: the tile's number (for `Alt+n`), the character's name, then what the brain
-knows of them: level and class, HP and mana as bars with their numbers, exp with how far
-through the level it is, and the room's title. On the right, the server and the session's
-state badge: `connecting`, `connected`, `logon`, `menu`, `realm`, `lost` or `closed`.
+Two rows. The first, the frame's top: the tile's number (for `Alt+n`), the character's name,
+then what the brain knows of them: level and class, HP and mana as bars with their numbers,
+and exp with how far through the level it is. The second: the room's title on the left, and
+on the right the party chip (see "The parties"), the bot's buttons, the server, the session's
+state badge (`connecting`, `connected`, `logon`, `menu`, `realm`, `lost` or `closed`) and the
+tile's own buttons.
 
 - **Bars** are ten blocks: green above two thirds, yellow above one third, red below. HP and
   mana maxima come from the status screen, which the brain asks for when it re-syncs (the
   game's prompt has none), so until then a bar is empty and its maximum shows `--`.
 - **Unknown values** show as `--`. Values update live as the brain reads the game; on leaving
   the realm (`x` to the menu) the last values stay and the badge changes.
-- **Narrow tiles** drop items from the right: the server first, then the room, exp, mana, HP
-  and the level, so the name and the badge always show. Room titles longer than 30
-  characters end in `…`.
-- **No brain**: without a brain attached the header is just the number, name, server and
-  badge, with a dim `no brain` after the badge. The brain is `wayfarer brain` (`docs/brain.md`).
+- **Narrow tiles**: the first row drops items from the right, exp first, then mana, HP and the
+  level, so the name always shows; the second row cuts the room title with `…` and drops the
+  server before the room would get under 8 characters, so the badge and the buttons always
+  show.
+- **No brain**: without a brain attached the header is just the number and name, and under it
+  the server and badge, with a dim `no brain` after the badge. The brain is `wayfarer brain` (`docs/brain.md`).
 - A page that opens or reconnects while a brain is attached asks it for every character's
   state, so the headers fill at once.
 

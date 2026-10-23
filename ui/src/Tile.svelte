@@ -92,6 +92,7 @@
     fitHeader(
       { number, name: info.name, server: info.server, state: info.state, character: c },
       Math.floor(headerWidth / HEADER_CELL_PX),
+      party ? party.text.length + 3 : 0,
     ),
   );
 
@@ -231,7 +232,8 @@
     focusInput();
   }}
 >
-  <!-- Every span's width in cells is counted in lib/header.ts: change both together. -->
+  <!-- Every span's width in cells is counted in lib/header.ts: change both together. Two
+       rows: the frame's top with who and how they are, then where they are and the controls. -->
   <header bind:clientWidth={headerWidth}>
     <span class="frame">{"╔═ "}</span>
     <span class="num">{number}</span>
@@ -255,12 +257,16 @@
         <span class="frame">{" ═ "}</span>
         <span class="exp">{expText(c)}</span>
       {/if}
-      {#if shown.has("room")}
-        <span class="frame">{" ═ "}</span>
-        <span class="room">{roomText(c)}</span>
-      {/if}
     {/if}
     <span class="frame fill"></span>
+    <span class="frame">{"═╗"}</span>
+  </header>
+  <div class="controls">
+    {#if c}
+      <span class="room" title={roomText(c)}>{roomText(c)}</span>
+    {:else}
+      <span class="room"></span>
+    {/if}
     {#if party}
       <button
         class="ctl party {party.tone}"
@@ -272,7 +278,7 @@
           partyOpen = !partyOpen;
         }}>{party.text}</button
       >
-      <span class="frame">{" ═ "}</span>
+      <span class="sep">{" │ "}</span>
     {:else if partyMenu.length > 0 && c && info.state === "realm"}
       <button
         class="ctl party none"
@@ -284,7 +290,7 @@
           partyOpen = !partyOpen;
         }}>[party]</button
       >
-      <span class="frame">{" ═ "}</span>
+      <span class="sep">{" │ "}</span>
     {/if}
     {#if buttons.length > 0}
       {#each buttons as b (b.action)}
@@ -298,11 +304,11 @@
           }}>[{b.label}]</button
         >
       {/each}
-      <span class="frame">{" ═ "}</span>
+      <span class="sep">{" │ "}</span>
     {/if}
     {#if shown.has("server")}
       <span class="server">{info.server}</span>
-      <span class="frame">{" ═ "}</span>
+      <span class="sep">{" │ "}</span>
     {/if}
     <span class="badge {info.state}">{info.state}</span>
     {#if link}
@@ -343,8 +349,7 @@
     {#if !c}
       <span class="nobrain">{" no brain"}</span>
     {/if}
-    <span class="frame">{" ═╗"}</span>
-  </header>
+  </div>
     {#if partyOpen && partyMenu.length > 0}
       <ul class="errands party-menu" role="menu" aria-label="Party">
         {#each partyMenu as item (item.label)}
@@ -525,6 +530,25 @@
   header .fill {
     margin: 0 1ch;
   }
+  /* The header's second row, inside the frame: the room on the left, cut to fit, and the
+     controls on the right. */
+  .controls {
+    display: flex;
+    height: 16px;
+    line-height: 16px;
+    padding: 0 1ch 0 0;
+    white-space: pre;
+    overflow: hidden;
+  }
+  .controls .room {
+    flex: 1;
+    min-width: 8ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .controls .sep {
+    color: var(--frame);
+  }
   .fill::before {
     content: "══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════";
   }
@@ -544,11 +568,6 @@
   }
   .exp {
     color: var(--vga-lightcyan);
-  }
-  .room {
-    max-width: 30ch; /* ROOM_MAX in lib/header.ts */
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
   .bar .empty {
     color: var(--dim);
@@ -599,50 +618,50 @@
   }
   /* The bot's buttons sit in the header's 16 px line: one cell each for the brackets and the
      glyph (lib/bot.ts BUTTON_CELLS). */
-  header .ctl {
+  .controls .ctl {
     padding: 0;
     border: none;
     line-height: 16px;
     color: var(--vga-lightgray);
   }
-  header .ctl:hover {
+  .controls .ctl:hover {
     color: var(--vga-white);
   }
-  header .ctl.start,
-  header .ctl.resume {
+  .controls .ctl.start,
+  .controls .ctl.resume {
     color: var(--vga-lightgreen);
   }
   .tile.hidden {
     display: none;
   }
-  header .ctl.minimize {
+  .controls .ctl.minimize {
     margin-left: 1ch;
   }
   /* The party chip: long follower lists are cut, the whole list is its title. */
-  header .ctl.party {
+  .controls .ctl.party {
     max-width: 32ch;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  header .ctl.party.leader {
+  .controls .ctl.party.leader {
     color: var(--vga-yellow);
   }
-  header .ctl.party.follower {
+  .controls .ctl.party.follower {
     color: var(--vga-lightcyan);
   }
-  header .ctl.party.warn {
+  .controls .ctl.party.warn {
     color: var(--vga-black);
     background: var(--vga-yellow);
   }
-  header .ctl.party.none {
+  .controls .ctl.party.none {
     color: var(--vga-darkgray);
   }
   ul.party-menu {
     right: auto;
     left: 50%;
   }
-  header .menu {
+  .controls .menu {
     position: relative;
     margin-left: 1ch;
   }
@@ -650,7 +669,7 @@
   ul.errands {
     position: absolute;
     right: var(--cell);
-    top: 16px;
+    top: 32px;
     z-index: 5;
     margin: 0;
     padding: 2px 0;
@@ -714,13 +733,13 @@
   .narration.errand {
     color: var(--vga-lightcyan);
   }
-  header .ctl.link {
+  .controls .ctl.link {
     margin-left: 1ch;
   }
-  header .ctl.connect {
+  .controls .ctl.connect {
     color: var(--vga-lightgreen);
   }
-  header .ctl.stop {
+  .controls .ctl.stop {
     color: var(--vga-lightred);
   }
   /* What the bot is doing, under the header while it runs or is paused. */
