@@ -102,7 +102,11 @@ pub fn fixture_names() -> Vec<String> {
 }
 
 pub fn input(name: &str) -> Input {
-    if let Some(cap) = name.strip_prefix("capture-") {
+    if let Some(who) = name.strip_prefix("party-") {
+        let text =
+            std::fs::read_to_string(fixtures().join("party").join(format!("{who}.txt"))).unwrap();
+        Input::Raw(text)
+    } else if let Some(cap) = name.strip_prefix("capture-") {
         let raw = std::fs::read(fixtures().join("captures").join(cap).join("raw.bin")).unwrap();
         Input::Raw(cp437(&raw))
     } else {
@@ -197,15 +201,24 @@ fn python_events(name: &str, input: &Input) -> BTreeMap<u64, LineEvents> {
 
 /// Lines where this parser differs from `patterns.py`, with the reason; each is listed in
 /// the pull request. (fixture, line, reason)
-const KNOWN: &[(&str, u64, &str)] = &[(
-    "transcript-thornwyn-early",
-    335,
-    "\"The angry kobold thief lunges at Kasimir with their shortsword!\": WCCMSG 8294 and 8310 \
+const KNOWN: &[(&str, u64, &str)] = &[
+    (
+        "transcript-thornwyn-early",
+        335,
+        "\"The angry kobold thief lunges at Kasimir with their shortsword!\": WCCMSG 8294 and 8310 \
      tie (priority 56, specificity 14) under different index keys, which Python orders by set \
      iteration, so its answer depends on PYTHONHASHSEED (the golden uses 0). This parser takes \
      the earlier pattern, 8294, as Python does with seeds 1 and 3, and names the monster \
      `angry kobold thief`; seed 0 takes 8310 and names it `angry kobold`.",
-)];
+    ),
+    (
+        "capture-status-screens",
+        111,
+        "The own row after \"You are not in a party at the present time.\": `par` always ends \
+         with it (LJNDISP.C:5172-5203), so this parser opens the party table on `party_none` as \
+         well and reads it as a `party_row` (C-038); patterns.py left it unknown.",
+    ),
+];
 
 /// Feed every fixture to a parser on `reg` and check its events against `patterns.py`'s.
 pub fn golden_parity(reg: &Arc<Registry>) {

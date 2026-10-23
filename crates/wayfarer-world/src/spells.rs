@@ -16,8 +16,11 @@ const ABILITY_HEAL: i64 = 18;
 pub enum SpellKind {
     /// Auto-combat damage to one monster (type 0, target 0, 4 or 8).
     Attack,
-    /// A heal the caster can cast on themself (type 3, target 1, 2 or 6).
+    /// A heal on one player (type 3, target 0, 1, 2 or 6): the caster for 1, 2 and 6, another
+    /// player for 0, 2 and 6 (`target` says which).
     Heal,
+    /// A heal on the caster's whole party (type 3, target 10 or 13: healing rain, divine mercy).
+    PartyHeal,
 }
 
 /// A spell a player can learn, with what the choice between spells needs.
@@ -31,6 +34,9 @@ pub struct SpellDef {
     pub mana: i64,
     pub magery: i64,
     pub magery_level: i64,
+    /// The record's target (`kb/spells.md` "Spell record": 0 Single, 1 Self, 2 Self or Single,
+    /// 6 Any, 13 Full Party Area, ...).
+    pub target: i64,
     min: (i64, i64, i64),
     max: (i64, i64, i64),
     level_cap: i64,
@@ -48,6 +54,11 @@ impl SpellDef {
             mana,
             magery: 1,
             magery_level: 1,
+            target: match kind {
+                SpellKind::Attack => 0,
+                SpellKind::Heal => 2,
+                SpellKind::PartyHeal => 13,
+            },
             min: (lo, 0, 0),
             max: (hi, 0, 0),
             level_cap: 0,
@@ -109,7 +120,10 @@ impl Spells {
             let instant = int("duration") == 0 && int("minval") > 0;
             let kind = match (s.spell_type, s.target) {
                 (0, 0 | 4 | 8) if first == Some(ABILITY_DAMAGE) && instant => SpellKind::Attack,
-                (3, 1 | 2 | 6) if first == Some(ABILITY_HEAL) && instant => SpellKind::Heal,
+                (3, 0 | 1 | 2 | 6) if first == Some(ABILITY_HEAL) && instant => SpellKind::Heal,
+                // Found by what it does, never by its word: `rain` is also the Druid's acid
+                // rain, a room attack (`docs/plan/10-party-play.md` §8).
+                (3, 10 | 13) if first == Some(ABILITY_HEAL) && instant => SpellKind::PartyHeal,
                 _ => continue,
             };
             spells.push(SpellDef {
@@ -120,6 +134,7 @@ impl Spells {
                 mana: s.mana,
                 magery,
                 magery_level: int("magelvl"),
+                target: s.target,
                 min: (int("minval"), int("mininc"), int("minlvls")),
                 max: (int("maxval"), int("maxinc"), int("maxlvls")),
                 level_cap: int("levelcap"),

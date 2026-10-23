@@ -231,6 +231,39 @@ describe("handshake", () => {
     ]);
   });
 
+  it("sends the party messages and hands the parties to their handler", () => {
+    const seen: unknown[] = [];
+    const sockets: FakeSocket[] = [];
+    const client = new GatewayClient({
+      url: "ws://gateway.test/ws",
+      socket: (url) => {
+        const s = new FakeSocket(url);
+        sockets.push(s);
+        return s;
+      },
+      events: { parties: (p) => seen.push(p) },
+    });
+    client.connect();
+    sockets[0].open();
+    sockets[0].receive(welcome(session("penny", 0)));
+    const party = { id: "", leader: "penny", followers: ["lauren"] };
+    expect(client.requestParties()).toBe(true);
+    expect(client.saveParty(party)).toBe(true);
+    expect(client.leaveParty("lauren")).toBe(true);
+    expect(client.joinParty("lauren", "party-1")).toBe(true);
+    expect(client.deleteParty("party-1")).toBe(true);
+    expect(sockets[0].sent.slice(-5)).toEqual([
+      { type: "parties_request" },
+      { type: "party_save", party },
+      { type: "party_leave", session: "lauren" },
+      { type: "party_join", session: "lauren", party: "party-1" },
+      { type: "party_delete", id: "party-1" },
+    ]);
+    const parties = [{ party: { ...party, id: "party-1" }, members: [] }];
+    sockets[0].receive({ type: "parties", parties });
+    expect(seen).toEqual([parties]);
+  });
+
   it("hands a found to its handler", () => {
     const seen: unknown[] = [];
     const sockets: FakeSocket[] = [];

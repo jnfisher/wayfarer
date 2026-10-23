@@ -30,8 +30,9 @@ use crate::clock::Clock;
 use crate::commands::{Kind, classify};
 use crate::custom;
 use crate::errand::{Active, Ctx, Errand, ErrandKind, ErrandNext};
-use crate::executor::{Action, Executor};
+use crate::executor::{Action, Executor, Expect};
 use crate::modes::{Bot, Do, Presence, View};
+use crate::party::{Health, MemberInfo, PartyRole, WalkBack};
 use crate::policy::{COMBAT_QUIET, hp_percent};
 use crate::position::Position;
 use crate::rules::{self, RuleBook, Sightings};
@@ -49,6 +50,8 @@ pub const MAP_RADIUS: u32 = 15;
 /// section 6). `look`, not an empty line: an empty line shows the room only in statline FULL
 /// modes (`kb/screen-parsing.md`).
 pub const RESYNC_COMMANDS: [&str; 5] = ["st", "exp", "i", "look", "spells"];
+/// How long a follower that found no way back to its leader waits before it tries again.
+pub const STUCK_RETRY: Duration = Duration::from_secs(30);
 /// The commands before `spells`, which only a character that casts sends.
 const RESYNC_BASE: usize = 4;
 /// How often the settings files are looked at for a change.
@@ -232,6 +235,8 @@ enum Owner {
     Walker,
     Bot,
     Errand,
+    /// The party coordinator's `invite`, `follow`, `par` or `leave`.
+    Party,
 }
 
 /// What a re-sync step did, for the brain to report.
@@ -342,6 +347,13 @@ pub(crate) struct Session {
     bot: Bot,
     /// Who is in the room, for the bot.
     presence: Presence,
+    /// The character's party as the game last showed it.
+    party_game: crate::party_game::GameParty,
+    /// What the party coordinator makes of it.
+    party_role: PartyRole,
+    /// The leader's room it could not walk to, why, and when (tried again after
+    /// [`STUCK_RETRY`] or when the leader moves).
+    party_stuck: Option<(Key, String, Instant)>,
     /// The walk in progress is the bot's.
     bot_walk: bool,
     /// A walk asked for while the bot's action was in flight: it starts once that is answered.
@@ -457,6 +469,9 @@ impl Session {
             owner: None,
             bot: Bot::new(flee_below),
             presence: Presence::default(),
+            party_game: Default::default(),
+            party_role: PartyRole::None,
+            party_stuck: None,
             bot_walk: false,
             walk_after: None,
             loops: HashMap::new(),
@@ -672,7 +687,8 @@ impl Session {
                 // Every HP value, not only those the bot sees at its ticks: a walk or an
                 // action in flight does not hold Flee back.
                 let c = self.character.state();
-                if self.bot.hp(hp_percent(c.hp, c.hp_max)) {
+                // A follower with its leader runs when the leader does (the coordinator).
+                if !self.party_role.with_leader() && self.bot.hp(hp_percent(c.hp, c.hp_max)) {
                     self.give_way(out);
                 }
             }
@@ -731,6 +747,8 @@ impl Session {
             if let Some(name) = &dead {
                 self.bot.killed(name, now);
             }
+            let me = self.character.state().name.clone();
+            self.party_game.event(&typed, me.as_deref(), now);
             if let Some(atlas) = self.atlas.clone() {
                 self.presence.event(&atlas, &typed);
                 self.sighted(&typed, now, out);
@@ -1493,6 +1511,12 @@ impl Session {
             out.push(self.warning("walk_to: the character is not in the realm"));
             return;
         }
+        if let Some(leader) = self.party_role.following() {
+            out.push(self.warning(&format!(
+                "walk_to: following {leader}: it goes where the party goes"
+            )));
+            return;
+        }
         self.take_over(out);
         self.bot_walk = false;
         if let Some(l) = self.loop_walk.take() {
@@ -1961,6 +1985,12 @@ impl Session {
             out.push(self.warning("walk_loop: the character is not in the realm"));
             return;
         }
+        if let Some(leader) = self.party_role.following() {
+            out.push(self.warning(&format!(
+                "walk_loop: following {leader}: it goes where the party goes"
+            )));
+            return;
+        }
         let Some(l) = self.find_loop(&atlas, id) else {
             out.push(self.warning(&format!("walk_loop: no loop {id:?}")));
             return;
@@ -2068,6 +2098,12 @@ impl Session {
         };
         if self.state != SessionState::Realm {
             out.push(self.warning("run_loop: the character is not in the realm"));
+            return;
+        }
+        if let Some(leader) = self.party_role.following() {
+            out.push(self.warning(&format!(
+                "run_loop: following {leader}: it goes where the party goes"
+            )));
             return;
         }
         let skip = skip.unwrap_or_default();
@@ -2285,6 +2321,14 @@ impl Session {
                 | BotAction::RecoverPile
                 | BotAction::CancelErrand
         ) {
+            if action != BotAction::CancelErrand
+                && let Some(leader) = self.party_role.following()
+            {
+                out.push(self.warning(&format!(
+                    "errands: following {leader}: it goes where the party goes"
+                )));
+                return;
+            }
             self.errand_control(action, out);
             self.drive(now, out);
             self.flush_views(out);
@@ -2689,6 +2733,7 @@ impl Session {
             traveller: &self.position.traveller,
             doors: &self.position.traveller.doors,
             presence: &self.presence,
+            party: &self.party_role,
             rules: self.rules.rules(),
             sightings: &self.sightings,
             settings: &self.settings,
@@ -2734,11 +2779,137 @@ impl Session {
                 self.bot_walk = self.walker.walking();
                 if !self.bot_walk {
                     self.bot.forget();
+                    // The walk back to the party's leader found no way.
+                    if self.party_role.rejoin() == Some(to) {
+                        let who = self.party_role.following().unwrap_or("the leader");
+                        let why = format!("no way to {who}'s room is known");
+                        out.push(self.warning(&format!("Can't reach {who}: {why}")));
+                        self.party_stuck = Some((to, why, now));
+                    }
                 }
                 self.apply(next, out);
             }
             None => {}
         }
+    }
+
+    /// What the party coordinator reads of this session.
+    pub(crate) fn party_info(&self) -> MemberInfo {
+        let minutes = |key: &str| {
+            Duration::from_secs(u64::try_from(self.settings.int(key)).unwrap_or(5) * 60)
+        };
+        let rejoin = self.party_role.rejoin();
+        let walking_back = self.bot_walk && rejoin.is_some() && self.walker.destination() == rejoin;
+        MemberInfo {
+            realm: self.state == SessionState::Realm && self.live(),
+            running: self.bot.running(),
+            name: self.character.state().name.clone(),
+            room: self.position.best(),
+            game: self.party_game.clone(),
+            walk: WalkBack {
+                steps_left: walking_back
+                    .then(|| self.walker.snapshot().map(|w| w.steps_left))
+                    .flatten(),
+                stuck: self.party_stuck.as_ref().map(|(_, why, _)| why.clone()),
+            },
+            wait_separated: minutes("party.wait_separated_minutes"),
+            wait_rest: minutes("party.wait_rest_minutes"),
+            health: self.party_health(),
+            target: self.bot.fight_target().map(str::to_owned),
+        }
+    }
+
+    /// HP and mana against the character's own lines, by the rules the bot's View uses
+    /// (`View::rest_below`, `mana_low`, `mana_restored`): for a party rest and flee.
+    fn party_health(&self) -> Health {
+        let c = self.character.state();
+        let hp = hp_percent(c.hp, c.hp_max);
+        let mana = c
+            .mana
+            .zip(c.mana_max)
+            .filter(|&(_, max)| max > 0)
+            .map(|(m, max)| i32::try_from(i64::from(m) * 100 / i64::from(max)).unwrap_or(100));
+        let line = |key: &str| i32::try_from(self.settings.int(key)).unwrap_or(0);
+        let casts = (self.spellbook.has_attack()
+            && self.settings.choice("spells.attack") == "auto")
+            || (self.spellbook.has_heal() && self.settings.choice("spells.heal") == "auto");
+        let uses_mana = mana.is_some() && casts;
+        Health {
+            hp,
+            missing: c.hp.zip(c.hp_max).map(|(h, m)| i64::from(m - h)),
+            low: hp.is_some_and(|h| h < line("health.rest_below_hp"))
+                || (uses_mana && mana.is_some_and(|m| m < line("health.rest_mana_below"))),
+            rested: hp.is_none_or(|h| h >= line("health.rest_until_hp"))
+                && (!uses_mana || mana.is_none_or(|m| m >= line("health.rest_mana_until"))),
+            flee: hp.is_some_and(|h| h < self.bot.flee_below()),
+        }
+    }
+
+    /// The party's leader runs now, for a member under its flee line.
+    pub(crate) fn party_flee(&mut self, why: &str) {
+        if self.bot.running() {
+            self.bot.party_flee(why);
+        }
+    }
+
+    /// Send one of the coordinator's lines (`invite`, `follow`, `par`, `leave`) as the bot's
+    /// own, between the bot's actions: whether it went to the executor (else it is planned
+    /// again next tick).
+    pub(crate) fn party_line(&mut self, line: &str) -> bool {
+        let free = self.state == SessionState::Realm
+            && self.live()
+            && !self.leaving
+            && self.at_prompt
+            && !self.executor.busy()
+            && !self.walker.walking()
+            && self.resync == Resync::Off;
+        if !free {
+            return false;
+        }
+        match self.executor.submit(Action::new(line, Expect::Prompt)) {
+            Ok(()) => {
+                self.owner = Some(Owner::Party);
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    /// The coordinator's role for this session. Made a follower, it stops the loop it ran:
+    /// it goes where the party goes.
+    pub(crate) fn set_party_role(&mut self, role: PartyRole, out: &mut Vec<ToGateway>) {
+        // A walk back that found no way is tried again later, or when the leader moves.
+        let now = self.clock.instant();
+        if self.party_stuck.as_ref().is_some_and(|(to, _, at)| {
+            role.rejoin().is_some_and(|r| r != *to) || now >= *at + STUCK_RETRY
+        }) {
+            self.party_stuck = None;
+        }
+        // Holding: a leg of its loop already walking stops where it is.
+        if let Some(why) = role.hold()
+            && self.bot_walk
+            && self.bot.task_walking()
+        {
+            let why = why.to_owned();
+            self.stop_walk(&why, out);
+        }
+        if role == self.party_role {
+            return;
+        }
+        if let Some(leader) = role.following()
+            && self.party_role.following().is_none()
+        {
+            let says = self.bot.join_party(leader);
+            self.say(says, out);
+        }
+        self.party_role = role;
+    }
+
+    /// The party's leader waited too long for a member: its loop stops, it fights on where it
+    /// is, and the player is told.
+    pub(crate) fn party_give_up(&mut self, why: &str, out: &mut Vec<ToGateway>) {
+        let says = self.bot.stop_loop(why);
+        self.say(says, out);
     }
 
     /// `map_request`.
@@ -3005,6 +3176,8 @@ impl Session {
                         errand.outcome(&action, outcome);
                     }
                 }
+                // The coordinator reads the answer from the game's lines (`GameParty`).
+                Some(Owner::Party) => {}
                 Some(Owner::Bot) => {
                     let says = self.bot.outcome(&action, outcome);
                     self.say(says, out);

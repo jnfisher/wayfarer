@@ -103,6 +103,22 @@ impl Mode for Recover {
         if v.engaged || !v.presence.attackers.is_empty() {
             return None;
         }
+        // A party member in the room is hurt and a heal is ready (C-043), between fights: with
+        // something to fight here the heals are Fight's, and taking control would only cast
+        // again in the round Fight just cast in.
+        if self.heal_ready.is_none_or(|t| v.now >= t)
+            && crate::policy::quiet(&v.atlas.monsters, v.rules, &v.presence.here)
+            && v.party_heal(v.member_heal_resting(), v.rest_heal_below())
+                .is_some()
+        {
+            return Some("healing the party".to_owned());
+        }
+        // The leader of a resting party rests with it (C-042).
+        if let Some(why) = v.party.party_rest()
+            && !Self::low(v)
+        {
+            return Some(why.to_owned());
+        }
         if Self::low(v) {
             return Some(match v.hp {
                 Some(hp) if hp < v.rest_below() => format!("HP {hp}%"),
@@ -118,6 +134,14 @@ impl Mode for Recover {
     }
 
     fn step(&mut self, v: &View) -> Step {
+        // Between rests, a heal for a hurt member of the party: it shortens a party rest.
+        if self.heal_ready.is_none_or(|t| v.now >= t)
+            && crate::policy::quiet(&v.atlas.monsters, v.rules, &v.presence.here)
+            && let Some(cast) = v.party_heal(v.member_heal_resting(), v.rest_heal_below())
+        {
+            self.heal_ready = Some(v.now + HEAL_GAP);
+            return crate::fight::cast_step(&cast, "Recover");
+        }
         if self.walks_back > 0 && !Self::rested(v) {
             // Low again after giving up the walk home: a new rest, from here.
             self.done();
@@ -125,6 +149,23 @@ impl Mode for Recover {
         self.active = true;
         let here = v.room_name(v.room);
         if Self::rested(v) {
+            // Rested itself, the leader holds the party where the quiet-room rule allows until
+            // everyone is (the coordinator lifts it); then it walks back home as after any rest.
+            if let Some(why) = v.party.party_rest() {
+                if self.walks_out < WALKS
+                    && let RestAt::Walk(quiet) = rest_at(v.atlas, v.room, v.certain, v.traveller)
+                {
+                    self.walks_out += 1;
+                    return Step::walk(
+                        quiet,
+                        format!(
+                            "Recover: walking the party to {} to rest ({here} spawns)",
+                            v.room_name(Some(quiet))
+                        ),
+                    );
+                }
+                return Step::wait(format!("Recover: {why}"));
+            }
             if let Some((home, name)) = self.shunned(v) {
                 // Still active: it walks back once the sighting is forgotten.
                 return Step::wait(format!(
@@ -132,7 +173,8 @@ impl Mode for Recover {
                     v.room_name(Some(home))
                 ));
             }
-            if self.away(v) && self.walks_back < WALKS {
+            // A follower rests where the leader is and goes where it goes.
+            if self.away(v) && self.walks_back < WALKS && v.party.following().is_none() {
                 self.walks_back += 1;
                 let home = self.home.expect("away from home");
                 return Step::walk(
@@ -161,7 +203,7 @@ impl Mode for Recover {
                 rest_at(v.atlas, v.room, v.certain, v.traveller),
                 RestAt::Walk(_)
             );
-        if self.walks_out < WALKS {
+        if self.walks_out < WALKS && v.party.following().is_none() {
             match rest_at(v.atlas, v.room, v.certain, v.traveller) {
                 RestAt::Walk(quiet) => {
                     self.walks_out += 1;

@@ -4,10 +4,11 @@
 use wayfarer_proto::{
     Bot, BotAction, BotMode, BotState, CharacterState, Chunk, ClientKind, CoinCount, Coins,
     DecodeError, Encumbrance, ExitKind, ExpSample, Family, Found, FoundKind, FoundRoom,
-    GeneratedLoop, LoopStop, MapExit, MapRoom, MegaMudLoop, MonsterRuleEntry, MonsterRuleKind,
-    PROTOCOL, ParseCounts, Position, RoomKey, RoomKind, RuleSource, RunSummary, SessionAction,
-    SessionInfo, SessionState, SettingChange, SettingKind, SettingRow, SettingValue, SettingsFile,
-    SpellPlanItem, Stats, ToClient, ToGateway, Walking, WorldPackInfo, protocol_mismatch,
+    GeneratedLoop, LoopStop, MapExit, MapRoom, MegaMudLoop, MemberState, MemberStatus,
+    MonsterRuleEntry, MonsterRuleKind, PROTOCOL, ParseCounts, PartyDef, PartyStatus, Position,
+    RoomKey, RoomKind, RuleSource, RunSummary, SessionAction, SessionInfo, SessionState,
+    SettingChange, SettingKind, SettingRow, SettingValue, SettingsFile, SpellPlanItem, Stats,
+    ToClient, ToGateway, Walking, WorldPackInfo, protocol_mismatch,
 };
 
 fn kasimir(state: SessionState, last_seq: u64) -> SessionInfo {
@@ -365,6 +366,35 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
             },
             r#"{"type":"found","session":"kasimir","query":"chief","results":[{"kind":"monster","name":"minotaur chieftain","rooms":[{"map":1,"room":1865,"name":"Large Wooden Room","steps":46,"boss":true}],"count":1,"monsters":["minotaur chieftain"]}]}"#,
         ),
+        (
+            ToGateway::Parties {
+                parties: vec![PartyStatus {
+                    party: PartyDef {
+                        id: "party-1".into(),
+                        leader: "kasimir".into(),
+                        followers: vec!["isolde".into(), "brynja".into()],
+                    },
+                    members: vec![
+                        MemberStatus {
+                            session: "kasimir".into(),
+                            state: MemberState::Joined,
+                            detail: None,
+                        },
+                        MemberStatus {
+                            session: "isolde".into(),
+                            state: MemberState::Joined,
+                            detail: None,
+                        },
+                        MemberStatus {
+                            session: "brynja".into(),
+                            state: MemberState::NotJoined,
+                            detail: Some("in another room".into()),
+                        },
+                    ],
+                }],
+            },
+            r#"{"type":"parties","parties":[{"party":{"id":"party-1","leader":"kasimir","followers":["isolde","brynja"]},"members":[{"session":"kasimir","state":"joined"},{"session":"isolde","state":"joined"},{"session":"brynja","state":"not_joined","detail":"in another room"}]}]}"#,
+        ),
     ]
 }
 
@@ -510,6 +540,36 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
                 rule: Some(MonsterRuleKind::NeverFight),
             },
             r#"{"type":"set_monster_rule","session":"kasimir","pattern":"giant rat","rule":"never_fight"}"#,
+        ),
+        (ToGateway::PartiesRequest, r#"{"type":"parties_request"}"#),
+        (
+            ToGateway::PartySave {
+                party: PartyDef {
+                    id: String::new(),
+                    leader: "kasimir".into(),
+                    followers: vec!["isolde".into(), "brynja".into()],
+                },
+            },
+            r#"{"type":"party_save","party":{"id":"","leader":"kasimir","followers":["isolde","brynja"]}}"#,
+        ),
+        (
+            ToGateway::PartyDelete {
+                id: "party-1".into(),
+            },
+            r#"{"type":"party_delete","id":"party-1"}"#,
+        ),
+        (
+            ToGateway::PartyLeave {
+                session: "isolde".into(),
+            },
+            r#"{"type":"party_leave","session":"isolde"}"#,
+        ),
+        (
+            ToGateway::PartyJoin {
+                session: "isolde".into(),
+                party: "party-1".into(),
+            },
+            r#"{"type":"party_join","session":"isolde","party":"party-1"}"#,
         ),
     ]
 }
@@ -913,9 +973,12 @@ fn families_say_who_may_send_what() {
             "resync" | "state_request" | "walk_to" | "walk_stop" | "map_request"
             | "bot_control" | "loops_request" | "walk_loop" | "run_loop" | "stats_request"
             | "spell_plan_request" | "stats_reset" | "settings_request" | "settings_save"
-            | "save_loop" | "delete_loop" | "find" | "set_monster_rule" => Family::Control,
+            | "save_loop" | "delete_loop" | "find" | "set_monster_rule" | "parties_request"
+            | "party_save" | "party_delete" | "party_leave" | "party_join" => Family::Control,
             "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
-            | "map_view" | "loops" | "stats" | "spell_plan" | "settings" | "found" => Family::Brain,
+            | "map_view" | "loops" | "stats" | "spell_plan" | "settings" | "found" | "parties" => {
+                Family::Brain
+            }
             "ready_to_leave" | "arbitrate" => Family::BrainToGateway,
             _ => Family::Gateway,
         };

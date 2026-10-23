@@ -9,8 +9,6 @@ import { botWidth, linkWidth, menuWidth } from "./bot";
 export const HEADER_CELL_PX = 8;
 /** Blocks in a bar. */
 export const BAR_CELLS = 10;
-/** The room title is cut (with an ellipsis) beyond this many cells. */
-export const ROOM_MAX = 30;
 export const UNKNOWN = "--";
 
 /** good above two thirds, warn above one third, bad below; none without a maximum. */
@@ -55,12 +53,15 @@ export function roomText(c: CharacterState): string {
   return c.room_title ?? UNKNOWN;
 }
 
-/** The items that can be dropped, in the order they go (rightmost first). */
-export type HeaderItem = "server" | "room" | "exp" | "mana" | "hp" | "level";
-export const DROP_ORDER: HeaderItem[] = ["server", "room", "exp", "mana", "hp", "level"];
+/** The items that can be dropped: the first row's in the order they go (rightmost first), and
+ * the second row's server. The room always shows on the second row, cut to fit. */
+export type HeaderItem = "server" | "exp" | "mana" | "hp" | "level";
+export const DROP_ORDER: HeaderItem[] = ["exp", "mana", "hp", "level"];
 
 /** Cells of the minimize button `[▬]`, with the space before it. */
 export const MINIMIZE_CELLS = 4;
+/** The second row keeps this many cells for the room before it drops the server. */
+export const ROOM_MIN = 8;
 
 export interface HeaderText {
   number: number;
@@ -80,39 +81,47 @@ export function itemWidths(h: HeaderText): Partial<Record<HeaderItem, number>> {
   widths.hp = 6 + BAR_CELLS + 1 + bar(c.hp, c.hp_max).text.length;
   widths.mana = 5 + BAR_CELLS + 1 + bar(c.mana, c.mana_max).text.length;
   widths.exp = 3 + expText(c).length;
-  widths.room = 3 + Math.min(ROOM_MAX, roomText(c).length);
   return widths;
 }
 
-/**
- * Cells the items that always show take: corners, number, name, fill, the bot's buttons,
- * badge, `no brain`.
- */
+/** Cells the first row always takes: the corners, number, name and fill. */
 export function fixedWidth(h: HeaderText): number {
   const start = 3 + String(h.number).length + 1 + h.name.length; // "╔═ 1 Name"
   const fill = 3; // " ═ " at its narrowest
-  const bot = botWidth(h.character?.bot); // "[║][■] ═ "
-  // "realm [log off] [▼] [▬]"
-  const badge =
-    h.state.length + 2 + linkWidth(h.state) + menuWidth(h.state, h.character !== null) + MINIMIZE_CELLS;
-  const noBrain = h.character ? 0 : 9; // " no brain"
-  const end = 3; // " ═╗"
-  return start + fill + bot + badge + noBrain + end;
+  const end = 2; // "═╗"
+  return start + fill + end;
 }
 
 /**
- * The droppable items that fit in `cols` cells, dropping from the right (`DROP_ORDER`). A
- * header not measured yet (`cols` 0) shows everything.
+ * Cells the second row always takes, the room's least included: the side frames, the party
+ * chip (`chip` cells with its separator), the bot's buttons, the badge and its buttons, `no
+ * brain`.
  */
-export function fitHeader(h: HeaderText, cols: number): Set<HeaderItem> {
+export function controlsWidth(h: HeaderText, chip = 0): number {
+  const sides = 2 + 1; // ║ on each side, and the space before the right one
+  const bot = botWidth(h.character?.bot); // "[║][■] │ "
+  // "realm [log off] [▬] [▼]"
+  const badge =
+    h.state.length + linkWidth(h.state) + menuWidth(h.state, h.character !== null) + MINIMIZE_CELLS;
+  const noBrain = h.character ? 0 : 9; // " no brain"
+  return sides + ROOM_MIN + chip + bot + badge + noBrain;
+}
+
+/**
+ * The droppable items that fit in `cols` cells: the first row drops from the right
+ * (`DROP_ORDER`), the second drops the server when the room would have less than
+ * [`ROOM_MIN`] cells. A header not measured yet (`cols` 0) shows everything.
+ */
+export function fitHeader(h: HeaderText, cols: number, chip = 0): Set<HeaderItem> {
   const widths = itemWidths(h);
   const shown = new Set(Object.keys(widths) as HeaderItem[]);
   if (cols <= 0) return shown;
-  let total = fixedWidth(h) + Object.values(widths).reduce((a, b) => a + b, 0);
+  let total = fixedWidth(h) + DROP_ORDER.reduce((a, item) => a + (widths[item] ?? 0), 0);
   for (const item of DROP_ORDER) {
     if (total <= cols) break;
     if (!shown.delete(item)) continue;
     total -= widths[item]!;
   }
+  if (controlsWidth(h, chip) + widths.server! > cols) shown.delete("server");
   return shown;
 }

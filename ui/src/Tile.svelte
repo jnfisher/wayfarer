@@ -14,7 +14,8 @@
   import { FONT_FAMILY, FONT_NAME, VGA_THEME } from "./lib/theme";
   import type { SpellPlan } from "./lib/spells";
   import { planRow, planTotals } from "./lib/spells";
-  import type { CharacterState, SessionInfo } from "./proto";
+  import { chipFor, chipMenu, followingName, lockedTitle, type Names } from "./lib/parties";
+  import type { CharacterState, PartyStatus, SessionInfo } from "./proto";
 
   interface Props {
     info: SessionInfo;
@@ -38,6 +39,10 @@
     hidden?: boolean;
     /** The `[▬]` button: minimize this tile. */
     onminimize?: () => void;
+    /** The brain's parties, for the party chip. */
+    parties?: PartyStatus[];
+    /** Display names by session id. */
+    names?: Names;
   }
 
   let {
@@ -54,6 +59,8 @@
     plan,
     hidden = false,
     onminimize,
+    parties = [],
+    names = {},
   }: Props = $props();
 
   let headerWidth = $state(0);
@@ -64,7 +71,19 @@
   const narration = $derived(narrationLine(c?.bot));
   const link = $derived(linkButton(info.state));
   const errand = $derived(c?.errand ?? undefined);
-  const errands = $derived(errandItems(c?.bot, errand, c?.places ?? []));
+  const party = $derived(chipFor(parties, info.id, names));
+  const partyMenu = $derived(chipMenu(parties, info.id, names));
+  const following = $derived(followingName(parties, info.id, names));
+  /** A follower's errands are off, all but cancelling one: it goes where the party goes. */
+  const errands = $derived(
+    errandItems(c?.bot, errand, c?.places ?? []).map((item) =>
+      following && item.action !== "cancel_errand"
+        ? { ...item, disabled: true, title: lockedTitle(following) }
+        : item,
+    ),
+  );
+  /** The party chip's menu is open. */
+  let partyOpen = $state(false);
   /** The errand menu is open. */
   let menuOpen = $state(false);
   /** The spell plan is showing. */
@@ -73,6 +92,7 @@
     fitHeader(
       { number, name: info.name, server: info.server, state: info.state, character: c },
       Math.floor(headerWidth / HEADER_CELL_PX),
+      party ? party.text.length + 3 : 0,
     ),
   );
 
@@ -212,7 +232,8 @@
     focusInput();
   }}
 >
-  <!-- Every span's width in cells is counted in lib/header.ts: change both together. -->
+  <!-- Every span's width in cells is counted in lib/header.ts: change both together. Two
+       rows: the frame's top with who and how they are, then where they are and the controls. -->
   <header bind:clientWidth={headerWidth}>
     <span class="frame">{"╔═ "}</span>
     <span class="num">{number}</span>
@@ -236,12 +257,41 @@
         <span class="frame">{" ═ "}</span>
         <span class="exp">{expText(c)}</span>
       {/if}
-      {#if shown.has("room")}
-        <span class="frame">{" ═ "}</span>
-        <span class="room">{roomText(c)}</span>
-      {/if}
     {/if}
     <span class="frame fill"></span>
+    <span class="frame">{"═╗"}</span>
+  </header>
+  <div class="controls">
+    {#if c}
+      <span class="room" title={roomText(c)}>{roomText(c)}</span>
+    {:else}
+      <span class="room"></span>
+    {/if}
+    {#if party}
+      <button
+        class="ctl party {party.tone}"
+        title={party.title}
+        aria-label="Party: {party.text}"
+        aria-expanded={partyOpen}
+        onclick={(e) => {
+          e.stopPropagation();
+          partyOpen = !partyOpen;
+        }}>{party.text}</button
+      >
+      <span class="sep">{" │ "}</span>
+    {:else if partyMenu.length > 0 && c && info.state === "realm"}
+      <button
+        class="ctl party none"
+        title="Join a party"
+        aria-label="Join a party"
+        aria-expanded={partyOpen}
+        onclick={(e) => {
+          e.stopPropagation();
+          partyOpen = !partyOpen;
+        }}>[party]</button
+      >
+      <span class="sep">{" │ "}</span>
+    {/if}
     {#if buttons.length > 0}
       {#each buttons as b (b.action)}
         <button
@@ -254,11 +304,11 @@
           }}>[{b.label}]</button
         >
       {/each}
-      <span class="frame">{" ═ "}</span>
+      <span class="sep">{" │ "}</span>
     {/if}
     {#if shown.has("server")}
       <span class="server">{info.server}</span>
-      <span class="frame">{" ═ "}</span>
+      <span class="sep">{" │ "}</span>
     {/if}
     <span class="badge {info.state}">{info.state}</span>
     {#if link}
@@ -299,8 +349,24 @@
     {#if !c}
       <span class="nobrain">{" no brain"}</span>
     {/if}
-    <span class="frame">{" ═╗"}</span>
-  </header>
+  </div>
+    {#if partyOpen && partyMenu.length > 0}
+      <ul class="errands party-menu" role="menu" aria-label="Party">
+        {#each partyMenu as item (item.label)}
+          <li role="none">
+            <button
+              role="menuitem"
+              onclick={(e) => {
+                e.stopPropagation();
+                partyOpen = false;
+                if (item.kind === "leave") client.leaveParty(info.id);
+                else client.joinParty(info.id, item.party);
+              }}>{item.label}</button
+            >
+          </li>
+        {/each}
+      </ul>
+    {/if}
     {#if menuOpen}
       <ul class="errands" role="menu" aria-label="Errands">
         {#each errands as item (item.action)}
@@ -341,7 +407,7 @@
         <p class="totals">{planTotals(plan)}</p>
         <button
           class="buy-btn"
-          disabled={errands[0]?.disabled !== false || !plan.items.some((i) => i.usable)}
+          disabled={!!following || errands[0]?.disabled !== false || !plan.items.some((i) => i.usable)}
           title="Withdraw from the Bank of Godfrey if the cash falls short, walk to the shops, buy what the money covers (the cheapest first) and read the scrolls"
           onclick={() => client.botControl(info.id, "buy_spells")}>buy spells</button
         >
@@ -464,6 +530,25 @@
   header .fill {
     margin: 0 1ch;
   }
+  /* The header's second row, inside the frame: the room on the left, cut to fit, and the
+     controls on the right. */
+  .controls {
+    display: flex;
+    height: 16px;
+    line-height: 16px;
+    padding: 0 1ch 0 0;
+    white-space: pre;
+    overflow: hidden;
+  }
+  .controls .room {
+    flex: 1;
+    min-width: 8ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .controls .sep {
+    color: var(--frame);
+  }
   .fill::before {
     content: "══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════";
   }
@@ -483,11 +568,6 @@
   }
   .exp {
     color: var(--vga-lightcyan);
-  }
-  .room {
-    max-width: 30ch; /* ROOM_MAX in lib/header.ts */
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
   .bar .empty {
     color: var(--dim);
@@ -538,26 +618,50 @@
   }
   /* The bot's buttons sit in the header's 16 px line: one cell each for the brackets and the
      glyph (lib/bot.ts BUTTON_CELLS). */
-  header .ctl {
+  .controls .ctl {
     padding: 0;
     border: none;
     line-height: 16px;
     color: var(--vga-lightgray);
   }
-  header .ctl:hover {
+  .controls .ctl:hover {
     color: var(--vga-white);
   }
-  header .ctl.start,
-  header .ctl.resume {
+  .controls .ctl.start,
+  .controls .ctl.resume {
     color: var(--vga-lightgreen);
   }
   .tile.hidden {
     display: none;
   }
-  header .ctl.minimize {
+  .controls .ctl.minimize {
     margin-left: 1ch;
   }
-  header .menu {
+  /* The party chip: long follower lists are cut, the whole list is its title. */
+  .controls .ctl.party {
+    max-width: 32ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .controls .ctl.party.leader {
+    color: var(--vga-yellow);
+  }
+  .controls .ctl.party.follower {
+    color: var(--vga-lightcyan);
+  }
+  .controls .ctl.party.warn {
+    color: var(--vga-black);
+    background: var(--vga-yellow);
+  }
+  .controls .ctl.party.none {
+    color: var(--vga-darkgray);
+  }
+  ul.party-menu {
+    right: auto;
+    left: 50%;
+  }
+  .controls .menu {
     position: relative;
     margin-left: 1ch;
   }
@@ -565,7 +669,7 @@
   ul.errands {
     position: absolute;
     right: var(--cell);
-    top: 16px;
+    top: 32px;
     z-index: 5;
     margin: 0;
     padding: 2px 0;
@@ -629,13 +733,13 @@
   .narration.errand {
     color: var(--vga-lightcyan);
   }
-  header .ctl.link {
+  .controls .ctl.link {
     margin-left: 1ch;
   }
-  header .ctl.connect {
+  .controls .ctl.connect {
     color: var(--vga-lightgreen);
   }
-  header .ctl.stop {
+  .controls .ctl.stop {
     color: var(--vga-lightred);
   }
   /* What the bot is doing, under the header while it runs or is paused. */

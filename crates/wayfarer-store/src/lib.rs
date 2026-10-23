@@ -102,12 +102,19 @@ const MIGRATIONS: &[&str] = &[
          detail TEXT
      );
      CREATE INDEX places_session ON places (session, at);",
+    // 6: parties the player defined: a leader and its followers, by session id.
+    "CREATE TABLE parties (
+         id TEXT PRIMARY KEY,
+         leader TEXT NOT NULL,
+         followers TEXT NOT NULL,
+         updated_at INTEGER NOT NULL
+     );",
 ];
 
 /// The schema version this build writes.
 pub const SCHEMA_VERSION: u32 = MIGRATIONS.len() as u32;
 
-const TABLES: [&str; 8] = [
+const TABLES: [&str; 9] = [
     "bot_state",
     "runs",
     "events",
@@ -116,6 +123,7 @@ const TABLES: [&str; 8] = [
     "boss_kills",
     "custom_loops",
     "places",
+    "parties",
 ];
 
 #[derive(Debug)]
@@ -280,6 +288,14 @@ pub struct CustomLoop {
     pub name: String,
     pub stops: Vec<Key>,
     pub based_on: Option<String>,
+}
+
+/// A party the player defined: its leader and followers, by session id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PartyRecord {
+    pub id: String,
+    pub leader: String,
+    pub followers: Vec<String>,
 }
 
 /// What a run's events count.
@@ -626,6 +642,44 @@ impl Store {
         Ok(self
             .conn
             .execute("DELETE FROM custom_loops WHERE id = ?1", params![id])?
+            > 0)
+    }
+
+    /// Keep a party, replacing the one with its id.
+    pub fn save_party(&self, p: &PartyRecord, at: i64) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO parties (id, leader, followers, updated_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![p.id, p.leader, p.followers.join("\n"), at],
+        )?;
+        Ok(())
+    }
+
+    /// The parties, by id.
+    pub fn parties(&self) -> Result<Vec<PartyRecord>> {
+        let mut q = self
+            .conn
+            .prepare("SELECT id, leader, followers FROM parties ORDER BY id")?;
+        let rows = q.query_map([], |r| {
+            Ok(PartyRecord {
+                id: r.get(0)?,
+                leader: r.get(1)?,
+                followers: r
+                    .get::<_, String>(2)?
+                    .split('\n')
+                    .filter(|f| !f.is_empty())
+                    .map(str::to_owned)
+                    .collect(),
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Forget the party `id`; whether there was one.
+    pub fn delete_party(&self, id: &str) -> Result<bool> {
+        Ok(self
+            .conn
+            .execute("DELETE FROM parties WHERE id = ?1", params![id])?
             > 0)
     }
 

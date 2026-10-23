@@ -456,6 +456,52 @@ pub struct FoundRoom {
     pub boss: bool,
 }
 
+/// A party as the player defined it (`docs/plan/10-party-play.md`): its leader and one to five
+/// followers, by session id. `id` is the brain's (empty in a `party_save` makes a new one).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct PartyDef {
+    pub id: String,
+    pub leader: SessionId,
+    pub followers: Vec<SessionId>,
+}
+
+/// Where one member of a party stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum MemberState {
+    /// In the leader's party in the game.
+    Joined,
+    /// Not in it yet: forming up when it is in the leader's room.
+    NotJoined,
+    /// Logged off or its bot not running, or the leader not in the realm: not waited for.
+    Away,
+    /// Dropped out of the party in the game; the leader waits.
+    Separated,
+    /// Walking to the leader.
+    Walking,
+    /// The party is resting for it.
+    Resting,
+    /// It cannot get to the leader; `detail` says why.
+    Unreachable,
+}
+
+/// One member's state in a `parties` message (the leader is a member too).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct MemberStatus {
+    pub session: SessionId,
+    pub state: MemberState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub detail: Option<String>,
+}
+
+/// A party and how each member stands.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct PartyStatus {
+    pub party: PartyDef,
+    pub members: Vec<MemberStatus>,
+}
+
 /// One result of a `find`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct Found {
@@ -943,6 +989,9 @@ pub enum ToClient {
         query: String,
         results: Vec<Found>,
     },
+    Parties {
+        parties: Vec<PartyStatus>,
+    },
 
     // From a UI, relayed to the brain.
     Resync {
@@ -1048,6 +1097,20 @@ pub enum ToClient {
         session: SessionId,
         pattern: String,
         rule: Option<MonsterRuleKind>,
+    },
+    PartiesRequest,
+    PartySave {
+        party: PartyDef,
+    },
+    PartyDelete {
+        id: String,
+    },
+    PartyLeave {
+        session: SessionId,
+    },
+    PartyJoin {
+        session: SessionId,
+        party: String,
     },
 
     /// To the brain only: a line went to the game, typed by a client or sent by a logon or
@@ -1284,6 +1347,28 @@ pub enum ToGateway {
         pattern: String,
         rule: Option<MonsterRuleKind>,
     },
+    /// UI → brain: ask for the parties; the brain answers with `parties`.
+    PartiesRequest,
+    /// UI → brain: make a party (`id` empty) or replace one. A member in another party is
+    /// moved out of it. Refused with a warning when the leader is a follower, there are no
+    /// followers or more than five, or a session is unknown.
+    PartySave {
+        party: PartyDef,
+    },
+    /// UI → brain: delete a party; its members play on their own.
+    PartyDelete {
+        id: String,
+    },
+    /// UI → brain: take `session` out of its party: it sends `leave` and plays on its own.
+    PartyLeave {
+        session: SessionId,
+    },
+    /// UI → brain: add `session` to the party `party` as a follower; it joins when it is in
+    /// the leader's room.
+    PartyJoin {
+        session: SessionId,
+        party: String,
+    },
 
     /// Brain → UIs: one parsed event, as `wayfarer-parse` produced it, with the output `seq`
     /// its line came from. The gateway never reads `fields`.
@@ -1394,6 +1479,11 @@ pub enum ToGateway {
         query: String,
         results: Vec<Found>,
     },
+    /// Brain → UIs: every party and how its members stand; sent when a UI asks, when a party
+    /// changes and when a member's state does.
+    Parties {
+        parties: Vec<PartyStatus>,
+    },
 
     /// Brain → gateway: the answer to `logging_off`: the brain sends the session nothing more,
     /// and the log-off may start.
@@ -1450,6 +1540,7 @@ impl ToClient {
         "spell_plan",
         "settings",
         "found",
+        "parties",
         "resync",
         "state_request",
         "walk_to",
@@ -1468,6 +1559,11 @@ impl ToClient {
         "delete_loop",
         "find",
         "set_monster_rule",
+        "parties_request",
+        "party_save",
+        "party_delete",
+        "party_leave",
+        "party_join",
         "sent",
         "brain_state",
         "brain_lagged",
@@ -1499,6 +1595,7 @@ impl ToClient {
             Self::SpellPlan { .. } => "spell_plan",
             Self::Settings { .. } => "settings",
             Self::Found { .. } => "found",
+            Self::Parties { .. } => "parties",
             Self::Resync { .. } => "resync",
             Self::StateRequest { .. } => "state_request",
             Self::WalkTo { .. } => "walk_to",
@@ -1517,6 +1614,11 @@ impl ToClient {
             Self::DeleteLoop { .. } => "delete_loop",
             Self::Find { .. } => "find",
             Self::SetMonsterRule { .. } => "set_monster_rule",
+            Self::PartiesRequest => "parties_request",
+            Self::PartySave { .. } => "party_save",
+            Self::PartyDelete { .. } => "party_delete",
+            Self::PartyLeave { .. } => "party_leave",
+            Self::PartyJoin { .. } => "party_join",
             Self::Sent { .. } => "sent",
             Self::BrainState { .. } => "brain_state",
             Self::BrainLagged { .. } => "brain_lagged",
@@ -1544,6 +1646,8 @@ impl ToClient {
             | Self::Found { session, .. }
             | Self::Find { session, .. }
             | Self::SetMonsterRule { session, .. }
+            | Self::PartyLeave { session }
+            | Self::PartyJoin { session, .. }
             | Self::Resync { session }
             | Self::WalkTo { session, .. }
             | Self::WalkStop { session }
@@ -1572,7 +1676,11 @@ impl ToClient {
             | Self::Error { .. }
             | Self::BrainInfo { .. }
             | Self::BrainState { .. }
-            | Self::BrainLagged { .. } => None,
+            | Self::BrainLagged { .. }
+            | Self::Parties { .. }
+            | Self::PartiesRequest
+            | Self::PartySave { .. }
+            | Self::PartyDelete { .. } => None,
         }
     }
 
@@ -1612,6 +1720,11 @@ impl ToGateway {
         "delete_loop",
         "find",
         "set_monster_rule",
+        "parties_request",
+        "party_save",
+        "party_delete",
+        "party_leave",
+        "party_join",
         "event",
         "character",
         "character_patch",
@@ -1624,6 +1737,7 @@ impl ToGateway {
         "spell_plan",
         "settings",
         "found",
+        "parties",
         "ready_to_leave",
         "arbitrate",
     ];
@@ -1655,6 +1769,11 @@ impl ToGateway {
             Self::DeleteLoop { .. } => "delete_loop",
             Self::Find { .. } => "find",
             Self::SetMonsterRule { .. } => "set_monster_rule",
+            Self::PartiesRequest => "parties_request",
+            Self::PartySave { .. } => "party_save",
+            Self::PartyDelete { .. } => "party_delete",
+            Self::PartyLeave { .. } => "party_leave",
+            Self::PartyJoin { .. } => "party_join",
             Self::Event { .. } => "event",
             Self::Character { .. } => "character",
             Self::CharacterPatch { .. } => "character_patch",
@@ -1667,6 +1786,7 @@ impl ToGateway {
             Self::SpellPlan { .. } => "spell_plan",
             Self::Settings { .. } => "settings",
             Self::Found { .. } => "found",
+            Self::Parties { .. } => "parties",
             Self::ReadyToLeave { .. } => "ready_to_leave",
             Self::Arbitrate { .. } => "arbitrate",
         }
@@ -1698,7 +1818,12 @@ impl ToGateway {
             | Self::SaveLoop { .. }
             | Self::DeleteLoop { .. }
             | Self::Find { .. }
-            | Self::SetMonsterRule { .. } => Family::Control,
+            | Self::SetMonsterRule { .. }
+            | Self::PartiesRequest
+            | Self::PartySave { .. }
+            | Self::PartyDelete { .. }
+            | Self::PartyLeave { .. }
+            | Self::PartyJoin { .. } => Family::Control,
             Self::Event { .. }
             | Self::Character { .. }
             | Self::CharacterPatch { .. }
@@ -1710,7 +1835,8 @@ impl ToGateway {
             | Self::Stats { .. }
             | Self::SpellPlan { .. }
             | Self::Settings { .. }
-            | Self::Found { .. } => Family::Brain,
+            | Self::Found { .. }
+            | Self::Parties { .. } => Family::Brain,
             Self::ReadyToLeave { .. } | Self::Arbitrate { .. } => Family::BrainToGateway,
         }
     }
@@ -1790,6 +1916,11 @@ impl ToGateway {
                 pattern,
                 rule,
             },
+            Self::PartiesRequest => ToClient::PartiesRequest,
+            Self::PartySave { party } => ToClient::PartySave { party },
+            Self::PartyDelete { id } => ToClient::PartyDelete { id },
+            Self::PartyLeave { session } => ToClient::PartyLeave { session },
+            Self::PartyJoin { session, party } => ToClient::PartyJoin { session, party },
             Self::Event {
                 session,
                 seq,
@@ -1892,6 +2023,7 @@ impl ToGateway {
                 query,
                 results,
             },
+            Self::Parties { parties } => ToClient::Parties { parties },
             Self::Hello { .. }
             | Self::InputLine { .. }
             | Self::InputKeys { .. }

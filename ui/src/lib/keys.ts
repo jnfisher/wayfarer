@@ -53,6 +53,16 @@ export const KEY_ROWS: KeyRow[] = [
       "The 12 loops nearest the character, nearest first, with a box to find one by name, file, author or a stop, however far: hover or pick one to draw it in yellow, walk once walks it, run hunts round it (untick a stop to pass it by)",
   },
   {
+    group: "Parties",
+    keys: "Alt+P, or the parties button",
+    does: "Open the drawer on the parties: pick a leader, tick its followers, save; each member's state under it (on a Mac, Option)",
+  },
+  {
+    group: "Parties",
+    keys: "The party chip in the tile's header",
+    does: "★ Leading, Following or Separated; click it to leave the party, or to join one",
+  },
+  {
     group: "Bot",
     keys: "F10, or [►] and [■] in the tile's header",
     does: "Start the focused character's bot where it stands (fight what comes, rest when low), or stop it",
@@ -103,6 +113,7 @@ export const FOCUS_TILE_CODE = /^Digit[1-6]$/;
 export const RESET_LAYOUT_CODE = "Digit0";
 export const DEV_PANEL_CODE = "KeyD";
 export const MAP_PANEL_CODE = "KeyM";
+export const PARTIES_PANEL_CODE = "KeyP";
 export const GO_CODE = "KeyG";
 export const STATS_PANEL_CODE = "KeyS";
 export const SETTINGS_PANEL_CODE = "KeyT";

@@ -948,10 +948,104 @@ scroll read since is found the next time.
   `health.rest_mana_below` (30%), to `health.rest_mana_until` (90%), on the same rules as an HP
   rest (a quiet room if one is near, a rest started is finished). With both spell settings `off`
   mana is ignored.
-- **Not done.** Buffs (blur, bless), light, area spells, cures, healing other players, spells
+- **Not done.** Buffs (blur, bless), light, area spells, cures, spells
   that need a target the bot does not pick (a Thief's backstab is not a spell), and the
   Witchunter's no-cast rule are later slices. The average damage is the KB's formula; whether
   one spell beats another against resistances is not modelled.
+
+## Parties
+
+Party play (`docs/plan/10-party-play.md`, cards C-038 to C-043). A party is a
+leader and one to five followers, by session id, made, changed and deleted with `party_save`,
+`party_delete`, `party_leave` and `party_join` ([protocol.md](protocol.md)) and kept in the
+store, so it survives a restart. A character is in one party at most: saving it into another
+moves it.
+
+**The game's party.** Each session keeps its party as the game last showed it: whom it
+follows, the last whole `par` screen's rows (name, class, mana and HP per cent, the rest mark,
+the rank, or an invitation), when that screen came, the last invitation, and when the game
+last moved it after its leader. The invite, follow, drop and removal lines between two `par`
+screens only mark it out of date, since the game drops a follower an exit refuses without a
+word (`kb/grouping.md` §2a); a `par` screen cut off before the character's own row (always
+last) is not taken.
+
+**The coordinator** runs every second while there are parties, after the sessions' own steps.
+It sends its lines through each session's executor between the bot's actions, as the bot's
+own, one at a time:
+
+- **Who counts.** A follower in the realm with its bot running; the leader whenever it is in
+  the realm, whatever moves it (its bot, Go to, or the player typing). The others are `away`
+  and not formed up.
+- **Forming up.** A follower not in the leader's party in the game, in the leader's room,
+  sends `follow <leader>`; a follower the game dropped at an exit is still on the leader's
+  list, and `follow` alone takes it back. On `You must be invited first!` the leader sends
+  `invite <follower>`, and on the invitation the follower follows. Names are the in-game first
+  names, never the config's. The same `follow` or `invite` waits 10 s before it goes again.
+- **Checking.** The leader sends `par` when it has none yet (a fresh brain: it forms nothing
+  before), after any join, drop or removal line, when a joined follower has been out of its
+  room for 3 s, and every 30 s while the party has members; at most one every 5 s. A follower
+  the leader's `par` does not list is not joined, whatever its own lines said.
+- **Followers don't walk.** A follower's own `run_loop`, `walk_loop`, `walk_to` and errands are
+  refused with a warning ("following Penny: it goes where the party goes"); made a follower,
+  a bot running a loop stops the loop and fights where it is ("In Penny's party: the loop
+  stops"). Its modes never walk it, Flee aside: Recover rests where it stands and does not
+  walk home. Play and pause work as for any bot.
+- **Leaving.** `party_leave` takes a follower out (a party with no followers left is deleted;
+  the leader's, the whole party): it sends `leave` while the game has it following, and plays
+  on its own. A follower dropped from a party by `party_save` or `party_delete` does the same.
+- **Separation.** A follower that was in the party in the game and no longer is (the
+  leader's `par` leaves it out: an exit refused it, a flee, a stun) is `separated`. Its bot
+  walks it to the leader's believed room, the one walk a follower makes, fighting what attacks
+  it on the way (`walking`, with the rooms left), and re-targets when the leader moves; there
+  it forms up again. A follower added with `party_join` walks in the same way; one saved with
+  the party but never in it does not. Meanwhile the leader **holds**: its loop's next leg (and
+  a leg already walking) waits, narrated "Waiting for Lauren to catch up" (all who are out, by
+  name); it still fights and flees, and moves the player types or a Go to are not held. With
+  no way to the leader's room known, the follower is `unreachable` ("no way to Penny's room is
+  known", a warning on its tile) and tries again after 30 s or when the leader moves. After
+  `party.wait_separated_minutes` (Party, 5 by default) the leader's loop stops with a warning
+  ("Loop stopped: Lauren did not catch up in 5 minutes"); it never walks on without the
+  member, and the follower keeps trying. While the leader is out of the realm its followers
+  stand where they are.
+- **Party rests.** The leader and the followers with it (joined, in its room, bots running)
+  rest together: when any of them falls below its own rest line (`health.rest_below_hp`, or
+  `health.rest_mana_below` for a character that casts), the party rests until every one of
+  them is back to its own rest-until lines. The leader's loop holds; its Recover rests too,
+  walking the party to a quiet room first when the room spawns (the game's follow brings the
+  others), and waits there, narrated "Recover: Resting for Lauren (62%)", while it is rested
+  itself. Followers below their lines rest where they stand. A monster that comes is fought,
+  then the rest goes on. After `party.wait_rest_minutes` (Party, 10 by default) the leader's
+  loop stops with a warning naming who has not recovered. Afterwards the leader walks back to
+  its loop as after any rest.
+- **Party flees.** A follower with the leader never flees on its own (that would break the
+  party): when it goes under its own flee line, the leader runs, once for each time it goes
+  under ("Fleeing with the party: Lauren at 20%"), by its own Flee and `health.flee_rooms`,
+  and the game's follow takes the others out behind it. The leader under its own line flees as
+  ever, and the party with it. Afterwards, anyone the game left behind is separated (above),
+  and the party rests. A follower away from the leader flees on its own.
+- **Assist.** A follower with the leader, with nothing attacking it, goes for the monster the
+  leader fights (if its own monster rules would fight it): the game shares exp only among
+  those fighting the monster that dies (`kb/grouping.md` §9). Attacked by another, it fights
+  that one.
+- **Healing members.** A character with a heal that can be cast on another player (target
+  0, 2 or 6: minor healing, mend) or on the party (target 10 or 13: healing rains, divine
+  mercy), with `spells.heal` on, heals the other members in its room the way it heals itself,
+  by a second pair of lines in the Party group: *Heal a party member in a fight below*
+  (`party.heal_member_in_combat_below_hp`, 50%) and *Heal a party member while resting
+  below* (`party.heal_member_resting_below_hp`, 60%; between rests, so a party rest is
+  shorter). HP comes from each member's own prompt. Its own heal stays its self-heal's. The
+  member furthest under its line goes first, one under its flee line before anyone, with the
+  cheapest single heal that covers what it is missing (`mihe lauren`). With *Use party
+  heals* (`party.heals`, auto) and a party heal known, that goes instead when two or more
+  (the caster counted) are under their lines, or when it heals more over all of them than the
+  single heal would on the worst; a member under its flee line still gets the single heal.
+  A party heal is found by its record, never by its word: `rain` is also the Druid's acid
+  rain. In a fight the healer goes back to its target after the cast, as after its own heal.
+  A Witchunter is healed like anyone, though its anti-magic may resist the cast. There is no
+  mana kept back for heals.
+- **The UIs** get `parties` when one changes or a member's state does: `joined`,
+  `not_joined` ("forming up", "in another room"), `away` (with why), `separated`, `walking`,
+  `unreachable` or `resting` (with its HP).
 
 ## Not yet
 

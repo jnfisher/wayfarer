@@ -9,6 +9,8 @@ import type { MapExit } from "./MapExit";
 import type { MapRoom } from "./MapRoom";
 import type { MegaMudLoop } from "./MegaMudLoop";
 import type { MonsterRuleKind } from "./MonsterRuleKind";
+import type { PartyDef } from "./PartyDef";
+import type { PartyStatus } from "./PartyStatus";
 import type { RoomKey } from "./RoomKey";
 import type { RunSummary } from "./RunSummary";
 import type { SessionInfo } from "./SessionInfo";
@@ -34,7 +36,7 @@ matches: number, } | { "type": "stats", session: string, runs: Array<RunSummary>
 /**
  * The layer whose own values `own` shows.
  */
-layer: string, files: Array<SettingsFile>, rows: Array<SettingRow>, } | { "type": "found", session: string, query: string, results: Array<Found>, } | { "type": "resync", session: string, } | { "type": "state_request", session?: string, } | { "type": "walk_to", session: string, map: number, room: number, stop_short?: boolean, } | { "type": "walk_stop", session: string, } | { "type": "map_request", session: string, radius?: number, } | { "type": "bot_control", session: string, action: BotAction, } | { "type": "loops_request", session: string, anchor?: RoomKey, radius: number, doors?: boolean, 
+layer: string, files: Array<SettingsFile>, rows: Array<SettingRow>, } | { "type": "found", session: string, query: string, results: Array<Found>, } | { "type": "parties", parties: Array<PartyStatus>, } | { "type": "resync", session: string, } | { "type": "state_request", session?: string, } | { "type": "walk_to", session: string, map: number, room: number, stop_short?: boolean, } | { "type": "walk_stop", session: string, } | { "type": "map_request", session: string, radius?: number, } | { "type": "bot_control", session: string, action: BotAction, } | { "type": "loops_request", session: string, anchor?: RoomKey, radius: number, doors?: boolean, 
 /**
  * Only the loops whose name, file, description, author or a stop's room name holds
  * every word of this (any case), from anywhere in the world.
@@ -52,4 +54,4 @@ layer?: string, } | { "type": "settings_save", session: string,
 /**
  * The layer to write: `mine`, `server` or `character`.
  */
-layer: string, changes: Array<SettingChange>, } | { "type": "save_loop", session: string, name: string, base?: string, stops: Array<RoomKey>, } | { "type": "delete_loop", session: string, id: string, } | { "type": "find", session: string, query: string, } | { "type": "set_monster_rule", session: string, pattern: string, rule: MonsterRuleKind | null, } | { "type": "sent", session: string, seq: number, text: string, } | { "type": "brain_state", attached: boolean, } | { "type": "brain_lagged", missed: number, } | { "type": "logging_off", session: string, } | { "type": "user_input", session: string, text: string, from: string, } | { "type": "keys_sent", session: string, };
+layer: string, changes: Array<SettingChange>, } | { "type": "save_loop", session: string, name: string, base?: string, stops: Array<RoomKey>, } | { "type": "delete_loop", session: string, id: string, } | { "type": "find", session: string, query: string, } | { "type": "set_monster_rule", session: string, pattern: string, rule: MonsterRuleKind | null, } | { "type": "parties_request" } | { "type": "party_save", party: PartyDef, } | { "type": "party_delete", id: string, } | { "type": "party_leave", session: string, } | { "type": "party_join", session: string, party: string, } | { "type": "sent", session: string, seq: number, text: string, } | { "type": "brain_state", attached: boolean, } | { "type": "brain_lagged", missed: number, } | { "type": "logging_off", session: string, } | { "type": "user_input", session: string, text: string, from: string, } | { "type": "keys_sent", session: string, };

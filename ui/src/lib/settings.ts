@@ -20,6 +20,7 @@ export const GROUPS: { id: string; label: string }[] = [
   { id: "cash", label: "Coins" },
   { id: "movement", label: "Movement" },
   { id: "bot", label: "The bot" },
+  { id: "party", label: "Party" },
 ];
 
 export interface SettingsGroup {

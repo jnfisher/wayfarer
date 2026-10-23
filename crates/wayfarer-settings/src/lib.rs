@@ -75,6 +75,7 @@ pub enum Group {
     Spells,
     Cash,
     Combat,
+    Party,
 }
 
 impl Group {
@@ -87,6 +88,7 @@ impl Group {
             Group::Spells => "spells",
             Group::Cash => "cash",
             Group::Combat => "combat",
+            Group::Party => "party",
         }
     }
 }
@@ -118,13 +120,14 @@ pub const ATTACK_COMMANDS: &[&str] = &[
 ];
 
 /// The groups, in the order a file lists them.
-const GROUPS: [Group; 6] = [
+const GROUPS: [Group; 7] = [
     Group::Health,
     Group::Movement,
     Group::Bot,
     Group::Spells,
     Group::Cash,
     Group::Combat,
+    Group::Party,
 ];
 
 /// Every setting. A test fails if one lacks help or a default inside its range.
@@ -326,6 +329,61 @@ pub const CATALOGUE: &[Setting] = &[
         tier: Tier::Essential,
         group: Group::Spells,
         megamud: None,
+    },
+    Setting {
+        key: "party.wait_separated_minutes",
+        label: "Wait for a separated member",
+        help: "How long a party's leader waits for a member the game dropped from the party to walk back and join again, before it stops its loop and tells you. It never walks on without the member.",
+        kind: Kind::Int { min: 1, max: 60 },
+        default: Value::Int(5),
+        unit: "minutes",
+        tier: Tier::Standard,
+        group: Group::Party,
+        megamud: Some("Wait No Longer Than"),
+    },
+    Setting {
+        key: "party.heal_member_in_combat_below_hp",
+        label: "Heal a party member in a fight below",
+        help: "A character with a heal that can be cast on others heals a party member in its room below this per cent of their HP in a fight, the one furthest below first (one under its flee line before anyone): as Heal in a fight below does for itself. 0 turns it off.",
+        kind: Kind::Int { min: 0, max: 99 },
+        default: Value::Int(50),
+        unit: "%",
+        tier: Tier::Standard,
+        group: Group::Party,
+        megamud: Some("Heal Party Member If Below"),
+    },
+    Setting {
+        key: "party.heal_member_resting_below_hp",
+        label: "Heal a party member while resting below",
+        help: "Out of a fight, heal a party member in the room below this per cent of their HP, between rests: it shortens a party rest. 0 turns it off.",
+        kind: Kind::Int { min: 0, max: 99 },
+        default: Value::Int(60),
+        unit: "%",
+        tier: Tier::Standard,
+        group: Group::Party,
+        megamud: None,
+    },
+    Setting {
+        key: "party.heals",
+        label: "Use party heals",
+        help: "Auto: a character that knows a heal for the whole party (healing rain, divine mercy) casts it when two or more members are hurt, or when it heals more than the single heal would; one hurt member gets the single heal. Off: single heals only. It only matters for a character that knows one.",
+        kind: Kind::Choice(&["auto", "off"]),
+        default: Value::Choice("auto"),
+        unit: "",
+        tier: Tier::Standard,
+        group: Group::Party,
+        megamud: None,
+    },
+    Setting {
+        key: "party.wait_rest_minutes",
+        label: "Wait for a resting party",
+        help: "How long a party's leader holds for a party rest (anyone below its own rest line, until everyone is back to its own rest-until line) before it stops its loop and tells you who has not recovered.",
+        kind: Kind::Int { min: 1, max: 60 },
+        default: Value::Int(10),
+        unit: "minutes",
+        tier: Tier::Standard,
+        group: Group::Party,
+        megamud: Some("Wait No Longer Than"),
     },
     Setting {
         key: "combat.attack_command",

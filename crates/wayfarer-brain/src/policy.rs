@@ -62,6 +62,11 @@ pub fn hostile(monsters: &Monsters, name: &str) -> bool {
     !records.is_empty() && records.into_iter().all(huntable)
 }
 
+/// Nothing in the room the bot would go for (`here` as the room showed it): between fights.
+pub fn quiet(monsters: &Monsters, rules: &MonsterRules, here: &[String]) -> bool {
+    target(monsters, rules, here, &[], &BTreeSet::new(), false).is_none()
+}
+
 /// Whether the name seen (`fat giant rat`) is one of the monsters `names` (`giant rat`).
 pub fn is_one_of(monsters: &Monsters, seen: &str, names: &[String]) -> bool {
     monsters
@@ -230,6 +235,29 @@ mod tests {
         assert_eq!(hp_percent(Some(28), None), None);
         assert_eq!(hp_percent(None, Some(35)), None);
         assert_eq!(hp_percent(Some(1), Some(0)), None);
+    }
+
+    #[test]
+    fn a_room_is_quiet_with_nothing_the_bot_would_fight() {
+        let mk = |n: i64, name: &str| wayfarer_world::pack::Monster {
+            number: n,
+            name: name.into(),
+            level: 1,
+            exp: 9,
+            max_hp: 5,
+            mon_type: 6,
+            gen_index: 1,
+            alignment: 2,
+            raw: String::new(),
+        };
+        let monsters = Monsters::new(vec![mk(1, "giant rat")]);
+        let none = MonsterRules::default();
+        let never = MonsterRules::new([("giant rat", MonsterRule::NeverFight)]);
+        let here = vec!["fat giant rat".to_owned()];
+        assert!(quiet(&monsters, &none, &[]));
+        assert!(!quiet(&monsters, &none, &here));
+        // A rat it never fights leaves the room quiet.
+        assert!(quiet(&monsters, &never, &here));
     }
 
     #[test]

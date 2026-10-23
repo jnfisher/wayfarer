@@ -22,7 +22,7 @@ use crate::loot::Loot;
 use crate::policy;
 use crate::recover::Recover;
 use crate::rules::Sightings;
-use crate::spellcraft::Spellbook;
+use crate::spellcraft::{Hurt, PartyCast, Spellbook};
 use crate::task::Task;
 use crate::walker::Say;
 
@@ -186,6 +186,8 @@ pub(crate) struct View<'a> {
     /// The doors as the game showed them this session.
     pub doors: &'a BTreeMap<(Key, u8), LockState>,
     pub presence: &'a Presence,
+    /// What the character is in a party (`party.rs`).
+    pub party: &'a crate::party::PartyRole,
     /// The monster rules.
     pub rules: &'a MonsterRules,
     /// Where the monsters to avoid were last seen.
@@ -274,6 +276,56 @@ impl View<'_> {
             return None;
         }
         self.book.heal(self.level, mana, self.hp_missing?)
+    }
+
+    /// The heal to cast for the party now (C-043), members healed below `member_line` and the
+    /// character itself below `own_line` (counted for a party heal only; its own heal is its
+    /// self-heal's): none when the line is 0 or healing spells are off.
+    pub fn party_heal(&self, member_line: i32, own_line: i32) -> Option<PartyCast<'_>> {
+        if member_line == 0
+            || self.settings.choice("spells.heal") != "auto"
+            || !self.book.heals_others()
+            || self.party.mates().is_empty()
+        {
+            return None;
+        }
+        let (mana, _) = self.mana?;
+        let mut hurt: Vec<Hurt> = self
+            .party
+            .mates()
+            .iter()
+            .map(|m| Hurt {
+                name: Some(&m.name),
+                hp: m.hp,
+                missing: m.missing,
+                line: member_line,
+                fleeing: m.flee,
+            })
+            .collect();
+        if let (Some(hp), Some(missing)) = (self.hp, self.hp_missing) {
+            hurt.push(Hurt {
+                name: None,
+                hp,
+                missing,
+                line: own_line,
+                fleeing: false,
+            });
+        }
+        self.book.for_party(
+            self.level,
+            mana,
+            &hurt,
+            self.settings.choice("party.heals") == "auto",
+        )
+    }
+
+    /// `party.heal_member_in_combat_below_hp` and `party.heal_member_resting_below_hp`.
+    pub fn member_heal_in_combat(&self) -> i32 {
+        self.setting("party.heal_member_in_combat_below_hp", 50)
+    }
+
+    pub fn member_heal_resting(&self) -> i32 {
+        self.setting("party.heal_member_resting_below_hp", 60)
     }
 
     /// Mana matters to this character: it casts what it knows.
@@ -496,6 +548,43 @@ impl Bot {
         self.recover = Recover::new(Some(task.home()));
         self.task = Some(task);
         self.narrate(format!("Running loop {loop_name}: re-syncing"), &mut says);
+        says
+    }
+
+    /// Made a follower of `leader`'s party: the loop it runs, if any, stops (the bot runs on
+    /// as "fight here"); the party goes where the leader takes it.
+    pub fn join_party(&mut self, leader: &str) -> Vec<Say> {
+        let mut says = Vec::new();
+        if self.task.take().is_some() {
+            self.narrate(format!("In {leader}'s party: the loop stops"), &mut says);
+        }
+        says
+    }
+
+    /// The monster it fights, while it fights one.
+    pub fn fight_target(&self) -> Option<&str> {
+        (self.mode == BotMode::Fight)
+            .then(|| self.fight.target())
+            .flatten()
+    }
+
+    /// Its flee line, per cent of the maximum HP.
+    pub fn flee_below(&self) -> i32 {
+        self.flee.below()
+    }
+
+    /// The party's leader is to run now, for a member under its flee line (C-042).
+    pub fn party_flee(&mut self, why: &str) {
+        self.flee.run_from(format!("Fleeing with the party: {why}"));
+    }
+
+    /// The party's leader gave up waiting for a member: the loop stops (the bot fights on
+    /// where it is), said as a warning.
+    pub fn stop_loop(&mut self, why: &str) -> Vec<Say> {
+        let mut says = Vec::new();
+        if self.task.take().is_some() {
+            self.narrate_as(format!("Loop stopped: {why}"), true, &mut says);
+        }
         says
     }
 
@@ -795,6 +884,9 @@ impl Bot {
                 (BotMode::Recover, r)
             } else if let Some(r) = self.fight.wants(v) {
                 (BotMode::Fight, r)
+            } else if v.party.rejoin().is_some_and(|k| v.room != Some(k)) {
+                // Out of its party: back to the leader, the one walk a follower makes.
+                (BotMode::Task, "walking back to the party".to_owned())
             } else if let Some(r) = self.task.as_ref().and_then(|t| t.wants(v)) {
                 (BotMode::Task, r)
             } else {
@@ -809,6 +901,10 @@ impl Bot {
                 BotMode::Recover => self.recover.step(v),
                 BotMode::Loot => self.loot.step(v),
                 BotMode::Fight => self.fight.step(v),
+                BotMode::Task if let Some(to) = v.party.rejoin().filter(|k| v.room != Some(*k)) => {
+                    let leader = v.party.following().unwrap_or("the leader");
+                    Step::walk(to, format!("Walking back to {leader}"))
+                }
                 BotMode::Task => {
                     let task = self.task.as_mut().expect("Task has a loop");
                     let step = task.step(v);
@@ -831,6 +927,19 @@ impl Bot {
                     ))
                 }
                 BotMode::Idle => Step::wait("Waiting here"),
+            };
+            // A follower goes where its leader takes it: none of its own modes walks it, Flee
+            // aside (docs/plan/10-party-play.md §5).
+            let rejoining = v.party.rejoin().is_some() && mode == BotMode::Task;
+            let step = match (&step.act, v.party.following(), v.party.hold()) {
+                (Some(Do::Walk(_)), Some(leader), _) if mode != BotMode::Flee && !rejoining => {
+                    Step::wait(format!("Following {leader}: staying with the party"))
+                }
+                // A leader holds its loop while a member walks back (C-041).
+                (Some(Do::Walk(_)), _, Some(why)) if mode == BotMode::Task => {
+                    Step::wait(why.to_owned())
+                }
+                _ => step,
             };
             let finished = step.act.is_none()
                 && match mode {

@@ -18,6 +18,7 @@ use crate::brain::Atlas;
 use crate::executor::{Action, Expect, Outcome, Refused};
 use crate::modes::{Mode, Presence, Step, View};
 use crate::policy::{attack_word, target};
+use crate::spellcraft::PartyCast;
 use wayfarer_world::MonsterRules;
 
 /// How many attacks on one monster may go unanswered (no `*Combat Engaged*`, no refusal)
@@ -92,6 +93,20 @@ pub(crate) struct Fight {
     weapon_only: bool,
 }
 
+/// The command and narration for a party heal (`mihe lauren`, `rain`).
+pub(crate) fn cast_step(cast: &PartyCast, mode: &str) -> Step {
+    match cast {
+        PartyCast::On(s, who) => Step::send(
+            Action::new(format!("{} {who}", s.short), Expect::Prompt),
+            format!("{mode}: casting {} on {who}", s.name),
+        ),
+        PartyCast::Party(s) => Step::send(
+            Action::new(s.short.clone(), Expect::Prompt),
+            format!("{mode}: casting {} on the party", s.name),
+        ),
+    }
+}
+
 impl Mode for Fight {
     fn wants(&self, v: &View) -> Option<String> {
         if v.engaged {
@@ -100,13 +115,15 @@ impl Mode for Fight {
         if self.look {
             return Some("looking for the next".to_owned());
         }
-        self.pick(v.atlas, v.rules, v.presence)
-            .map(|t| format!("{t} is here"))
+        self.choose(v).map(|t| format!("{t} is here"))
     }
 
     fn step(&mut self, v: &View) -> Step {
         if v.engaged {
             if let Some(step) = self.heal(v) {
+                return step;
+            }
+            if let Some(step) = self.heal_mates(v) {
                 return step;
             }
             if let Some(step) = self.enough_casts(v) {
@@ -123,7 +140,7 @@ impl Mode for Fight {
                 "Fight: looking for the next",
             );
         }
-        match self.pick(v.atlas, v.rules, v.presence) {
+        match self.choose(v) {
             Some(t) => {
                 let t = t.to_owned();
                 self.target = Some(t.clone());
@@ -255,6 +272,18 @@ impl Fight {
         ))
     }
 
+    /// A heal for another member of the party in the room, or the party heal (C-043); the fight
+    /// goes on at once after the cast, as after its own heal.
+    fn heal_mates(&mut self, v: &View) -> Option<Step> {
+        if self.heal_ready.is_some_and(|t| v.now < t) {
+            return None;
+        }
+        let cast = v.party_heal(v.member_heal_in_combat(), v.heal_in_combat_below())?;
+        self.heal_ready = Some(v.now + HEAL_GAP);
+        self.healed = true;
+        Some(cast_step(&cast, "Fight"))
+    }
+
     /// The spell has been cast as often as `spells.max_casts_per_monster` allows at this
     /// monster: the attack command is sent at it, which carries on the fight with the weapon.
     fn enough_casts(&mut self, v: &View) -> Option<Step> {
@@ -270,6 +299,32 @@ impl Fight {
             Action::new(attack, Expect::Engaged),
             format!("Fight: {} casts at {t}, now the weapon", self.casts),
         ))
+    }
+
+    /// The monster to go for: the party leader's, when this follower is with it and nothing
+    /// attacks it (exp is shared only among those fighting the monster that dies,
+    /// `kb/grouping.md` §9) and its own rules would fight it; else its own pick.
+    fn choose<'a>(&self, v: &View<'a>) -> Option<&'a str> {
+        if v.presence.attackers.is_empty()
+            && let Some(lead) = v.party.assist()
+            && let Some(name) = v
+                .presence
+                .here
+                .iter()
+                .find(|n| n.eq_ignore_ascii_case(lead))
+            && target(
+                &v.atlas.monsters,
+                v.rules,
+                std::slice::from_ref(name),
+                &[],
+                &self.skip,
+                self.cornered,
+            )
+            .is_some()
+        {
+            return Some(name);
+        }
+        self.pick(v.atlas, v.rules, v.presence)
     }
 
     fn pick<'a>(
@@ -292,6 +347,11 @@ impl Fight {
     /// attack, or anything attacking.
     pub fn would_fight(&self, atlas: &Atlas, rules: &MonsterRules, presence: &Presence) -> bool {
         !presence.attackers.is_empty() || self.pick(atlas, rules, presence).is_some()
+    }
+
+    /// The monster it fights or last went for.
+    pub fn target(&self) -> Option<&str> {
+        self.target.as_deref()
     }
 
     /// Flee could not leave a monster to flee from (`true`): fight it if it attacks.

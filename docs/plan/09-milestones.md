@@ -12,7 +12,7 @@ the bot engine comes before party play. Each milestone ends with something to lo
 | **M4** | Settings and upkeep | The essentials page and the full settings, generated from the declarations, with class presets; one click from a card into that character's settings. Attack spells, heals; training, banking, selling and light as switches. "Where next?" recommendations |
 | **M5** | Many solo characters | Up to six characters, each running its own solo bot: tile, focus and cards views, the command bar with prefixes, pause all, the merged log, notifications. Soak-tested with several solo bots at once (shared areas, competing for spawns) before any party work |
 | **M6** | Setup and installers | The first-run wizard, account creation and the hand-off to the game's stat editor, local credentials, one-file installers for Windows, macOS and Linux, updates |
-| **M7** | Party play | Only after M5 holds up: the party coordinator (`kb/plan-grouping.md` G3 on), the party view |
+| **M7** | Party play | Brought forward to now, ahead of M5 and M6, with no separate soak (John, 2026-10-22): the party coordinator, the Parties panel and party chips, healing members, party rests and flees ([10-party-play.md](10-party-play.md)) |
 | **M8** | Extras | Terminal UI, the simulator, MegaMud import |
 
 The terminal UI (M8) needs only the protocol, so it can start any time after M1 if John wants

@@ -12,6 +12,8 @@ import type {
   CharacterState,
   Chunk,
   MonsterRuleKind,
+  PartyDef,
+  PartyStatus,
   RoomKey,
   SessionAction,
   SessionInfo,
@@ -94,6 +96,8 @@ export interface GatewayEvents {
   settings?(settings: SettingsMessage): void;
   /** What a `find` found, for the map panel's go box. */
   found?(found: FoundMessage): void;
+  /** Every party and how its members stand, for the Parties panel and the tiles' chips. */
+  parties?(parties: PartyStatus[]): void;
 }
 
 export interface GatewayOptions {
@@ -297,6 +301,31 @@ export class GatewayClient {
     return this.send({ type: "delete_loop", session, id });
   }
 
+  /** Ask for the parties (a `parties` answer); false when not connected. */
+  requestParties(): boolean {
+    return this.send({ type: "parties_request" });
+  }
+
+  /** Make a party (`id` empty) or replace one; false when not connected. */
+  saveParty(party: PartyDef): boolean {
+    return this.send({ type: "party_save", party });
+  }
+
+  /** Delete a party; its followers leave it in the game. False when not connected. */
+  deleteParty(id: string): boolean {
+    return this.send({ type: "party_delete", id });
+  }
+
+  /** Take a follower out of its party; false when not connected. */
+  leaveParty(session: string): boolean {
+    return this.send({ type: "party_leave", session });
+  }
+
+  /** Add a character to party `party` as a follower; false when not connected. */
+  joinParty(session: string, party: string): boolean {
+    return this.send({ type: "party_join", session, party });
+  }
+
   private send(message: ToGateway): boolean {
     if (!this.welcomed || !this.socket || this.socket.readyState !== OPEN) return false;
     this.socket.send(JSON.stringify(message));
@@ -433,6 +462,9 @@ export class GatewayClient {
         break;
       case "found":
         this.opts.events.found?.(message);
+        break;
+      case "parties":
+        this.opts.events.parties?.(message.parties);
         break;
     }
   }

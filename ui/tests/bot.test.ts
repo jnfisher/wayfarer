@@ -107,7 +107,7 @@ describe("the tile", () => {
     expect(screen.queryByRole("menu", { name: "Errands" })).toBeNull();
     cleanup();
     const el = tile({ bot: stopped, errand: "Equip: wear padded vest" });
-    expect(el.querySelector("header + .narration.errand")?.textContent).toBe("Equip: wear padded vest");
+    expect(el.querySelector(".controls + .narration.errand")?.textContent).toBe("Equip: wear padded vest");
     await fireEvent.click(screen.getByRole("button", { name: "Errands" }));
     expect((screen.getByRole("menuitem", { name: "Equip all" }) as HTMLButtonElement).disabled).toBe(true);
     await fireEvent.click(screen.getByRole("menuitem", { name: "Cancel errand" }));
@@ -196,8 +196,8 @@ describe("the tile", () => {
 
   it("shows the narration under the header while running, with pause and stop", async () => {
     const el = tile({ bot: running });
-    expect(el.querySelector("header + .narration")?.textContent).toBe("Fight: large giant rat");
-    expect([...el.querySelectorAll("header .ctl:not(.link):not([aria-label=Errands])")].map((b) => b.textContent)).toEqual(["[║]", "[■]"]);
+    expect(el.querySelector(".controls + .narration")?.textContent).toBe("Fight: large giant rat");
+    expect([...el.querySelectorAll(".controls .ctl:not(.link):not([aria-label=Errands])")].map((b) => b.textContent)).toEqual(["[║]", "[■]"]);
     await fireEvent.click(screen.getByRole("button", { name: "pause the bot" }));
     await fireEvent.click(screen.getByRole("button", { name: "stop the bot" }));
     expect(botControl.mock.calls).toEqual([
@@ -216,7 +216,7 @@ describe("the tile", () => {
   it("has no controls without a bot (no world pack, or no brain)", () => {
     for (const character of [{}, null]) {
       const el = tile(character);
-      expect(el.querySelector("header .ctl:not(.link):not([aria-label=Errands])")).toBeNull();
+      expect(el.querySelector(".controls .ctl:not(.link):not([aria-label=Errands])")).toBeNull();
       cleanup();
     }
   });

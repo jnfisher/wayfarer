@@ -71,7 +71,8 @@ Cards don't repeat these:
 | 2 | M1: parser, events, status; brain process | C-010 and C-011 early (they needed nothing from M0); C-012 to C-019 on 2026-10-19, after John tried M0 and said go |
 | 3 | M2: world and navigation, plus "fight here" pulled forward from M3 and the server-run page | 2026-10-19, after John tried M1 and said go |
 | 4 | M3: the solo bot: Flee, the store, Task mode running a loop, typing beside the bot, replay, the timed run | 2026-10-19, after John accepted M2 |
-| 5+ | M4 onward | When the wave before is merged and John has played with it |
+| 5 | M4 onward | When the wave before is merged and John has played with it |
+| 6 | M7: party play, brought forward (`../10-party-play.md`) | 2026-10-22, after John approved the design |
 
 ## Index (wave 1, M0)
 
@@ -129,6 +130,22 @@ Cards don't repeat these:
 | [C-035](C-035-monster-lists.md) | Monster lists: never fight, flee from and avoid by name; a stalemate ends a fight; the gigantic black ooze is never fought (added 2026-10-20 after the M3 soak met it) | B | M | C-028, C-030, C-034 | review |
 | [C-036](C-036-megamud-loops.md) | Run a MegaMud loop as a task: the verified path's hunt rooms are the stops, its step actions become knowledge for the router and walker, the soak and the map panel can pick one (added 2026-10-20 at John's request) | B | L | C-030, C-037 | review |
 | [C-037](C-037-doors-hidden-exits-unreachable-stops.md) | Doors the character cannot open are not routed through; the walker searches for a hidden exit on its route; unreachable stops do not end a loop (added 2026-10-20 after the keep soak) | B | M | C-030, C-022 | |
+
+## Index (wave 6, M7 party play)
+
+| Id | Title | Tier | Size | Depends | Review |
+|---|---|---|---|---|---|
+| [C-038](C-038-party-lines.md) | Party lines: typed events for invite, follow, drop and `par`; each session's in-game party | B | M | — | |
+| [C-039](C-039-parties.md) | Parties: definitions saved by the brain, the coordinator, forming up, `par` tracking, followers don't walk, Leave and Join | B | L | C-038 | review |
+| [C-040](C-040-parties-panel.md) | Web UI: the Parties panel, party chips on the tiles, followers' walking controls greyed | B | M | C-039 | |
+| [C-041](C-041-separation.md) | Separation: the leader waits, the follower walks back and re-joins; a time limit and an unreachable stop | B | M | C-039 | |
+| [C-042](C-042-party-rest-flee-assist.md) | Party rests, party flees and assisting the leader's target | B | L | C-041 | review |
+| [C-043](C-043-healing-members.md) | Healing party members: heal-a-member lines, party heals chosen by how many are hurt | B | M | C-042 | |
+
+Wave 6: C-038; then C-039; then C-040 and C-041 together (UI and brain); then C-042; then
+C-043. **Wave 6 is done** when Penny leads Lauren, Faye and Manuel round a loop for an hour on
+John's rig: they form up by themselves, rest and flee together, a healer keeps the others up,
+and a follower walked away by hand comes back and re-joins.
 
 Tier: B Opus, C Sonnet. Size: S under half a day of agent time, M about a day, L two to three
 days.

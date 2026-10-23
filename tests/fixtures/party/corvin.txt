@@ -1,0 +1,20 @@
+[79D[K[0;36mThe giant rat lunges at you!
+[79D[K[0;37m[HP=26[0;37m/MA=20[0;37m]:[79D[K[0;36mThe giant rat lunges at you!
+[79D[K[0;37m[HP=26[0;37m/MA=20[0;37m]:[79D[K[1;31mYou whap giant rat for 2 damage!
+[79D[K[0;37m[HP=26[0;37m/MA=20[0;37m]:[79D[K[1;31mYou whap giant rat for 5 damage!
+[79D[K[0;37m[HP=26[0;37m/MA=20[0;37m]:[79D[K[79D[KThe giant rat falls to the ground with a tortured squeak.
+[79D[K[0;37m[HP=26[0;37m/MA=20[0;37m]:[79D[KYou gain 9 experience.
+[79D[K[0;37m[HP=26[0;37m/MA=20[0;37m]:[79D[K[0;33m*Combat Off*
+[79D[K[0;37m[HP=26[0;37m/MA=20[0;37m]:u
+[0;37;40m[79D[K[1;36mNewhaven, Narrow Road
+[0;35mAlso here: [1;35mIsolde, Aldis, Wren[0;35m.
+[0m[0;32mObvious exits: nXorth, eBast, wGest, dCown
+[79D[K[0;37m[HP=26[0;37m/MA=20[0;37m]:rest
+You are now resting.
+[79D[K[0;37m[HP=26[0;37m/MA=20[0;37m]: (Resting) exp
+[0;37;40m[0;32mExp: [36m2361 [32mLevel: [36m1[32m Exp needed for next level: [36m0 (2250) [107%]
+[79D[K[0;37m[HP=26[0;37m/MA=20[0;37m]: (Resting) [79D[K[0;37m[HP=27[0;37m/MA=20[0;37m]: (Resting) [79D[K[1m[34mAldis has invited you to follow her.
+[79D[K[0;37m[HP=27[0;37m/MA=20[0;37m]: (Resting) [79D[K[1;31mAldis[0;32m just left to th e nor th.
+[79D[K[0;37m[HP=27[0;37m/MA=20[0;37m]: (Resting) [79D[K[1;31mIsolde[0;32m just left to  the no rth.
+[79D[K[0;37m[HP=27[0;37m/MA=20[0;37m]: (Resting) [79D[K[1;31mWren[0;32m just left to t he nMorth.
+[79D[K[0;37m[HP=27[0;37m/MA=20[0;37m]: (Resting) [79D[K[0;37m[HP=30[0;37m/MA=20[0;37m]: (Resting) d

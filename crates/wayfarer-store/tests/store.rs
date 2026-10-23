@@ -2,8 +2,8 @@
 
 use rusqlite::Connection;
 use wayfarer_store::{
-    BotRecord, BotState, CustomLoop, Error, Event, EventKind, Note, Place, PlaceKind, RuleRecord,
-    SCHEMA_VERSION, Sample, Store, Totals,
+    BotRecord, BotState, CustomLoop, Error, Event, EventKind, Note, PartyRecord, Place, PlaceKind,
+    RuleRecord, SCHEMA_VERSION, Sample, Store, Totals,
 };
 
 const T0: i64 = 1_792_411_200;
@@ -377,4 +377,30 @@ fn custom_loops_round_trip_keep_their_order_and_are_replaced_by_id() {
             .unwrap()
     );
     assert_eq!(store.custom_loops().unwrap().len(), 1);
+}
+
+#[test]
+fn parties_round_trip_and_are_replaced_by_id() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let (store, _) = Store::open(&path).unwrap();
+    assert!(store.parties().unwrap().is_empty());
+    let penny = PartyRecord {
+        id: "party-1".into(),
+        leader: "penny".into(),
+        followers: vec!["lauren".into(), "faye".into()],
+    };
+    store.save_party(&penny, T0).unwrap();
+    drop(store);
+    let (store, _) = Store::open(&path).unwrap();
+    assert_eq!(store.parties().unwrap(), std::slice::from_ref(&penny));
+    let fewer = PartyRecord {
+        followers: vec!["faye".into()],
+        ..penny
+    };
+    store.save_party(&fewer, T0 + 5).unwrap();
+    assert_eq!(store.parties().unwrap(), [fewer]);
+    assert!(store.delete_party("party-1").unwrap());
+    assert!(!store.delete_party("party-1").unwrap());
+    assert!(store.parties().unwrap().is_empty());
 }
