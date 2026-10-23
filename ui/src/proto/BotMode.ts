@@ -3,4 +3,4 @@
 /**
  * The mode in control (`docs/plan/03-engine.md` section 4).
  */
-export type BotMode = "idle" | "fight" | "recover" | "flee" | "loot" | "task";
+export type BotMode = "idle" | "fight" | "recover" | "flee" | "loot" | "bless" | "sneak" | "task";

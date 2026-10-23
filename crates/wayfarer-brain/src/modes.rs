@@ -581,6 +581,7 @@ pub(crate) struct Bot {
     loot: Loot,
     recover: Recover,
     bless: crate::bless::Bless,
+    sneak: crate::sneak::Sneak,
     /// The gateway is logging the character off under attack: Flee alone runs, then the bot
     /// stops.
     leaving: bool,
@@ -696,6 +697,12 @@ impl Bot {
     /// The lasting spells to keep on (C-047).
     pub fn set_blessings(&mut self, defs: Vec<wayfarer_world::BuffDef>) {
         self.bless.set(defs);
+    }
+
+    /// The game said the character stopped sneaking since last asked (C-048): a walk in
+    /// progress stops, so the bot sneaks again before the next move.
+    pub fn sneak_broken(&mut self, settings: &wayfarer_settings::Settings) -> bool {
+        self.sneak.take_broken() && settings.bool("movement.sneak")
     }
 
     /// Whether the lasting spell `short` is believed on.
@@ -918,6 +925,7 @@ impl Bot {
         self.loot.on_event(ev, now);
         self.recover.on_event(ev, now);
         self.bless.on_event(ev, now);
+        self.sneak.on_event(ev, now);
         if let Some(t) = &mut self.task {
             t.on_event(ev, now);
         }
@@ -955,6 +963,7 @@ impl Bot {
             Some(BotMode::Recover) => self.recover.outcome(action, outcome),
             Some(BotMode::Loot) => self.loot.outcome(action, outcome),
             Some(BotMode::Bless) => self.bless.outcome(action, outcome),
+            Some(BotMode::Sneak) => self.sneak.outcome(action, outcome),
             _ => {}
         }
         // Flee broke off the fight it could not run from.
@@ -981,6 +990,7 @@ impl Bot {
             .chain(self.flee.wake())
             .chain(self.fight.wake())
             .chain(self.bless.wake(now))
+            .chain(self.sneak.wake(now))
             .chain(self.task.as_ref().and_then(|t| t.wake(now)))
             .min()
     }
@@ -1007,6 +1017,7 @@ impl Bot {
             BotMode::Recover => "resting".to_owned(),
             BotMode::Loot => "picking up".to_owned(),
             BotMode::Bless => "blessing".to_owned(),
+            BotMode::Sneak => "sneaking".to_owned(),
             BotMode::Task if walking => match v.party.following() {
                 Some(leader) if v.party.rejoin().is_some() => format!("walking back to {leader}"),
                 _ => "walking".to_owned(),
@@ -1032,6 +1043,12 @@ impl Bot {
         }
         self.fight
             .set_cornered(self.flee.trapped_in(v.room) || self.flee.cornered_in(v.room));
+        // A sneaker opens with a backstab (C-048).
+        self.fight.set_backstab(
+            self.sneak.on()
+                && crate::sneak::Sneak::enabled(v)
+                && v.settings.bool("combat.backstab"),
+        );
         if let Some(t) = &mut self.task {
             t.observe(v);
             // Recover rests from, and walks back to, the stop Task is at or walking to.
@@ -1046,7 +1063,7 @@ impl Bot {
         // A mode that finishes in its step (safe, rested, back home) hands over at once: the
         // stack is asked again, once.
         for _ in 0..2 {
-            let (mode, reason) = if let Some(r) = self.flee.wants(v) {
+            let (mut mode, reason) = if let Some(r) = self.flee.wants(v) {
                 (BotMode::Flee, r)
             } else if self.leaving {
                 says.extend(self.stop("the gateway is logging off", false));
@@ -1057,6 +1074,8 @@ impl Bot {
                 (BotMode::Recover, r)
             } else if let Some(r) = self.bless.wants(v) {
                 (BotMode::Bless, r)
+            } else if let Some(r) = self.sneak.wants(v) {
+                (BotMode::Sneak, r)
             } else if let Some(r) = self.fight.wants(v) {
                 (BotMode::Fight, r)
             } else if v.party.rejoin().is_some_and(|k| v.room != Some(k)) {
@@ -1076,6 +1095,7 @@ impl Bot {
                 BotMode::Recover => self.recover.step(v),
                 BotMode::Loot => self.loot.step(v),
                 BotMode::Bless => self.bless.step(v),
+                BotMode::Sneak => self.sneak.step(v),
                 BotMode::Fight => self.fight.step(v),
                 BotMode::Task if let Some(to) = v.party.rejoin().filter(|k| v.room != Some(*k)) => {
                     let leader = v.party.following().unwrap_or("the leader");
@@ -1117,6 +1137,32 @@ impl Bot {
                     Step::wait(why.to_owned()).doing("waiting for the party")
                 }
                 _ => step,
+            };
+            // A sneaker sneaks before a move it makes itself; Flee never waits (C-048).
+            let step = if matches!(step.act, Some(Do::Walk(_))) && mode != BotMode::Flee {
+                if self.sneak.before_move(v) {
+                    match mode {
+                        BotMode::Recover => self.recover.walk_deferred(),
+                        BotMode::Task if !rejoining => {
+                            if let Some(t) = &mut self.task {
+                                t.walk_deferred();
+                            }
+                        }
+                        _ => {}
+                    }
+                    mode = BotMode::Sneak;
+                    self.mode = mode;
+                    self.sneak.step(v)
+                } else {
+                    if crate::sneak::Sneak::enabled(v)
+                        && let Some(note) = self.sneak.unsneaked()
+                    {
+                        self.narrate_as(note, true, &mut says);
+                    }
+                    step
+                }
+            } else {
+                step
             };
             let finished = step.act.is_none()
                 && match mode {

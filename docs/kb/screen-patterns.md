@@ -537,7 +537,7 @@ Regexes are matched against a whole line (stripped of trailing blanks). `<hit ve
 | `too_heavy` | You are too heavy to move! | `You are too heavy to (?:move(?: anywhere)?\|be dragged)!` | LJNUTIL.C:2846 | [C] |
 | `ran_into_wall` | Bob ran into the wall to the north. | `(?P<who>.+) ran into the wall to the (?P<dir>\w+)\.` | LJNCMDB.C:5254 | [C] |
 | `sneaking` | Sneaking... | `Sneaking\.\.\.` | LJNUTIL.C:2815 | [C] F |
-| `sneak_attempt` | Attempting to sneak... | `Attempting to sneak\.\.\.(?P<rest>.*)` | LJNCMDA.C:2900 | [C] F |
+| `sneak_attempt` | Attempting to sneak... | `Attempting to sneak\.\.\.(?P<rest>.*)` | LJNCMDA.C:2900; a failure the character notices prints `You don't think you're sneaking.` on the same line (:2921), an unnoticed one nothing more. Seen on silvermere: the line ends CR LF, then the prompt about 0.4 to 1 s later, when the command delay ends [C silvermere live, 2026-10-23] | [C] F |
 | `sneak_fail` | You don't think you're sneaking. | `You don't think you're sneaking\.` | LJNCMDA.C:2921 | [C] |
 | `sneak_not_now` | You may not sneak right now! | `You may not sneak right now!` | LJNCMDA.C:2880 | [C] |
 | `sneak_off` | You are no longer sneaking. | `You are no longer sneaking\.` | LJNCMDB.C:5260 | [C] |

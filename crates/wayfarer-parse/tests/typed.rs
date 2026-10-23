@@ -946,3 +946,29 @@ fn the_characters_own_cast_is_no_blow() {
         );
     }
 }
+
+#[test]
+fn sneak_lines() {
+    assert_eq!(
+        line("Attempting to sneak..."),
+        [GameEvent::SneakAttempt { failed: false }]
+    );
+    assert_eq!(
+        line("Attempting to sneak...You don't think you're sneaking."),
+        [GameEvent::SneakAttempt { failed: true }]
+    );
+    for l in [
+        "You don't think you're sneaking.",
+        "You are no longer sneaking.",
+        "You make a sound as you enter the room!",
+    ] {
+        assert_eq!(line(l), [GameEvent::NotSneaking], "{l}");
+    }
+    for l in [
+        "You may not sneak right now!",
+        "You must wait before you may do that!",
+    ] {
+        assert_eq!(line(l), [GameEvent::SneakRefused], "{l}");
+    }
+    assert_eq!(line("Sneaking..."), [GameEvent::StillSneaking]);
+}

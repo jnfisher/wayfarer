@@ -796,6 +796,11 @@ impl Session {
         if combat && self.walker.walking() {
             self.stop_walk("combat started", out);
         }
+        // The game noticed a sneaking move (C-048): the bot's walk stops, and it sneaks again
+        // before the next one.
+        if self.bot.sneak_broken(&self.settings) && self.walker.walking() && self.bot_walk {
+            self.stop_walk("the sneak failed", out);
+        }
         self.bot_held(out);
         self.drive(now, out);
         self.flush_views(out);

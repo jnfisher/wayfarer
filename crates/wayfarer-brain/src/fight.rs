@@ -91,6 +91,8 @@ pub(crate) struct Fight {
     switched: bool,
     /// The weapon, not the spell, for the rest of this monster's fight.
     weapon_only: bool,
+    /// Sneaking, with backstabs on: the next fight opens with `bs` (C-048).
+    backstab: bool,
 }
 
 /// A name as the game shows it (`lauren` is Lauren).
@@ -158,7 +160,10 @@ impl Mode for Fight {
                 if std::mem::take(&mut self.spell_refused) {
                     self.spell_hold = Some(v.now + SPELL_HOLD);
                 }
-                let spell = if self.weapon_only || self.spell_hold.is_some_and(|t| v.now < t) {
+                let spell = if self.backstab
+                    || self.weapon_only
+                    || self.spell_hold.is_some_and(|t| v.now < t)
+                {
                     None
                 } else {
                     v.attack_spell()
@@ -175,6 +180,12 @@ impl Mode for Fight {
                     Some(s) => Step::send(
                         Action::new(format!("{} {}", s.short, attack_word(&t)), Expect::Engaged),
                         format!("Fight: {t} with {}", s.name),
+                    ),
+                    // Any sneaker may try it: only a backstab weapon or bare hands backstab,
+                    // any other weapon strikes a normal blow (`kb/classes/ninja.md`).
+                    None if self.backstab => Step::send(
+                        Action::new(format!("bs {}", attack_word(&t)), Expect::Engaged),
+                        format!("Fight: {t} (backstab)"),
                     ),
                     None => Step::send(
                         Action::new(
@@ -370,6 +381,11 @@ impl Fight {
     /// Flee could not leave a monster to flee from (`true`): fight it if it attacks.
     pub fn set_cornered(&mut self, cornered: bool) {
         self.cornered = cornered;
+    }
+
+    /// Open the next fight with a backstab (the character is sneaking, C-048).
+    pub fn set_backstab(&mut self, backstab: bool) {
+        self.backstab = backstab;
     }
 
     /// The game refused the target: leave it alone for the session, and look again.

@@ -43,6 +43,7 @@ mod rules;
 mod session;
 mod session_settings;
 mod shopping;
+mod sneak;
 mod spellcraft;
 mod stats;
 mod task;

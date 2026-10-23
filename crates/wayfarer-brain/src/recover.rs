@@ -39,6 +39,8 @@ pub(crate) struct Recover {
     warned: bool,
     /// When the next heal may go (a round after the last, or after the mana ran short).
     heal_ready: Option<Instant>,
+    /// The walk its last step asked for: out to rest (`true`) or back home.
+    last_walk: Option<bool>,
 }
 
 impl Recover {
@@ -166,6 +168,7 @@ impl Mode for Recover {
                     && let RestAt::Walk(quiet) = rest_at(v.atlas, v.room, v.certain, v.traveller)
                 {
                     self.walks_out += 1;
+                    self.last_walk = Some(true);
                     return Step::walk(
                         quiet,
                         format!(
@@ -186,6 +189,7 @@ impl Mode for Recover {
             // A follower rests where the leader is and goes where it goes.
             if self.away(v) && self.walks_back < WALKS && v.party.following().is_none() {
                 self.walks_back += 1;
+                self.last_walk = Some(false);
                 let home = self.home.expect("away from home");
                 return Step::walk(
                     home,
@@ -217,6 +221,7 @@ impl Mode for Recover {
             match rest_at(v.atlas, v.room, v.certain, v.traveller) {
                 RestAt::Walk(quiet) => {
                     self.walks_out += 1;
+                    self.last_walk = Some(true);
                     return Step::walk(
                         quiet,
                         format!(
@@ -286,6 +291,16 @@ impl Recover {
     /// HP (a flee line above [`REST_BELOW`] leaves HP above it).
     pub fn after_flee(&mut self) {
         self.active = true;
+    }
+
+    /// The walk its last step asked for did not go (the bot sneaks first, C-048): it is not
+    /// counted against [`WALKS`].
+    pub fn walk_deferred(&mut self) {
+        match self.last_walk.take() {
+            Some(true) => self.walks_out = self.walks_out.saturating_sub(1),
+            Some(false) => self.walks_back = self.walks_back.saturating_sub(1),
+            None => {}
+        }
     }
 
     /// Still recovering (it has not finished since it took control).

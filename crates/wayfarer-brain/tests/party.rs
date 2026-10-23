@@ -203,6 +203,7 @@ impl Gateway {
                     ),
                 ]
             }
+            "sneak" => me(said("Attempting to sneak...")),
             "leave" => {
                 self.world.following = false;
                 me(said(&format!(
@@ -495,4 +496,24 @@ async fn a_follower_between_its_lines_rests_with_the_party() {
         "{:?}",
         g.lines
     );
+}
+
+/// A follower with Sneak on sneaks (C-048), and once sneaking does not again; the leader,
+/// standing in the Arena, does not: it sneaks only before it moves.
+#[tokio::test(start_paused = true)]
+async fn a_sneaking_follower_sneaks_with_the_party() {
+    let over = wayfarer_settings::Overrides::parse("[movement]\nsneak = true\n").unwrap();
+    let settings =
+        wayfarer_settings::Settings::resolve(&[(wayfarer_settings::Layer::Character, &over)])
+            .unwrap();
+    let (mut g, _run) = Gateway::start(brain(None).with_settings(settings)).await;
+    formed(&mut g).await;
+    let wait = async {
+        loop {
+            g.next().await;
+        }
+    };
+    let _ = tokio::time::timeout(Duration::from_secs(30), wait).await;
+    let sneaks: Vec<_> = g.lines.iter().filter(|(_, t)| t == "sneak").collect();
+    assert_eq!(sneaks, [&(FOLLOWER.to_owned(), "sneak".to_owned())]);
 }

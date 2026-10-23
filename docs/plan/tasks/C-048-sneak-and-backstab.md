@@ -51,14 +51,15 @@ again; a sign that the sneak failed makes it sneak again. A sneaker opens each f
   backstab* (on by default; it matters only for a sneaker).
 - **Believed sneaking**: on after an attempt with no failure text; off on the failure texts,
   `You are no longer sneaking.`, `You make a sound as you enter the room!`, a fight, a cast, a
-  rest, a death, a re-sync.
-- **Before a move the bot makes itself** (leader, loop, Go to, errands, Recover's walks): sneak
-  first unless believed sneaking; a failed attempt is tried again; `You may not sneak right
-  now!` waits a round and tries again. Flee never waits to sneak.
+  rest, a death.
+- **Before a move the bot makes itself** (a leader's or solo loop, Recover's walks, a
+  follower's walk back to its leader): sneak first unless believed sneaking; a failed attempt
+  is tried again; `You may not sneak right now!` waits a round and tries again. Flee never
+  waits to sneak. Walks the player starts (Go to, a map click, errands) go as they are.
 - **A follower**: after a fight (and after a rest) it sneaks again; a failure is tried again.
 - **Backstab**: Fight's opening attack is `bs <target>` while believed sneaking.
 - **Not forever**: five failed attempts in a row and the bot moves on unsneaked, saying so,
-  until the next fight or room.
+  until the next fight.
 
 ## Done when
 

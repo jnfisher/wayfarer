@@ -265,6 +265,8 @@ pub enum BotMode {
     Loot,
     /// Casting a lasting spell the player ticked that is off (C-047).
     Bless,
+    /// Sneaking: before a move, or a follower after a fight (C-048).
+    Sneak,
     /// Running a loop (`run_loop`): walking to its next stop, or waiting there for respawns.
     Task,
 }
