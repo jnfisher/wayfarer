@@ -1,10 +1,14 @@
 //! Sneaking (C-048, docs/brain.md "Sneaking"): with `movement.sneak` on, the bot keeps the
-//! character sneaking. Before a move it makes itself (a leader, a loop, Go to, Recover's walks;
-//! never Flee) it sends `sneak` until an attempt does not say it failed; a follower, which the
-//! game moves, sneaks again after each fight. What the game says ends the belief: the failure
-//! the character noticed, `You are no longer sneaking.`, `You make a sound as you enter the
-//! room!`, a fight, a cast, a rest, a death. A failure can also be silent (LJNCMDA.C:2900-2921,
-//! LJNUTIL.C:2909-2926), so the bot cannot know of every one. After [`TRIES`] failures in a
+//! character sneaking. Before a move it makes itself (a leader, a loop, Recover's walks; never
+//! Flee) it sends `sneak` until an attempt does not say it failed; a follower, which the game
+//! moves, sneaks again after each fight. An attempt can fail silently (LJNCMDA.C:2900-2921), so
+//! the moves tell: a move made while sneaking prints `Sneaking...` before the game rolls for it
+//! (LJNCMDB.C:5207-5211, LJNUTIL.C:2811-2816), and a failed roll ends the sneak silently
+//! (LJNUTIL.C:2909-2926). A move without `Sneaking...` means the sneak had already ended (the
+//! move before failed, or something else ended it): the bot sneaks again before the next move. Other ends of the belief:
+//! the failure the character noticed, `You are no longer sneaking.`, `You make a sound as you
+//! enter the room!`, a fight, a cast, a rest, a death. No attempt goes with a monster in the
+//! room (no sneaking with monsters about; a fight comes first). After [`TRIES`] failures in a
 //! row it moves on unsneaked until the next fight. `You may not sneak right now!` (just
 //! attacked) waits a round.
 
@@ -12,6 +16,7 @@ use std::time::Duration;
 
 use tokio::time::Instant;
 use wayfarer_parse::typed::{GameEvent, Rest};
+use wayfarer_world::Key;
 
 use crate::executor::{Action, Confirmed, Expect, Outcome, Refused};
 use crate::modes::{Mode, Step, View};
@@ -36,6 +41,10 @@ pub(crate) struct Sneak {
     sent_at: Option<Instant>,
     /// The game said the sneak ended: a walk in progress stops to sneak again.
     broken: bool,
+    /// The room the character was last known in, and whether `Sneaking...` has shown since
+    /// it got there (the next move's sign).
+    room: Option<Key>,
+    heard: bool,
 }
 
 impl Sneak {
@@ -50,7 +59,11 @@ impl Sneak {
     }
 
     fn may_try(&self, v: &View) -> bool {
-        Self::enabled(v) && !self.on && !self.gave_up && self.wait_until.is_none_or(|t| v.now >= t)
+        Self::enabled(v)
+            && !self.on
+            && !self.gave_up
+            && self.wait_until.is_none_or(|t| v.now >= t)
+            && v.presence.here.is_empty()
     }
 
     /// The bot is about to move the character itself: sneak first.
@@ -72,6 +85,32 @@ impl Sneak {
     /// When the wait after `You may not sneak right now!` ends.
     pub fn wake(&self, now: Instant) -> Option<Instant> {
         self.wait_until.filter(|&t| t > now)
+    }
+
+    /// The character is in `room` now. A move made while believed sneaking that showed no
+    /// `Sneaking...` means the sneak had already ended: counted as a failed attempt.
+    pub fn arrived(&mut self, room: Option<Key>) {
+        let Some(room) = room else {
+            return;
+        };
+        if self.room == Some(room) {
+            return;
+        }
+        if self.room.is_some() && self.on && !self.heard {
+            self.off();
+            self.failed();
+        }
+        self.room = Some(room);
+        self.heard = false;
+    }
+
+    fn failed(&mut self) {
+        self.fails += 1;
+        if self.fails >= TRIES {
+            self.gave_up = true;
+            self.said = false;
+            self.fails = 0;
+        }
     }
 
     fn off(&mut self) {
@@ -109,18 +148,17 @@ impl Mode for Sneak {
 
     fn on_event(&mut self, ev: &GameEvent, now: Instant) {
         match ev {
-            GameEvent::SneakAttempt { failed: false } | GameEvent::StillSneaking => {
+            // Not yet sure: the next move says.
+            GameEvent::SneakAttempt { failed: false } => self.on = true,
+            // Still sneaking when this move began (its own roll comes after).
+            GameEvent::StillSneaking => {
                 self.on = true;
+                self.heard = true;
                 self.fails = 0;
             }
             GameEvent::SneakAttempt { failed: true } => {
                 self.on = false;
-                self.fails += 1;
-                if self.fails >= TRIES {
-                    self.gave_up = true;
-                    self.said = false;
-                    self.fails = 0;
-                }
+                self.failed();
             }
             GameEvent::SneakRefused => self.wait_until = Some(now + NOT_NOW),
             GameEvent::NotSneaking => self.off(),
@@ -148,15 +186,8 @@ impl Mode for Sneak {
             Outcome::Refused(Refused::NotNow) => {
                 self.wait_until = self.sent_at.map(|t| t + NOT_NOW);
             }
-            _ => {
-                // No answer: counted as a failure.
-                self.fails += 1;
-                if self.fails >= TRIES {
-                    self.gave_up = true;
-                    self.said = false;
-                    self.fails = 0;
-                }
-            }
+            // No answer: counted as a failure.
+            _ => self.failed(),
         }
     }
 }
@@ -180,6 +211,24 @@ mod tests {
         assert!(!s.on() && s.take_broken() && !s.take_broken());
         s.on_event(&GameEvent::SneakRefused, now);
         assert_eq!(s.wake(now), Some(now + NOT_NOW));
+    }
+
+    #[test]
+    fn a_move_without_sneaking_shown_means_the_sneak_failed() {
+        let now = Instant::now();
+        let (a, b, c): (Key, Key, Key) = ((1, 1), (1, 2), (1, 3));
+        let mut s = Sneak::default();
+        s.arrived(Some(a));
+        s.on_event(&GameEvent::SneakAttempt { failed: false }, now);
+        // The move shows `Sneaking...`: still on.
+        s.on_event(&GameEvent::StillSneaking, now);
+        s.arrived(Some(b));
+        assert!(s.on() && !s.take_broken());
+        // The next shows nothing: the move before it failed, or something ended the sneak.
+        s.arrived(None);
+        s.arrived(Some(c));
+        assert!(!s.on() && s.take_broken());
+        assert_eq!(s.fails, 1);
     }
 
     #[test]

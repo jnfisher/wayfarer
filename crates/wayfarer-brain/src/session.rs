@@ -796,8 +796,9 @@ impl Session {
         if combat && self.walker.walking() {
             self.stop_walk("combat started", out);
         }
-        // The game noticed a sneaking move (C-048): the bot's walk stops, and it sneaks again
-        // before the next one.
+        // The game noticed a sneaking move, or a move showed no `Sneaking...` (C-048): the
+        // bot's walk stops, and it sneaks again before the next one.
+        self.bot.sneak_arrived(self.position.best());
         if self.bot.sneak_broken(&self.settings) && self.walker.walking() && self.bot_walk {
             self.stop_walk("the sneak failed", out);
         }
@@ -2803,8 +2804,9 @@ impl Session {
                 }
             },
             Some(Do::Walk(to)) => {
-                // Task's legs pipeline their moves.
-                let pipelined = self.bot.task_walking();
+                // Task's legs pipeline their moves; a sneaker's do not, so a move that showed no
+                // `Sneaking...` can be followed by a sneak (C-048).
+                let pipelined = self.bot.task_walking() && !self.settings.bool("movement.sneak");
                 let next =
                     self.walker
                         .start_with(&mut self.position, &atlas, to, false, pipelined, false);
@@ -3335,6 +3337,13 @@ impl Session {
                             .would_fight(&atlas, self.rules.rules(), &self.presence)
                     {
                         self.stop_walk("a monster to fight", out);
+                    }
+                    self.bot.sneak_arrived(self.position.best());
+                    if self.bot_walk
+                        && self.walker.walking()
+                        && self.bot.sneak_broken(&self.settings)
+                    {
+                        self.stop_walk("the sneak failed", out);
                     }
                     // A pause asked for while the walker's action was in flight.
                     let says = self.bot.settle();

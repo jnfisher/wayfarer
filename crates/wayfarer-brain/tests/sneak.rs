@@ -1,6 +1,6 @@
 //! Sneaking and backstab (docs/brain.md "Sneaking", card C-048): with `movement.sneak` on, the
-//! bot sneaks before a move it makes itself, tries again when the game says the attempt failed,
-//! and opens a fight with `bs` while sneaking. The Arena of `game/arena.rs`. On a paused clock.
+//! bot sneaks before a move it makes itself, tries again when the game says the attempt failed
+//! or a move shows no `Sneaking...`, and opens a fight with `bs`. The Arena of `game/arena.rs`. On a paused clock.
 
 mod game;
 
@@ -95,7 +95,8 @@ async fn back_from_a_rest_it_sneaks_in_and_backstabs() {
     g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
         .await;
     g.idle(Duration::from_secs(20)).await;
-    // The rest ended the sneak: it sneaks again before walking back, and opens with `bs`.
+    // The rest ended the sneak: it sneaks again before walking back. The move shows no
+    // `Sneaking...`, so the sneak had ended; `bs` still opens (a plain attack, then).
     g.expect("sneak", attempt(31));
     g.expect("d", arena(&["large giant rat"], 31));
     g.expect("bs rat", line(ENGAGED, 31));
@@ -118,4 +119,42 @@ async fn sneak_off_changes_nothing() {
         .await;
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "u", "rest"]);
+}
+
+/// What a sneaking move shows before the room (LJNCMDB.C:5207-5211).
+fn sneaking(room_text: &str) -> String {
+    format!("Sneaking...\r\n{room_text}")
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_move_that_shows_no_sneaking_is_followed_by_another_sneak() {
+    let over = Overrides::parse(SNEAK).unwrap();
+    let settings = Settings::resolve(&[(Layer::Character, &over)]).unwrap();
+    let clock = Arc::new(FixedClock(UNIX_EPOCH + Duration::from_secs(T0)));
+    let brain = Brain::new(world(), clock, None).with_settings(settings);
+    let (mut g, run) = Game::start_brain(SessionState::Realm, room(VILLAGE_ENTRANCE), brain).await;
+    // A sneaker's moves are not pipelined: none goes while one is in flight.
+    g.idle(Duration::from_secs(20)).await;
+    g.expect("st", status(35));
+    g.expect("look", room(VILLAGE_ENTRANCE));
+    // The attempt said nothing more, and the first move shows `Sneaking...`: it goes on. The
+    // second shows nothing: the first move's roll failed, so it sneaks again before the third.
+    g.expect("sneak", attempt(35));
+    g.expect("w", sneaking(&room(NARROW_PATH)));
+    g.expect("w", room(NARROW_ROAD));
+    g.expect("sneak", attempt(35));
+    g.expect("d", sneaking(&arena(&[], 35)));
+    g.send(ToClient::RunLoop {
+        session: ID.into(),
+        id: "1:2140:8:doors:0".into(),
+        skip: Some(vec![key((1, 2156))]),
+    })
+    .await;
+    g.narrated("Stop 1/3 cleared: nothing there").await;
+    g.freeze();
+    let (_, played) = g.close(run).await;
+    assert_eq!(
+        &played[..7],
+        ["st", "look", "sneak", "w", "w", "sneak", "d"]
+    );
 }

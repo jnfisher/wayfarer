@@ -91,8 +91,10 @@ pub(crate) struct Fight {
     switched: bool,
     /// The weapon, not the spell, for the rest of this monster's fight.
     weapon_only: bool,
-    /// Sneaking, with backstabs on: the next fight opens with `bs` (C-048).
+    /// A sneaker with backstabs on: the next fight opens with `bs` (C-048).
     backstab: bool,
+    /// Believed sneaking: the backstab goes before an attack spell.
+    sneaking: bool,
 }
 
 /// A name as the game shows it (`lauren` is Lauren).
@@ -160,7 +162,7 @@ impl Mode for Fight {
                 if std::mem::take(&mut self.spell_refused) {
                     self.spell_hold = Some(v.now + SPELL_HOLD);
                 }
-                let spell = if self.backstab
+                let spell = if (self.backstab && self.sneaking)
                     || self.weapon_only
                     || self.spell_hold.is_some_and(|t| v.now < t)
                 {
@@ -383,9 +385,10 @@ impl Fight {
         self.cornered = cornered;
     }
 
-    /// Open the next fight with a backstab (the character is sneaking, C-048).
-    pub fn set_backstab(&mut self, backstab: bool) {
+    /// Open the next fight with `bs` (a sneaker, C-048); `sneaking`, it goes before a spell.
+    pub fn set_backstab(&mut self, backstab: bool, sneaking: bool) {
         self.backstab = backstab;
+        self.sneaking = sneaking;
     }
 
     /// The game refused the target: leave it alone for the session, and look again.

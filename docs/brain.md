@@ -890,27 +890,35 @@ the bot stopped or paused like the other errands ("Errands"), and `cancel_errand
 ## Sneaking
 
 With *Sneak* on (`movement.sneak`, Movement, off by default; C-048) the bot keeps the
-character sneaking. It believes the character is sneaking after an `Attempting to sneak...`
-that did not say it failed, and stops believing it on the failure the character noticed (`You
-don't think you're sneaking.` on the same line), `You are no longer sneaking.`, `You make a
-sound as you enter the room!` (a sneaking move the game noticed), a fight, a cast, a rest or a
-death. A failure the character's perception does not catch prints nothing, and neither does a
-sneaking move that was noticed without the sound, so the bot cannot know of every one
-(`kb/classes/ninja.md`: the chance falls by one for every other player and monster in the
-room).
+character sneaking. An `Attempting to sneak...` that did not say it failed is only a hope: a
+failure the character's perception does not catch prints nothing. A move tells more, about the
+move before it: a move made while sneaking, the character's own or its leader's, prints
+`Sneaking...` before the game rolls for it, and a failed roll ends the sneak silently. So
+`Sneaking...` means the character was still sneaking when the move began (this move may still
+have been seen), and a move without it means the sneak had already ended: the move before it
+failed, or something else ended it. Only Perfect Stealth makes a move sure. The bot believes the
+character sneaking after an attempt with no failure and after each `Sneaking...`, and stops
+believing it on a move without one, the failure the character noticed (`You don't think
+you're sneaking.` on the same line), `You are no longer sneaking.`, `You make a sound as you
+enter the room!`, a fight, a cast, a rest or a death. It never tries to sneak with a monster
+in the room (`kb/classes/ninja.md`: the chance falls by one for every other player and monster
+there; a fight comes first anyway).
 
 - **Before a move the bot makes itself** (a leader's or a solo character's loop, Recover's
   walks to a quiet room and back; never Flee), it sends `sneak` until an attempt does not say it
   failed, narrated "Sneak: sneaking (attempt 2)". `You may not sneak right now!` (just
   attacked) or `You must wait before you may do that!` waits a round. A walk in progress stops
-  when the game says the sneak ended, and the bot sneaks again before going on. After five
-  failures in a row it moves on unsneaked, with a warning, until the next fight.
+  when a move shows no `Sneaking...` or the game says the sneak ended, and the bot sneaks again
+  before going on; a sneaker's moves are not pipelined, so no move has gone ahead by then. A
+  failure found by a move counts as a failed attempt. After five failures in a row it moves on
+  unsneaked, with a warning, until the next fight.
 - **A follower**, which the game moves with its leader, sneaks whenever it is with the party
-  and not sneaking, not fighting and not resting: after each fight, and again after a failure
-  it noticed. A sneaking follower stays sneaking through the party's moves (`Sneaking...`).
+  and not sneaking, not fighting, not resting and with no monster in the room: after each
+  fight, after a failure it noticed, and after a party move that showed no `Sneaking...`.
 - **Backstab.** With *Open with a backstab* on (`combat.backstab`, Combat, on by default),
-  Fight opens each fight of a sneaking character with `bs <monster>` instead of its attack
-  command or attack spell. Any sneaker may try it: a one-handed weapon made for backstabbing,
+  Fight opens each fight of a sneaker with `bs <monster>` instead of its attack command, and,
+  while it believes the character sneaking, instead of its attack spell too. Not sneaking after
+  all, `bs` is a plain attack, which is fine. Any sneaker may try it: a one-handed weapon made for backstabbing,
   or bare hands, backstabs; any other weapon prints `You cannot backstab with this weapon.` and
   strikes a normal blow, and the fight goes on as any other.
 - On the local server the attempt's line (with or without the failure) ends with CR LF and the

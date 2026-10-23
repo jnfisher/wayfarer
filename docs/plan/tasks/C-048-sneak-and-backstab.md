@@ -36,7 +36,8 @@ again; a sign that the sneak failed makes it sneak again. A sneaker opens each f
   then `You don't think you're sneaking.` follows on the same line. No prompt follows (a command
   delay runs). Refused: `You may not sneak right now!` (just attacked) and `You must wait before
   you may do that!`.
-- A sneaking player's own move rolls again; a failure ends sneaking silently, or with `You make
+- A sneaking player's own move prints `Sneaking...` before it goes (LJNCMDB.C:5207-5211), then
+  rolls for that move; a failure ends sneaking silently, or with `You make
   a sound as you enter the room!` when another perception roll catches it. A follower moved by
   its leader stays sneaking and sees `Sneaking...`.
 - Attacking, casting, resting and being attacked end sneaking; `You are no longer sneaking.`
@@ -49,15 +50,20 @@ again; a sign that the sneak failed makes it sneak again. A sneaker opens each f
 
 - **Settings**: `movement.sneak` *Sneak* (off by default) and `combat.backstab` *Open with a
   backstab* (on by default; it matters only for a sneaker).
-- **Believed sneaking**: on after an attempt with no failure text; off on the failure texts,
-  `You are no longer sneaking.`, `You make a sound as you enter the room!`, a fight, a cast, a
-  rest, a death.
+- **Believed sneaking**: on after an attempt with no failure text and after each
+  `Sneaking...`; off on a move that shows no `Sneaking...` (John, 2026-10-23, from the C and
+  silvermere's code: `Sneaking...` prints before the move's roll and a failed roll ends the
+  sneak silently, so a move without it says the move before it failed, or something else ended
+  the sneak; re-sneak then if no monster is in the room), the failure texts, `You are no longer
+  sneaking.`, `You make a sound as you enter the room!`, a fight, a cast, a rest, a death.
+- **No attempt with a monster in the room**; a fight comes first.
 - **Before a move the bot makes itself** (a leader's or solo loop, Recover's walks, a
   follower's walk back to its leader): sneak first unless believed sneaking; a failed attempt
   is tried again; `You may not sneak right now!` waits a round and tries again. Flee never
   waits to sneak. Walks the player starts (Go to, a map click, errands) go as they are.
 - **A follower**: after a fight (and after a rest) it sneaks again; a failure is tried again.
-- **Backstab**: Fight's opening attack is `bs <target>` while believed sneaking.
+- **Backstab**: Fight's opening attack is `bs <target>` for any sneaker (not sneaking after
+  all, it is a plain attack); it goes before an attack spell only while believed sneaking.
 - **Not forever**: five failed attempts in a row and the bot moves on unsneaked, saying so,
   until the next fight.
 

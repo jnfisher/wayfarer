@@ -705,6 +705,11 @@ impl Bot {
         self.sneak.take_broken() && settings.bool("movement.sneak")
     }
 
+    /// The character is in `room` now: a move with no `Sneaking...` shown ends the sneak.
+    pub fn sneak_arrived(&mut self, room: Option<Key>) {
+        self.sneak.arrived(room);
+    }
+
     /// Whether the lasting spell `short` is believed on.
     pub fn blessed(&self, short: &str, now: Instant) -> bool {
         self.bless.is_on(short, now)
@@ -1043,11 +1048,12 @@ impl Bot {
         }
         self.fight
             .set_cornered(self.flee.trapped_in(v.room) || self.flee.cornered_in(v.room));
-        // A sneaker opens with a backstab (C-048).
+        // A sneaker opens with a backstab (C-048); not sneaking after all, `bs` is a plain
+        // attack, which is fine.
+        self.sneak.arrived(v.room);
         self.fight.set_backstab(
-            self.sneak.on()
-                && crate::sneak::Sneak::enabled(v)
-                && v.settings.bool("combat.backstab"),
+            crate::sneak::Sneak::enabled(v) && v.settings.bool("combat.backstab"),
+            self.sneak.on(),
         );
         if let Some(t) = &mut self.task {
             t.observe(v);
