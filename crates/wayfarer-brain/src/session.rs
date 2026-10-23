@@ -758,6 +758,7 @@ impl Session {
                 if let Some(errand) = &mut self.errand {
                     errand.on_event(&typed);
                 }
+                self.walker.heard(&typed);
                 // The items carried: the Item exits they open may be routed through.
                 if let GameEvent::Inventory { items, .. } = &typed {
                     self.position.traveller.items = items
@@ -1090,7 +1091,14 @@ impl Session {
                 .map(|k| k.count * wayfarer_world::spellshop::unit(coin_currency(&k.coin)))
                 .sum::<u64>()
         });
-        let dist = distances(&atlas.graph, here, 10_000, &self.position.traveller);
+        // A shop up stairs that take a room ticket counts: the walk buys one on the way.
+        let dist = wayfarer_world::distances_buying(
+            &atlas.graph,
+            here,
+            10_000,
+            &self.position.traveller,
+            &atlas.exit_items,
+        );
         let items = wayfarer_world::spellshop::plan(&atlas.scrolls, who, &known, cash, |rooms| {
             rooms
                 .iter()

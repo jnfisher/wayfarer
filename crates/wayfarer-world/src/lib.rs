@@ -11,6 +11,7 @@
 pub mod belief;
 pub mod build;
 pub mod cp437;
+pub mod exit_items;
 pub mod find;
 pub mod knowledge;
 pub mod layout;
@@ -30,6 +31,7 @@ use std::path::PathBuf;
 
 pub use belief::Belief;
 pub use build::{BuildReport, MegaMudReport, build};
+pub use exit_items::ExitItem;
 pub use find::{Finder, Found, FoundKind, FoundRoom, PlaceKind, Reach};
 pub use knowledge::{PathExit, PathKnowledge};
 pub use layout::{Layout, Placed, Segment, SegmentKind, layout};
@@ -38,8 +40,8 @@ pub use monsters::{DEFAULT_RULES, MonsterRule, MonsterRules, Monsters, huntable}
 pub use nav::{Category, DirSet, Edge, ExitType, Gate, Key, LockState, RoomGraph};
 pub use pack::WorldPack;
 pub use route::{
-    Costs, Route, Step, Traveller, distances, distances_any, pocket_exits, route, route_or_search,
-    route_within, route_within_or_search,
+    Costs, Purchase, Route, Step, Traveller, distances, distances_any, distances_buying,
+    pocket_exits, route, route_buying, route_or_search, route_within, route_within_or_search,
 };
 pub use spells::{SpellDef, SpellKind, Spells};
 

@@ -179,3 +179,4 @@
   names in invite, follow, join, drop and removal lines, the invite's pronoun, no full stop on
   `You are now following`, the `par` row's padding and its `R` resting mark, Frontrank for a
   leader with followers [C].
+- **2026-10-23**: `navigation.md` "Item": an Item exit's item charges (a room ticket has one, so the exit takes it; ropes, the skiff, the climbing harness and the mine pass are unlimited) and where room tickets are sold, from the world pack [F]. The client's walker now buys such an item on the way (C-044).

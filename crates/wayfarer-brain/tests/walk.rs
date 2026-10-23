@@ -522,15 +522,19 @@ async fn a_hidden_exit_never_found_blocks_after_max_searches() {
     }
     g.walk_to(KEEP_WALL).await;
     g.narrated("Searching for the hidden exit north").await;
-    let stop = loop {
+    // Blocked, the walk plans again: only the long way round is left, by a rope and grapple
+    // bought on the way (docs/brain.md "Walking").
+    let replan = loop {
         let n = g.narration().await;
-        if n.starts_with("Stopped walking") {
+        if n.starts_with("Replanned") || n.starts_with("Stopped walking") {
             break n;
         }
     };
+    g.freeze();
     assert!(
-        stop.starts_with("Stopped walking: no hidden exit north found; no way to"),
-        "{stop}"
+        replan.starts_with("Replanned (no hidden exit north found)")
+            && replan.contains("buying a rope and grapple"),
+        "{replan}"
     );
     let (_, played) = g.close(run).await;
     assert_eq!(played, expected);

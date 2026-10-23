@@ -12,13 +12,15 @@
 //! up at once, with no `bash`. A route through a Hidden exit not showing in the room's exits
 //! line searches for it first (`search <dir>`) until it is found, up to [`MAX_SEARCHES`] times.
 //!
+//! A route through an Item or Key exit whose item a shop sells goes by the shop when that is the
+//! only or the shorter way ([`route_buying`]): there the walker sends `buy <item>` and goes on. A
+//! one-charge item (a room ticket) is used up by its exit, so it is no longer counted as carried.
+//!
 //! [`Traveller::lock_odds`]: wayfarer_world::Traveller::lock_odds
 
-use wayfarer_parse::typed::Refusal;
+use wayfarer_parse::typed::{GameEvent, Refusal};
 use wayfarer_proto::{BossLair, RoomKey, Walking};
-use wayfarer_world::{
-    Belief, ExitType, Key, Route, Step, mm, route_or_search, route_within_or_search,
-};
+use wayfarer_world::{Belief, ExitType, Gate, Key, Purchase, Route, Step, mm, route_buying};
 
 use crate::brain::Atlas;
 use crate::executor::{Action, Confirmed, Expect, Outcome, Refused};
@@ -87,6 +89,8 @@ enum Doing {
     /// `look` after a search that found nothing: is the exit showing after all?
     Recheck,
     Look,
+    /// `buy <item>` in the shop the route passes, for an exit ahead that needs it.
+    Buy,
 }
 
 #[derive(Debug)]
@@ -122,6 +126,10 @@ struct Walk {
     void: Option<Result<String, String>>,
     /// The boss lair this walk stops one room short of: `to` is the room before it.
     short_of: Option<Lair>,
+    /// An item to buy on the way, for an exit ahead that needs it.
+    purchase: Option<Purchase>,
+    /// What the shop said to the `buy` in flight: bought, or refused and why.
+    heard_buy: Option<Result<(), &'static str>>,
 }
 
 /// A boss lair a walk stops short of.
@@ -239,9 +247,46 @@ pub(crate) fn describe(route: &Route) -> String {
     s
 }
 
+/// "6 steps, buying a room ticket at The Homely Hearth, Common Room".
+fn describe_buying(atlas: &Atlas, route: &Route, purchase: Option<&Purchase>) -> String {
+    match purchase {
+        Some(p) => format!(
+            "{}, buying a {} at {}",
+            describe(route),
+            p.name,
+            room_name(atlas, p.shop)
+        ),
+        None => describe(route),
+    }
+}
+
+/// Why a shop would not sell: `BuyRefused`'s reason in words.
+fn refusal_words(why: &str) -> &'static str {
+    match why {
+        "poor" => "cannot afford it",
+        "not_here" => "not sold here now",
+        _ => "unknown to the shop",
+    }
+}
+
 impl Walker {
     pub fn walking(&self) -> bool {
         self.walk.is_some()
+    }
+
+    /// A game event: what the shop says to the walk's `buy`.
+    pub fn heard(&mut self, ev: &GameEvent) {
+        let Some(w) = &mut self.walk else {
+            return;
+        };
+        if w.doing != Doing::Buy {
+            return;
+        }
+        match ev {
+            GameEvent::Bought { .. } => w.heard_buy = Some(Ok(())),
+            GameEvent::BuyRefused { why } => w.heard_buy = Some(Err(why)),
+            _ => {}
+        }
     }
 
     /// The move [`Next::ahead`] proposed went to the executor.
@@ -335,7 +380,14 @@ impl Walker {
             next.warning(format!("Not walking to {name}: the position is unknown"));
             return next;
         };
-        let Some(mut r) = route_or_search(&atlas.graph, from, to, &pos.traveller) else {
+        let Some((mut r, mut purchase)) = route_buying(
+            &atlas.graph,
+            from,
+            to,
+            &pos.traveller,
+            &atlas.exit_items,
+            |_| true,
+        ) else {
             next.warning(format!(
                 "Not walking to {name}: no way there from {}",
                 room_name(atlas, from)
@@ -359,6 +411,8 @@ impl Walker {
         let (to, name) = match &lair {
             Some(lair) => {
                 let before = r.pop().expect("a route of a step or more").from;
+                // The exit the item was for may have been the lair's.
+                purchase = purchase.filter(|p| p.at < r.len());
                 if r.is_empty() {
                     next.notice(format!("Stopped one room short of {}", lair.describe()));
                     next.arrived = Some(before);
@@ -367,12 +421,15 @@ impl Walker {
                 next.notice(format!(
                     "Walking to {}: {}, stopping one room short",
                     lair.name,
-                    describe(&r)
+                    describe_buying(atlas, &r, purchase.as_ref())
                 ));
                 (before, room_name(atlas, before))
             }
             None => {
-                next.notice(format!("Walking to {name}: {}", describe(&r)));
+                next.notice(format!(
+                    "Walking to {name}: {}",
+                    describe_buying(atlas, &r, purchase.as_ref())
+                ));
                 (to, name)
             }
         };
@@ -396,6 +453,8 @@ impl Walker {
             pipelined,
             ahead: false,
             void: None,
+            purchase,
+            heard_buy: None,
         };
         let doing = w.first(pos, &mut next);
         next.action = Some(w.send(doing));
@@ -471,6 +530,14 @@ impl Walker {
             (_, Outcome::TimedOut) => Err(format!("no answer to `{}`", action.command)),
             (Doing::Move, Outcome::Confirmed(Confirmed::Room)) => {
                 if seen.unwrap_or(&pos.belief).contains(step.to) {
+                    // A one-charge item (a room ticket) stays in the exit's box.
+                    if let Some(Gate::Item { item }) =
+                        atlas.graph.edge(step.from, step.dir).map(|e| e.gate)
+                        && atlas.exit_items.get(&item).is_some_and(|i| i.used_up())
+                    {
+                        pos.traveller.items.remove(&item);
+                        pos.traveller.keys.remove(&item);
+                    }
                     w.next += 1;
                     w.confirmed += 1;
                     w.bashes = 0;
@@ -509,6 +576,22 @@ impl Walker {
                 Ok(Doing::UseKey)
             }
             (Doing::UseKey, Outcome::Confirmed(Confirmed::Prompt)) => Ok(Doing::Move),
+            (Doing::Buy, Outcome::Confirmed(_)) => {
+                let p = w.purchase.take().expect("buying");
+                match w.heard_buy.take() {
+                    Some(Ok(())) => {
+                        pos.traveller.items.insert(p.item);
+                        pos.traveller.keys.insert(p.item);
+                        Ok(Doing::Move)
+                    }
+                    Some(Err(why)) => Err(format!(
+                        "could not buy a {}: {}",
+                        p.name,
+                        refusal_words(why)
+                    )),
+                    None => Err(format!("could not buy a {}: no answer", p.name)),
+                }
+            }
             (Doing::Move, Outcome::Refused(Refused::DoorClosed { locked: false })) => {
                 Ok(Doing::Open)
             }
@@ -677,6 +760,9 @@ impl Walk {
     /// What to do first at the step in progress: search for its hidden exit when it is not
     /// showing (not in the room's exits line, not found lately), else move.
     fn first(&self, pos: &Position, next: &mut Next) -> Doing {
+        if self.purchase.as_ref().is_some_and(|p| p.at == self.next) {
+            return Doing::Buy;
+        }
         let s = &self.route[self.next];
         if s.exit_type != ExitType::Hidden || self.searched || pos.showing(s.from, s.dir) {
             return Doing::Move;
@@ -704,6 +790,10 @@ impl Walk {
             || self.stopping.is_some()
             || self.doing != Doing::Move
             || !pos.belief.certain()
+            || self
+                .purchase
+                .as_ref()
+                .is_some_and(|p| p.at <= self.next + 1)
         {
             return None;
         }
@@ -729,6 +819,11 @@ impl Walk {
                 Action::new(format!("bash {dir}"), Expect::BashResult)
             }
             Doing::Search => Action::new(format!("search {dir}"), Expect::SearchResult),
+            Doing::Buy => {
+                self.heard_buy = None;
+                let name = self.purchase.as_ref().map_or("", |p| p.name.as_str());
+                Action::new(format!("buy {name}"), Expect::Prompt)
+            }
             // `look`, not an empty line: an empty line redisplays the room only in statline
             // FULL modes (`kb/screen-parsing.md`).
             Doing::Look | Doing::Recheck => Action::new("look", Expect::RoomSeen),
@@ -753,10 +848,15 @@ impl Walk {
         };
         // A walk stopping short of a boss lair never plans through it.
         let lair = self.short_of.as_ref().map(|l| l.key);
-        let r = route_within_or_search(&atlas.graph, from, self.to, &pos.traveller, |k| {
-            Some(k) != lair
-        });
-        let Some(r) = r else {
+        let r = route_buying(
+            &atlas.graph,
+            from,
+            self.to,
+            &pos.traveller,
+            &atlas.exit_items,
+            |k| Some(k) != lair,
+        );
+        let Some((r, purchase)) = r else {
             return Err(format!(
                 "{why}; no way to {} from {}",
                 self.name,
@@ -768,10 +868,14 @@ impl Walk {
         self.searched = false;
         next.route_changed = true;
         if !r.is_empty() {
-            next.notice(format!("Replanned ({why}): {}", describe(&r)));
+            next.notice(format!(
+                "Replanned ({why}): {}",
+                describe_buying(atlas, &r, purchase.as_ref())
+            ));
         }
         self.route = r;
         self.next = 0;
+        self.purchase = purchase;
         Ok(Doing::Move)
     }
 }

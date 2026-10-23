@@ -4,6 +4,7 @@
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, VecDeque};
 
+use crate::exit_items::ExitItem;
 use crate::nav::{Category, Edge, ExitType, Gate, Key, LockState, RoomGraph};
 
 /// What entering a room the traveller avoids costs by default: more than any detour, so
@@ -313,6 +314,117 @@ fn route_core(
     }
     steps.reverse();
     Some(steps)
+}
+
+/// An item to buy on the way: `name` (item number `item`) in the shop room `shop`, before the
+/// route's step `at` (the step at `at` leaves the shop).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Purchase {
+    pub at: usize,
+    pub item: i64,
+    pub name: String,
+    pub shop: Key,
+}
+
+/// The item an Item or Key exit asks for.
+fn gate_item(e: &Edge) -> Option<i64> {
+    match e.gate {
+        Gate::Item { item } | Gate::Key { item } => Some(item),
+        _ => None,
+    }
+}
+
+impl Traveller {
+    /// Carries `item`, as an item or as a key.
+    pub fn holds(&self, item: i64) -> bool {
+        self.items.contains(&item) || self.keys.contains(&item)
+    }
+
+    /// This traveller carrying `items` too, as items and as keys.
+    fn holding(&self, items: impl IntoIterator<Item = i64>) -> Traveller {
+        let mut t = self.clone();
+        for n in items {
+            t.items.insert(n);
+            t.keys.insert(n);
+        }
+        t
+    }
+
+    /// This traveller carrying every item of `items` (those a shop sells).
+    fn holding_all(&self, items: &BTreeMap<i64, ExitItem>) -> Traveller {
+        self.holding(items.keys().copied())
+    }
+}
+
+/// [`route_within_or_search`], and when a way through an Item or Key exit whose item a shop
+/// sells (`items`, [`crate::exit_items::load`]) is open to the traveller only with that item,
+/// the way through the nearest shop selling it: from here to the shop, then on holding it.
+/// That way wins when it is the only one or shorter than the plain route. One item a plan: a
+/// second is found when the walk plans again after the first.
+pub fn route_buying(
+    graph: &RoomGraph,
+    from: Key,
+    to: Key,
+    t: &Traveller,
+    items: &BTreeMap<i64, ExitItem>,
+    within: impl Fn(Key) -> bool,
+) -> Option<(Route, Option<Purchase>)> {
+    let plain = route_within_or_search(graph, from, to, t, &within);
+    let plain_only = |plain: Option<Route>| plain.map(|r| (r, None));
+    if items.keys().all(|&n| t.holds(n)) {
+        return plain_only(plain);
+    }
+    let Some(any) = route_within_or_search(graph, from, to, &t.holding_all(items), &within) else {
+        return plain_only(plain);
+    };
+    let Some(item) = any.iter().find_map(|s| {
+        graph
+            .edge(s.from, s.dir)
+            .and_then(gate_item)
+            .filter(|&n| items.contains_key(&n) && !t.holds(n))
+    }) else {
+        return plain_only(plain);
+    };
+    let sold = &items[&item];
+    let holding = t.holding([item]);
+    let best = sold
+        .shops
+        .iter()
+        .filter_map(|&shop| {
+            let there = route_within_or_search(graph, from, shop, t, &within)?;
+            let on = route_within_or_search(graph, shop, to, &holding, &within)?;
+            Some((there.len() + on.len(), there, on, shop))
+        })
+        .min_by_key(|(n, ..)| *n);
+    match (plain, best) {
+        (Some(p), Some((n, ..))) if p.len() <= n => Some((p, None)),
+        (_, Some((_, mut there, on, shop))) => {
+            let at = there.len();
+            there.extend(on);
+            Some((
+                there,
+                Some(Purchase {
+                    at,
+                    item,
+                    name: sold.name.clone(),
+                    shop,
+                }),
+            ))
+        }
+        (plain, None) => plain_only(plain),
+    }
+}
+
+/// [`distances`] as if the traveller carried every item of `items`: the rooms a bought room
+/// ticket or rope opens count, in steps from here not counting the way to the shop.
+pub fn distances_buying(
+    graph: &RoomGraph,
+    from: Key,
+    radius: u32,
+    t: &Traveller,
+    items: &BTreeMap<i64, ExitItem>,
+) -> HashMap<Key, u32> {
+    distances(graph, from, radius, &t.holding_all(items))
 }
 
 /// [`distances`], and beyond them the rooms only the pack's Hidden exits lead to, as far as a
