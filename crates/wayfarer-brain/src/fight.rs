@@ -18,6 +18,7 @@ use crate::brain::Atlas;
 use crate::executor::{Action, Expect, Outcome, Refused};
 use crate::modes::{Mode, Presence, Step, View};
 use crate::policy::{attack_word, target};
+use crate::spellcraft::PartyCast;
 use wayfarer_world::MonsterRules;
 
 /// How many attacks on one monster may go unanswered (no `*Combat Engaged*`, no refusal)
@@ -92,6 +93,20 @@ pub(crate) struct Fight {
     weapon_only: bool,
 }
 
+/// The command and narration for a party heal (`mihe lauren`, `rain`).
+pub(crate) fn cast_step(cast: &PartyCast, mode: &str) -> Step {
+    match cast {
+        PartyCast::On(s, who) => Step::send(
+            Action::new(format!("{} {who}", s.short), Expect::Prompt),
+            format!("{mode}: casting {} on {who}", s.name),
+        ),
+        PartyCast::Party(s) => Step::send(
+            Action::new(s.short.clone(), Expect::Prompt),
+            format!("{mode}: casting {} on the party", s.name),
+        ),
+    }
+}
+
 impl Mode for Fight {
     fn wants(&self, v: &View) -> Option<String> {
         if v.engaged {
@@ -106,6 +121,9 @@ impl Mode for Fight {
     fn step(&mut self, v: &View) -> Step {
         if v.engaged {
             if let Some(step) = self.heal(v) {
+                return step;
+            }
+            if let Some(step) = self.heal_mates(v) {
                 return step;
             }
             if let Some(step) = self.enough_casts(v) {
@@ -252,6 +270,18 @@ impl Fight {
             Action::new(spell.short.clone(), Expect::Prompt),
             format!("Fight: HP {}%, casting {}", v.hp?, spell.name),
         ))
+    }
+
+    /// A heal for another member of the party in the room, or the party heal (C-043); the fight
+    /// goes on at once after the cast, as after its own heal.
+    fn heal_mates(&mut self, v: &View) -> Option<Step> {
+        if self.heal_ready.is_some_and(|t| v.now < t) {
+            return None;
+        }
+        let cast = v.party_heal(v.member_heal_in_combat(), v.heal_in_combat_below())?;
+        self.heal_ready = Some(v.now + HEAL_GAP);
+        self.healed = true;
+        Some(cast_step(&cast, "Fight"))
     }
 
     /// The spell has been cast as often as `spells.max_casts_per_monster` allows at this

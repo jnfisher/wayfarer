@@ -2836,6 +2836,7 @@ impl Session {
         let uses_mana = mana.is_some() && casts;
         Health {
             hp,
+            missing: c.hp.zip(c.hp_max).map(|(h, m)| i64::from(m - h)),
             low: hp.is_some_and(|h| h < line("health.rest_below_hp"))
                 || (uses_mana && mana.is_some_and(|m| m < line("health.rest_mana_below"))),
             rested: hp.is_none_or(|h| h >= line("health.rest_until_hp"))

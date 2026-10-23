@@ -54,3 +54,21 @@ fn a_flat_spell_averages_its_range() {
     let s = wayfarer_world::SpellDef::flat("x", "x", SpellKind::Attack, 2, 4, 10);
     assert_eq!(s.average(30), 7.0);
 }
+
+#[test]
+fn healing_rain_is_a_party_heal_and_acid_rain_is_no_heal() {
+    let pack = WorldPack::open(common::pack_path()).unwrap();
+    let spells = Spells::load(&pack).unwrap();
+    // Found by the record (type 3, target 13 Full Party Area, a heal), not the word `rain`.
+    let rain = spells.find("Priest", "rain", "healing rain").unwrap();
+    assert_eq!((rain.kind, rain.target), (SpellKind::PartyHeal, 13));
+    assert!(spells.find("Druid", "rain", "acid rain").is_none());
+    // Minor healing can be cast on another player (target 2, Self or Single).
+    assert_eq!(
+        spells
+            .find("Cleric", "mihe", "minor healing")
+            .unwrap()
+            .target,
+        2
+    );
+}

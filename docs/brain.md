@@ -948,14 +948,14 @@ scroll read since is found the next time.
   `health.rest_mana_below` (30%), to `health.rest_mana_until` (90%), on the same rules as an HP
   rest (a quiet room if one is near, a rest started is finished). With both spell settings `off`
   mana is ignored.
-- **Not done.** Buffs (blur, bless), light, area spells, cures, healing other players, spells
+- **Not done.** Buffs (blur, bless), light, area spells, cures, spells
   that need a target the bot does not pick (a Thief's backstab is not a spell), and the
   Witchunter's no-cast rule are later slices. The average damage is the KB's formula; whether
   one spell beats another against resistances is not modelled.
 
 ## Parties
 
-Party play is being built (`docs/plan/10-party-play.md`, cards C-038 to C-043). A party is a
+Party play (`docs/plan/10-party-play.md`, cards C-038 to C-043). A party is a
 leader and one to five followers, by session id, made, changed and deleted with `party_save`,
 `party_delete`, `party_leave` and `party_join` ([protocol.md](protocol.md)) and kept in the
 store, so it survives a restart. A character is in one party at most: saving it into another
@@ -1027,9 +1027,25 @@ own, one at a time:
   leader fights (if its own monster rules would fight it): the game shares exp only among
   those fighting the monster that dies (`kb/grouping.md` §9). Attacked by another, it fights
   that one.
+- **Healing members.** A character with a heal that can be cast on another player (target
+  0, 2 or 6: minor healing, mend) or on the party (target 10 or 13: healing rains, divine
+  mercy), with `spells.heal` on, heals the other members in its room the way it heals itself,
+  by a second pair of lines in the Party group: *Heal a party member in a fight below*
+  (`party.heal_member_in_combat_below_hp`, 50%) and *Heal a party member while resting
+  below* (`party.heal_member_resting_below_hp`, 60%; between rests, so a party rest is
+  shorter). HP comes from each member's own prompt. Its own heal stays its self-heal's. The
+  member furthest under its line goes first, one under its flee line before anyone, with the
+  cheapest single heal that covers what it is missing (`mihe lauren`). With *Use party
+  heals* (`party.heals`, auto) and a party heal known, that goes instead when two or more
+  (the caster counted) are under their lines, or when it heals more over all of them than the
+  single heal would on the worst; a member under its flee line still gets the single heal.
+  A party heal is found by its record, never by its word: `rain` is also the Druid's acid
+  rain. In a fight the healer goes back to its target after the cast, as after its own heal.
+  A Witchunter is healed like anyone, though its anti-magic may resist the cast. There is no
+  mana kept back for heals.
 - **The UIs** get `parties` when one changes or a member's state does: `joined`,
   `not_joined` ("forming up", "in another room"), `away` (with why), `separated`, `walking`,
-  `unreachable` or `resting` (with its HP). Healing members comes with C-043.
+  `unreachable` or `resting` (with its HP).
 
 ## Not yet
 

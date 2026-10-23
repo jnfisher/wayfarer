@@ -43,6 +43,8 @@ pub(crate) enum PartyRole {
         /// The party rests: why (`Resting for Lauren (62%)`). Its Recover rests the party
         /// where the quiet-room rule allows; its loop holds.
         rest: Option<String>,
+        /// The members with it, for its heals.
+        mates: Vec<Mate>,
     },
     Follower {
         party: String,
@@ -58,7 +60,20 @@ pub(crate) enum PartyRole {
         with_leader: bool,
         /// The monster the leader fights, when it is with the leader.
         assist: Option<String>,
+        /// The other members with it (the leader among them), for its heals.
+        mates: Vec<Mate>,
     },
+}
+
+/// Another member in the room, for a healer (C-043).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Mate {
+    /// What a heal is cast at: the in-game first name, in lower case.
+    pub name: String,
+    pub hp: i32,
+    pub missing: i64,
+    /// Below its own flee line.
+    pub flee: bool,
 }
 
 impl PartyRole {
@@ -105,6 +120,14 @@ impl PartyRole {
         )
     }
 
+    /// The other members with it, for its heals.
+    pub fn mates(&self) -> &[Mate] {
+        match self {
+            PartyRole::Leader { mates, .. } | PartyRole::Follower { mates, .. } => mates,
+            PartyRole::None => &[],
+        }
+    }
+
     /// The leader's target, for a follower with it.
     pub fn assist(&self) -> Option<&str> {
         match self {
@@ -118,6 +141,8 @@ impl PartyRole {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Health {
     pub hp: Option<i32>,
+    /// The hit points gone.
+    pub missing: Option<i64>,
     /// Below its rest line, for HP or (casting) mana.
     pub low: bool,
     /// At or above its rest-until lines.
@@ -446,6 +471,7 @@ impl Parties {
                     followers: def.followers.clone(),
                     hold: None,
                     rest: None,
+                    mates: Vec::new(),
                 },
             );
             // The followers walking back, by name, for the leader's hold.
@@ -598,6 +624,7 @@ impl Parties {
                         assist: (joined && fi.room.is_some() && fi.room == l.room)
                             .then(|| l.target.clone())
                             .flatten(),
+                        mates: Vec::new(),
                     },
                 );
                 if fi
@@ -649,6 +676,27 @@ impl Parties {
                     }
                 } else {
                     self.fled_for.remove(*f);
+                }
+            }
+            // Each one's mates, for its heals: the others with the leader, HP known.
+            for (id, _) in &together {
+                let mates: Vec<Mate> = together
+                    .iter()
+                    .filter(|(o, _)| o != id)
+                    .filter_map(|(_, i)| {
+                        Some(Mate {
+                            name: first(i.name.as_deref()?).to_lowercase(),
+                            hp: i.health.hp?,
+                            missing: i.health.missing?,
+                            flee: i.health.flee,
+                        })
+                    })
+                    .collect();
+                if let Some(
+                    PartyRole::Leader { mates: m, .. } | PartyRole::Follower { mates: m, .. },
+                ) = plan.roles.get_mut(*id)
+                {
+                    *m = mates;
                 }
             }
             let any_low = together.iter().any(|(_, i)| i.health.low);
@@ -746,6 +794,7 @@ mod tests {
             wait_rest: Duration::from_secs(600),
             health: Health {
                 hp: Some(100),
+                missing: Some(0),
                 low: false,
                 rested: true,
                 flee: false,
@@ -836,6 +885,7 @@ mod tests {
                 rejoin: None,
                 with_leader: false,
                 assist: None,
+                mates: Vec::new(),
             }
         );
         p.sent("lauren", "follow penny", now);
@@ -1111,6 +1161,7 @@ mod tests {
     fn hurt(i: &mut MemberInfo, hp: i32, low: bool, flee: bool) {
         i.health = Health {
             hp: Some(hp),
+            missing: Some(i64::from(100 - hp)),
             low,
             rested: false,
             flee,
@@ -1210,6 +1261,28 @@ mod tests {
         assert_eq!(plan.roles["lauren"].assist(), Some("giant rat"));
         m.get_mut("lauren").unwrap().room = Some((1, 9));
         assert_eq!(p.plan(&m, now).roles["lauren"].assist(), None);
+    }
+
+    #[tokio::test]
+    async fn a_healer_sees_the_members_with_it() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        let mut m = formed(&mut p, now);
+        hurt(m.get_mut("lauren").unwrap(), 40, true, false);
+        let plan = p.plan(&m, now);
+        assert_eq!(
+            plan.roles["penny"].mates(),
+            [Mate {
+                name: "lauren".into(),
+                hp: 40,
+                missing: 60,
+                flee: false
+            }]
+        );
+        assert_eq!(plan.roles["lauren"].mates()[0].name, "penny");
+        // Out of the room: no mates.
+        m.get_mut("lauren").unwrap().room = Some((1, 9));
+        assert!(p.plan(&m, now).roles["penny"].mates().is_empty());
     }
 
     #[test]

@@ -22,7 +22,7 @@ use crate::loot::Loot;
 use crate::policy;
 use crate::recover::Recover;
 use crate::rules::Sightings;
-use crate::spellcraft::Spellbook;
+use crate::spellcraft::{Hurt, PartyCast, Spellbook};
 use crate::task::Task;
 use crate::walker::Say;
 
@@ -276,6 +276,56 @@ impl View<'_> {
             return None;
         }
         self.book.heal(self.level, mana, self.hp_missing?)
+    }
+
+    /// The heal to cast for the party now (C-043), members healed below `member_line` and the
+    /// character itself below `own_line` (counted for a party heal only; its own heal is its
+    /// self-heal's): none when the line is 0 or healing spells are off.
+    pub fn party_heal(&self, member_line: i32, own_line: i32) -> Option<PartyCast<'_>> {
+        if member_line == 0
+            || self.settings.choice("spells.heal") != "auto"
+            || !self.book.heals_others()
+            || self.party.mates().is_empty()
+        {
+            return None;
+        }
+        let (mana, _) = self.mana?;
+        let mut hurt: Vec<Hurt> = self
+            .party
+            .mates()
+            .iter()
+            .map(|m| Hurt {
+                name: Some(&m.name),
+                hp: m.hp,
+                missing: m.missing,
+                line: member_line,
+                fleeing: m.flee,
+            })
+            .collect();
+        if let (Some(hp), Some(missing)) = (self.hp, self.hp_missing) {
+            hurt.push(Hurt {
+                name: None,
+                hp,
+                missing,
+                line: own_line,
+                fleeing: false,
+            });
+        }
+        self.book.for_party(
+            self.level,
+            mana,
+            &hurt,
+            self.settings.choice("party.heals") == "auto",
+        )
+    }
+
+    /// `party.heal_member_in_combat_below_hp` and `party.heal_member_resting_below_hp`.
+    pub fn member_heal_in_combat(&self) -> i32 {
+        self.setting("party.heal_member_in_combat_below_hp", 50)
+    }
+
+    pub fn member_heal_resting(&self) -> i32 {
+        self.setting("party.heal_member_resting_below_hp", 60)
     }
 
     /// Mana matters to this character: it casts what it knows.

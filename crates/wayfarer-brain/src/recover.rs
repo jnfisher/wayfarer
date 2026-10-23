@@ -103,6 +103,13 @@ impl Mode for Recover {
         if v.engaged || !v.presence.attackers.is_empty() {
             return None;
         }
+        // A party member in the room is hurt and a heal is ready (C-043).
+        if self.heal_ready.is_none_or(|t| v.now >= t)
+            && v.party_heal(v.member_heal_resting(), v.rest_heal_below())
+                .is_some()
+        {
+            return Some("healing the party".to_owned());
+        }
         // The leader of a resting party rests with it (C-042).
         if let Some(why) = v.party.party_rest()
             && !Self::low(v)
@@ -124,6 +131,13 @@ impl Mode for Recover {
     }
 
     fn step(&mut self, v: &View) -> Step {
+        // Between rests, a heal for a hurt member of the party: it shortens a party rest.
+        if self.heal_ready.is_none_or(|t| v.now >= t)
+            && let Some(cast) = v.party_heal(v.member_heal_resting(), v.rest_heal_below())
+        {
+            self.heal_ready = Some(v.now + HEAL_GAP);
+            return crate::fight::cast_step(&cast, "Recover");
+        }
         if self.walks_back > 0 && !Self::rested(v) {
             // Low again after giving up the walk home: a new rest, from here.
             self.done();
