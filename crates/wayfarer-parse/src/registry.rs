@@ -483,6 +483,11 @@ impl Registry {
             table_by_opener.insert(t.opener.clone(), tables.len());
             tables.push(p);
         }
+        // `par` ends with your own row even when you are in no party (LJNDISP.C:5172-5203;
+        // `kb/grouping.md` §2a), so the no-party line opens the party table too.
+        if let Some(&t) = table_by_opener.get("party_header") {
+            table_by_opener.insert("party_none".to_owned(), t);
+        }
 
         // keys: each pattern's rarest always-present word (`Registry.build`)
         let words = |p: &Pattern| -> Vec<String> {

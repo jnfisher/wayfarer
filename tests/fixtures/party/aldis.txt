@@ -1,0 +1,45 @@
+exp
+[0;37;40m[0;32mExp: [36m1932 [32mLevel: [36m1[32m Exp needed for next level: [36m0 (1650) [120%]
+[79D[K[0;37m[HP=31[0;37m (Resting) ]:par
+[0;37;40m[79D[K[1;31mYou are not in a party at the present time.
+  Aldis Vey                      (Witchunter)          [H: 73%] R - Midrank
+[79D[K[0;37m[HP=31[0;37m (Resting) ]:invite isolde
+[79D[K[1m[34mYou have invited Isolde to follow you.
+[79D[K[0;37m[HP=31[0;37m (Resting) ]:[79D[K[1;31mCorvin[0;32m walks into the room from below.
+[79D[K[0;37m[HP=31[0;37m (Resting) ]:[79D[K[0;37m[HP=34[0;37m (Resting) ]:[0;37;40m[79D[KCorvin stops to rest.
+[79D[K[0;37m[HP=34[0;37m (Resting) ]:[79D[K[0;37mIsolde started to follow you.
+[79D[K[0;37m[HP=34[0;37m (Resting) ]:par
+[0;37;40m[79D[K[0;37mThe following people are in your travel party:
+  Isolde Harrower                (Cleric)     [M:100%] [H:100%]   - Midrank
+  Aldis Vey                      (Witchunter)          [H: 80%] R - Frontrank
+[79D[K[0;37m[HP=34[0;37m (Resting) ]:
+[79D[K[1;36mNewhaven, Narrow Road
+[0;35mAlso here: [1;35mCorvin, Isolde, Wren[0;35m.
+[0m[0;32mObvious exits: nXorth, eBast, wGest, dCown
+[79D[K[0;37m[HP=34[0;37m (Resting) ]:invite wren
+[79D[K[1m[34mYou have invited Wren to follow you.
+[79D[K[0;37m[HP=34[0;37m (Resting) ]:[79D[K[0;37mWren started to follow you.
+[79D[K[0;37m[HP=34[0;37m (Resting) ]:[79D[K[0;37m[HP=35[0;37m (Resting) ]:invite corvin
+[79D[K[1m[34mYou have invited Corvin to follow you.
+[79D[K[0;37m[HP=35[0;37m (Resting) ]:par
+[0;37;40m[79D[K[0;37mThe following people are in your travel party:
+  Isolde Harrower                (Cleric)     [M:100%] [H:100%]   - Midrank
+  Wren Talbot                    (Druid)      [M:100%] [H: 81%]   - Midrank
+  Corvin Ashdown                 (Bard)       [Invited]
+  Aldis Vey                      (Witchunter)          [H: 83%] R - Frontrank
+[79D[K[0;37m[HP=35[0;37m (Resting) ]:n
+[0;37;40m[79D[K[1;36mNewhaven, Adventurer's Guild
+[0;35mAlso here: [0;37mCorwyn[0m[0;35m.
+[0m[0;32mObvious exits: sLouth
+[79D[K[0;37m[HP=35[0;37m]:[79D[K[1;31mIsolde[0;32m walks into the room from the sLouth.
+[79D[K[0;37m[HP=35[0;37m]:[79D[K[1;31mWren[0;32m walks into the room from the sLouth.
+[79D[K[0;37m[HP=35[0;37m]:train
+[0;37;40mYou do not have the money required for your training.
+[79D[K[0;37m[HP=35[0;37m]:uninvite wren
+[79D[K[0;31mWren has been removed from your followers.
+[79D[K[0;37m[HP=35[0;37m]:uninvite corvin
+[79D[K[0;31mCorvin has been removed from your followers.
+[79D[K[0;37m[HP=35[0;37m]:par
+[0;37;40m[79D[K[1;31mYou are not in a party at the present time.
+  Aldis Vey                      (Witchunter)          [H: 83%]   - Midrank
+[79D[K[0;37m[HP=35[0;37m]:

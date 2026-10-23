@@ -175,3 +175,7 @@
 - **2026-10-22**: `megamud-formats.md`: MegaMud v2.2's stock path set (now in `data/megamud/`)
   appends `-MAP ROOM` to path descriptions, locations and waypoint names; ids and totals match
   v2.0.
+- **2026-10-22**: `grouping.md` §9: party lines as seen in play on silvermere (C-038): first
+  names in invite, follow, join, drop and removal lines, the invite's pronoun, no full stop on
+  `You are now following`, the `par` row's padding and its `R` resting mark, Frontrank for a
+  leader with followers [C].

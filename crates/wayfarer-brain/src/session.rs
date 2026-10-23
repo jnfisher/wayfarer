@@ -342,6 +342,8 @@ pub(crate) struct Session {
     bot: Bot,
     /// Who is in the room, for the bot.
     presence: Presence,
+    /// The character's party as the game last showed it.
+    party_game: crate::party_game::GameParty,
     /// The walk in progress is the bot's.
     bot_walk: bool,
     /// A walk asked for while the bot's action was in flight: it starts once that is answered.
@@ -457,6 +459,7 @@ impl Session {
             owner: None,
             bot: Bot::new(flee_below),
             presence: Presence::default(),
+            party_game: Default::default(),
             bot_walk: false,
             walk_after: None,
             loops: HashMap::new(),
@@ -731,6 +734,8 @@ impl Session {
             if let Some(name) = &dead {
                 self.bot.killed(name, now);
             }
+            let me = self.character.state().name.clone();
+            self.party_game.event(&typed, me.as_deref(), now);
             if let Some(atlas) = self.atlas.clone() {
                 self.presence.event(&atlas, &typed);
                 self.sighted(&typed, now, out);

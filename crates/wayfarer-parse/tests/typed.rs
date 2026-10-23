@@ -7,7 +7,7 @@ mod common;
 use std::sync::{Arc, OnceLock};
 
 use wayfarer_parse::helpers::{Carried, Exit};
-use wayfarer_parse::typed::{GameEvent, ManaKind, PromptForm, Refusal, Rest};
+use wayfarer_parse::typed::{GameEvent, ManaKind, PromptForm, Rank, Refusal, Rest};
 use wayfarer_parse::{Event, Parser, PromptMode, PromptParser, Registry};
 
 fn reg() -> &'static Arc<Registry> {
@@ -606,8 +606,9 @@ fn unknown_and_other() {
             }
         }
     }
-    // patterns.py's count of unknown events over the fixtures (tests/golden.rs).
-    assert_eq!(unknown, 357);
+    // patterns.py's count of unknown events over the fixtures (tests/golden.rs), less the own
+    // `par` row after `party_none` that this parser reads (C-038).
+    assert_eq!(unknown, 356);
     assert!(other > 1_000);
     assert_eq!(
         first("capture-status-screens", "unknown", "Username"),
@@ -763,4 +764,171 @@ fn the_keys_carried() {
         }
     );
     assert_eq!(example("inv_no_keys"), GameEvent::Keys { keys: vec![] });
+}
+
+/// The typed party events of one session in the `party` fixture (silvermere, 2026-10-22).
+fn party(who: &str) -> Vec<GameEvent> {
+    events(&format!("party-{who}"))
+        .iter()
+        .map(GameEvent::from_event)
+        .filter(|e| {
+            matches!(
+                e,
+                GameEvent::PartyInvited { .. }
+                    | GameEvent::PartyInviteSent { .. }
+                    | GameEvent::PartyFollowing { .. }
+                    | GameEvent::PartyFollowerJoined { .. }
+                    | GameEvent::PartyLeft { .. }
+                    | GameEvent::PartyFollowerRemoved { .. }
+                    | GameEvent::PartyMustBeInvited
+                    | GameEvent::PartyMoved { .. }
+                    | GameEvent::ParFollowing { .. }
+                    | GameEvent::ParHeader
+                    | GameEvent::ParNone
+                    | GameEvent::ParRow { .. }
+            )
+        })
+        .collect()
+}
+
+fn row(
+    name: &str,
+    class: &str,
+    mana: Option<i64>,
+    hp: i64,
+    resting: bool,
+    rank: Rank,
+) -> GameEvent {
+    GameEvent::ParRow {
+        name: name.into(),
+        class: Some(class.into()),
+        mana,
+        hp: Some(hp),
+        resting,
+        rank: Some(rank),
+        invited: false,
+    }
+}
+
+#[test]
+fn party_leader() {
+    use GameEvent as G;
+    let aldis = |hp, resting, rank| row("Aldis Vey", "Witchunter", None, hp, resting, rank);
+    let isolde = row(
+        "Isolde Harrower",
+        "Cleric",
+        Some(100),
+        100,
+        false,
+        Rank::Mid,
+    );
+    assert_eq!(
+        party("aldis"),
+        [
+            G::ParNone,
+            aldis(73, true, Rank::Mid),
+            G::PartyInviteSent {
+                name: "Isolde".into()
+            },
+            G::PartyFollowerJoined {
+                name: "Isolde".into()
+            },
+            G::ParHeader,
+            isolde.clone(),
+            aldis(80, true, Rank::Front),
+            G::PartyInviteSent {
+                name: "Wren".into()
+            },
+            G::PartyFollowerJoined {
+                name: "Wren".into()
+            },
+            G::PartyInviteSent {
+                name: "Corvin".into()
+            },
+            G::ParHeader,
+            isolde,
+            row("Wren Talbot", "Druid", Some(100), 81, false, Rank::Mid),
+            G::ParRow {
+                name: "Corvin Ashdown".into(),
+                class: Some("Bard".into()),
+                mana: None,
+                hp: None,
+                resting: false,
+                rank: None,
+                invited: true,
+            },
+            aldis(83, true, Rank::Front),
+            G::PartyFollowerRemoved {
+                name: "Wren".into()
+            },
+            G::PartyFollowerRemoved {
+                name: "Corvin".into()
+            },
+            G::ParNone,
+            aldis(83, false, Rank::Mid),
+        ]
+    );
+}
+
+#[test]
+fn party_followers() {
+    use GameEvent as G;
+    let leader = || "Aldis".to_owned();
+    assert_eq!(
+        party("isolde"),
+        [
+            G::PartyInvited { leader: leader() },
+            // No full stop on silvermere.
+            G::PartyFollowing { leader: leader() },
+            G::ParFollowing { leader: leader() },
+            G::ParHeader,
+            row("Aldis Vey", "Witchunter", None, 80, true, Rank::Front),
+            row(
+                "Isolde Harrower",
+                "Cleric",
+                Some(100),
+                100,
+                false,
+                Rank::Mid
+            ),
+            G::PartyMoved {
+                dir: "north".into()
+            },
+            G::PartyLeft { leader: leader() },
+            G::ParNone,
+            row(
+                "Isolde Harrower",
+                "Cleric",
+                Some(100),
+                100,
+                false,
+                Rank::Mid
+            ),
+        ]
+    );
+    assert_eq!(
+        party("wren"),
+        [
+            G::PartyMustBeInvited,
+            G::PartyInvited { leader: leader() },
+            G::PartyFollowing { leader: leader() },
+            G::PartyMoved {
+                dir: "north".into()
+            },
+            G::PartyLeft { leader: leader() },
+        ]
+    );
+    assert_eq!(party("corvin"), [G::PartyInvited { leader: leader() }]);
+}
+
+#[test]
+fn par_row_at_minus_100() {
+    // `par` prints `%3.3s` of the percentage: -100% and below are `-10` (`kb/grouping.md` §2a).
+    let evs = line(
+        "The following people are in your travel party:\n  Aldis Vey                      (Witchunter)          [H:-10%]   - Frontrank",
+    );
+    assert_eq!(
+        evs[1],
+        row("Aldis Vey", "Witchunter", None, -10, false, Rank::Front)
+    );
 }

@@ -32,6 +32,7 @@ mod flee;
 mod link;
 mod loot;
 mod modes;
+mod party_game;
 pub mod policy;
 mod position;
 mod recover;

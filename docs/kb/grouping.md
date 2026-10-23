@@ -367,6 +367,23 @@ MegaMud ran one client instance per character, coordinated by telepathed `@` com
 | Can't move | `You can't seem to move anywhere!` · `You are too stunned to move anywhere!` · `You are too heavy to move!` | move_user |
 | No drag in party | `You may not drag someone while in a party!` | move_user |
 | Party list | `You are following %s.` · `The following people are in your travel party:` · `  <name 30> (<Class>) [M:nn%] [H:nn%]PR - Frontrank` (or `[Invited]`) · `You are not in a party at the present time.` | LJNDISP.C:5071 |
+
+Seen in play on 2026-10-22 (four characters on the local silvermere; `tests/fixtures/party/`,
+card C-038) [C]:
+- **Names.** Invite, follow, join, drop and removal lines give the **first name**
+  (`Penny has invited you to follow her.`, `You are now following Penny`, `Lauren started to
+  follow you.`); only `par` rows give the full name. The invite's second `%s` is the leader's
+  pronoun (`her`), not a name.
+- **`You are now following %s`** comes without a full stop; `par`'s `You are following %s.`
+  has one.
+- **`par` rows.** The percentage is right-aligned in three places (`[H: 73%]`, `[H:100%]`); a
+  character without mana has no `[M:]` box and the gap is spaces. The `P`/`R` place before the
+  dash holds `R` while that member rests (` R - Frontrank`), a space otherwise. The leader's
+  row showed Midrank alone and Frontrank once someone followed.
+- **After `You are not in a party at the present time.`** the own row comes with no header,
+  as §2a says.
+- A follower moved by the leader gets ` -- Following your Party leader north --` (the
+  direction in full).
 | Rank | `%s just moved to the front rank in your group.` · `You have moved to the front ranks of your group.` · `You may not enter the backrank of your own party.` · `You are the only one in the front rank.  You may not leave.` | change_user_rank |
 | Channel | `You just joined channel %d.` · `%s just joined your channel (%d)` · `Broadcast from %s "%s"` · `You just left group %d.` | cmd_join, cmd_broadcast, cmd_leave |
 | Combat / exp | `*Combat Engaged*` · `%s moves to attack everyone in the room.` · `*Combat Off*` · `You gain %s experience.` | LJNSPELL.C, LJNACMB.C, LJNUTIL.C:1777 |

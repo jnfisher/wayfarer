@@ -119,6 +119,14 @@ impl Refusal {
     }
 }
 
+/// A party member's battle line, as `par` shows it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Rank {
+    Front,
+    Mid,
+    Back,
+}
+
 /// The events the character model needs, typed; `Other` for the rest.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GameEvent {
@@ -416,6 +424,59 @@ pub enum GameEvent {
     AlreadyCast,
     /// `cast_fail`: `You attempt to cast vine strike, but fail.`
     CastFailed,
+
+    /// `invited_follow`: `Penny has invited you to follow her.` (silvermere names the leader by
+    /// first name and the rest by pronoun).
+    PartyInvited {
+        leader: String,
+    },
+    /// `you_invited`: `You have invited Lauren to follow you.`
+    PartyInviteSent {
+        name: String,
+    },
+    /// `following`: `You are now following Penny` (silvermere sends no full stop).
+    PartyFollowing {
+        leader: String,
+    },
+    /// `follower_joined`: `Lauren started to follow you.`
+    PartyFollowerJoined {
+        name: String,
+    },
+    /// `unfollowed`: `You are no longer following Penny.`
+    PartyLeft {
+        leader: String,
+    },
+    /// `follower_removed`: `Faye has been removed from your followers.`
+    PartyFollowerRemoved {
+        name: String,
+    },
+    /// `invite_needed`: `You must be invited first!`
+    PartyMustBeInvited,
+    /// `follow_leader`: ` -- Following your Party leader north --`: the game moved a follower.
+    PartyMoved {
+        dir: String,
+    },
+    /// `following` on the `par` screen: `You are following Penny.`
+    ParFollowing {
+        leader: String,
+    },
+    /// `party_header`: `The following people are in your travel party:`; the rows follow.
+    ParHeader,
+    /// `party_none`: `You are not in a party at the present time.`; the character's own row
+    /// follows.
+    ParNone,
+    /// `party_row`: `  Lauren Phillips   (Cleric)   [M:100%] [H: 81%] R - Midrank`, or
+    /// `  Manuel Ferrera   (Bard)   [Invited]`. `mana` and `hp` in per cent (`-10` is -100% or
+    /// worse: the game prints three characters); `resting` is the `R`.
+    ParRow {
+        name: String,
+        class: Option<String>,
+        mana: Option<i64>,
+        hp: Option<i64>,
+        resting: bool,
+        rank: Option<Rank>,
+        invited: bool,
+    },
 
     /// `inv_carrying` (and `inv_nothing`, empty): coins by name and items.
     Inventory {
@@ -820,8 +881,73 @@ impl GameEvent {
                 level: text(ev, "level"),
                 percent: int(ev, "pct"),
             },
+            "invited_follow" if ev.text("what") == Some("follow") => G::PartyInvited {
+                leader: text(ev, "who"),
+            },
+            "you_invited" if ev.line.ends_with("to follow you.") => G::PartyInviteSent {
+                name: text(ev, "who"),
+            },
+            "following" if ev.line.starts_with("You are now") => G::PartyFollowing {
+                leader: text(ev, "who"),
+            },
+            "following" => G::ParFollowing {
+                leader: text(ev, "who"),
+            },
+            "follower_joined" => G::PartyFollowerJoined {
+                name: text(ev, "who"),
+            },
+            "unfollowed" => G::PartyLeft {
+                leader: text(ev, "who"),
+            },
+            "follower_removed" => G::PartyFollowerRemoved {
+                name: text(ev, "who"),
+            },
+            "invite_needed" => G::PartyMustBeInvited,
+            "follow_leader" => G::PartyMoved {
+                dir: text(ev, "dir").to_ascii_lowercase(),
+            },
+            "party_header" => G::ParHeader,
+            "party_none" => G::ParNone,
+            "party_row" => par_row(ev),
             _ => G::Other(ev.clone()),
         }
+    }
+}
+
+/// A `par` row: a member with its class, mana, HP, rest mark and rank, or an invitation.
+fn par_row(ev: &Event) -> GameEvent {
+    if let Some(invited) = ev.text("invited") {
+        // `Manuel Ferrera   (Bard)`: the name, then the class in brackets.
+        let (name, class) = match invited.rsplit_once('(') {
+            Some((name, class)) => (name, Some(class.trim_end_matches(')').trim().to_owned())),
+            None => (invited, None),
+        };
+        return GameEvent::ParRow {
+            name: name.trim().to_owned(),
+            class,
+            mana: None,
+            hp: None,
+            resting: false,
+            rank: None,
+            invited: true,
+        };
+    }
+    // ` R - Frontrank`: the rest mark before the dash, the rank after it.
+    let flags = ev.text("flags").unwrap_or_default();
+    let (mark, rank) = flags.split_once('-').unwrap_or((flags, ""));
+    GameEvent::ParRow {
+        name: text(ev, "name"),
+        class: ev.text("cls").map(str::to_owned),
+        mana: int(ev, "mpct"),
+        hp: int(ev, "hpct"),
+        resting: mark.trim() == "R",
+        rank: match rank.trim() {
+            "Frontrank" => Some(Rank::Front),
+            "Midrank" => Some(Rank::Mid),
+            "Backrank" => Some(Rank::Back),
+            _ => None,
+        },
+        invited: false,
     }
 }
 

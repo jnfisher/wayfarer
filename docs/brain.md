@@ -953,6 +953,17 @@ scroll read since is found the next time.
   Witchunter's no-cast rule are later slices. The average damage is the KB's formula; whether
   one spell beats another against resistances is not modelled.
 
+## Parties
+
+Party play is being built (`docs/plan/10-party-play.md`, cards C-038 to C-043). So far each
+session keeps its party **as the game last showed it**: whom it follows, the last whole `par`
+screen's rows (name, class, mana and HP per cent, the rest mark, the rank, or an invitation),
+when that screen came, the last invitation, and when the game last moved it after its leader.
+The invite, follow, drop and removal lines between two `par` screens only mark it out of date,
+since the game drops a follower an exit refuses without a word (`kb/grouping.md` §2a); a `par`
+screen cut off before the character's own row (always last) is not taken. Nothing acts on it
+yet; the party coordinator (C-039) will.
+
 ## Not yet
 
 No Maintain mode; no "Where next?" and no moving on to the next area (M4: the loop is the

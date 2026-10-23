@@ -1,0 +1,17 @@
+[79D[K[0;37m[HP=29[0;37m/MA=12[0;37m]: (Resting) exp
+[0;37;40m[0;32mExp: [36m1817 [32mLevel: [36m1[32m Exp needed for next level: [36m283 (2100) [86%]
+[79D[K[0;37m[HP=29[0;37m/MA=12[0;37m]: (Resting) [79D[K[1;31mCorvin[0;32m walks into the room from below.
+[79D[K[0;37m[HP=29[0;37m/MA=12[0;37m]: (Resting) [0;37;40m[79D[KCorvin stops to rest.
+[79D[K[0;37m[HP=29[0;37m/MA=12[0;37m]: (Resting) follow aldis
+[79D[K[1;31mYou must be invited first!
+[79D[K[0;37m[HP=29[0;37m/MA=12[0;37m]:[79D[K[1m[34mAldis has invited you to follow her.
+[79D[K[0;37m[HP=29[0;37m/MA=12[0;37m]:follow aldis
+[79D[K[0;37mYou are now following Aldis
+[79D[K[0;37m[HP=29[0;37m/MA=12[0;37m]:[79D[K[0;37m[HP=30[0;37m/MA=12[0;37m]:[79D[K[1;31mAldis[0;32m just left to th e nor th.
+[79D[K[0;37m[HP=30[0;37m/MA=12[0;37m]:[79D[K[1;31mIsolde[0;32m just left to  the no rth.
+[79D[K[0;37m[HP=30[0;37m/MA=12[0;37m]:[79D[K[0;37m -- Following your Party leader nMorth --
+[0;37;40m[79D[K[1;36mNewhaven, Adventurer's Guild
+[0;35mAlso here: [1;35mIsolde, Aldis[1;35m, [0;37mCorwyn[0m[0;35m.
+[0m[0;32mObvious exits: sLouth
+[79D[K[0;37m[HP=30[0;37m/MA=12[0;37m]:[79D[K[1;34mYou are no longer following Aldis.
+[79D[K[0;37m[HP=30[0;37m/MA=12[0;37m]:

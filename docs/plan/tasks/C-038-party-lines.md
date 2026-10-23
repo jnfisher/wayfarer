@@ -38,7 +38,7 @@ that. This is the ground truth the party coordinator (C-039) reads; nothing acts
   - `PartyLeft { leader }` (`You are no longer following %s.`),
     `PartyFollowerRemoved { name }` (`%s has been removed from your followers.`),
     `PartyMustBeInvited` (`You must be invited first!`),
-  - `PartyMoved { leader, dir }` (` -- Following your Party leader <dir> --`),
+  - `PartyMoved { dir }` (` -- Following your Party leader <dir> --`: the line names no leader),
   - the `par` screen: `ParFollowing { leader }` (`You are following %s.`), `ParHeader`
     (`The following people are in your travel party:`), `ParRow { name, class, mana, hp,
     invited, rank }` (`mana`/`hp`: `Option<i64>` per cent, `None` when the row has none;
