@@ -112,7 +112,12 @@ impl GameParty {
                     }
                     GameEvent::PartyFollowerJoined { .. }
                     | GameEvent::PartyFollowerRemoved { .. } => self.changed(now),
-                    GameEvent::PartyMustBeInvited => self.must_invite = Some(now),
+                    // No invitation stands: one remembered was taken back (`uninvite`
+                    // tells only the leader).
+                    GameEvent::PartyMustBeInvited => {
+                        self.must_invite = Some(now);
+                        self.invited_by = None;
+                    }
                     GameEvent::PartyMoved { .. } => self.moved = Some(now),
                     _ => {}
                 }
@@ -207,6 +212,24 @@ mod tests {
         }
         assert_eq!(p.members[0].name, "Lauren Phillips");
         assert_eq!(p.following, None);
+    }
+
+    #[tokio::test]
+    async fn a_refusal_forgets_an_old_invitation() {
+        // Invited, then uninvited: the game says nothing to the invitee, so only the
+        // refusal of its `follow` tells it the invitation is gone.
+        let now = Instant::now();
+        let mut p = GameParty::default();
+        p.event(
+            &GameEvent::PartyInvited {
+                leader: "Penny".into(),
+            },
+            ME,
+            now,
+        );
+        p.event(&GameEvent::PartyMustBeInvited, ME, now);
+        assert_eq!(p.invited_by, None);
+        assert_eq!(p.must_invite, Some(now));
     }
 
     #[tokio::test]
