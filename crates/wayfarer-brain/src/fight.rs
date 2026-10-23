@@ -91,6 +91,18 @@ pub(crate) struct Fight {
     switched: bool,
     /// The weapon, not the spell, for the rest of this monster's fight.
     weapon_only: bool,
+    /// A sneaker with backstabs on: the next fight opens with `bs` (C-048).
+    backstab: bool,
+    /// Believed sneaking: the backstab goes before an attack spell.
+    sneaking: bool,
+}
+
+/// A name as the game shows it (`lauren` is Lauren).
+fn capitalized(name: &str) -> String {
+    let mut c = name.chars();
+    c.next()
+        .map(|f| f.to_uppercase().chain(c).collect())
+        .unwrap_or_default()
 }
 
 /// The command and narration for a party heal (`mihe lauren`, `rain`).
@@ -99,11 +111,13 @@ pub(crate) fn cast_step(cast: &PartyCast, mode: &str) -> Step {
         PartyCast::On(s, who) => Step::send(
             Action::new(format!("{} {who}", s.short), Expect::Prompt),
             format!("{mode}: casting {} on {who}", s.name),
-        ),
+        )
+        .doing(format!("healing {}", capitalized(who))),
         PartyCast::Party(s) => Step::send(
             Action::new(s.short.clone(), Expect::Prompt),
             format!("{mode}: casting {} on the party", s.name),
-        ),
+        )
+        .doing(format!("casting {}", s.name)),
     }
 }
 
@@ -148,7 +162,10 @@ impl Mode for Fight {
                 if std::mem::take(&mut self.spell_refused) {
                     self.spell_hold = Some(v.now + SPELL_HOLD);
                 }
-                let spell = if self.weapon_only || self.spell_hold.is_some_and(|t| v.now < t) {
+                let spell = if (self.backstab && self.sneaking)
+                    || self.weapon_only
+                    || self.spell_hold.is_some_and(|t| v.now < t)
+                {
                     None
                 } else {
                     v.attack_spell()
@@ -165,6 +182,12 @@ impl Mode for Fight {
                     Some(s) => Step::send(
                         Action::new(format!("{} {}", s.short, attack_word(&t)), Expect::Engaged),
                         format!("Fight: {t} with {}", s.name),
+                    ),
+                    // Any sneaker may try it: only a backstab weapon or bare hands backstab,
+                    // any other weapon strikes a normal blow (`kb/classes/ninja.md`).
+                    None if self.backstab => Step::send(
+                        Action::new(format!("bs {}", attack_word(&t)), Expect::Engaged),
+                        format!("Fight: {t} (backstab)"),
                     ),
                     None => Step::send(
                         Action::new(
@@ -266,10 +289,13 @@ impl Fight {
         let spell = v.heal_spell()?;
         self.heal_ready = Some(v.now + HEAL_GAP);
         self.healed = true;
-        Some(Step::send(
-            Action::new(spell.short.clone(), Expect::Prompt),
-            format!("Fight: HP {}%, casting {}", v.hp?, spell.name),
-        ))
+        Some(
+            Step::send(
+                Action::new(spell.short.clone(), Expect::Prompt),
+                format!("Fight: HP {}%, casting {}", v.hp?, spell.name),
+            )
+            .doing("healing itself"),
+        )
     }
 
     /// A heal for another member of the party in the room, or the party heal (C-043); the fight
@@ -359,6 +385,12 @@ impl Fight {
         self.cornered = cornered;
     }
 
+    /// Open the next fight with `bs` (a sneaker, C-048); `sneaking`, it goes before a spell.
+    pub fn set_backstab(&mut self, backstab: bool, sneaking: bool) {
+        self.backstab = backstab;
+        self.sneaking = sneaking;
+    }
+
     /// The game refused the target: leave it alone for the session, and look again.
     fn refused(&mut self) {
         if let Some(t) = self.target.take() {
@@ -438,6 +470,17 @@ impl Fight {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wayfarer_world::{SpellDef, SpellKind};
+
+    #[test]
+    fn a_heal_says_whom_it_heals() {
+        let mihe = SpellDef::flat("mihe", "minor healing", SpellKind::Heal, 2, 3, 8);
+        let step = cast_step(&PartyCast::On(&mihe, "lauren".into()), "Recover");
+        assert_eq!(step.doing.as_deref(), Some("healing Lauren"));
+        let rain = SpellDef::flat("rain", "healing rain", SpellKind::PartyHeal, 5, 7, 11);
+        let step = cast_step(&PartyCast::Party(&rain), "Fight");
+        assert_eq!(step.doing.as_deref(), Some("casting healing rain"));
+    }
 
     #[test]
     fn a_spell_fight_is_over_after_the_most_casts_and_only_once() {

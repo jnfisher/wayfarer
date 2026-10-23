@@ -5,6 +5,7 @@
   import Help from "./Help.svelte";
   import DevPanel from "./DevPanel.svelte";
   import MapPanel from "./MapPanel.svelte";
+  import BlessingsPanel from "./BlessingsPanel.svelte";
   import PartiesPanel from "./PartiesPanel.svelte";
   import SettingsPanel from "./SettingsPanel.svelte";
   import StatsPanel from "./StatsPanel.svelte";
@@ -18,6 +19,7 @@
     GO_CODE,
     MAP_PANEL_CODE,
     PARTIES_PANEL_CODE,
+    BLESSINGS_PANEL_CODE,
     RESET_LAYOUT_CODE,
     SETTINGS_PANEL_CODE,
     STATS_PANEL_CODE,
@@ -58,7 +60,7 @@
     toggleDrawer,
     type DrawerPanel,
   } from "./lib/state";
-  import type { PartyStatus, SessionInfo } from "./proto";
+  import type { Blessings, PartyStatus, SessionInfo } from "./proto";
 
   let sessions = $state<SessionInfo[]>([]);
   const brain = $state(emptyBrainView());
@@ -89,6 +91,7 @@
   const DRAWER_BUTTONS: { panel: DrawerPanel; title: string }[] = [
     { panel: "map", title: "Map (Alt+M)" },
     { panel: "parties", title: "Parties (Alt+P)" },
+    { panel: "blessings", title: "Blessings (Alt+B)" },
     { panel: "stats", title: "Stats (Alt+S)" },
     { panel: "settings", title: "Settings (Alt+T)" },
     { panel: "dev", title: "Dev panel (Alt+D)" },
@@ -110,14 +113,18 @@
   let foundBySession = $state.raw<Record<string, FoundMessage>>({});
   // The brain's last `parties` (undefined until the first since the brain attached).
   let parties = $state.raw<PartyStatus[] | undefined>(undefined);
+  // The brain's last `blessings` (undefined until the first since the brain attached).
+  let blessings = $state.raw<Blessings[] | undefined>(undefined);
   const names = $derived(namesOf(sessions));
   // Asked for whenever the connection opens or a brain attaches; changes come by themselves.
   $effect(() => {
     if (status !== "open" || !brain.attached) {
       parties = undefined;
+      blessings = undefined;
       return;
     }
     client.requestParties();
+    client.requestBlessings();
   });
   /** Bumped by Alt+G: the map panel opens its go box and focuses it. */
   let goAsked = $state(0);
@@ -329,6 +336,9 @@
       parties: (list) => {
         parties = list;
       },
+      blessings: (list) => {
+        blessings = list;
+      },
       event: (id, e) => {
         addEvent(dev, id, e);
         devChanged();
@@ -389,6 +399,8 @@
         ? "map"
         : e.code === PARTIES_PANEL_CODE
           ? "parties"
+          : e.code === BLESSINGS_PANEL_CODE
+          ? "blessings"
           : e.code === STATS_PANEL_CODE
           ? "stats"
           : e.code === SETTINGS_PANEL_CODE
@@ -558,8 +570,16 @@
             {sessions}
             {parties}
             attached={brain.attached}
+            characters={brain.characters}
             onsave={(party) => client.saveParty(party)}
             ondelete={(id) => client.deleteParty(id)}
+          />
+        {:else if devPrefs.panel === "blessings"}
+          <BlessingsPanel
+            {sessions}
+            {blessings}
+            attached={brain.attached}
+            onsave={(session, spells) => client.saveBlessings(session, spells)}
           />
         {:else if devPrefs.panel === "settings"}
           <SettingsPanel

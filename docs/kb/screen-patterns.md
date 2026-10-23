@@ -281,7 +281,7 @@ These texts are not in the C source. They are WCCMSG records that the C code for
 | `monster_leaves` | 218 | `The giant rat creeps out of the room to the north.` | mon, to | arrivemsg text 2 |
 | `monster_follows` | 211 | `The giant rat creeps in after you!` | (none) | arrivemsg text 3 |
 | `monster_death` | 605 | `The giant rat falls to the ground with a tortured squeak.` | monsters (all names sharing the text) | LJNMONST.C:1095 (text 3 of deathmsg) |
-| `mon_hits_you` | 238 | `The fierce kobold thief stabs you for 7 damage!` | mon, dmg | LJNCOMBT.C:3653 |
+| `mon_hits_you` | 238 | `The fierce kobold thief stabs you for 7 damage!` | mon, dmg | LJNCOMBT.C:3653 (a spellcasting monster's slot can name a spell message: the dark priest, priestess and gypsies name 17, whose text 1 "You cast %s on %s!" is the caster's own line, so "You cast bless on Aldric!" fits this role and is no blow [F]) |
 | `mon_hits_other` | 239 | `The giant rat bites Thornwyn for 5 damage!` | mon, victim, dmg | same, text 2 |
 | `mon_deflect_you` | 45 | `The kobold thief lunges at you, but your armour deflects the blow!` | mon, verb | LJNCOMBT.C:3746 |
 | `mon_deflect_other` | 44 | `... lunges at Thornwyn, but her armour deflects the blow!` | mon, verb, victim, pron | |
@@ -536,8 +536,8 @@ Regexes are matched against a whole line (stripped of trailing blanks). `<hit ve
 | `stunned` | You are too stunned to move anywhere! | `You are too stunned to move anywhere(?: to hide)?!` | LJNUTIL.C:2800 | [C] |
 | `too_heavy` | You are too heavy to move! | `You are too heavy to (?:move(?: anywhere)?\|be dragged)!` | LJNUTIL.C:2846 | [C] |
 | `ran_into_wall` | Bob ran into the wall to the north. | `(?P<who>.+) ran into the wall to the (?P<dir>\w+)\.` | LJNCMDB.C:5254 | [C] |
-| `sneaking` | Sneaking... | `Sneaking\.\.\.` | LJNUTIL.C:2815 | [C] F |
-| `sneak_attempt` | Attempting to sneak... | `Attempting to sneak\.\.\.(?P<rest>.*)` | LJNCMDA.C:2900 | [C] F |
+| `sneaking` | Sneaking... | `Sneaking\.\.\.` | LJNUTIL.C:2815 (moved by the leader), LJNCMDB.C:5209 (the player's own move): shown before the move's roll by any move made while sneaking; a failed roll ends the sneak silently (LJNUTIL.C:2909-2926). So it means the character was still sneaking when this move began, not that this move went unseen, and a move without it means the sneak had already ended (the move before failed, or something else ended it). Only Perfect Stealth makes a move sure. Silvermere's code does the same [C, silvermere code per John 2026-10-23] | [C] F |
+| `sneak_attempt` | Attempting to sneak... | `Attempting to sneak\.\.\.(?P<rest>.*)` | LJNCMDA.C:2900; a failure the character notices prints `You don't think you're sneaking.` on the same line (:2921), an unnoticed one nothing more. Seen on silvermere: the line ends CR LF, then the prompt about 0.4 to 1 s later, when the command delay ends [C silvermere live, 2026-10-23] | [C] F |
 | `sneak_fail` | You don't think you're sneaking. | `You don't think you're sneaking\.` | LJNCMDA.C:2921 | [C] |
 | `sneak_not_now` | You may not sneak right now! | `You may not sneak right now!` | LJNCMDA.C:2880 | [C] |
 | `sneak_off` | You are no longer sneaking. | `You are no longer sneaking\.` | LJNCMDB.C:5260 | [C] |

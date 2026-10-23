@@ -11,6 +11,68 @@ use crate::pack::WorldPack;
 /// Ability numbers in a spell's `abilities` (`kb/spells.md`).
 const ABILITY_DAMAGE: i64 = 17;
 const ABILITY_HEAL: i64 = 18;
+/// Descriptive Message: its value in `abilvals` is a message whose texts are the line shown
+/// when the spell ends, nothing, and the line its target sees when it is cast.
+const ABILITY_DESCRIPTIVE: i64 = 115;
+
+/// A lasting spell a character can keep on itself or its party (C-047): a general spell (type
+/// 3) with a duration, cast on the caster (target 1, 2, 6) or its party (10, 13).
+#[derive(Clone, Debug, PartialEq)]
+pub struct BuffDef {
+    pub name: String,
+    pub short: String,
+    pub level: i64,
+    pub mana: i64,
+    pub magery: i64,
+    pub magery_level: i64,
+    pub target: i64,
+    /// `duration`, `durinc`, `durlvls`, `durlvl`, `levelcap`.
+    duration: (i64, i64, i64, i64),
+    level_cap: i64,
+    /// The line shown when it ends ("The effects of bless wear off!"), when it has one with no
+    /// `%s` in it.
+    pub wear_off: Option<String>,
+    /// The line its target sees when it is cast ("You feel lucky!"), likewise.
+    pub felt: Option<String>,
+}
+
+impl BuffDef {
+    /// How many 5-s rounds it lasts cast at `level` (`kb/spells.md` "Lasting spells"):
+    /// `duration + durinc*(L/durlvls)`, `L` held to the level cap, at least `durlvl*L`; gear
+    /// that alters spell durations is not counted.
+    pub fn rounds(&self, level: i64) -> i64 {
+        let (duration, inc, lvls, per_level) = self.duration;
+        let l = if self.level_cap > 0 {
+            level.min(self.level_cap)
+        } else {
+            level
+        };
+        let rounds = duration + if lvls > 0 { inc * (l / lvls) } else { 0 };
+        rounds.max(per_level * l)
+    }
+
+    /// Cast at the party (no target word), not at the caster.
+    pub fn on_party(&self) -> bool {
+        matches!(self.target, 10 | 13)
+    }
+
+    /// A buff for tests: `rounds` long at any level.
+    pub fn flat(short: &str, name: &str, mana: i64, rounds: i64) -> BuffDef {
+        BuffDef {
+            name: name.to_owned(),
+            short: short.to_owned(),
+            level: 1,
+            mana,
+            magery: 1,
+            magery_level: 1,
+            target: 2,
+            duration: (rounds, 0, 1, 0),
+            level_cap: 0,
+            wear_off: Some(format!("The effects of {name} wear off!")),
+            felt: None,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SpellKind {
@@ -91,6 +153,8 @@ impl SpellDef {
 #[derive(Clone, Debug, Default)]
 pub struct Spells {
     spells: Vec<SpellDef>,
+    /// The lasting spells a caster can keep on itself or its party.
+    buffs: Vec<BuffDef>,
     /// Class name → (magery, magery level); 0 for a class that does not cast.
     classes: HashMap<String, (i64, i64)>,
 }
@@ -98,6 +162,7 @@ pub struct Spells {
 impl Spells {
     pub fn load(pack: &WorldPack) -> Result<Spells, Error> {
         let mut spells = Vec::new();
+        let mut buffs = Vec::new();
         for s in pack.spells()? {
             let Ok(v) = serde_json::from_str::<Value>(&s.raw) else {
                 continue;
@@ -118,6 +183,44 @@ impl Spells {
                 .and_then(|l| l.first())
                 .and_then(Value::as_i64);
             let instant = int("duration") == 0 && int("minval") > 0;
+            if s.spell_type == 3 && int("duration") > 0 && matches!(s.target, 1 | 2 | 6 | 10 | 13) {
+                let ints = |k: &str| -> Vec<i64> {
+                    v.get(k)
+                        .and_then(Value::as_array)
+                        .map(|l| l.iter().filter_map(Value::as_i64).collect())
+                        .unwrap_or_default()
+                };
+                let message = ints("abilities")
+                    .iter()
+                    .position(|&a| a == ABILITY_DESCRIPTIVE)
+                    .and_then(|i| ints("abilvals").get(i).copied())
+                    .map(|n| pack.message(n))
+                    .transpose()?
+                    .flatten();
+                let plain = |t: &str| {
+                    let t = t.trim();
+                    (!t.is_empty() && !t.contains('%')).then(|| t.to_owned())
+                };
+                buffs.push(BuffDef {
+                    name: s.name.clone(),
+                    short: s.short_name.clone(),
+                    level: s.level,
+                    mana: s.mana,
+                    magery,
+                    magery_level: int("magelvl"),
+                    target: s.target,
+                    duration: (
+                        int("duration"),
+                        int("durinc"),
+                        int("durlvls"),
+                        int("durlvl"),
+                    ),
+                    level_cap: int("levelcap"),
+                    wear_off: message.as_ref().and_then(|m| plain(&m[0])),
+                    felt: message.as_ref().and_then(|m| plain(&m[2])),
+                });
+                continue;
+            }
             let kind = match (s.spell_type, s.target) {
                 (0, 0 | 4 | 8) if first == Some(ABILITY_DAMAGE) && instant => SpellKind::Attack,
                 (3, 0 | 1 | 2 | 6) if first == Some(ABILITY_HEAL) && instant => SpellKind::Heal,
@@ -145,12 +248,28 @@ impl Spells {
             .into_iter()
             .map(|(n, m, l)| (n, (m, l)))
             .collect();
-        Ok(Spells { spells, classes })
+        Ok(Spells {
+            spells,
+            buffs,
+            classes,
+        })
     }
 
     /// Whether the class casts at all.
     pub fn casts(&self, class: &str) -> bool {
         self.classes.get(class).is_some_and(|&(m, _)| m > 0)
+    }
+
+    /// The lasting spell the `spells` screen listed by this short name and name, if the class
+    /// can use it.
+    pub fn buff(&self, class: &str, short: &str, name: &str) -> Option<&BuffDef> {
+        let &(magery, magery_level) = self.classes.get(class)?;
+        self.buffs.iter().find(|s| {
+            s.short == short
+                && s.name == name
+                && s.magery == magery
+                && s.magery_level <= magery_level
+        })
     }
 
     /// The spell the `spells` screen listed by this short name and name, if it is an attack or

@@ -11,7 +11,7 @@ use wayfarer_parse::typed::{GameEvent, Rest};
 use wayfarer_world::Key;
 
 use crate::executor::{Action, Expect, Outcome};
-use crate::modes::{Mode, Step, View};
+use crate::modes::{Healed, Mode, Step, View};
 use crate::policy::{REST_TRIES, REST_WAIT, RestAt, rest_at};
 
 /// Walks to a quiet room, and walks back, tried before giving up on each (a fight can stop a
@@ -39,6 +39,8 @@ pub(crate) struct Recover {
     warned: bool,
     /// When the next heal may go (a round after the last, or after the mana ran short).
     heal_ready: Option<Instant>,
+    /// The walk its last step asked for: out to rest (`true`) or back home.
+    last_walk: Option<bool>,
 }
 
 impl Recover {
@@ -74,21 +76,27 @@ impl Recover {
     /// A heal on the character, between fights: while HP is below the rest line, a heal
     /// spell and its mana are there, and not too many have gone. Resting waits for it.
     fn heal(&mut self, v: &View) -> Option<Step> {
-        let below = v.rest_heal_below();
+        let below = v.own_heal_below();
         if v.poisoned || below == 0 || v.hp? >= below {
             return None;
         }
         let spell = v.heal_spell()?;
+        if !v.heal_pays(spell, Healed::Me) {
+            return None;
+        }
         // Between casts it rests (a cast ends a rest; the next prompt without `(Resting)` has
         // it rest again).
         if self.heal_ready.is_some_and(|t| v.now < t) {
             return None;
         }
         self.heal_ready = Some(v.now + HEAL_GAP);
-        Some(Step::send(
-            Action::new(spell.short.clone(), Expect::Prompt),
-            format!("Recover: HP {}%, casting {}", v.hp?, spell.name),
-        ))
+        Some(
+            Step::send(
+                Action::new(spell.short.clone(), Expect::Prompt),
+                format!("Recover: HP {}%, casting {}", v.hp?, spell.name),
+            )
+            .doing("healing itself"),
+        )
     }
 
     fn done(&mut self) {
@@ -108,12 +116,11 @@ impl Mode for Recover {
         // again in the round Fight just cast in.
         if self.heal_ready.is_none_or(|t| v.now >= t)
             && crate::policy::quiet(&v.atlas.monsters, v.rules, &v.presence.here)
-            && v.party_heal(v.member_heal_resting(), v.rest_heal_below())
-                .is_some()
+            && v.rest_party_heal().is_some()
         {
             return Some("healing the party".to_owned());
         }
-        // The leader of a resting party rests with it (C-042).
+        // Every member of a resting party rests with it (C-042, C-045).
         if let Some(why) = v.party.party_rest()
             && !Self::low(v)
         {
@@ -137,10 +144,14 @@ impl Mode for Recover {
         // Between rests, a heal for a hurt member of the party: it shortens a party rest.
         if self.heal_ready.is_none_or(|t| v.now >= t)
             && crate::policy::quiet(&v.atlas.monsters, v.rules, &v.presence.here)
-            && let Some(cast) = v.party_heal(v.member_heal_resting(), v.rest_heal_below())
+            && let Some(cast) = v.rest_party_heal()
         {
             self.heal_ready = Some(v.now + HEAL_GAP);
-            return crate::fight::cast_step(&cast, "Recover");
+            let mut step = crate::fight::cast_step(&cast, "Recover");
+            if v.party.party_rest().is_some() {
+                step.narration.push_str(" (party rest)");
+            }
+            return step;
         }
         if self.walks_back > 0 && !Self::rested(v) {
             // Low again after giving up the walk home: a new rest, from here.
@@ -153,9 +164,11 @@ impl Mode for Recover {
             // everyone is (the coordinator lifts it); then it walks back home as after any rest.
             if let Some(why) = v.party.party_rest() {
                 if self.walks_out < WALKS
+                    && v.party.following().is_none()
                     && let RestAt::Walk(quiet) = rest_at(v.atlas, v.room, v.certain, v.traveller)
                 {
                     self.walks_out += 1;
+                    self.last_walk = Some(true);
                     return Step::walk(
                         quiet,
                         format!(
@@ -164,7 +177,7 @@ impl Mode for Recover {
                         ),
                     );
                 }
-                return Step::wait(format!("Recover: {why}"));
+                return Step::wait(format!("Recover: {why}")).doing("waiting for the party");
             }
             if let Some((home, name)) = self.shunned(v) {
                 // Still active: it walks back once the sighting is forgotten.
@@ -176,6 +189,7 @@ impl Mode for Recover {
             // A follower rests where the leader is and goes where it goes.
             if self.away(v) && self.walks_back < WALKS && v.party.following().is_none() {
                 self.walks_back += 1;
+                self.last_walk = Some(false);
                 let home = self.home.expect("away from home");
                 return Step::walk(
                     home,
@@ -207,6 +221,7 @@ impl Mode for Recover {
             match rest_at(v.atlas, v.room, v.certain, v.traveller) {
                 RestAt::Walk(quiet) => {
                     self.walks_out += 1;
+                    self.last_walk = Some(true);
                     return Step::walk(
                         quiet,
                         format!(
@@ -243,10 +258,12 @@ impl Mode for Recover {
             )
             .warning();
         }
-        Step::send(
-            rest,
-            format!("Recover: resting to {}% in {here}", v.rest_until()),
-        )
+        let why = if v.party.party_rest().is_some() && !Self::low(v) {
+            "Recover: resting with the party".to_owned()
+        } else {
+            format!("Recover: resting to {}% in {here}", v.rest_until())
+        };
+        Step::send(rest, why)
     }
 
     fn on_event(&mut self, ev: &GameEvent, now: Instant) {
@@ -274,6 +291,16 @@ impl Recover {
     /// HP (a flee line above [`REST_BELOW`] leaves HP above it).
     pub fn after_flee(&mut self) {
         self.active = true;
+    }
+
+    /// The walk its last step asked for did not go (the bot sneaks first, C-048): it is not
+    /// counted against [`WALKS`].
+    pub fn walk_deferred(&mut self) {
+        match self.last_walk.take() {
+            Some(true) => self.walks_out = self.walks_out.saturating_sub(1),
+            Some(false) => self.walks_back = self.walks_back.saturating_sub(1),
+            None => {}
+        }
     }
 
     /// Still recovering (it has not finished since it took control).

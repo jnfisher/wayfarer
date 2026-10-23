@@ -60,6 +60,9 @@ pub(crate) enum PartyRole {
         with_leader: bool,
         /// The monster the leader fights, when it is with the leader.
         assist: Option<String>,
+        /// The party rests (C-045): why. A follower below its own rest-until lines rests with
+        /// it, as the leader does.
+        rest: Option<String>,
         /// The other members with it (the leader among them), for its heals.
         mates: Vec<Mate>,
     },
@@ -74,6 +77,15 @@ pub(crate) struct Mate {
     pub missing: i64,
     /// Below its own flee line.
     pub flee: bool,
+    /// Its rest-until HP line, per cent: what a healer heals it up to in a party rest (C-045).
+    pub until: i32,
+    /// The HP it is short of that line.
+    pub short: i64,
+    /// HP per hour it gets back resting, when its stats are known.
+    pub hp_rate: Option<i64>,
+    /// Seconds until its mana is back at its rest-until mana line (0 for one that does not
+    /// cast; `None` when that is not known).
+    pub mana_wait: Option<i64>,
 }
 
 impl PartyRole {
@@ -101,11 +113,12 @@ impl PartyRole {
         }
     }
 
-    /// Why this leader rests the party, when it does.
+    /// Why the party rests, when it does: the leader rests it, and each member with it rests
+    /// with it (C-045).
     pub fn party_rest(&self) -> Option<&str> {
         match self {
-            PartyRole::Leader { rest, .. } => rest.as_deref(),
-            _ => None,
+            PartyRole::Leader { rest, .. } | PartyRole::Follower { rest, .. } => rest.as_deref(),
+            PartyRole::None => None,
         }
     }
 
@@ -149,6 +162,14 @@ pub(crate) struct Health {
     pub rested: bool,
     /// Below its flee line.
     pub flee: bool,
+    /// Its rest-until HP line, and the HP it is short of it.
+    pub until: i32,
+    pub short: Option<i64>,
+    /// HP per hour it gets back resting, when its stats are known.
+    pub hp_rate: Option<i64>,
+    /// Seconds until its mana is back at its rest-until mana line (0 for one that does not
+    /// cast).
+    pub mana_wait: Option<i64>,
 }
 
 /// A follower's walk back to its leader, as its session sees it.
@@ -624,6 +645,7 @@ impl Parties {
                         assist: (joined && fi.room.is_some() && fi.room == l.room)
                             .then(|| l.target.clone())
                             .flatten(),
+                        rest: None,
                         mates: Vec::new(),
                     },
                 );
@@ -689,6 +711,10 @@ impl Parties {
                             hp: i.health.hp?,
                             missing: i.health.missing?,
                             flee: i.health.flee,
+                            until: i.health.until,
+                            short: i.health.short.unwrap_or(0),
+                            hp_rate: i.health.hp_rate,
+                            mana_wait: i.health.mana_wait,
                         })
                     })
                     .collect();
@@ -725,8 +751,13 @@ impl Parties {
                         None => name(id, i),
                     })
                     .collect();
-                if let Some(PartyRole::Leader { rest, .. }) = plan.roles.get_mut(&def.leader) {
-                    *rest = Some(format!("Resting for {}", who.join(", ")));
+                let why = format!("Resting for {}", who.join(", "));
+                for (id, _) in &together {
+                    if let Some(PartyRole::Leader { rest, .. } | PartyRole::Follower { rest, .. }) =
+                        plan.roles.get_mut(*id)
+                    {
+                        *rest = Some(why.clone());
+                    }
                 }
                 for (id, i) in &unrested {
                     if let Some(ms) = members.iter_mut().find(|ms| ms.session == **id)
@@ -798,6 +829,10 @@ mod tests {
                 low: false,
                 rested: true,
                 flee: false,
+                until: 85,
+                short: Some(0),
+                hp_rate: Some(600),
+                mana_wait: Some(0),
             },
             target: None,
         }
@@ -885,6 +920,7 @@ mod tests {
                 rejoin: None,
                 with_leader: false,
                 assist: None,
+                rest: None,
                 mates: Vec::new(),
             }
         );
@@ -1165,6 +1201,10 @@ mod tests {
             low,
             rested: false,
             flee,
+            until: 85,
+            short: Some(i64::from((85 - hp).max(0))),
+            hp_rate: Some(600),
+            mana_wait: Some(0),
         };
     }
 
@@ -1190,11 +1230,30 @@ mod tests {
             plan.roles["penny"].party_rest(),
             Some("Resting for Lauren (60%)")
         );
+        // The follower rests with the party too (C-045): above its rest line, it would
+        // otherwise stand and get its HP back at the walking rate.
+        assert_eq!(
+            plan.roles["lauren"].party_rest(),
+            Some("Resting for Lauren (60%)")
+        );
         // Everyone rested: the rest ends and the loop goes on.
         m.get_mut("lauren").unwrap().health.rested = true;
         let plan = p.plan(&m, now);
         assert_eq!(plan.roles["penny"].party_rest(), None);
+        assert_eq!(plan.roles["lauren"].party_rest(), None);
         assert_eq!(plan.roles["penny"].hold(), None);
+    }
+
+    #[tokio::test]
+    async fn a_follower_out_of_the_room_does_not_rest_for_the_party() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        let mut m = formed(&mut p, now);
+        hurt(m.get_mut("penny").unwrap(), 40, true, false);
+        m.get_mut("lauren").unwrap().room = Some((1, 9));
+        let plan = p.plan(&m, now);
+        assert!(plan.roles["penny"].party_rest().is_some());
+        assert_eq!(plan.roles["lauren"].party_rest(), None);
     }
 
     #[tokio::test]
@@ -1276,7 +1335,11 @@ mod tests {
                 name: "lauren".into(),
                 hp: 40,
                 missing: 60,
-                flee: false
+                flee: false,
+                until: 85,
+                short: 45,
+                hp_rate: Some(600),
+                mana_wait: Some(0),
             }]
         );
         assert_eq!(plan.roles["lauren"].mates()[0].name, "penny");

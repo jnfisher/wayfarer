@@ -727,3 +727,37 @@ fn targets_are_hostile_attackers_first_and_never_skipped() {
         &["giant rat".into()]
     ));
 }
+
+/// The bot says in a few words what it is doing, for the Parties panel (C-046).
+#[tokio::test(start_paused = true)]
+async fn the_bot_says_what_it_is_doing() {
+    let (mut g, run) = in_arena(&["large giant rat"]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    let (seen, _) = g.close(run).await;
+    assert_eq!(
+        bot(&seen).doing.as_deref(),
+        Some("attacking large giant rat")
+    );
+
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 20).await;
+    g.expect("u", at_hp(&room(NARROW_ROAD), 20));
+    g.narrated("Recover: walking to Newhaven, Narrow Road to rest (Newhaven, Arena spawns)")
+        .await;
+    let (seen, _) = g.close(run).await;
+    assert_eq!(bot(&seen).doing.as_deref(), Some("walking to rest"));
+
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 20).await;
+    g.expect("u", at_hp(&room(NARROW_ROAD), 20));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
+        .await;
+    g.bot(BotAction::Pause).await;
+    g.narrated("Paused: asked to pause").await;
+    let (seen, _) = g.close(run).await;
+    // Paused: nothing.
+    assert_eq!(bot(&seen).doing, None);
+}

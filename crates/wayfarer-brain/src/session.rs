@@ -307,6 +307,8 @@ pub(crate) struct Session {
     settings_layer: Layer,
     /// The rows of the last `spells` screen, and the attacks and heals among them.
     spell_rows: Vec<SpellRow>,
+    /// The lasting spells the player ticked for the character, by short name (C-047).
+    blessings: Vec<String>,
     /// A `spells` screen has been seen, so empty rows mean no spells rather than not known.
     spells_seen: bool,
     spellbook: Spellbook,
@@ -464,6 +466,7 @@ impl Session {
             settings_check: None,
             settings_layer: Layer::Character,
             spell_rows: Vec::new(),
+            blessings: Vec::new(),
             spells_seen: false,
             spellbook: Spellbook::default(),
             map_radius: MAP_RADIUS,
@@ -792,6 +795,12 @@ impl Session {
         }
         if combat && self.walker.walking() {
             self.stop_walk("combat started", out);
+        }
+        // The game noticed a sneaking move, or a move showed no `Sneaking...` (C-048): the
+        // bot's walk stops, and it sneaks again before the next one.
+        self.bot.sneak_arrived(self.position.best());
+        if self.bot.sneak_broken(&self.settings) && self.walker.walking() && self.bot_walk {
+            self.stop_walk("the sneak failed", out);
         }
         self.bot_held(out);
         self.drive(now, out);
@@ -2735,6 +2744,7 @@ impl Session {
         self.position
             .refresh(&atlas, &self.character.snapshot(), self.clock.instant());
         let in_combat = self.combat(now);
+        let regen = self.regen();
         let c = self.character.state();
         let view = View {
             atlas: &atlas,
@@ -2760,6 +2770,10 @@ impl Session {
                 .zip(c.mana_max)
                 .map(|(m, max)| (i64::from(m), i64::from(max))),
             hp_missing: c.hp.zip(c.hp_max).map(|(h, m)| i64::from(m - h)),
+            hp_points: c
+                .hp
+                .zip(c.hp_max)
+                .map(|(h, m)| (i64::from(h), i64::from(m))),
             level: c.level.map_or(1, i64::from),
             book: &self.spellbook,
             load: c
@@ -2767,6 +2781,7 @@ impl Session {
                 .as_ref()
                 .and_then(|e| Some((u64::from(e.current?), u64::from(e.max?)))),
             coins: c.coins.as_ref().map_or(&[], |c| c.carried.as_slice()),
+            regen,
         };
         let (act, says) = self.bot.tick(&view);
         self.say(says, out);
@@ -2789,8 +2804,9 @@ impl Session {
                 }
             },
             Some(Do::Walk(to)) => {
-                // Task's legs pipeline their moves.
-                let pipelined = self.bot.task_walking();
+                // Task's legs pipeline their moves; a sneaker's do not, so a move that showed no
+                // `Sneaking...` can be followed by a sneak (C-048).
+                let pipelined = self.bot.task_walking() && !self.settings.bool("movement.sneak");
                 let next =
                     self.walker
                         .start_with(&mut self.position, &atlas, to, false, pipelined, false);
@@ -2852,6 +2868,7 @@ impl Session {
             && self.settings.choice("spells.attack") == "auto")
             || (self.spellbook.has_heal() && self.settings.choice("spells.heal") == "auto");
         let uses_mana = mana.is_some() && casts;
+        let regen = self.regen();
         Health {
             hp,
             missing: c.hp.zip(c.hp_max).map(|(h, m)| i64::from(m - h)),
@@ -2860,6 +2877,41 @@ impl Session {
             rested: hp.is_none_or(|h| h >= line("health.rest_until_hp"))
                 && (!uses_mana || mana.is_none_or(|m| m >= line("health.rest_mana_until"))),
             flee: hp.is_some_and(|h| h < self.bot.flee_below()),
+            until: line("health.rest_until_hp"),
+            short: c.hp.zip(c.hp_max).map(|(h, m)| {
+                (i64::from(m) * i64::from(line("health.rest_until_hp")) / 100 - i64::from(h)).max(0)
+            }),
+            hp_rate: regen.hp,
+            mana_wait: if uses_mana {
+                c.mana.zip(c.mana_max).and_then(|(m, max)| {
+                    let short = i64::from(max) * i64::from(line("health.rest_mana_until")) / 100
+                        - i64::from(m);
+                    crate::regen::wait_secs(short, regen.mana?)
+                })
+            } else {
+                Some(0)
+            },
+        }
+    }
+
+    /// How fast the character gets HP and mana back, from its level and stats.
+    fn regen(&self) -> crate::regen::Regen {
+        let c = self.character.state();
+        let level = c.level.map_or(1, i64::from);
+        let stats = c.stats.clone().unwrap_or_default();
+        let mana = self
+            .atlas
+            .as_ref()
+            .zip(c.class.as_deref())
+            .and_then(|(a, class)| {
+                let &(magery, magery_level) = a.class_magery.get(class)?;
+                crate::regen::mana_per_hour(magery, magery_level, level, &stats)
+            });
+        crate::regen::Regen {
+            hp: stats
+                .health
+                .map(|h| crate::regen::hp_per_hour(level, i64::from(h))),
+            mana,
         }
     }
 
@@ -3020,6 +3072,55 @@ impl Session {
         }
         if let (Some(atlas), Some(class)) = (&self.atlas, &self.character.state().class) {
             self.spellbook = Spellbook::learn(&atlas.spells, class, &self.spell_rows);
+        }
+        self.refresh_blessings();
+    }
+
+    /// The lasting spells the player ticked for the character (C-047), by short name.
+    pub(crate) fn set_blessings(&mut self, chosen: Vec<String>) {
+        self.blessings = chosen;
+        self.refresh_blessings();
+    }
+
+    /// The lasting spells the character knows (its `spells` screen) that it can keep on
+    /// itself or its party.
+    fn known_buffs(&self) -> Vec<wayfarer_world::BuffDef> {
+        let (Some(atlas), Some(class)) = (&self.atlas, &self.character.state().class) else {
+            return Vec::new();
+        };
+        self.spell_rows
+            .iter()
+            .filter_map(|(_, _, short, name)| atlas.spells.buff(class, short, name))
+            .cloned()
+            .collect()
+    }
+
+    /// The bot keeps on the ticked spells the character knows.
+    fn refresh_blessings(&mut self) {
+        let kept = self
+            .known_buffs()
+            .into_iter()
+            .filter(|b| self.blessings.contains(&b.short))
+            .collect();
+        self.bot.set_blessings(kept);
+    }
+
+    /// The character's lasting spells for the Blessings panel.
+    pub(crate) fn blessings_status(&self) -> wayfarer_proto::Blessings {
+        let now = self.clock.instant();
+        wayfarer_proto::Blessings {
+            session: self.id.clone(),
+            spells: self
+                .known_buffs()
+                .into_iter()
+                .map(|b| wayfarer_proto::BlessingSpell {
+                    chosen: self.blessings.contains(&b.short),
+                    on: self.bot.blessed(&b.short, now),
+                    mana: u32::try_from(b.mana).unwrap_or(0),
+                    short: b.short,
+                    name: b.name,
+                })
+                .collect(),
         }
     }
 
@@ -3236,6 +3337,13 @@ impl Session {
                             .would_fight(&atlas, self.rules.rules(), &self.presence)
                     {
                         self.stop_walk("a monster to fight", out);
+                    }
+                    self.bot.sneak_arrived(self.position.best());
+                    if self.bot_walk
+                        && self.walker.walking()
+                        && self.bot.sneak_broken(&self.settings)
+                    {
+                        self.stop_walk("the sneak failed", out);
                     }
                     // A pause asked for while the walker's action was in flight.
                     let says = self.bot.settle();

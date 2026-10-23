@@ -36,6 +36,8 @@ struct World {
     invited: bool,
     following: bool,
     rooms: BTreeMap<String, Key>,
+    /// HP of 35 where a test set it: the prompts of the game's answers show it.
+    hp: BTreeMap<String, i32>,
 }
 
 /// A room as `look` shows it; the Arena with nothing in it, so nobody stops to fight.
@@ -201,6 +203,7 @@ impl Gateway {
                     ),
                 ]
             }
+            "sneak" => me(said("Attempting to sneak...")),
             "leave" => {
                 self.world.following = false;
                 me(said(&format!(
@@ -246,6 +249,10 @@ impl Gateway {
                 let answers = self.answer(session, text);
                 for (i, (s, t)) in answers.into_iter().enumerate() {
                     let t = if i == 0 { format!("{text}\r\n{t}") } else { t };
+                    let t = match self.world.hp.get(&s) {
+                        Some(hp) => t.replace("[HP=35", &format!("[HP={hp}")),
+                        None => t,
+                    };
                     self.output(&s, t).await;
                 }
             }
@@ -458,4 +465,55 @@ async fn a_follower_the_game_dropped_walks_back_and_joins_again() {
         .map(|(_, l)| l.as_str())
         .collect();
     assert_eq!(back[back.len() - 2..], [up.as_str(), "follow penny"]);
+}
+
+/// A party rest has every member below its rest-until line rest (C-045): the follower at 71%
+/// (rest below 60, until 85) rests for the leader at 40%.
+#[tokio::test(start_paused = true)]
+async fn a_follower_between_its_lines_rests_with_the_party() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    formed(&mut g).await;
+    for (s, hp) in [(LEADER, 14), (FOLLOWER, 25)] {
+        g.world.hp.insert(s.to_owned(), hp);
+        g.output(
+            s,
+            said(&format!("Health:    {hp}/35    [{}%]", hp * 100 / 35))
+                .replace("[HP=35", &format!("[HP={hp}")),
+        )
+        .await;
+    }
+    g.until(|m| match m {
+        ToGateway::InputLine { session, text } if session == FOLLOWER && text == "rest" => Some(()),
+        _ => None,
+    })
+    .await;
+    // The leader's Recover has it too: it walks the party out of the Arena (it spawns) to
+    // rest.
+    assert!(
+        g.lines
+            .iter()
+            .any(|(s, t)| s == LEADER && (t == "rest" || t == "u")),
+        "{:?}",
+        g.lines
+    );
+}
+
+/// A follower with Sneak on sneaks (C-048), and once sneaking does not again; the leader,
+/// standing in the Arena, does not: it sneaks only before it moves.
+#[tokio::test(start_paused = true)]
+async fn a_sneaking_follower_sneaks_with_the_party() {
+    let over = wayfarer_settings::Overrides::parse("[movement]\nsneak = true\n").unwrap();
+    let settings =
+        wayfarer_settings::Settings::resolve(&[(wayfarer_settings::Layer::Character, &over)])
+            .unwrap();
+    let (mut g, _run) = Gateway::start(brain(None).with_settings(settings)).await;
+    formed(&mut g).await;
+    let wait = async {
+        loop {
+            g.next().await;
+        }
+    };
+    let _ = tokio::time::timeout(Duration::from_secs(30), wait).await;
+    let sneaks: Vec<_> = g.lines.iter().filter(|(_, t)| t == "sneak").collect();
+    assert_eq!(sneaks, [&(FOLLOWER.to_owned(), "sneak".to_owned())]);
 }

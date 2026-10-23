@@ -887,6 +887,44 @@ the bot stopped or paused like the other errands ("Errands"), and `cancel_errand
    mend (8 gold)". Something attacking, or the bot starting, ends it ("Spells stopped: something is
    attacking"), keeping what was bought.
 
+## Sneaking
+
+With *Sneak* on (`movement.sneak`, Movement, off by default; C-048) the bot keeps the
+character sneaking. An `Attempting to sneak...` that did not say it failed is only a hope: a
+failure the character's perception does not catch prints nothing. A move tells more, about the
+move before it: a move made while sneaking, the character's own or its leader's, prints
+`Sneaking...` before the game rolls for it, and a failed roll ends the sneak silently. So
+`Sneaking...` means the character was still sneaking when the move began (this move may still
+have been seen), and a move without it means the sneak had already ended: the move before it
+failed, or something else ended it. Only Perfect Stealth makes a move sure. The bot believes the
+character sneaking after an attempt with no failure and after each `Sneaking...`, and stops
+believing it on a move without one, the failure the character noticed (`You don't think
+you're sneaking.` on the same line), `You are no longer sneaking.`, `You make a sound as you
+enter the room!`, a fight, a cast, a rest or a death. It never tries to sneak with a monster
+in the room (`kb/classes/ninja.md`: the chance falls by one for every other player and monster
+there; a fight comes first anyway).
+
+- **Before a move the bot makes itself** (a leader's or a solo character's loop, Recover's
+  walks to a quiet room and back; never Flee), it sends `sneak` until an attempt does not say it
+  failed, narrated "Sneak: sneaking (attempt 2)". `You may not sneak right now!` (just
+  attacked) or `You must wait before you may do that!` waits a round. A walk in progress stops
+  when a move shows no `Sneaking...` or the game says the sneak ended, and the bot sneaks again
+  before going on; a sneaker's moves are not pipelined, so no move has gone ahead by then. A
+  failure found by a move counts as a failed attempt. After five failures in a row it moves on
+  unsneaked, with a warning, until the next fight.
+- **A follower**, which the game moves with its leader, sneaks whenever it is with the party
+  and not sneaking, not fighting, not resting and with no monster in the room: after each
+  fight, after a failure it noticed, and after a party move that showed no `Sneaking...`.
+- **Backstab.** With *Open with a backstab* on (`combat.backstab`, Combat, on by default),
+  Fight opens each fight of a sneaker with `bs <monster>` instead of its attack command, and,
+  while it believes the character sneaking, instead of its attack spell too. Not sneaking after
+  all, `bs` is a plain attack, which is fine. Any sneaker may try it: a one-handed weapon made for backstabbing,
+  or bare hands, backstabs; any other weapon prints `You cannot backstab with this weapon.` and
+  strikes a normal blow, and the fight goes on as any other.
+- On the local server the attempt's line (with or without the failure) ends with CR LF and the
+  prompt follows once the command delay is over, about half a second to a second later; the
+  executor takes the attempt's line as the answer and is done at that prompt.
+
 ## Coins and the attack command
 
 **Loot** is a mode between Flee and Recover: when nothing is attacking and the bot is not
@@ -963,7 +1001,22 @@ scroll read since is found the next time.
   `health.rest_mana_below` (30%), to `health.rest_mana_until` (90%), on the same rules as an HP
   rest (a quiet room if one is near, a rest started is finished). With both spell settings `off`
   mana is ignored.
-- **Not done.** Buffs (blur, bless), light, area spells, cures, spells
+- **Blessings** (C-047). The lasting spells the player ticks for a character in the
+  Blessings panel (`blessings_save`, kept in the store) are kept on. They are the general
+  spells (type 3) with a duration that the character's `spells` screen lists and that are cast
+  on the caster (target 1, 2 or 6) or its party (10 or 13): bless, barkskin, holy aura. A Bless
+  mode, after Recover and before Fight in the stack, casts one (`bles`, no target word) when
+  nothing attacks and it is not in combat, the party is not resting (a cast ends a rest), the
+  spell is not believed on and the cast leaves the mana at or above `health.rest_mana_below`;
+  narrated "Blessing: casting bless". A cast is on from its prompt for as long as the spell
+  lasts at the character's level (`duration + durinc*(L/durlvls)` 5-s rounds, the level held to
+  the cap, at least `durlvl*L`), or until its wear-off line (the spell's Descriptive Message,
+  `kb/spells.md`: "The effects of bless wear off!"); the line its target sees ("You feel
+  lucky!") turns it on too, whoever cast it; a death ends them all. A failed cast ("You
+  attempt to cast bless, but fail.", or no mana) is tried again after a round; three in a row
+  hold the spell for five minutes, since one already on may not renew. The panel shows which
+  are on (`blessings`).
+- **Not done.** Buffs on other members, light, area spells, cures, spells
   that need a target the bot does not pick (a Thief's backstab is not a spell), and the
   Witchunter's no-cast rule are later slices. The average damage is the KB's formula; whether
   one spell beats another against resistances is not modelled.
@@ -1028,7 +1081,10 @@ own, one at a time:
   them is back to its own rest-until lines. The leader's loop holds; its Recover rests too,
   walking the party to a quiet room first when the room spawns (the game's follow brings the
   others), and waits there, narrated "Recover: Resting for Lauren (62%)", while it is rested
-  itself. Followers below their lines rest where they stand. A monster that comes is fought,
+  itself. Every follower with the leader that is below its own rest-until lines rests where
+  it stands too ("Recover: resting with the party"), not only those below their rest lines:
+  standing, a character gets its HP back several times more slowly than resting (C-045). A
+  monster that comes is fought,
   then the rest goes on. After `party.wait_rest_minutes` (Party, 10 by default) the leader's
   loop stops with a warning naming who has not recovered. Afterwards the leader walks back to
   its loop as after any rest.
@@ -1058,6 +1114,18 @@ own, one at a time:
   rain. In a fight the healer goes back to its target after the cast, as after its own heal.
   A Witchunter is healed like anyone, though its anti-magic may resist the cast. There is no
   mana kept back for heals.
+- **Heals in a party rest** (C-045). While the party rests, a healer heals each member up to
+  that member's own rest-until line (`health.rest_until_hp`), itself included, instead of
+  only below the heal-a-member line, and says so ("Recover: casting minor healing on lauren
+  (party rest)"). A cast goes only when it leaves the rest no longer than it is: the rest
+  lasts until the slowest member has its HP back at the resting rate and its mana back at
+  its rest-until mana line, and the cast moves HP off someone's wait onto the healer's mana.
+  The rates are the game's base ones from the level and the stats `st` shows (`kb/recovery.md`:
+  `max((level+20)*Hea/750, 1)` HP a unit, one unit per 30 s and three more every 21 s
+  resting; mana `stat*(level+20)*(magery level+2)/1650` per 30 s whether resting or not, the
+  stat by magery); gear that alters them is not counted. Until a member's stats are known the
+  cast goes only if it leaves the healer above its rest mana line. A heal-a-member line of 0
+  turns these heals off too.
 - **The UIs** get `parties` when one changes or a member's state does: `joined`,
   `not_joined` ("forming up", "in another room"), `away` (with why), `separated`, `walking`,
   `unreachable` or `resting` (with its HP).

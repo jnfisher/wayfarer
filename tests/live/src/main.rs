@@ -99,12 +99,15 @@ enum Scenario {
     /// C-037: take a lit torch into the dark Secret Passage and stay a while, so a character
     /// left there with no light (`--scenario hidden`, started first) can search its way out.
     Rescue,
+    /// What `sneak` prints, raw, twice, and what the next command shows (C-048): whether a
+    /// prompt follows the attempt.
+    Sneak,
 }
 
 fn usage() -> ! {
     eprintln!(
         "usage: wayfarer-live --wayfarer BIN --out DIR [--addr HOST:PORT] [--pool FILE] \
-         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart|flee|typing|soak|goto|flee-from|hidden|rescue]\n\
+         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart|flee|typing|soak|goto|flee-from|hidden|rescue|sneak]\n\
          soak: --char NAME --minutes N [--anchor MAP:ROOM] [--radius R] [--skip MAP:ROOM ...] [--loop ID] [--flee-from NAME ...] [--save-as NAME [--add-stop MAP:ROOM[@N] ...]]\n\
          flee-from: [--flee-from NAME ...]\n\
          (run it through scripts/live-check.sh)"
@@ -151,6 +154,7 @@ fn args() -> Args {
                     "flee-from" => Scenario::FleeFrom,
                     "hidden" => Scenario::Hidden,
                     "rescue" => Scenario::Rescue,
+                    "sneak" => Scenario::Sneak,
                     _ => usage(),
                 }
             }
@@ -666,6 +670,17 @@ async fn run(ctx: &mut Ctx, pool: &Pool) -> Result<String, String> {
         let walked = walk_scenario(ctx, &mut gw).await;
         let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
         return if walked && logged_off {
+            Ok(who)
+        } else {
+            Err(who)
+        };
+    }
+    if ctx.args.scenario == Scenario::Sneak {
+        let started = Instant::now();
+        let seen = sneak_lines(&mut gw).await;
+        ctx.record("`sneak`, raw", started, &seen);
+        let logged_off = stop(ctx, "stop the gateway: log off", gw).await;
+        return if seen.is_ok() && logged_off {
             Ok(who)
         } else {
             Err(who)
@@ -1243,6 +1258,23 @@ async fn typed_answer(
         },
     )
     .await
+}
+
+/// `sneak` twice and then `st`, each answer's raw text (escapes shown) after 4 s of quiet:
+/// whether the attempt's line ends with a bare CR and whether a prompt follows it.
+async fn sneak_lines(gw: &mut Gateway) -> Result<String, String> {
+    let mut seen = String::new();
+    for line in ["sneak", "sneak", "st"] {
+        let seq = gw.last_seq();
+        gw.send_line(line).await?;
+        let _ = gw
+            .wait_quiet(Duration::from_secs(8), Duration::from_secs(4), line, |g| {
+                g.last_seq() > seq
+            })
+            .await;
+        seen.push_str(&format!("{line}: {:?}\n", gw.text_after(seq)));
+    }
+    Ok(seen)
 }
 
 /// `search <dir>` by hand until the game says it found the exit, up to `tries` times; none when

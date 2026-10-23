@@ -6,6 +6,7 @@ import {
   elsewhere,
   followingName,
   memberLine,
+  activityLine,
   newDraft,
   setLeader,
   toggleFollower,
@@ -97,5 +98,23 @@ describe("drafts", () => {
   it("a new leader stops following", () => {
     const d = { id: "", leader: "penny", followers: ["lauren", "faye"] };
     expect(setLeader(d, "lauren")).toEqual({ id: "", leader: "lauren", followers: ["faye"] });
+  });
+});
+
+describe("activityLine", () => {
+  it("says what a running bot is doing, with the HP", () => {
+    expect(
+      activityLine({
+        hp: 25,
+        hp_max: 35,
+        bot: { state: "running", mode: "fight", narration: "Fight: rat", doing: "attacking large giant rat" },
+      }),
+    ).toBe("attacking large giant rat · 71%");
+  });
+  it("says paused or stopped instead, and the HP alone without a bot", () => {
+    expect(activityLine({ bot: { state: "paused", mode: "idle", narration: "", doing: "resting" } })).toBe("paused");
+    expect(activityLine({ hp: 35, hp_max: 35 })).toBe("100%");
+    expect(activityLine(undefined)).toBeNull();
+    expect(activityLine({})).toBeNull();
   });
 });

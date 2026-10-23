@@ -8,6 +8,7 @@
 
 import { PROTOCOL } from "../proto";
 import type {
+  Blessings,
   BotAction,
   CharacterState,
   Chunk,
@@ -98,6 +99,8 @@ export interface GatewayEvents {
   found?(found: FoundMessage): void;
   /** Every party and how its members stand, for the Parties panel and the tiles' chips. */
   parties?(parties: PartyStatus[]): void;
+  /** Each character's lasting spells, ticked and on, for the Blessings panel. */
+  blessings?(characters: Blessings[]): void;
 }
 
 export interface GatewayOptions {
@@ -326,6 +329,16 @@ export class GatewayClient {
     return this.send({ type: "party_join", session, party });
   }
 
+  /** Ask for every character's blessings (a `blessings` answer); false when not connected. */
+  requestBlessings(): boolean {
+    return this.send({ type: "blessings_request" });
+  }
+
+  /** The lasting spells (short names) `session` keeps on; false when not connected. */
+  saveBlessings(session: string, spells: string[]): boolean {
+    return this.send({ type: "blessings_save", session, spells });
+  }
+
   private send(message: ToGateway): boolean {
     if (!this.welcomed || !this.socket || this.socket.readyState !== OPEN) return false;
     this.socket.send(JSON.stringify(message));
@@ -465,6 +478,9 @@ export class GatewayClient {
         break;
       case "parties":
         this.opts.events.parties?.(message.parties);
+        break;
+      case "blessings":
+        this.opts.events.blessings?.(message.characters);
         break;
     }
   }

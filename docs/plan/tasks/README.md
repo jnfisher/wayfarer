@@ -73,6 +73,7 @@ Cards don't repeat these:
 | 4 | M3: the solo bot: Flee, the store, Task mode running a loop, typing beside the bot, replay, the timed run | 2026-10-19, after John accepted M2 |
 | 5 | M4 onward | When the wave before is merged and John has played with it |
 | 6 | M7: party play, brought forward (`../10-party-play.md`) | 2026-10-22, after John approved the design |
+| 7 | Party upkeep: shorter rests, member activity, blessings, sneaking | 2026-10-23, at John's request after wave 6 |
 
 ## Index (wave 1, M0)
 
@@ -147,6 +148,17 @@ Wave 6: C-038; then C-039; then C-040 and C-041 together (UI and brain); then C-
 C-043. **Wave 6 is done** when Penny leads Lauren, Faye and Manuel round a loop for an hour on
 John's rig: they form up by themselves, rest and flee together, a healer keeps the others up,
 and a follower walked away by hand comes back and re-joins.
+
+## Index (wave 7, party upkeep)
+
+| Id | Title | Tier | Size | Depends | Review |
+|---|---|---|---|---|---|
+| [C-045](C-045-party-rest-heals.md) | Shorter party rests: every member rests, healers heal up to the rest-until lines while the mana keeps up | B | M | C-043 | |
+| [C-046](C-046-member-activity.md) | What each member is doing: a short activity on the bot's state, on the Parties panel | B | S | C-040 | |
+| [C-047](C-047-blessings.md) | Blessings: each character keeps up the self-buffs the player ticks, in a Blessings panel | B | M | C-043 | |
+| [C-048](C-048-sneak-and-backstab.md) | Sneaking and backstab: sneak before moving and after a fight, re-sneak on failure, open with `bs` | B | M | C-042 | |
+
+Wave 7 was built in one session, one card after another, in one pull request (as wave 6 was).
 
 Tier: B Opus, C Sonnet. Size: S under half a day of agent time, M about a day, L two to three
 days.

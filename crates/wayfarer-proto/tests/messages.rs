@@ -2,9 +2,9 @@
 //! examples in the README and `docs/protocol.md`.
 
 use wayfarer_proto::{
-    Bot, BotAction, BotMode, BotState, CharacterState, Chunk, ClientKind, CoinCount, Coins,
-    DecodeError, Encumbrance, ExitKind, ExpSample, Family, Found, FoundKind, FoundRoom,
-    GeneratedLoop, LoopStop, MapExit, MapRoom, MegaMudLoop, MemberState, MemberStatus,
+    BlessingSpell, Blessings, Bot, BotAction, BotMode, BotState, CharacterState, Chunk, ClientKind,
+    CoinCount, Coins, DecodeError, Encumbrance, ExitKind, ExpSample, Family, Found, FoundKind,
+    FoundRoom, GeneratedLoop, LoopStop, MapExit, MapRoom, MegaMudLoop, MemberState, MemberStatus,
     MonsterRuleEntry, MonsterRuleKind, PROTOCOL, ParseCounts, PartyDef, PartyStatus, Position,
     RoomKey, RoomKind, RuleSource, RunSummary, SessionAction, SessionInfo, SessionState,
     SettingChange, SettingKind, SettingRow, SettingValue, SettingsFile, SpellPlanItem, Stats,
@@ -96,6 +96,7 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                         state: BotState::Running,
                         mode: BotMode::Fight,
                         narration: "Fight: large giant rat".into(),
+                        doing: Some("attacking large giant rat".into()),
                         reason: None,
                         task: None,
                         monster_rules: vec![MonsterRuleEntry {
@@ -107,7 +108,7 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                     ..CharacterState::default()
                 }),
             },
-            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]},"bot":{"state":"running","mode":"fight","narration":"Fight: large giant rat","monster_rules":[{"pattern":"gigantic black ooze","rule":"flee_from","source":"default"}]}}}"#,
+            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]},"bot":{"state":"running","mode":"fight","narration":"Fight: large giant rat","doing":"attacking large giant rat","monster_rules":[{"pattern":"gigantic black ooze","rule":"flee_from","source":"default"}]}}}"#,
         ),
         (
             ToGateway::CharacterPatch {
@@ -395,6 +396,30 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
             },
             r#"{"type":"parties","parties":[{"party":{"id":"party-1","leader":"kasimir","followers":["isolde","brynja"]},"members":[{"session":"kasimir","state":"joined"},{"session":"isolde","state":"joined"},{"session":"brynja","state":"not_joined","detail":"in another room"}]}]}"#,
         ),
+        (
+            ToGateway::Blessings {
+                characters: vec![Blessings {
+                    session: "isolde".into(),
+                    spells: vec![
+                        BlessingSpell {
+                            short: "bles".into(),
+                            name: "bless".into(),
+                            mana: 4,
+                            chosen: true,
+                            on: true,
+                        },
+                        BlessingSpell {
+                            short: "aura".into(),
+                            name: "holy aura".into(),
+                            mana: 15,
+                            chosen: false,
+                            on: false,
+                        },
+                    ],
+                }],
+            },
+            r#"{"type":"blessings","characters":[{"session":"isolde","spells":[{"short":"bles","name":"bless","mana":4,"chosen":true,"on":true},{"short":"aura","name":"holy aura","mana":15,"chosen":false,"on":false}]}]}"#,
+        ),
     ]
 }
 
@@ -570,6 +595,17 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
                 party: "party-1".into(),
             },
             r#"{"type":"party_join","session":"isolde","party":"party-1"}"#,
+        ),
+        (
+            ToGateway::BlessingsRequest,
+            r#"{"type":"blessings_request"}"#,
+        ),
+        (
+            ToGateway::BlessingsSave {
+                session: "isolde".into(),
+                spells: vec!["bles".into(), "aura".into()],
+            },
+            r#"{"type":"blessings_save","session":"isolde","spells":["bles","aura"]}"#,
         ),
     ]
 }
@@ -974,11 +1010,11 @@ fn families_say_who_may_send_what() {
             | "bot_control" | "loops_request" | "walk_loop" | "run_loop" | "stats_request"
             | "spell_plan_request" | "stats_reset" | "settings_request" | "settings_save"
             | "save_loop" | "delete_loop" | "find" | "set_monster_rule" | "parties_request"
-            | "party_save" | "party_delete" | "party_leave" | "party_join" => Family::Control,
+            | "party_save" | "party_delete" | "party_leave" | "party_join"
+            | "blessings_request" | "blessings_save" => Family::Control,
             "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
-            | "map_view" | "loops" | "stats" | "spell_plan" | "settings" | "found" | "parties" => {
-                Family::Brain
-            }
+            | "map_view" | "loops" | "stats" | "spell_plan" | "settings" | "found" | "parties"
+            | "blessings" => Family::Brain,
             "ready_to_leave" | "arbitrate" => Family::BrainToGateway,
             _ => Family::Gateway,
         };

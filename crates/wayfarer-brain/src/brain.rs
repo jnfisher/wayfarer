@@ -280,6 +280,10 @@ pub struct Brain {
     store: Option<Arc<Mutex<Store>>>,
     /// The parties the player defined, and the coordinator over them.
     parties: Parties,
+    /// The lasting spells each session keeps on (C-047), by short name, and the `blessings`
+    /// last sent to the UIs.
+    blessings: BTreeMap<String, Vec<String>>,
+    blessings_sent: Option<Vec<wayfarer_proto::Blessings>>,
     /// The bots' flee line, per cent of the maximum HP.
     flee_below: Option<i32>,
     /// Monsters every bot flees from, as the player's rules (`--flee-from`).
@@ -304,6 +308,8 @@ impl Brain {
             attaches: 0,
             store: None,
             parties: Parties::default(),
+            blessings: BTreeMap::new(),
+            blessings_sent: None,
             flee_below: None,
             flee_from: Vec::new(),
             settings: Arc::new(Settings::default()),
@@ -348,6 +354,10 @@ impl Brain {
         match store.parties() {
             Ok(parties) => self.parties = Parties::from_records(parties),
             Err(e) => tracing::warn!("the store's parties could not be read: {e}"),
+        }
+        match store.blessings() {
+            Ok(b) => self.blessings = b.into_iter().collect(),
+            Err(e) => tracing::warn!("the store's blessings could not be read: {e}"),
         }
         self.store = Some(Arc::new(Mutex::new(store)));
         self
@@ -454,6 +464,7 @@ impl Brain {
                         &self.flee_from,
                         now,
                     );
+                    s.set_blessings(self.blessings.get(&info.id).cloned().unwrap_or_default());
                     s.attach(info, now, out);
                     if let Some(why) = s.take_settings_warning() {
                         tracing::warn!(session = %info.id, "{why}");
@@ -684,6 +695,29 @@ impl Brain {
                 }
                 self.parties_tick(out);
             }
+            ToClient::BlessingsRequest => {
+                self.blessings_sent = None;
+                self.blessings_tick(out);
+            }
+            ToClient::BlessingsSave { session, spells } => {
+                let Some(s) = self.sessions.get_mut(&session) else {
+                    out.push(no_session("blessings_save", &session));
+                    return;
+                };
+                s.set_blessings(spells.clone());
+                if let Some(store) = &self.store {
+                    let at = crate::stats::unix(self.clock.now());
+                    if let Err(e) = store
+                        .lock()
+                        .expect("the store's lock")
+                        .save_blessings(&session, &spells, at)
+                    {
+                        tracing::warn!(%session, "the blessings could not be stored: {e}");
+                    }
+                }
+                self.blessings.insert(session, spells);
+                self.blessings_tick(out);
+            }
             ToClient::Error { message } => tracing::warn!("the gateway says: {message}"),
             other => tracing::debug!("ignored: {:?}", other.type_name()),
         }
@@ -769,6 +803,20 @@ impl Brain {
             s.arbitrate(out);
         }
         self.parties_tick(out);
+        self.blessings_tick(out);
+    }
+
+    /// Every character's lasting spells to the UIs, when they changed (C-047).
+    fn blessings_tick(&mut self, out: &mut Vec<ToGateway>) {
+        let characters: Vec<wayfarer_proto::Blessings> = self
+            .sessions
+            .values()
+            .map(Session::blessings_status)
+            .collect();
+        if self.blessings_sent.as_ref() != Some(&characters) {
+            self.blessings_sent = Some(characters.clone());
+            out.push(ToGateway::Blessings { characters });
+        }
     }
 }
 

@@ -13,6 +13,11 @@ export type Bot = { state: BotState, mode: BotMode,
  */
 narration: string, 
 /**
+ * A few words on what it is doing now, for the Parties panel: "attacking large giant
+ * rat", "healing Lauren", "resting", "fleeing". None while paused or stopped.
+ */
+doing?: string, 
+/**
  * Why it stopped or paused, when it did so by itself or for the player.
  */
 reason?: string, 

@@ -106,6 +106,7 @@ and `■` but no pause sign, so pause is `[║]`.
 | `loops`, beside `go` | The 12 loops nearest the character, nearest first, with a box to find one by name, file, author or a stop, however far: hover or pick one to draw it in yellow, `walk once` walks it, `run` hunts round it (untick a stop to pass it by) |
 | `Alt+P`, or the `parties` button | Open the drawer on the parties: pick a leader, tick its followers, save; each member's state under it (on a Mac, `Option`) |
 | The party chip in the tile's header | `★ Leading`, `Following` or `Separated`; click it to leave the party, or to join one |
+| `Alt+B`, or the `blessings` button | Open the drawer on the blessings: tick the lasting spells each character keeps on itself (bless, barkskin, holy aura); ● marks one that is on (on a Mac, `Option`) |
 | `F10`, or `[►]` and `[■]` in the tile's header | Start the focused character's bot where it stands (fight what comes, rest when low), or stop it |
 | `F9`, or `[║]` and `[►]` in the tile's header | Pause or resume the focused character's bot; a line you type pauses it too |
 | `Alt+S`, or the `stats` button | Open the drawer on the stats of the focused character's runs: exp per hour, kills, deaths and flees, now and for the last runs; or close it (on a Mac, `Option`) |
@@ -138,9 +139,9 @@ is per browser until settings arrive (`docs/plan/04-settings.md`); it is not wri
 
 ## The drawer
 
-The map, the parties, the stats, the settings and the dev panel share one drawer on the right,
-a third of the window at most; the tiles refit beside it. Its title has the five tabs, `map`,
-`parties`, `stats`, `settings` and `dev`, the
+The map, the parties, the blessings, the stats, the settings and the dev panel share one
+drawer on the right, a third of the window at most; the tiles refit beside it. Its title has
+the six tabs, `map`, `parties`, `blessings`, `stats`, `settings` and `dev`, the
 focused character's name and a close button. `Alt+M` (on a Mac, `Option+M`) or the `map`
 button opens it on the map, and again closes it; `Alt+S` or the `stats` button and `Alt+D` or
 the `dev` button do the same for the stats and the dev panel, and each key switches tabs when
@@ -308,7 +309,10 @@ are in one room.
 Under each follower is its state: `joined`, `not joined yet: forming up` (in the leader's
 room) or `: in another room`, `away: its bot is not running` (or not in the realm),
 `separated`, `walking to Penny (4 rooms)`, `resting 62%`, or `can't reach Penny: ...` with the
-reason.
+reason. After the state comes what the member is doing and its HP, from its bot's `doing`:
+`joined · attacking large giant rat · 72%`, `· healing Lauren · 100%`, `· resting with the
+party · 64%`, `· paused`. The leader's line, in the box's heading, shows what it is doing
+while it is joined.
 
 **The party chip.** A character in a party has a chip in its tile's header, beside the bot
 buttons: `★ Leading: Lauren, Faye, Manuel` in yellow on the leader, `Following Penny` in cyan
@@ -321,6 +325,15 @@ whose menu offers **Join Penny's party** for each party with room.
 panel, `go`, `walk once`, `run` and clicking a room are disabled, with "Following Penny: it
 goes where the party goes"; the map says so above its tools. Its bot's play and pause work as
 for any character.
+
+## The blessings
+
+The `blessings` tab (`Alt+B`) has a box for each character with the lasting spells it knows
+that it can keep on itself or its party (from its `spells` screen: bless, barkskin, holy
+aura), each with its word and mana. Tick the ones its bot keeps on and `save` (`undo` puts the
+ticks back); `●` marks a spell that is on now. The brain keeps the ticks and casts the spells
+between fights ([brain.md](brain.md) "Blessings"). A character whose spells have not been read
+yet, or that knows none, says so.
 
 ## The stats
 

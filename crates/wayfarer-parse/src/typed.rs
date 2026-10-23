@@ -425,6 +425,22 @@ pub enum GameEvent {
     /// `cast_fail`: `You attempt to cast vine strike, but fail.`
     CastFailed,
 
+    /// `sneak_attempt`: `Attempting to sneak...`, with `You don't think you're sneaking.` on
+    /// the same line when the character's perception caught a failure (`failed`). A failure
+    /// can also go unnoticed and print nothing more (LJNCMDA.C:2900-2921).
+    SneakAttempt {
+        failed: bool,
+    },
+    /// The character is not sneaking: `sneak_fail` (`You don't think you're sneaking.` on a
+    /// line of its own), `sneak_off` (`You are no longer sneaking.`) or `made_sound` (`You make
+    /// a sound as you enter the room!`, a sneaking move that was noticed).
+    NotSneaking,
+    /// `sneak_not_now` (`You may not sneak right now!`, just attacked) or `must_wait` (`You
+    /// must wait before you may do that!`, a command delay running).
+    SneakRefused,
+    /// `sneaking`: `Sneaking...`, a sneaking follower moved by its leader.
+    StillSneaking,
+
     /// `invited_follow`: `Penny has invited you to follow her.` (silvermere names the leader by
     /// first name and the rest by pronoun).
     PartyInvited {
@@ -711,6 +727,10 @@ impl GameEvent {
             "attacks_you" => G::AttackedBy {
                 name: monster_name(ev, "who"),
             },
+            // A spellcasting monster's attack slot names a spell message (17 for the dark
+            // priest), whose first text is the caster's own line: "You cast bless on Aldric!"
+            // is the character's cast, not a blow.
+            "mon_hits_you" if ev.line.trim_start().starts_with("You cast ") => G::Other(ev.clone()),
             "mon_hits_you"
             | "mon_hits_you_generic"
             | "mon_miss_you"
@@ -863,6 +883,14 @@ impl GameEvent {
             "no_mana" => G::NoMana,
             "already_this_round" => G::AlreadyCast,
             "cast_fail" => G::CastFailed,
+            "sneak_attempt" => G::SneakAttempt {
+                failed: ev
+                    .text("rest")
+                    .is_some_and(|r| r.contains("don't think you're sneaking")),
+            },
+            "sneak_fail" | "sneak_off" | "made_sound" => G::NotSneaking,
+            "sneak_not_now" | "must_wait" => G::SneakRefused,
+            "sneaking" => G::StillSneaking,
             "inv_carrying" => {
                 let (coins, items) = parse_carrying(ev.text("items").unwrap_or_default());
                 G::Inventory { coins, items }

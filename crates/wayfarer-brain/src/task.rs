@@ -409,6 +409,12 @@ impl Task {
         passed_left(now, self.passed[i], self.passed_for)
     }
 
+    /// The leg its last step asked for did not go (the bot sneaks first, C-048): it is not
+    /// counted as a try.
+    pub fn walk_deferred(&mut self) {
+        self.tries = self.tries.saturating_sub(1);
+    }
+
     /// "stop 3/9".
     fn nth(&self, i: usize) -> String {
         format!("{}/{}", i + 1, self.stops.len())

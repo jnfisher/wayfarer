@@ -19,6 +19,7 @@
 //! # Ok(()) }
 //! ```
 
+mod bless;
 mod boss;
 mod brain;
 pub mod character;
@@ -37,10 +38,12 @@ mod party_game;
 pub mod policy;
 mod position;
 mod recover;
+mod regen;
 mod rules;
 mod session;
 mod session_settings;
 mod shopping;
+mod sneak;
 mod spellcraft;
 mod stats;
 mod task;

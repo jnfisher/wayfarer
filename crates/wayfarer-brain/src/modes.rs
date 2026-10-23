@@ -163,6 +163,16 @@ impl Presence {
     }
 }
 
+/// The game's line an event came from, for the texts only the world's data knows (a spell's
+/// wear-off line): a line nothing recognised, or one a generated pattern did.
+pub(crate) fn line_of(ev: &GameEvent) -> Option<&str> {
+    match ev {
+        GameEvent::Unknown { line } => Some(line),
+        GameEvent::Other(e) => Some(&e.line),
+        _ => None,
+    }
+}
+
 fn remove_first(v: &mut Vec<String>, f: impl FnMut(&String) -> bool) {
     if let Some(i) = v.iter().position(f) {
         v.remove(i);
@@ -197,12 +207,26 @@ pub(crate) struct View<'a> {
     /// Mana now and at most, and the character's level; the attack and heal spells it knows.
     pub mana: Option<(i64, i64)>,
     pub hp_missing: Option<i64>,
+    /// HP now and at most, in points.
+    pub hp_points: Option<(i64, i64)>,
     pub level: i64,
     pub book: &'a Spellbook,
     /// What the character carries, in weight units now and at most (`i`'s `Encumbrance:`),
     /// and the coins it holds.
     pub load: Option<(u64, u64)>,
     pub coins: &'a [wayfarer_proto::CoinCount],
+    /// How fast it gets HP and mana back (C-045).
+    pub regen: crate::regen::Regen,
+}
+
+/// Who a heal reaches, for [`View::heal_pays`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Healed<'a> {
+    Me,
+    /// A party member, by the name a heal is cast at.
+    Mate(&'a str),
+    /// The whole party in the room, the caster too.
+    All,
 }
 
 impl View<'_> {
@@ -282,8 +306,93 @@ impl View<'_> {
     /// character itself below `own_line` (counted for a party heal only; its own heal is its
     /// self-heal's): none when the line is 0 or healing spells are off.
     pub fn party_heal(&self, member_line: i32, own_line: i32) -> Option<PartyCast<'_>> {
-        if member_line == 0
-            || self.settings.choice("spells.heal") != "auto"
+        if member_line == 0 {
+            return None;
+        }
+        self.heal_for(|_| member_line, own_line)
+    }
+
+    /// The party heal between fights (Recover). In a party rest (C-045) each member is healed
+    /// up to its own rest-until line, the caster too, and only when the cast does not make the
+    /// rest longer ([`View::heal_pays`]); out of one, below the heal-a-member line (C-043).
+    pub fn rest_party_heal(&self) -> Option<PartyCast<'_>> {
+        if self.party.party_rest().is_none() {
+            return self.party_heal(self.member_heal_resting(), self.rest_heal_below());
+        }
+        if self.member_heal_resting() == 0 {
+            return None;
+        }
+        let cast = self.heal_for(|m| m.until, self.rest_until())?;
+        let who = match &cast {
+            PartyCast::On(s, name) => (s, Healed::Mate(name)),
+            PartyCast::Party(s) => (s, Healed::All),
+        };
+        self.heal_pays(who.0, who.1).then_some(cast)
+    }
+
+    /// The HP line below which Recover heals the character itself: its rest-until line in a
+    /// party rest (C-045), else `spells.heal_resting_below_hp`.
+    pub fn own_heal_below(&self) -> i32 {
+        let line = self.rest_heal_below();
+        if line > 0 && self.party.party_rest().is_some() {
+            line.max(self.rest_until())
+        } else {
+            line
+        }
+    }
+
+    /// Whether casting `spell` on `who` now shortens the party rest, or at least does not
+    /// lengthen it: the rest lasts until every member with the caster has its HP (at the
+    /// resting rate) and its mana back at its rest-until lines, and the cast spends the
+    /// caster's mana to take HP off someone's wait. Out of a party rest, always. With a rate
+    /// not known, the cast must leave the mana above the caster's rest line.
+    pub fn heal_pays(&self, spell: &SpellDef, who: Healed) -> bool {
+        if self.party.party_rest().is_none() {
+            return true;
+        }
+        let Some((mana, max)) = self.mana else {
+            return false;
+        };
+        let after = mana - spell.mana;
+        let fallback =
+            || after * 100 >= max * i64::from(self.setting("health.rest_mana_below", 30));
+        let heal = spell.average(self.level) as i64;
+        let mana_until = max * i64::from(self.setting("health.rest_mana_until", 90)) / 100;
+        let (Some(mana_rate), Some((hp, hp_max))) = (self.regen.mana, self.hp_points) else {
+            return fallback();
+        };
+        let mana_wait = |m: i64| crate::regen::wait_secs(mana_until - m, mana_rate);
+        let me = crate::regen::Waiting {
+            hp_short: (hp_max * i64::from(self.rest_until()) / 100 - hp).max(0),
+            hp_rate: self.regen.hp,
+            mana_before: mana_wait(mana),
+            mana_after: mana_wait(after),
+            healed: matches!(who, Healed::Me | Healed::All),
+        };
+        let party: Vec<crate::regen::Waiting> = std::iter::once(me)
+            .chain(self.party.mates().iter().map(|m| crate::regen::Waiting {
+                hp_short: m.short,
+                hp_rate: m.hp_rate,
+                mana_before: m.mana_wait,
+                mana_after: m.mana_wait,
+                healed: match who {
+                    Healed::All => true,
+                    Healed::Me => false,
+                    Healed::Mate(n) => n == m.name,
+                },
+            }))
+            .collect();
+        crate::regen::shortens(&party, heal).unwrap_or_else(fallback)
+    }
+
+    /// The heal for the party with each member's line from `member_line`, the caster's
+    /// `own_line` (C-043's choice, `Spellbook::for_party`).
+    fn heal_for(
+        &self,
+        member_line: impl Fn(&crate::party::Mate) -> i32,
+        own_line: i32,
+    ) -> Option<PartyCast<'_>> {
+        if self.settings.choice("spells.heal") != "auto"
             || !self.book.heals_others()
             || self.party.mates().is_empty()
         {
@@ -298,7 +407,7 @@ impl View<'_> {
                 name: Some(&m.name),
                 hp: m.hp,
                 missing: m.missing,
-                line: member_line,
+                line: member_line(m),
                 fleeing: m.flee,
             })
             .collect();
@@ -331,6 +440,11 @@ impl View<'_> {
     /// Mana matters to this character: it casts what it knows.
     pub fn uses_mana(&self) -> bool {
         self.mana.is_some() && (self.casts_attacks() || self.casts_heals())
+    }
+
+    /// The mana line Recover rests below (`health.rest_mana_below`, per cent).
+    pub fn rest_mana_below(&self) -> i32 {
+        self.setting("health.rest_mana_below", 30)
     }
 
     /// Mana is low enough to rest for (`health.rest_mana_below`).
@@ -395,6 +509,9 @@ pub(crate) struct Step {
     pub act: Option<Do>,
     pub narration: String,
     pub warn: bool,
+    /// What it is doing, in a few words, when the mode's own default does not say it
+    /// (C-046): a heal says whom.
+    pub doing: Option<String>,
 }
 
 impl Step {
@@ -403,6 +520,7 @@ impl Step {
             act: None,
             narration: narration.into(),
             warn: false,
+            doing: None,
         }
     }
 
@@ -411,6 +529,7 @@ impl Step {
             act: Some(Do::Send(action)),
             narration: narration.into(),
             warn: false,
+            doing: None,
         }
     }
 
@@ -419,12 +538,21 @@ impl Step {
             act: Some(Do::Walk(to)),
             narration: narration.into(),
             warn: false,
+            doing: None,
         }
     }
 
     /// The narration is a warning: the mode is doing something its rules advise against.
     pub fn warning(self) -> Step {
         Step { warn: true, ..self }
+    }
+
+    /// Say what it is doing in a few words ("healing lauren").
+    pub fn doing(self, doing: impl Into<String>) -> Step {
+        Step {
+            doing: Some(doing.into()),
+            ..self
+        }
     }
 }
 
@@ -445,11 +573,15 @@ pub(crate) struct Bot {
     state: BotState,
     mode: BotMode,
     narration: String,
+    /// What it is doing, in a few words (C-046).
+    doing: Option<String>,
     reason: Option<String>,
     flee: Flee,
     fight: Fight,
     loot: Loot,
     recover: Recover,
+    bless: crate::bless::Bless,
+    sneak: crate::sneak::Sneak,
     /// The gateway is logging the character off under attack: Flee alone runs, then the bot
     /// stops.
     leaving: bool,
@@ -496,6 +628,7 @@ impl Bot {
             state: self.state,
             mode: self.mode,
             narration: self.narration.clone(),
+            doing: self.doing.clone().filter(|_| self.running()),
             reason: self.reason.clone(),
             task: self.task.as_ref().map(Task::snapshot),
             // The session's: it keeps the rules.
@@ -559,6 +692,27 @@ impl Bot {
             self.narrate(format!("In {leader}'s party: the loop stops"), &mut says);
         }
         says
+    }
+
+    /// The lasting spells to keep on (C-047).
+    pub fn set_blessings(&mut self, defs: Vec<wayfarer_world::BuffDef>) {
+        self.bless.set(defs);
+    }
+
+    /// The game said the character stopped sneaking since last asked (C-048): a walk in
+    /// progress stops, so the bot sneaks again before the next move.
+    pub fn sneak_broken(&mut self, settings: &wayfarer_settings::Settings) -> bool {
+        self.sneak.take_broken() && settings.bool("movement.sneak")
+    }
+
+    /// The character is in `room` now: a move with no `Sneaking...` shown ends the sneak.
+    pub fn sneak_arrived(&mut self, room: Option<Key>) {
+        self.sneak.arrived(room);
+    }
+
+    /// Whether the lasting spell `short` is believed on.
+    pub fn blessed(&self, short: &str, now: Instant) -> bool {
+        self.bless.is_on(short, now)
     }
 
     /// The monster it fights, while it fights one.
@@ -775,6 +929,8 @@ impl Bot {
         self.fight.on_event(ev, now);
         self.loot.on_event(ev, now);
         self.recover.on_event(ev, now);
+        self.bless.on_event(ev, now);
+        self.sneak.on_event(ev, now);
         if let Some(t) = &mut self.task {
             t.on_event(ev, now);
         }
@@ -811,6 +967,8 @@ impl Bot {
             Some(BotMode::Fight) => self.fight.outcome(action, outcome),
             Some(BotMode::Recover) => self.recover.outcome(action, outcome),
             Some(BotMode::Loot) => self.loot.outcome(action, outcome),
+            Some(BotMode::Bless) => self.bless.outcome(action, outcome),
+            Some(BotMode::Sneak) => self.sneak.outcome(action, outcome),
             _ => {}
         }
         // Flee broke off the fight it could not run from.
@@ -836,6 +994,8 @@ impl Bot {
             .into_iter()
             .chain(self.flee.wake())
             .chain(self.fight.wake())
+            .chain(self.bless.wake(now))
+            .chain(self.sneak.wake(now))
             .chain(self.task.as_ref().and_then(|t| t.wake(now)))
             .min()
     }
@@ -844,6 +1004,35 @@ impl Bot {
     /// decides again at the next tick.
     pub fn forget(&mut self) {
         self.acting = None;
+    }
+
+    /// What a mode is doing when its step does not say (C-046).
+    fn default_doing(&self, mode: BotMode, step: &Step, v: &View) -> String {
+        let walking = matches!(step.act, Some(Do::Walk(_)));
+        match mode {
+            BotMode::Flee => "fleeing".to_owned(),
+            BotMode::Fight => match self.fight.target() {
+                Some(t) => format!("attacking {t}"),
+                None => "looking for a fight".to_owned(),
+            },
+            BotMode::Recover if walking => "walking to rest".to_owned(),
+            BotMode::Recover if v.party.party_rest().is_some() => {
+                "resting with the party".to_owned()
+            }
+            BotMode::Recover => "resting".to_owned(),
+            BotMode::Loot => "picking up".to_owned(),
+            BotMode::Bless => "blessing".to_owned(),
+            BotMode::Sneak => "sneaking".to_owned(),
+            BotMode::Task if walking => match v.party.following() {
+                Some(leader) if v.party.rejoin().is_some() => format!("walking back to {leader}"),
+                _ => "walking".to_owned(),
+            },
+            BotMode::Task | BotMode::Idle => match (v.party.following(), v.party.hold()) {
+                (Some(leader), _) => format!("following {leader}"),
+                (None, Some(_)) => "waiting for the party".to_owned(),
+                _ => "waiting".to_owned(),
+            },
+        }
     }
 
     /// Decide: nothing is in flight, nothing is walking, and the game is at a prompt.
@@ -859,6 +1048,13 @@ impl Bot {
         }
         self.fight
             .set_cornered(self.flee.trapped_in(v.room) || self.flee.cornered_in(v.room));
+        // A sneaker opens with a backstab (C-048); not sneaking after all, `bs` is a plain
+        // attack, which is fine.
+        self.sneak.arrived(v.room);
+        self.fight.set_backstab(
+            crate::sneak::Sneak::enabled(v) && v.settings.bool("combat.backstab"),
+            self.sneak.on(),
+        );
         if let Some(t) = &mut self.task {
             t.observe(v);
             // Recover rests from, and walks back to, the stop Task is at or walking to.
@@ -873,7 +1069,7 @@ impl Bot {
         // A mode that finishes in its step (safe, rested, back home) hands over at once: the
         // stack is asked again, once.
         for _ in 0..2 {
-            let (mode, reason) = if let Some(r) = self.flee.wants(v) {
+            let (mut mode, reason) = if let Some(r) = self.flee.wants(v) {
                 (BotMode::Flee, r)
             } else if self.leaving {
                 says.extend(self.stop("the gateway is logging off", false));
@@ -882,6 +1078,10 @@ impl Bot {
                 (BotMode::Loot, r)
             } else if let Some(r) = self.recover.wants(v) {
                 (BotMode::Recover, r)
+            } else if let Some(r) = self.bless.wants(v) {
+                (BotMode::Bless, r)
+            } else if let Some(r) = self.sneak.wants(v) {
+                (BotMode::Sneak, r)
             } else if let Some(r) = self.fight.wants(v) {
                 (BotMode::Fight, r)
             } else if v.party.rejoin().is_some_and(|k| v.room != Some(k)) {
@@ -900,6 +1100,8 @@ impl Bot {
                 BotMode::Flee => self.flee.step(v),
                 BotMode::Recover => self.recover.step(v),
                 BotMode::Loot => self.loot.step(v),
+                BotMode::Bless => self.bless.step(v),
+                BotMode::Sneak => self.sneak.step(v),
                 BotMode::Fight => self.fight.step(v),
                 BotMode::Task if let Some(to) = v.party.rejoin().filter(|k| v.room != Some(*k)) => {
                     let leader = v.party.following().unwrap_or("the leader");
@@ -934,12 +1136,39 @@ impl Bot {
             let step = match (&step.act, v.party.following(), v.party.hold()) {
                 (Some(Do::Walk(_)), Some(leader), _) if mode != BotMode::Flee && !rejoining => {
                     Step::wait(format!("Following {leader}: staying with the party"))
+                        .doing(format!("following {leader}"))
                 }
                 // A leader holds its loop while a member walks back (C-041).
                 (Some(Do::Walk(_)), _, Some(why)) if mode == BotMode::Task => {
-                    Step::wait(why.to_owned())
+                    Step::wait(why.to_owned()).doing("waiting for the party")
                 }
                 _ => step,
+            };
+            // A sneaker sneaks before a move it makes itself; Flee never waits (C-048).
+            let step = if matches!(step.act, Some(Do::Walk(_))) && mode != BotMode::Flee {
+                if self.sneak.before_move(v) {
+                    match mode {
+                        BotMode::Recover => self.recover.walk_deferred(),
+                        BotMode::Task if !rejoining => {
+                            if let Some(t) = &mut self.task {
+                                t.walk_deferred();
+                            }
+                        }
+                        _ => {}
+                    }
+                    mode = BotMode::Sneak;
+                    self.mode = mode;
+                    self.sneak.step(v)
+                } else {
+                    if crate::sneak::Sneak::enabled(v)
+                        && let Some(note) = self.sneak.unsneaked()
+                    {
+                        self.narrate_as(note, true, &mut says);
+                    }
+                    step
+                }
+            } else {
+                step
             };
             let finished = step.act.is_none()
                 && match mode {
@@ -950,6 +1179,11 @@ impl Bot {
             if step.act.is_some() {
                 self.acting = Some(mode);
             }
+            self.doing = Some(
+                step.doing
+                    .clone()
+                    .unwrap_or_else(|| self.default_doing(mode, &step, v)),
+            );
             if finished && mode == BotMode::Flee && !self.leaving {
                 self.recover.after_flee();
             }

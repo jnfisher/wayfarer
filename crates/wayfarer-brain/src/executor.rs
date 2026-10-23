@@ -33,6 +33,9 @@ pub enum Expect {
     /// An attack: `*Combat Engaged*`. `You do not see <x> here!`, `Your weapon has no
     /// effect` and the other [`ATTACK_REFUSALS`] refuse it.
     Engaged,
+    /// `sneak`: `Attempting to sneak...`, with or without the failure the character noticed;
+    /// `You may not sneak right now!` and `You must wait ...` refuse it.
+    Sneak,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,10 +75,19 @@ impl Guard {
 pub enum Confirmed {
     Room,
     DoorOpened,
-    Bash { ok: bool },
-    Search { found: bool },
+    Bash {
+        ok: bool,
+    },
+    Search {
+        found: bool,
+    },
     Prompt,
     Engaged,
+    /// The attempt went; `ok` unless the character noticed it failed (a failure can be
+    /// silent).
+    Sneak {
+        ok: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,6 +106,8 @@ pub enum Refused {
     Target,
     /// The attack spell did not go: not enough mana, or a spell already cast this round.
     Spell,
+    /// Not now: just attacked, or a command delay running.
+    NotNow,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -227,6 +241,10 @@ fn answer(expect: Expect, ev: &GameEvent) -> Option<Outcome> {
         (Expect::Engaged, GameEvent::Other(e)) if ATTACK_REFUSALS.contains(&e.name.as_str()) => {
             Some(Outcome::Refused(Refused::Target))
         }
+        (Expect::Sneak, GameEvent::SneakAttempt { failed }) => {
+            Some(Outcome::Confirmed(Confirmed::Sneak { ok: !failed }))
+        }
+        (Expect::Sneak, GameEvent::SneakRefused) => Some(Outcome::Refused(Refused::NotNow)),
         _ => None,
     }
 }

@@ -279,3 +279,59 @@ async fn with_no_limit_the_spell_goes_on() {
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "spells", "mmis rat"]);
 }
+
+const BLESSER_SPELLS: [(i32, i32, &str, &str); 2] =
+    [(1, 2, "mihe", "minor healing"), (2, 4, "bles", "bless")];
+
+/// Blessings (C-047): a Cleric with bless ticked casts it between fights, not again while it
+/// is on, and again when the game says it wore off.
+#[tokio::test(start_paused = true)]
+async fn a_ticked_blessing_is_kept_on() {
+    let (mut g, run) = in_arena(&[]).await;
+    g.send(ToClient::BlessingsSave {
+        session: ID.into(),
+        spells: vec!["bles".into()],
+    })
+    .await;
+    start_caster(&mut g, "Cleric", &BLESSER_SPELLS, &[], 35, 20).await;
+    let cast = format!(
+        "You cast bless on Aldric!\r\nYou feel lucky!\r\n{}",
+        prompt(35)
+    );
+    g.expect("bles", cast.clone());
+    g.narrated("Blessing: casting bless").await;
+    g.narrated("Waiting here").await;
+    // On: nothing more for a minute.
+    g.idle(Duration::from_secs(60)).await;
+    g.expect("bles", cast);
+    g.output(&line("The effects of bless wear off!", 35)).await;
+    g.narrated("Blessing: casting bless").await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "spells", "bles", "bles"]);
+    let on = seen.iter().any(|m| {
+        matches!(m, ToGateway::Blessings { characters }
+            if characters.iter().any(|c| c.spells.iter().any(|s| s.short == "bles" && s.chosen && s.on)))
+    });
+    assert!(on, "a blessings message with bless on");
+}
+
+/// A blessing the game will not cast is tried again after a round, and left alone after three
+/// failures in a row.
+#[tokio::test(start_paused = true)]
+async fn a_blessing_that_keeps_failing_is_held() {
+    let (mut g, run) = in_arena(&[]).await;
+    g.send(ToClient::BlessingsSave {
+        session: ID.into(),
+        spells: vec!["bles".into()],
+    })
+    .await;
+    start_caster(&mut g, "Cleric", &BLESSER_SPELLS, &[], 35, 20).await;
+    let fail = format!("You attempt to cast bless, but fail.\r\n{}", prompt(35));
+    for _ in 0..3 {
+        g.expect("bles", fail.clone());
+    }
+    g.narrated("Blessing: casting bless").await;
+    g.idle(Duration::from_secs(120)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "spells", "bles", "bles", "bles"]);
+}
