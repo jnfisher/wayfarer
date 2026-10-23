@@ -93,17 +93,27 @@ pub(crate) struct Fight {
     weapon_only: bool,
 }
 
+/// A name as the game shows it (`lauren` is Lauren).
+fn capitalized(name: &str) -> String {
+    let mut c = name.chars();
+    c.next()
+        .map(|f| f.to_uppercase().chain(c).collect())
+        .unwrap_or_default()
+}
+
 /// The command and narration for a party heal (`mihe lauren`, `rain`).
 pub(crate) fn cast_step(cast: &PartyCast, mode: &str) -> Step {
     match cast {
         PartyCast::On(s, who) => Step::send(
             Action::new(format!("{} {who}", s.short), Expect::Prompt),
             format!("{mode}: casting {} on {who}", s.name),
-        ),
+        )
+        .doing(format!("healing {}", capitalized(who))),
         PartyCast::Party(s) => Step::send(
             Action::new(s.short.clone(), Expect::Prompt),
             format!("{mode}: casting {} on the party", s.name),
-        ),
+        )
+        .doing(format!("casting {}", s.name)),
     }
 }
 
@@ -266,10 +276,13 @@ impl Fight {
         let spell = v.heal_spell()?;
         self.heal_ready = Some(v.now + HEAL_GAP);
         self.healed = true;
-        Some(Step::send(
-            Action::new(spell.short.clone(), Expect::Prompt),
-            format!("Fight: HP {}%, casting {}", v.hp?, spell.name),
-        ))
+        Some(
+            Step::send(
+                Action::new(spell.short.clone(), Expect::Prompt),
+                format!("Fight: HP {}%, casting {}", v.hp?, spell.name),
+            )
+            .doing("healing itself"),
+        )
     }
 
     /// A heal for another member of the party in the room, or the party heal (C-043); the fight
@@ -438,6 +451,17 @@ impl Fight {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wayfarer_world::{SpellDef, SpellKind};
+
+    #[test]
+    fn a_heal_says_whom_it_heals() {
+        let mihe = SpellDef::flat("mihe", "minor healing", SpellKind::Heal, 2, 3, 8);
+        let step = cast_step(&PartyCast::On(&mihe, "lauren".into()), "Recover");
+        assert_eq!(step.doing.as_deref(), Some("healing Lauren"));
+        let rain = SpellDef::flat("rain", "healing rain", SpellKind::PartyHeal, 5, 7, 11);
+        let step = cast_step(&PartyCast::Party(&rain), "Fight");
+        assert_eq!(step.doing.as_deref(), Some("casting healing rain"));
+    }
 
     #[test]
     fn a_spell_fight_is_over_after_the_most_casts_and_only_once() {

@@ -88,10 +88,13 @@ impl Recover {
             return None;
         }
         self.heal_ready = Some(v.now + HEAL_GAP);
-        Some(Step::send(
-            Action::new(spell.short.clone(), Expect::Prompt),
-            format!("Recover: HP {}%, casting {}", v.hp?, spell.name),
-        ))
+        Some(
+            Step::send(
+                Action::new(spell.short.clone(), Expect::Prompt),
+                format!("Recover: HP {}%, casting {}", v.hp?, spell.name),
+            )
+            .doing("healing itself"),
+        )
     }
 
     fn done(&mut self) {
@@ -171,7 +174,7 @@ impl Mode for Recover {
                         ),
                     );
                 }
-                return Step::wait(format!("Recover: {why}"));
+                return Step::wait(format!("Recover: {why}")).doing("waiting for the party");
             }
             if let Some((home, name)) = self.shunned(v) {
                 // Still active: it walks back once the sighting is forgotten.

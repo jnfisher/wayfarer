@@ -274,6 +274,11 @@ pub struct Bot {
     pub mode: BotMode,
     /// One line on what it is doing and why ("Fight: large giant rat").
     pub narration: String,
+    /// A few words on what it is doing now, for the Parties panel: "attacking large giant
+    /// rat", "healing Lauren", "resting", "fleeing". None while paused or stopped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub doing: Option<String>,
     /// Why it stopped or paused, when it did so by itself or for the player.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]

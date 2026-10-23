@@ -558,6 +558,7 @@
             {sessions}
             {parties}
             attached={brain.attached}
+            characters={brain.characters}
             onsave={(party) => client.saveParty(party)}
             ondelete={(id) => client.deleteParty(id)}
           />

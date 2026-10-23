@@ -2761,7 +2761,10 @@ impl Session {
                 .zip(c.mana_max)
                 .map(|(m, max)| (i64::from(m), i64::from(max))),
             hp_missing: c.hp.zip(c.hp_max).map(|(h, m)| i64::from(m - h)),
-            hp_points: c.hp.zip(c.hp_max).map(|(h, m)| (i64::from(h), i64::from(m))),
+            hp_points: c
+                .hp
+                .zip(c.hp_max)
+                .map(|(h, m)| (i64::from(h), i64::from(m))),
             level: c.level.map_or(1, i64::from),
             book: &self.spellbook,
             load: c
@@ -2865,10 +2868,9 @@ impl Session {
                 && (!uses_mana || mana.is_none_or(|m| m >= line("health.rest_mana_until"))),
             flee: hp.is_some_and(|h| h < self.bot.flee_below()),
             until: line("health.rest_until_hp"),
-            short: c
-                .hp
-                .zip(c.hp_max)
-                .map(|(h, m)| (i64::from(m) * i64::from(line("health.rest_until_hp")) / 100 - i64::from(h)).max(0)),
+            short: c.hp.zip(c.hp_max).map(|(h, m)| {
+                (i64::from(m) * i64::from(line("health.rest_until_hp")) / 100 - i64::from(h)).max(0)
+            }),
             hp_rate: regen.hp,
             mana_wait: if uses_mana {
                 c.mana.zip(c.mana_max).and_then(|(m, max)| {
@@ -2887,10 +2889,14 @@ impl Session {
         let c = self.character.state();
         let level = c.level.map_or(1, i64::from);
         let stats = c.stats.clone().unwrap_or_default();
-        let mana = self.atlas.as_ref().zip(c.class.as_deref()).and_then(|(a, class)| {
-            let &(magery, magery_level) = a.class_magery.get(class)?;
-            crate::regen::mana_per_hour(magery, magery_level, level, &stats)
-        });
+        let mana = self
+            .atlas
+            .as_ref()
+            .zip(c.class.as_deref())
+            .and_then(|(a, class)| {
+                let &(magery, magery_level) = a.class_magery.get(class)?;
+                crate::regen::mana_per_hour(magery, magery_level, level, &stats)
+            });
         crate::regen::Regen {
             hp: stats
                 .health

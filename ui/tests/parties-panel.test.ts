@@ -44,6 +44,29 @@ describe("PartiesPanel", () => {
     expect(ondelete).toHaveBeenCalledWith("party-1");
   });
 
+  it("shows what each member is doing beside its state", () => {
+    const parties: PartyStatus[] = [
+      {
+        party: { id: "party-1", leader: "penny", followers: ["lauren"] },
+        members: [
+          { session: "penny", state: "joined" },
+          { session: "lauren", state: "joined" },
+        ],
+      },
+    ];
+    const characters = {
+      penny: { hp: 20, hp_max: 40, bot: { state: "running", mode: "recover", narration: "", doing: "resting" } },
+      lauren: {
+        hp: 35,
+        hp_max: 35,
+        bot: { state: "running", mode: "recover", narration: "", doing: "healing Penny" },
+      },
+    } as const;
+    render(PartiesPanel, { sessions, parties, attached: true, characters, onsave: vi.fn(), ondelete: vi.fn() });
+    expect(screen.getByText("resting · 50%")).toBeTruthy();
+    expect(screen.getByText("· healing Penny · 100%", { exact: false })).toBeTruthy();
+  });
+
   it("says so with no brain", () => {
     render(PartiesPanel, { sessions, parties: undefined, attached: false, onsave: vi.fn(), ondelete: vi.fn() });
     expect(screen.getByText("No brain attached: parties are the brain's.")).toBeTruthy();

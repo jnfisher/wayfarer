@@ -753,9 +753,8 @@ impl Parties {
                     .collect();
                 let why = format!("Resting for {}", who.join(", "));
                 for (id, _) in &together {
-                    if let Some(
-                        PartyRole::Leader { rest, .. } | PartyRole::Follower { rest, .. },
-                    ) = plan.roles.get_mut(*id)
+                    if let Some(PartyRole::Leader { rest, .. } | PartyRole::Follower { rest, .. }) =
+                        plan.roles.get_mut(*id)
                     {
                         *rest = Some(why.clone());
                     }

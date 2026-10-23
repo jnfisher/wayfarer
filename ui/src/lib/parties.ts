@@ -2,7 +2,7 @@
 // menu, the follower's locked controls, and the Parties panel's status lines and drafts. The
 // brain keeps the parties; this only reads its `parties` message and builds `party_save`.
 
-import type { MemberStatus, PartyDef, PartyStatus, SessionInfo } from "../proto";
+import type { CharacterState, MemberStatus, PartyDef, PartyStatus, SessionInfo } from "../proto";
 
 /** The most followers a party takes (the game's six members). */
 export const MAX_FOLLOWERS = 5;
@@ -106,6 +106,19 @@ export function memberLine(m: MemberStatus, leader: string): string {
     case "unreachable":
       return `can't reach ${leader}${detail}`;
   }
+}
+
+/**
+ * What a member is doing and its HP, for its line in the Parties panel (C-046):
+ * `attacking large giant rat · 72%`; `paused`, `stopped`; null with nothing known.
+ */
+export function activityLine(c: CharacterState | undefined): string | null {
+  if (!c) return null;
+  const bot = c.bot;
+  const doing = !bot ? null : bot.state === "running" ? (bot.doing ?? null) : bot.state;
+  const hp = c.hp !== undefined && c.hp_max ? `${Math.floor((c.hp * 100) / c.hp_max)}%` : null;
+  const parts = [doing, hp].filter((p): p is string => !!p);
+  return parts.length ? parts.join(" · ") : null;
 }
 
 /** A party being edited in the panel. */

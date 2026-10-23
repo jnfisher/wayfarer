@@ -308,7 +308,10 @@ are in one room.
 Under each follower is its state: `joined`, `not joined yet: forming up` (in the leader's
 room) or `: in another room`, `away: its bot is not running` (or not in the realm),
 `separated`, `walking to Penny (4 rooms)`, `resting 62%`, or `can't reach Penny: ...` with the
-reason.
+reason. After the state comes what the member is doing and its HP, from its bot's `doing`:
+`joined · attacking large giant rat · 72%`, `· healing Lauren · 100%`, `· resting with the
+party · 64%`, `· paused`. The leader's line, in the box's heading, shows what it is doing
+while it is joined.
 
 **The party chip.** A character in a party has a chip in its tile's header, beside the bot
 buttons: `★ Leading: Lauren, Faye, Manuel` in yellow on the leader, `Following Penny` in cyan

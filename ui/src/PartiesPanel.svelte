@@ -4,6 +4,7 @@
   // only edits definitions: the brain forms the parties in the game.
   import {
     MAX_FOLLOWERS,
+    activityLine,
     draftOf,
     draftProblem,
     elsewhere,
@@ -15,18 +16,20 @@
     toggleFollower,
     type Draft,
   } from "./lib/parties";
-  import type { PartyDef, PartyStatus, SessionInfo } from "./proto";
+  import type { CharacterState, PartyDef, PartyStatus, SessionInfo } from "./proto";
 
   interface Props {
     sessions: SessionInfo[];
     /** The brain's last `parties`; undefined before the first. */
     parties: PartyStatus[] | undefined;
     attached: boolean | null;
+    /** Each character as the brain last showed it: what its bot is doing, its HP. */
+    characters?: Record<string, CharacterState>;
     onsave: (party: PartyDef) => void;
     ondelete: (id: string) => void;
   }
 
-  let { sessions, parties, attached, onsave, ondelete }: Props = $props();
+  let { sessions, parties, attached, characters = {}, onsave, ondelete }: Props = $props();
 
   const names = $derived(namesOf(sessions));
   /** Parties being edited, by id ("" for the new one). */
@@ -86,7 +89,10 @@
           {s.name}
         </label>
         {#if ticked && m && !drafts[d.id]}
-          <span class="state {m.state}">{memberLine(m, names[d.leader] ?? d.leader)}</span>
+          {@const doing = activityLine(characters[s.id])}
+          <span class="state {m.state}"
+            >{memberLine(m, names[d.leader] ?? d.leader)}{#if doing}<span class="doing"> · {doing}</span>{/if}</span
+          >
         {:else if other}
           <span class="dim">{other}</span>
         {/if}
@@ -109,6 +115,8 @@
           <span class="name">★ {names[p.party.leader] ?? p.party.leader}'s party</span>
           {#if leader && leader.state !== "joined"}
             <span class="state {leader.state}">{memberLine(leader, names[p.party.leader] ?? "")}</span>
+          {:else if activityLine(characters[p.party.leader])}
+            <span class="state doing">{activityLine(characters[p.party.leader])}</span>
           {/if}
         </div>
         {@render editor(d, p)}
@@ -216,6 +224,9 @@
   }
   .state.joined {
     color: var(--vga-lightgreen);
+  }
+  .doing {
+    color: var(--vga-lightgray);
   }
   .state.separated,
   .state.walking,

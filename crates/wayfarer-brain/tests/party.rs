@@ -489,7 +489,9 @@ async fn a_follower_between_its_lines_rests_with_the_party() {
     // The leader's Recover has it too: it walks the party out of the Arena (it spawns) to
     // rest.
     assert!(
-        g.lines.iter().any(|(s, t)| s == LEADER && (t == "rest" || t == "u")),
+        g.lines
+            .iter()
+            .any(|(s, t)| s == LEADER && (t == "rest" || t == "u")),
         "{:?}",
         g.lines
     );

@@ -344,7 +344,8 @@ impl View<'_> {
             return false;
         };
         let after = mana - spell.mana;
-        let fallback = || after * 100 >= max * i64::from(self.setting("health.rest_mana_below", 30));
+        let fallback =
+            || after * 100 >= max * i64::from(self.setting("health.rest_mana_below", 30));
         let heal = spell.average(self.level) as i64;
         let mana_until = max * i64::from(self.setting("health.rest_mana_until", 90)) / 100;
         let (Some(mana_rate), Some((hp, hp_max))) = (self.regen.mana, self.hp_points) else {
@@ -493,6 +494,9 @@ pub(crate) struct Step {
     pub act: Option<Do>,
     pub narration: String,
     pub warn: bool,
+    /// What it is doing, in a few words, when the mode's own default does not say it
+    /// (C-046): a heal says whom.
+    pub doing: Option<String>,
 }
 
 impl Step {
@@ -501,6 +505,7 @@ impl Step {
             act: None,
             narration: narration.into(),
             warn: false,
+            doing: None,
         }
     }
 
@@ -509,6 +514,7 @@ impl Step {
             act: Some(Do::Send(action)),
             narration: narration.into(),
             warn: false,
+            doing: None,
         }
     }
 
@@ -517,12 +523,21 @@ impl Step {
             act: Some(Do::Walk(to)),
             narration: narration.into(),
             warn: false,
+            doing: None,
         }
     }
 
     /// The narration is a warning: the mode is doing something its rules advise against.
     pub fn warning(self) -> Step {
         Step { warn: true, ..self }
+    }
+
+    /// Say what it is doing in a few words ("healing lauren").
+    pub fn doing(self, doing: impl Into<String>) -> Step {
+        Step {
+            doing: Some(doing.into()),
+            ..self
+        }
     }
 }
 
@@ -543,6 +558,8 @@ pub(crate) struct Bot {
     state: BotState,
     mode: BotMode,
     narration: String,
+    /// What it is doing, in a few words (C-046).
+    doing: Option<String>,
     reason: Option<String>,
     flee: Flee,
     fight: Fight,
@@ -594,6 +611,7 @@ impl Bot {
             state: self.state,
             mode: self.mode,
             narration: self.narration.clone(),
+            doing: self.doing.clone().filter(|_| self.running()),
             reason: self.reason.clone(),
             task: self.task.as_ref().map(Task::snapshot),
             // The session's: it keeps the rules.
@@ -944,6 +962,33 @@ impl Bot {
         self.acting = None;
     }
 
+    /// What a mode is doing when its step does not say (C-046).
+    fn default_doing(&self, mode: BotMode, step: &Step, v: &View) -> String {
+        let walking = matches!(step.act, Some(Do::Walk(_)));
+        match mode {
+            BotMode::Flee => "fleeing".to_owned(),
+            BotMode::Fight => match self.fight.target() {
+                Some(t) => format!("attacking {t}"),
+                None => "looking for a fight".to_owned(),
+            },
+            BotMode::Recover if walking => "walking to rest".to_owned(),
+            BotMode::Recover if v.party.party_rest().is_some() => {
+                "resting with the party".to_owned()
+            }
+            BotMode::Recover => "resting".to_owned(),
+            BotMode::Loot => "picking up".to_owned(),
+            BotMode::Task if walking => match v.party.following() {
+                Some(leader) if v.party.rejoin().is_some() => format!("walking back to {leader}"),
+                _ => "walking".to_owned(),
+            },
+            BotMode::Task | BotMode::Idle => match (v.party.following(), v.party.hold()) {
+                (Some(leader), _) => format!("following {leader}"),
+                (None, Some(_)) => "waiting for the party".to_owned(),
+                _ => "waiting".to_owned(),
+            },
+        }
+    }
+
     /// Decide: nothing is in flight, nothing is walking, and the game is at a prompt.
     pub fn tick(&mut self, v: &View) -> (Option<Do>, Vec<Say>) {
         let mut says = Vec::new();
@@ -1032,10 +1077,11 @@ impl Bot {
             let step = match (&step.act, v.party.following(), v.party.hold()) {
                 (Some(Do::Walk(_)), Some(leader), _) if mode != BotMode::Flee && !rejoining => {
                     Step::wait(format!("Following {leader}: staying with the party"))
+                        .doing(format!("following {leader}"))
                 }
                 // A leader holds its loop while a member walks back (C-041).
                 (Some(Do::Walk(_)), _, Some(why)) if mode == BotMode::Task => {
-                    Step::wait(why.to_owned())
+                    Step::wait(why.to_owned()).doing("waiting for the party")
                 }
                 _ => step,
             };
@@ -1048,6 +1094,11 @@ impl Bot {
             if step.act.is_some() {
                 self.acting = Some(mode);
             }
+            self.doing = Some(
+                step.doing
+                    .clone()
+                    .unwrap_or_else(|| self.default_doing(mode, &step, v)),
+            );
             if finished && mode == BotMode::Flee && !self.leaving {
                 self.recover.after_flee();
             }
