@@ -186,6 +186,8 @@ pub(crate) struct View<'a> {
     /// The doors as the game showed them this session.
     pub doors: &'a BTreeMap<(Key, u8), LockState>,
     pub presence: &'a Presence,
+    /// What the character is in a party (`party.rs`).
+    pub party: &'a crate::party::PartyRole,
     /// The monster rules.
     pub rules: &'a MonsterRules,
     /// Where the monsters to avoid were last seen.
@@ -496,6 +498,16 @@ impl Bot {
         self.recover = Recover::new(Some(task.home()));
         self.task = Some(task);
         self.narrate(format!("Running loop {loop_name}: re-syncing"), &mut says);
+        says
+    }
+
+    /// Made a follower of `leader`'s party: the loop it runs, if any, stops (the bot runs on
+    /// as "fight here"); the party goes where the leader takes it.
+    pub fn join_party(&mut self, leader: &str) -> Vec<Say> {
+        let mut says = Vec::new();
+        if self.task.take().is_some() {
+            self.narrate(format!("In {leader}'s party: the loop stops"), &mut says);
+        }
         says
     }
 
@@ -831,6 +843,14 @@ impl Bot {
                     ))
                 }
                 BotMode::Idle => Step::wait("Waiting here"),
+            };
+            // A follower goes where its leader takes it: none of its own modes walks it, Flee
+            // aside (docs/plan/10-party-play.md §5).
+            let step = match (&step.act, v.party.following()) {
+                (Some(Do::Walk(_)), Some(leader)) if mode != BotMode::Flee => {
+                    Step::wait(format!("Following {leader}: staying with the party"))
+                }
+                _ => step,
             };
             let finished = step.act.is_none()
                 && match mode {

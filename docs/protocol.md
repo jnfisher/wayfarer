@@ -194,6 +194,7 @@ to every UI. It relays by message type and never reads `fields` or `patch`.
 {"type":"spell_plan","session":"kasimir","cash":520,"items":[{"spell":"mend","spell_level":3,"scroll":"scroll of mend","shop":"Newhaven Spell Shop","map":1,"room":2144,"price":800,"steps":12,"usable":true,"affordable":false}]}
 {"type":"settings","session":"kasimir","layer":"character","files":[{"layer":"mine","path":"/data/settings.toml","exists":false},{"layer":"character","path":"/data/characters/kasimir.toml","exists":true}],"rows":[{"key":"health.flee_below_hp","label":"Flee below","help":"Leave the fight and run when HP falls below this.","group":"health","tier":"essential","kind":{"kind":"int","min":0,"max":90},"unit":"%","default":25,"value":35,"source":"character","own":35,"megamud":"HP Run If Below"}]}
 {"type":"found","session":"kasimir","query":"chief","results":[{"kind":"monster","name":"minotaur chieftain","rooms":[{"map":1,"room":1865,"name":"Large Wooden Room","steps":46,"boss":true}],"count":1,"monsters":["minotaur chieftain"]}]}
+{"type":"parties","parties":[{"party":{"id":"party-1","leader":"kasimir","followers":["isolde","brynja"]},"members":[{"session":"kasimir","state":"joined"},{"session":"isolde","state":"joined"},{"session":"brynja","state":"not_joined","detail":"in another room"}]}]}
 ```
 
 The character snapshot: every field is optional and left out until the brain knows it.
@@ -264,6 +265,13 @@ anywhere), then the nearer, then places before monsters before room names.
 | `count` | How many rooms it names in all |
 | `monsters` | The bosses of its boss lairs (for a monster, itself if it is one), by name; absent when none |
 
+The parties ([brain.md](brain.md) "Parties"), sent to every UI when one changes and when a
+member's state does: `parties` is `[{party, members}]`, `party` as `party_save` takes it (with
+its `id`), `members` the leader first and then each follower, `{session, state, detail?}`.
+`state` is `joined` (in the leader's party in the game), `not_joined` (forming up when in the
+leader's room), `away` (logged off or its bot not running, or the leader not in the realm: not waited for),
+`separated`, `walking` (to the leader), `resting` or `unreachable` (`detail` says why).
+
 The statistics of a character ([brain.md](brain.md) "Statistics"), from the brain's store:
 
 | Field | What |
@@ -294,6 +302,11 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 | `settings_save {session, layer, changes}` | Change settings in the `layer` file: `changes` is `[{key, value?}]`; a `value` sets the setting, none takes it out of the file so the layer below shows through. Values are checked against the settings' ranges and words; a refused change writes nothing and a warning says why. Otherwise the file is written, the settings are put in force at once (the tile says what changed) and a `settings` message follows ([brain.md](brain.md) "Settings") |
 | `stats_reset {session}` | End the current run and start a new one now, its numbers (exp/hr, kills, deaths, flees, rests) at zero; the ended run stays in the history. A notice says so and a `stats` message follows; with no run (the bot stopped) a warning says so |
 | `find {session, query}` | Send a `found` message: the rooms, well-known places and monsters whose name holds `query` (two characters or more, any case) |
+| `parties_request` | Send a `parties` message |
+| `party_save {party}` | Make a party (`party.id` empty; the brain picks one, `party-1` and on) or replace one: `{id, leader, followers}`, by session id, one to five followers, the leader not among them ([brain.md](brain.md) "Parties"). A member already in another party is moved out of it (a leader takes its party with it); a party left with no followers is deleted. Refused with a warning otherwise; a `parties` message follows |
+| `party_delete {id}` | Delete a party; its members play on their own |
+| `party_leave {session}` | Take a follower out of its party: it sends `leave` in the game and plays on its own |
+| `party_join {session, party}` | Add `session` to party `party` as a follower; it joins in the game when it is in the leader's room |
 | `set_monster_rule {session, pattern, rule}` | Set the player's monster rule for names that hold `pattern` (any case): `never_fight`, `flee_from` or `avoid` ([brain.md](brain.md) "Monster rules"); `null` removes it. Stored with the bot's record; the bot's `monster_rules` shows the result |
 
 ```json
@@ -316,6 +329,11 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 {"type":"delete_loop","session":"kasimir","id":"custom:hidden-keep-with-leo-the-quick"}
 {"type":"find","session":"kasimir","query":"chief"}
 {"type":"set_monster_rule","session":"kasimir","pattern":"giant rat","rule":"never_fight"}
+{"type":"parties_request"}
+{"type":"party_save","party":{"id":"","leader":"kasimir","followers":["isolde","brynja"]}}
+{"type":"party_delete","id":"party-1"}
+{"type":"party_leave","session":"isolde"}
+{"type":"party_join","session":"isolde","party":"party-1"}
 {"type":"set_monster_rule","session":"kasimir","pattern":"giant rat","rule":null}
 {"type":"walk_to","session":"kasimir","map":1,"room":1865,"stop_short":false}
 ```

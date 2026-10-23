@@ -47,7 +47,7 @@ flees and heals come in later cards; this one gives them their seam.
   `not_joined` and `away`.
 - **Validation**: one to five followers; the leader is not a follower; a character in at most
   one party (saving moves it out of another, which is then saved too); unknown session ids
-  refused with an `error`.
+  refused with a warning (the brain cannot send `error`).
 - **Saved** in the store's `parties` table; loaded at start.
 - **Forming**: when a leader and a follower that is not in the leader's game party are in the
   same room, both in the realm with their bots running, the leader sends `invite <name>` and,
@@ -68,7 +68,7 @@ flees and heals come in later cards; this one gives them their seam.
   member the leader's `par` doesn't list is not joined. The coordinator's view of each party
   is the leader's latest `GameParty` plus each follower's own `following`.
 - **Followers don't walk**: while a character is a follower of a defined party, its Task,
-  Go to, walk-to and errands are refused (`error` with "Following Penny"); joining ends the
+  Go to, walk-to and errands are refused (a warning: "following Penny: it goes where the party goes"); joining ends the
   one it was running ("Joined Penny's party: the loop stops"). Fight and Recover run as
   today. The leader plays as now.
 - **Leave** (`party_leave`): the follower sends `leave`, is removed from the definition (saved),

@@ -21,9 +21,7 @@ pub(crate) struct ParMember {
     pub invited: bool,
 }
 
-// Read by the party coordinator (C-039); until then by the tests.
-#[allow(dead_code)]
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct GameParty {
     /// The leader followed, by the name the game's lines give (the first name).
     pub following: Option<String>,
@@ -38,11 +36,15 @@ pub(crate) struct GameParty {
     pub invited_by: Option<String>,
     /// When the game last moved the character after its leader.
     pub moved: Option<Instant>,
+    /// When a join, a drop or a removal last came (what makes it stale).
+    pub changed: Option<Instant>,
+    /// When the game last said `You must be invited first!`.
+    pub must_invite: Option<Instant>,
     /// A `par` screen being read.
     screen: Option<Screen>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 struct Screen {
     following: Option<String>,
     members: Vec<ParMember>,
@@ -102,19 +104,31 @@ impl GameParty {
                     GameEvent::PartyFollowing { leader } => {
                         self.following = Some(leader.clone());
                         self.invited_by = None;
-                        self.stale = true;
+                        self.changed(now);
                     }
                     GameEvent::PartyLeft { .. } => {
                         self.following = None;
-                        self.stale = true;
+                        self.changed(now);
                     }
                     GameEvent::PartyFollowerJoined { .. }
-                    | GameEvent::PartyFollowerRemoved { .. } => self.stale = true,
+                    | GameEvent::PartyFollowerRemoved { .. } => self.changed(now),
+                    GameEvent::PartyMustBeInvited => self.must_invite = Some(now),
                     GameEvent::PartyMoved { .. } => self.moved = Some(now),
                     _ => {}
                 }
             }
         }
+    }
+
+    fn changed(&mut self, now: Instant) {
+        self.stale = true;
+        self.changed = Some(now);
+    }
+
+    /// Whether the last whole `par` screen listed `name` (a full name) as following, not
+    /// only invited.
+    pub fn lists(&self, name: &str) -> bool {
+        self.members.iter().any(|m| m.name == name && !m.invited)
     }
 
     /// The screen being read is over: take it if it is whole.

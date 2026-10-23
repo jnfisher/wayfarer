@@ -9,6 +9,8 @@ import type { MapExit } from "./MapExit";
 import type { MapRoom } from "./MapRoom";
 import type { MegaMudLoop } from "./MegaMudLoop";
 import type { MonsterRuleKind } from "./MonsterRuleKind";
+import type { PartyDef } from "./PartyDef";
+import type { PartyStatus } from "./PartyStatus";
 import type { RoomKey } from "./RoomKey";
 import type { RunSummary } from "./RunSummary";
 import type { SessionAction } from "./SessionAction";
@@ -39,7 +41,7 @@ layer?: string, } | { "type": "settings_save", session: string,
 /**
  * The layer to write: `mine`, `server` or `character`.
  */
-layer: string, changes: Array<SettingChange>, } | { "type": "save_loop", session: string, name: string, base?: string, stops: Array<RoomKey>, } | { "type": "delete_loop", session: string, id: string, } | { "type": "find", session: string, query: string, } | { "type": "set_monster_rule", session: string, pattern: string, rule: MonsterRuleKind | null, } | { "type": "event", session: string, seq: number, line_no: number, name: string, cat: string, fields: Record<string, unknown>, line: string, } | { "type": "character", session: string, state: CharacterState, } | { "type": "character_patch", session: string, patch: unknown, } | { "type": "brain_info", build: string, started_at: string, world_pack?: WorldPackInfo, } | { "type": "notice", session?: string, text: string, } | { "type": "warning", session?: string, text: string, } | { "type": "map_view", session: string, center: RoomKey, 
+layer: string, changes: Array<SettingChange>, } | { "type": "save_loop", session: string, name: string, base?: string, stops: Array<RoomKey>, } | { "type": "delete_loop", session: string, id: string, } | { "type": "find", session: string, query: string, } | { "type": "set_monster_rule", session: string, pattern: string, rule: MonsterRuleKind | null, } | { "type": "parties_request" } | { "type": "party_save", party: PartyDef, } | { "type": "party_delete", id: string, } | { "type": "party_leave", session: string, } | { "type": "party_join", session: string, party: string, } | { "type": "event", session: string, seq: number, line_no: number, name: string, cat: string, fields: Record<string, unknown>, line: string, } | { "type": "character", session: string, state: CharacterState, } | { "type": "character_patch", session: string, patch: unknown, } | { "type": "brain_info", build: string, started_at: string, world_pack?: WorldPackInfo, } | { "type": "notice", session?: string, text: string, } | { "type": "warning", session?: string, text: string, } | { "type": "map_view", session: string, center: RoomKey, 
 /**
  * The center's level: the floor the panel shows first.
  */
@@ -55,4 +57,4 @@ matches: number, } | { "type": "stats", session: string, runs: Array<RunSummary>
 /**
  * The layer whose own values `own` shows.
  */
-layer: string, files: Array<SettingsFile>, rows: Array<SettingRow>, } | { "type": "found", session: string, query: string, results: Array<Found>, } | { "type": "ready_to_leave", session: string, } | { "type": "arbitrate", session: string, on: boolean, };
+layer: string, files: Array<SettingsFile>, rows: Array<SettingRow>, } | { "type": "found", session: string, query: string, results: Array<Found>, } | { "type": "parties", parties: Array<PartyStatus>, } | { "type": "ready_to_leave", session: string, } | { "type": "arbitrate", session: string, on: boolean, };

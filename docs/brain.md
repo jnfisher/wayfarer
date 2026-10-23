@@ -955,14 +955,47 @@ scroll read since is found the next time.
 
 ## Parties
 
-Party play is being built (`docs/plan/10-party-play.md`, cards C-038 to C-043). So far each
-session keeps its party **as the game last showed it**: whom it follows, the last whole `par`
-screen's rows (name, class, mana and HP per cent, the rest mark, the rank, or an invitation),
-when that screen came, the last invitation, and when the game last moved it after its leader.
-The invite, follow, drop and removal lines between two `par` screens only mark it out of date,
-since the game drops a follower an exit refuses without a word (`kb/grouping.md` §2a); a `par`
-screen cut off before the character's own row (always last) is not taken. Nothing acts on it
-yet; the party coordinator (C-039) will.
+Party play is being built (`docs/plan/10-party-play.md`, cards C-038 to C-043). A party is a
+leader and one to five followers, by session id, made, changed and deleted with `party_save`,
+`party_delete`, `party_leave` and `party_join` ([protocol.md](protocol.md)) and kept in the
+store, so it survives a restart. A character is in one party at most: saving it into another
+moves it.
+
+**The game's party.** Each session keeps its party as the game last showed it: whom it
+follows, the last whole `par` screen's rows (name, class, mana and HP per cent, the rest mark,
+the rank, or an invitation), when that screen came, the last invitation, and when the game
+last moved it after its leader. The invite, follow, drop and removal lines between two `par`
+screens only mark it out of date, since the game drops a follower an exit refuses without a
+word (`kb/grouping.md` §2a); a `par` screen cut off before the character's own row (always
+last) is not taken.
+
+**The coordinator** runs every second while there are parties, after the sessions' own steps.
+It sends its lines through each session's executor between the bot's actions, as the bot's
+own, one at a time:
+
+- **Who counts.** A follower in the realm with its bot running; the leader whenever it is in
+  the realm, whatever moves it (its bot, Go to, or the player typing). The others are `away`
+  and not formed up.
+- **Forming up.** A follower not in the leader's party in the game, in the leader's room,
+  sends `follow <leader>`; a follower the game dropped at an exit is still on the leader's
+  list, and `follow` alone takes it back. On `You must be invited first!` the leader sends
+  `invite <follower>`, and on the invitation the follower follows. Names are the in-game first
+  names, never the config's. The same `follow` or `invite` waits 10 s before it goes again.
+- **Checking.** The leader sends `par` when it has none yet (a fresh brain: it forms nothing
+  before), after any join, drop or removal line, when a joined follower has been out of its
+  room for 3 s, and every 30 s while the party has members; at most one every 5 s. A follower
+  the leader's `par` does not list is not joined, whatever its own lines said.
+- **Followers don't walk.** A follower's own `run_loop`, `walk_loop`, `walk_to` and errands are
+  refused with a warning ("following Penny: it goes where the party goes"); made a follower,
+  a bot running a loop stops the loop and fights where it is ("In Penny's party: the loop
+  stops"). Its modes never walk it, Flee aside: Recover rests where it stands and does not
+  walk home. Play and pause work as for any bot.
+- **Leaving.** `party_leave` takes a follower out (a party with no followers left is deleted;
+  the leader's, the whole party): it sends `leave` while the game has it following, and plays
+  on its own. A follower dropped from a party by `party_save` or `party_delete` does the same.
+- **The UIs** get `parties` when one changes or a member's state does: `joined`,
+  `not_joined` ("forming up", "in another room") or `away` (with why). Separation, party rests
+  and flees and healing members come with C-041 to C-043.
 
 ## Not yet
 

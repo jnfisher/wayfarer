@@ -132,7 +132,8 @@ impl Mode for Recover {
                     v.room_name(Some(home))
                 ));
             }
-            if self.away(v) && self.walks_back < WALKS {
+            // A follower rests where the leader is and goes where it goes.
+            if self.away(v) && self.walks_back < WALKS && v.party.following().is_none() {
                 self.walks_back += 1;
                 let home = self.home.expect("away from home");
                 return Step::walk(
@@ -161,7 +162,7 @@ impl Mode for Recover {
                 rest_at(v.atlas, v.room, v.certain, v.traveller),
                 RestAt::Walk(_)
             );
-        if self.walks_out < WALKS {
+        if self.walks_out < WALKS && v.party.following().is_none() {
             match rest_at(v.atlas, v.room, v.certain, v.traveller) {
                 RestAt::Walk(quiet) => {
                     self.walks_out += 1;

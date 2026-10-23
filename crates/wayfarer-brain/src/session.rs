@@ -30,8 +30,9 @@ use crate::clock::Clock;
 use crate::commands::{Kind, classify};
 use crate::custom;
 use crate::errand::{Active, Ctx, Errand, ErrandKind, ErrandNext};
-use crate::executor::{Action, Executor};
+use crate::executor::{Action, Executor, Expect};
 use crate::modes::{Bot, Do, Presence, View};
+use crate::party::{MemberInfo, PartyRole};
 use crate::policy::{COMBAT_QUIET, hp_percent};
 use crate::position::Position;
 use crate::rules::{self, RuleBook, Sightings};
@@ -232,6 +233,8 @@ enum Owner {
     Walker,
     Bot,
     Errand,
+    /// The party coordinator's `invite`, `follow`, `par` or `leave`.
+    Party,
 }
 
 /// What a re-sync step did, for the brain to report.
@@ -344,6 +347,8 @@ pub(crate) struct Session {
     presence: Presence,
     /// The character's party as the game last showed it.
     party_game: crate::party_game::GameParty,
+    /// What the party coordinator makes of it.
+    party_role: PartyRole,
     /// The walk in progress is the bot's.
     bot_walk: bool,
     /// A walk asked for while the bot's action was in flight: it starts once that is answered.
@@ -460,6 +465,7 @@ impl Session {
             bot: Bot::new(flee_below),
             presence: Presence::default(),
             party_game: Default::default(),
+            party_role: PartyRole::None,
             bot_walk: false,
             walk_after: None,
             loops: HashMap::new(),
@@ -1498,6 +1504,12 @@ impl Session {
             out.push(self.warning("walk_to: the character is not in the realm"));
             return;
         }
+        if let Some(leader) = self.party_role.following() {
+            out.push(self.warning(&format!(
+                "walk_to: following {leader}: it goes where the party goes"
+            )));
+            return;
+        }
         self.take_over(out);
         self.bot_walk = false;
         if let Some(l) = self.loop_walk.take() {
@@ -1966,6 +1978,12 @@ impl Session {
             out.push(self.warning("walk_loop: the character is not in the realm"));
             return;
         }
+        if let Some(leader) = self.party_role.following() {
+            out.push(self.warning(&format!(
+                "walk_loop: following {leader}: it goes where the party goes"
+            )));
+            return;
+        }
         let Some(l) = self.find_loop(&atlas, id) else {
             out.push(self.warning(&format!("walk_loop: no loop {id:?}")));
             return;
@@ -2073,6 +2091,12 @@ impl Session {
         };
         if self.state != SessionState::Realm {
             out.push(self.warning("run_loop: the character is not in the realm"));
+            return;
+        }
+        if let Some(leader) = self.party_role.following() {
+            out.push(self.warning(&format!(
+                "run_loop: following {leader}: it goes where the party goes"
+            )));
             return;
         }
         let skip = skip.unwrap_or_default();
@@ -2290,6 +2314,14 @@ impl Session {
                 | BotAction::RecoverPile
                 | BotAction::CancelErrand
         ) {
+            if action != BotAction::CancelErrand
+                && let Some(leader) = self.party_role.following()
+            {
+                out.push(self.warning(&format!(
+                    "errands: following {leader}: it goes where the party goes"
+                )));
+                return;
+            }
             self.errand_control(action, out);
             self.drive(now, out);
             self.flush_views(out);
@@ -2694,6 +2726,7 @@ impl Session {
             traveller: &self.position.traveller,
             doors: &self.position.traveller.doors,
             presence: &self.presence,
+            party: &self.party_role,
             rules: self.rules.rules(),
             sightings: &self.sightings,
             settings: &self.settings,
@@ -2744,6 +2777,55 @@ impl Session {
             }
             None => {}
         }
+    }
+
+    /// What the party coordinator reads of this session.
+    pub(crate) fn party_info(&self) -> MemberInfo {
+        MemberInfo {
+            realm: self.state == SessionState::Realm && self.live(),
+            running: self.bot.running(),
+            name: self.character.state().name.clone(),
+            room: self.position.best(),
+            game: self.party_game.clone(),
+        }
+    }
+
+    /// Send one of the coordinator's lines (`invite`, `follow`, `par`, `leave`) as the bot's
+    /// own, between the bot's actions: whether it went to the executor (else it is planned
+    /// again next tick).
+    pub(crate) fn party_line(&mut self, line: &str) -> bool {
+        let free = self.state == SessionState::Realm
+            && self.live()
+            && !self.leaving
+            && self.at_prompt
+            && !self.executor.busy()
+            && !self.walker.walking()
+            && self.resync == Resync::Off;
+        if !free {
+            return false;
+        }
+        match self.executor.submit(Action::new(line, Expect::Prompt)) {
+            Ok(()) => {
+                self.owner = Some(Owner::Party);
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    /// The coordinator's role for this session. Made a follower, it stops the loop it ran:
+    /// it goes where the party goes.
+    pub(crate) fn set_party_role(&mut self, role: PartyRole, out: &mut Vec<ToGateway>) {
+        if role == self.party_role {
+            return;
+        }
+        if let Some(leader) = role.following()
+            && self.party_role.following().is_none()
+        {
+            let says = self.bot.join_party(leader);
+            self.say(says, out);
+        }
+        self.party_role = role;
     }
 
     /// `map_request`.
@@ -3010,6 +3092,8 @@ impl Session {
                         errand.outcome(&action, outcome);
                     }
                 }
+                // The coordinator reads the answer from the game's lines (`GameParty`).
+                Some(Owner::Party) => {}
                 Some(Owner::Bot) => {
                     let says = self.bot.outcome(&action, outcome);
                     self.say(says, out);

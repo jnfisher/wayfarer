@@ -17,6 +17,7 @@ use wayfarer_world::{Finder, Key, MmLoop, Monsters, PathKnowledge, RoomGraph, Sp
 
 use crate::clock::{Clock, rfc3339};
 use crate::link::Link;
+use crate::party::Parties;
 use crate::rules;
 use crate::session::{Progress, Session};
 use crate::session_settings::SettingsSource;
@@ -263,6 +264,8 @@ pub struct Brain {
     sessions: BTreeMap<String, Session>,
     attaches: u64,
     store: Option<Arc<Mutex<Store>>>,
+    /// The parties the player defined, and the coordinator over them.
+    parties: Parties,
     /// The bots' flee line, per cent of the maximum HP.
     flee_below: Option<i32>,
     /// Monsters every bot flees from, as the player's rules (`--flee-from`).
@@ -286,6 +289,7 @@ impl Brain {
             sessions: BTreeMap::new(),
             attaches: 0,
             store: None,
+            parties: Parties::default(),
             flee_below: None,
             flee_from: Vec::new(),
             settings: Arc::new(Settings::default()),
@@ -327,6 +331,10 @@ impl Brain {
     /// Keep the bot's state and the statistics in `store`, and resume the bots it has running
     /// or paused as their sessions are first seen.
     pub fn with_store(mut self, store: Store) -> Self {
+        match store.parties() {
+            Ok(parties) => self.parties = Parties::from_records(parties),
+            Err(e) => tracing::warn!("the store's parties could not be read: {e}"),
+        }
         self.store = Some(Arc::new(Mutex::new(store)));
         self
     }
@@ -372,7 +380,12 @@ impl Brain {
         self.flush(link, &mut out);
 
         loop {
-            let deadline = self.sessions.values().filter_map(Session::deadline).min();
+            let mut deadline = self.sessions.values().filter_map(Session::deadline).min();
+            // The party coordinator looks every second while there are parties.
+            if self.parties.has_parties() {
+                let tick = self.clock.instant() + std::time::Duration::from_secs(1);
+                deadline = Some(deadline.map_or(tick, |d| d.min(tick)));
+            }
             let clock = self.clock.clone();
             tokio::select! {
                 msg = link.recv() => match msg {
@@ -619,8 +632,96 @@ impl Brain {
                     out.push(ToGateway::ReadyToLeave { session });
                 }
             }
+            ToClient::PartiesRequest => {
+                self.parties.resend();
+                self.parties_tick(out);
+            }
+            ToClient::PartySave { party } => {
+                let known = self.sessions.keys().cloned().collect();
+                match self.parties.save(party, &known) {
+                    Ok((changed, emptied)) => self.store_parties(&changed, &emptied),
+                    Err(why) => out.push(party_warning(&format!("party_save: {why}"))),
+                }
+                self.parties_tick(out);
+            }
+            ToClient::PartyDelete { id } => {
+                if self.parties.delete(&id) {
+                    self.store_parties(&[], &[id]);
+                } else {
+                    out.push(party_warning(&format!("party_delete: no party {id:?}")));
+                }
+                self.parties_tick(out);
+            }
+            ToClient::PartyLeave { session } => {
+                match self.parties.leave(&session) {
+                    Some(Ok(changed)) => self.store_parties(&[changed], &[]),
+                    Some(Err(deleted)) => self.store_parties(&[], &[deleted]),
+                    None => out.push(party_warning(&format!(
+                        "party_leave: {session} is in no party"
+                    ))),
+                }
+                self.parties_tick(out);
+            }
+            ToClient::PartyJoin { session, party } => {
+                let known = self.sessions.keys().cloned().collect();
+                match self.parties.join(&session, &party, &known) {
+                    Ok((changed, emptied)) => self.store_parties(&changed, &emptied),
+                    Err(why) => out.push(party_warning(&format!("party_join: {why}"))),
+                }
+                self.parties_tick(out);
+            }
             ToClient::Error { message } => tracing::warn!("the gateway says: {message}"),
             other => tracing::debug!("ignored: {:?}", other.type_name()),
+        }
+    }
+
+    /// Keep the parties changed in the store and forget those deleted.
+    fn store_parties(&self, changed: &[wayfarer_proto::PartyDef], deleted: &[String]) {
+        let Some(store) = &self.store else { return };
+        let store = store.lock().expect("the store's lock");
+        let at = crate::stats::unix(self.clock.now());
+        for d in changed {
+            let rec = wayfarer_store::PartyRecord {
+                id: d.id.clone(),
+                leader: d.leader.clone(),
+                followers: d.followers.clone(),
+            };
+            if let Err(e) = store.save_party(&rec, at) {
+                tracing::warn!(party = %d.id, "the party could not be stored: {e}");
+            }
+        }
+        for id in deleted {
+            if let Err(e) = store.delete_party(id) {
+                tracing::warn!(party = %id, "the party could not be deleted: {e}");
+            }
+        }
+    }
+
+    /// The party coordinator's tick: each session's role, the lines it plans through each
+    /// session's executor, and the parties to the UIs when they changed.
+    fn parties_tick(&mut self, out: &mut Vec<ToGateway>) {
+        let now = self.clock.instant();
+        let infos = self
+            .sessions
+            .iter()
+            .map(|(id, s)| (id.clone(), s.party_info()))
+            .collect();
+        let plan = self.parties.plan(&infos, now);
+        for (id, role) in plan.roles {
+            if let Some(s) = self.sessions.get_mut(&id) {
+                s.set_party_role(role, out);
+            }
+        }
+        for (id, line) in plan.lines {
+            if let Some(s) = self.sessions.get_mut(&id)
+                && s.party_line(&line)
+            {
+                tracing::info!(session = %id, %line, "party");
+                self.parties.sent(&id, &line, now);
+            }
+        }
+        if let Some(parties) = plan.statuses {
+            out.push(ToGateway::Parties { parties });
         }
     }
 
@@ -641,6 +742,14 @@ impl Brain {
             s.persist(out);
             s.arbitrate(out);
         }
+        self.parties_tick(out);
+    }
+}
+
+fn party_warning(text: &str) -> ToGateway {
+    ToGateway::Warning {
+        session: None,
+        text: text.to_owned(),
     }
 }
 
