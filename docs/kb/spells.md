@@ -139,6 +139,13 @@
     9, 11 or 12.
 - Abilities: 17 damage, 18 heal, 14 room light (starlight +175 is a light spell, an alternative
   to a torch).
+- Ability 115, Descriptive Message: its value (the same slot of `abilvals`) is a WCCMSG number
+  whose texts are [the line shown when the spell ends, "", the line its target sees when it is
+  cast]: bless (14) → 8539 ["The effects of bless wear off!", "", "You feel lucky!"], barkskin
+  (34) → 8528 ["The effects of barkskin wear off!", "", "You feel tough!"], holy aura (20) →
+  8541 ["You no longer feel safe from evil!", "", "You feel safe from evil!"]. The spell's own
+  `msgnum` is the cast message (bless 16: "You cast %s on %s!", "%s casts a spell on you!",
+  "%s casts %s on %s!"). [F: the stock-world export in `tests/fixtures/world/`]
 - Damage at caster level L = min/max + inc × L / lvls (`mininc`/`minlvls`,
   `maxinc`/`maxlvls`), up to `levelcap`. [C] `test/play/mmud_data.py Spell.damage`
 - Area spells are never resisted by monsters (a coding bug), but MR still scales the damage.

@@ -404,3 +404,27 @@ fn parties_round_trip_and_are_replaced_by_id() {
     assert!(!store.delete_party("party-1").unwrap());
     assert!(store.parties().unwrap().is_empty());
 }
+
+#[test]
+fn blessings_round_trip_per_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let (store, _) = Store::open(&path).unwrap();
+    assert!(store.blessings().unwrap().is_empty());
+    let both = vec!["bles".to_owned(), "aura".to_owned()];
+    store.save_blessings("lauren", &both, T0).unwrap();
+    store
+        .save_blessings("faye", &["skin".to_owned()], T0)
+        .unwrap();
+    drop(store);
+    let (store, _) = Store::open(&path).unwrap();
+    assert_eq!(
+        store.blessings().unwrap(),
+        [
+            ("faye".to_owned(), vec!["skin".to_owned()]),
+            ("lauren".to_owned(), both)
+        ]
+    );
+    store.save_blessings("faye", &[], T0 + 1).unwrap();
+    assert_eq!(store.blessings().unwrap().len(), 1);
+}

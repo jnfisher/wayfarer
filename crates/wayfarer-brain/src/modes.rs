@@ -163,6 +163,16 @@ impl Presence {
     }
 }
 
+/// The game's line an event came from, for the texts only the world's data knows (a spell's
+/// wear-off line): a line nothing recognised, or one a generated pattern did.
+pub(crate) fn line_of(ev: &GameEvent) -> Option<&str> {
+    match ev {
+        GameEvent::Unknown { line } => Some(line),
+        GameEvent::Other(e) => Some(&e.line),
+        _ => None,
+    }
+}
+
 fn remove_first(v: &mut Vec<String>, f: impl FnMut(&String) -> bool) {
     if let Some(i) = v.iter().position(f) {
         v.remove(i);
@@ -432,6 +442,11 @@ impl View<'_> {
         self.mana.is_some() && (self.casts_attacks() || self.casts_heals())
     }
 
+    /// The mana line Recover rests below (`health.rest_mana_below`, per cent).
+    pub fn rest_mana_below(&self) -> i32 {
+        self.setting("health.rest_mana_below", 30)
+    }
+
     /// Mana is low enough to rest for (`health.rest_mana_below`).
     pub fn mana_low(&self) -> bool {
         self.uses_mana()
@@ -565,6 +580,7 @@ pub(crate) struct Bot {
     fight: Fight,
     loot: Loot,
     recover: Recover,
+    bless: crate::bless::Bless,
     /// The gateway is logging the character off under attack: Flee alone runs, then the bot
     /// stops.
     leaving: bool,
@@ -675,6 +691,16 @@ impl Bot {
             self.narrate(format!("In {leader}'s party: the loop stops"), &mut says);
         }
         says
+    }
+
+    /// The lasting spells to keep on (C-047).
+    pub fn set_blessings(&mut self, defs: Vec<wayfarer_world::BuffDef>) {
+        self.bless.set(defs);
+    }
+
+    /// Whether the lasting spell `short` is believed on.
+    pub fn blessed(&self, short: &str, now: Instant) -> bool {
+        self.bless.is_on(short, now)
     }
 
     /// The monster it fights, while it fights one.
@@ -891,6 +917,7 @@ impl Bot {
         self.fight.on_event(ev, now);
         self.loot.on_event(ev, now);
         self.recover.on_event(ev, now);
+        self.bless.on_event(ev, now);
         if let Some(t) = &mut self.task {
             t.on_event(ev, now);
         }
@@ -927,6 +954,7 @@ impl Bot {
             Some(BotMode::Fight) => self.fight.outcome(action, outcome),
             Some(BotMode::Recover) => self.recover.outcome(action, outcome),
             Some(BotMode::Loot) => self.loot.outcome(action, outcome),
+            Some(BotMode::Bless) => self.bless.outcome(action, outcome),
             _ => {}
         }
         // Flee broke off the fight it could not run from.
@@ -952,6 +980,7 @@ impl Bot {
             .into_iter()
             .chain(self.flee.wake())
             .chain(self.fight.wake())
+            .chain(self.bless.wake(now))
             .chain(self.task.as_ref().and_then(|t| t.wake(now)))
             .min()
     }
@@ -977,6 +1006,7 @@ impl Bot {
             }
             BotMode::Recover => "resting".to_owned(),
             BotMode::Loot => "picking up".to_owned(),
+            BotMode::Bless => "blessing".to_owned(),
             BotMode::Task if walking => match v.party.following() {
                 Some(leader) if v.party.rejoin().is_some() => format!("walking back to {leader}"),
                 _ => "walking".to_owned(),
@@ -1025,6 +1055,8 @@ impl Bot {
                 (BotMode::Loot, r)
             } else if let Some(r) = self.recover.wants(v) {
                 (BotMode::Recover, r)
+            } else if let Some(r) = self.bless.wants(v) {
+                (BotMode::Bless, r)
             } else if let Some(r) = self.fight.wants(v) {
                 (BotMode::Fight, r)
             } else if v.party.rejoin().is_some_and(|k| v.room != Some(k)) {
@@ -1043,6 +1075,7 @@ impl Bot {
                 BotMode::Flee => self.flee.step(v),
                 BotMode::Recover => self.recover.step(v),
                 BotMode::Loot => self.loot.step(v),
+                BotMode::Bless => self.bless.step(v),
                 BotMode::Fight => self.fight.step(v),
                 BotMode::Task if let Some(to) = v.party.rejoin().filter(|k| v.room != Some(*k)) => {
                     let leader = v.party.following().unwrap_or("the leader");

@@ -109,6 +109,12 @@ const MIGRATIONS: &[&str] = &[
          followers TEXT NOT NULL,
          updated_at INTEGER NOT NULL
      );",
+    // 7: the lasting spells each session keeps on itself (C-047), by short name.
+    "CREATE TABLE blessings (
+         session TEXT PRIMARY KEY,
+         spells TEXT NOT NULL,
+         updated_at INTEGER NOT NULL
+     );",
 ];
 
 /// The schema version this build writes.
@@ -681,6 +687,40 @@ impl Store {
             .conn
             .execute("DELETE FROM parties WHERE id = ?1", params![id])?
             > 0)
+    }
+
+    /// Keep the lasting spells (short names) `session` keeps on itself, replacing its last;
+    /// none forgets them.
+    pub fn save_blessings(&self, session: &str, spells: &[String], at: i64) -> Result<()> {
+        if spells.is_empty() {
+            self.conn
+                .execute("DELETE FROM blessings WHERE session = ?1", params![session])?;
+        } else {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO blessings (session, spells, updated_at)
+                 VALUES (?1, ?2, ?3)",
+                params![session, spells.join("\n"), at],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Every session's lasting spells, by session.
+    pub fn blessings(&self) -> Result<Vec<(String, Vec<String>)>> {
+        let mut q = self
+            .conn
+            .prepare("SELECT session, spells FROM blessings ORDER BY session")?;
+        let rows = q.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?
+                    .split('\n')
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_owned)
+                    .collect(),
+            ))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
     /// A boss (by its lower-case name) the character killed at `at`, unix seconds: kept for the

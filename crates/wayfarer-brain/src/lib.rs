@@ -19,6 +19,7 @@
 //! # Ok(()) }
 //! ```
 
+mod bless;
 mod boss;
 mod brain;
 pub mod character;

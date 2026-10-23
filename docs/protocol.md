@@ -183,7 +183,7 @@ to every UI. It relays by message type and never reads `fields` or `patch`.
 
 ```json
 {"type":"event","session":"kasimir","seq":43,"line_no":88,"name":"you_hit","cat":"combat","fields":{"dmg":"1","target":"fat giant rat","verb":"punch"},"line":"You punch fat giant rat for 1 damage!"}
-{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]},"bot":{"state":"running","mode":"fight","narration":"Fight: large giant rat","monster_rules":[{"pattern":"gigantic black ooze","rule":"flee_from","source":"default"}]}}}
+{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]},"bot":{"state":"running","mode":"fight","narration":"Fight: large giant rat","doing":"attacking large giant rat","monster_rules":[{"pattern":"gigantic black ooze","rule":"flee_from","source":"default"}]}}}
 {"type":"character_patch","session":"kasimir","patch":{"hp":23,"in_combat":true,"room_title":null}}
 {"type":"brain_info","build":"0.1.0 (3f2a9c1)","started_at":"2026-10-19T12:00:00Z","world_pack":{"path":"worlds/stock-1.11p.sqlite","hash":"sha256:5d41402abc4b2a76"}}
 {"type":"notice","session":"kasimir","text":"re-synced"}
@@ -195,6 +195,7 @@ to every UI. It relays by message type and never reads `fields` or `patch`.
 {"type":"settings","session":"kasimir","layer":"character","files":[{"layer":"mine","path":"/data/settings.toml","exists":false},{"layer":"character","path":"/data/characters/kasimir.toml","exists":true}],"rows":[{"key":"health.flee_below_hp","label":"Flee below","help":"Leave the fight and run when HP falls below this.","group":"health","tier":"essential","kind":{"kind":"int","min":0,"max":90},"unit":"%","default":25,"value":35,"source":"character","own":35,"megamud":"HP Run If Below"}]}
 {"type":"found","session":"kasimir","query":"chief","results":[{"kind":"monster","name":"minotaur chieftain","rooms":[{"map":1,"room":1865,"name":"Large Wooden Room","steps":46,"boss":true}],"count":1,"monsters":["minotaur chieftain"]}]}
 {"type":"parties","parties":[{"party":{"id":"party-1","leader":"kasimir","followers":["isolde","brynja"]},"members":[{"session":"kasimir","state":"joined"},{"session":"isolde","state":"joined"},{"session":"brynja","state":"not_joined","detail":"in another room"}]}]}
+{"type":"blessings","characters":[{"session":"isolde","spells":[{"short":"bles","name":"bless","mana":4,"chosen":true,"on":true},{"short":"aura","name":"holy aura","mana":15,"chosen":false,"on":false}]}]}
 ```
 
 The character snapshot: every field is optional and left out until the brain knows it.
@@ -307,6 +308,8 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 | `party_delete {id}` | Delete a party; its members play on their own |
 | `party_leave {session}` | Take a follower out of its party: it sends `leave` in the game and plays on its own |
 | `party_join {session, party}` | Add `session` to party `party` as a follower; it joins in the game when it is in the leader's room |
+| `blessings_request` | Send a `blessings` message |
+| `blessings_save {session, spells}` | The lasting spells, by short name, that `session` keeps on itself from now on, replacing the ones it kept ([brain.md](brain.md) "Blessings"); stored by the brain; a `blessings` message follows |
 | `set_monster_rule {session, pattern, rule}` | Set the player's monster rule for names that hold `pattern` (any case): `never_fight`, `flee_from` or `avoid` ([brain.md](brain.md) "Monster rules"); `null` removes it. Stored with the bot's record; the bot's `monster_rules` shows the result |
 
 ```json
@@ -334,6 +337,8 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 {"type":"party_delete","id":"party-1"}
 {"type":"party_leave","session":"isolde"}
 {"type":"party_join","session":"isolde","party":"party-1"}
+{"type":"blessings_request"}
+{"type":"blessings_save","session":"isolde","spells":["bles","aura"]}
 {"type":"set_monster_rule","session":"kasimir","pattern":"giant rat","rule":null}
 {"type":"walk_to","session":"kasimir","map":1,"room":1865,"stop_short":false}
 ```

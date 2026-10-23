@@ -2,6 +2,8 @@
 
 export const PROTOCOL = 2;
 
+export type { BlessingSpell } from "./BlessingSpell";
+export type { Blessings } from "./Blessings";
 export type { BossLair } from "./BossLair";
 export type { BossStatus } from "./BossStatus";
 export type { Bot } from "./Bot";

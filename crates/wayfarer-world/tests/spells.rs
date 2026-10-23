@@ -72,3 +72,33 @@ fn healing_rain_is_a_party_heal_and_acid_rain_is_no_heal() {
         2
     );
 }
+
+#[test]
+fn lasting_spells_carry_their_duration_and_wear_off_line() {
+    let pack = WorldPack::open(common::pack_path()).unwrap();
+    let spells = Spells::load(&pack).unwrap();
+    // bless: 40 rounds and 5 a level (one level a step), up to level 20.
+    let bless = spells.buff("Cleric", "bles", "bless").unwrap();
+    assert_eq!(bless.mana, 4);
+    assert_eq!(bless.rounds(1), 45);
+    assert_eq!(bless.rounds(10), 90);
+    assert_eq!(bless.rounds(40), bless.rounds(20));
+    assert_eq!(
+        bless.wear_off.as_deref(),
+        Some("The effects of bless wear off!")
+    );
+    assert_eq!(bless.felt.as_deref(), Some("You feel lucky!"));
+    assert!(!bless.on_party());
+    // holy aura is cast on the party.
+    let aura = spells.buff("Priest", "aura", "holy aura").unwrap();
+    assert!(aura.on_party());
+    assert_eq!(
+        aura.wear_off.as_deref(),
+        Some("You no longer feel safe from evil!")
+    );
+    // barkskin is the Druids' (magery 3), not a Cleric's.
+    assert!(spells.buff("Druid", "skin", "barkskin").is_some());
+    assert!(spells.buff("Cleric", "skin", "barkskin").is_none());
+    // An attack is no lasting spell.
+    assert!(spells.buff("Mage", "mmis", "magic missile").is_none());
+}

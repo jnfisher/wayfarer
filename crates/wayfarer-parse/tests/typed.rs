@@ -932,3 +932,17 @@ fn par_row_at_minus_100() {
         row("Aldis Vey", "Witchunter", None, -10, false, Rank::Front)
     );
 }
+
+#[test]
+fn the_characters_own_cast_is_no_blow() {
+    // Message 17 ("You cast %s on %s!") is a spellcasting monster's hit message, so its first
+    // text is a generated `mon_hits_you`; it is the character's own cast.
+    for l in ["You cast bless on Aldric!", "You cast bless on yourself!"] {
+        let evs = line(l);
+        assert!(
+            !evs.iter()
+                .any(|e| matches!(e, GameEvent::AttackedBy { .. })),
+            "{l}: {evs:?}"
+        );
+    }
+}

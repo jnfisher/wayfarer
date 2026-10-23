@@ -281,7 +281,7 @@ These texts are not in the C source. They are WCCMSG records that the C code for
 | `monster_leaves` | 218 | `The giant rat creeps out of the room to the north.` | mon, to | arrivemsg text 2 |
 | `monster_follows` | 211 | `The giant rat creeps in after you!` | (none) | arrivemsg text 3 |
 | `monster_death` | 605 | `The giant rat falls to the ground with a tortured squeak.` | monsters (all names sharing the text) | LJNMONST.C:1095 (text 3 of deathmsg) |
-| `mon_hits_you` | 238 | `The fierce kobold thief stabs you for 7 damage!` | mon, dmg | LJNCOMBT.C:3653 |
+| `mon_hits_you` | 238 | `The fierce kobold thief stabs you for 7 damage!` | mon, dmg | LJNCOMBT.C:3653 (a spellcasting monster's slot can name a spell message: the dark priest, priestess and gypsies name 17, whose text 1 "You cast %s on %s!" is the caster's own line, so "You cast bless on Aldric!" fits this role and is no blow [F]) |
 | `mon_hits_other` | 239 | `The giant rat bites Thornwyn for 5 damage!` | mon, victim, dmg | same, text 2 |
 | `mon_deflect_you` | 45 | `The kobold thief lunges at you, but your armour deflects the blow!` | mon, verb | LJNCOMBT.C:3746 |
 | `mon_deflect_other` | 44 | `... lunges at Thornwyn, but her armour deflects the blow!` | mon, verb, victim, pron | |

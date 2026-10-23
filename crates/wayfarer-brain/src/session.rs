@@ -307,6 +307,8 @@ pub(crate) struct Session {
     settings_layer: Layer,
     /// The rows of the last `spells` screen, and the attacks and heals among them.
     spell_rows: Vec<SpellRow>,
+    /// The lasting spells the player ticked for the character, by short name (C-047).
+    blessings: Vec<String>,
     /// A `spells` screen has been seen, so empty rows mean no spells rather than not known.
     spells_seen: bool,
     spellbook: Spellbook,
@@ -464,6 +466,7 @@ impl Session {
             settings_check: None,
             settings_layer: Layer::Character,
             spell_rows: Vec::new(),
+            blessings: Vec::new(),
             spells_seen: false,
             spellbook: Spellbook::default(),
             map_radius: MAP_RADIUS,
@@ -3062,6 +3065,55 @@ impl Session {
         }
         if let (Some(atlas), Some(class)) = (&self.atlas, &self.character.state().class) {
             self.spellbook = Spellbook::learn(&atlas.spells, class, &self.spell_rows);
+        }
+        self.refresh_blessings();
+    }
+
+    /// The lasting spells the player ticked for the character (C-047), by short name.
+    pub(crate) fn set_blessings(&mut self, chosen: Vec<String>) {
+        self.blessings = chosen;
+        self.refresh_blessings();
+    }
+
+    /// The lasting spells the character knows (its `spells` screen) that it can keep on
+    /// itself or its party.
+    fn known_buffs(&self) -> Vec<wayfarer_world::BuffDef> {
+        let (Some(atlas), Some(class)) = (&self.atlas, &self.character.state().class) else {
+            return Vec::new();
+        };
+        self.spell_rows
+            .iter()
+            .filter_map(|(_, _, short, name)| atlas.spells.buff(class, short, name))
+            .cloned()
+            .collect()
+    }
+
+    /// The bot keeps on the ticked spells the character knows.
+    fn refresh_blessings(&mut self) {
+        let kept = self
+            .known_buffs()
+            .into_iter()
+            .filter(|b| self.blessings.contains(&b.short))
+            .collect();
+        self.bot.set_blessings(kept);
+    }
+
+    /// The character's lasting spells for the Blessings panel.
+    pub(crate) fn blessings_status(&self) -> wayfarer_proto::Blessings {
+        let now = self.clock.instant();
+        wayfarer_proto::Blessings {
+            session: self.id.clone(),
+            spells: self
+                .known_buffs()
+                .into_iter()
+                .map(|b| wayfarer_proto::BlessingSpell {
+                    chosen: self.blessings.contains(&b.short),
+                    on: self.bot.blessed(&b.short, now),
+                    mana: u32::try_from(b.mana).unwrap_or(0),
+                    short: b.short,
+                    name: b.name,
+                })
+                .collect(),
         }
     }
 

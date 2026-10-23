@@ -63,6 +63,11 @@ export const KEY_ROWS: KeyRow[] = [
     does: "★ Leading, Following or Separated; click it to leave the party, or to join one",
   },
   {
+    group: "Blessings",
+    keys: "Alt+B, or the blessings button",
+    does: "Open the drawer on the blessings: tick the lasting spells each character keeps on itself (bless, barkskin, holy aura); ● marks one that is on (on a Mac, Option)",
+  },
+  {
     group: "Bot",
     keys: "F10, or [►] and [■] in the tile's header",
     does: "Start the focused character's bot where it stands (fight what comes, rest when low), or stop it",
@@ -114,6 +119,7 @@ export const RESET_LAYOUT_CODE = "Digit0";
 export const DEV_PANEL_CODE = "KeyD";
 export const MAP_PANEL_CODE = "KeyM";
 export const PARTIES_PANEL_CODE = "KeyP";
+export const BLESSINGS_PANEL_CODE = "KeyB";
 export const GO_CODE = "KeyG";
 export const STATS_PANEL_CODE = "KeyS";
 export const SETTINGS_PANEL_CODE = "KeyT";

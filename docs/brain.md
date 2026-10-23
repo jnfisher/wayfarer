@@ -963,7 +963,22 @@ scroll read since is found the next time.
   `health.rest_mana_below` (30%), to `health.rest_mana_until` (90%), on the same rules as an HP
   rest (a quiet room if one is near, a rest started is finished). With both spell settings `off`
   mana is ignored.
-- **Not done.** Buffs (blur, bless), light, area spells, cures, spells
+- **Blessings** (C-047). The lasting spells the player ticks for a character in the
+  Blessings panel (`blessings_save`, kept in the store) are kept on. They are the general
+  spells (type 3) with a duration that the character's `spells` screen lists and that are cast
+  on the caster (target 1, 2 or 6) or its party (10 or 13): bless, barkskin, holy aura. A Bless
+  mode, after Recover and before Fight in the stack, casts one (`bles`, no target word) when
+  nothing attacks and it is not in combat, the party is not resting (a cast ends a rest), the
+  spell is not believed on and the cast leaves the mana at or above `health.rest_mana_below`;
+  narrated "Blessing: casting bless". A cast is on from its prompt for as long as the spell
+  lasts at the character's level (`duration + durinc*(L/durlvls)` 5-s rounds, the level held to
+  the cap, at least `durlvl*L`), or until its wear-off line (the spell's Descriptive Message,
+  `kb/spells.md`: "The effects of bless wear off!"); the line its target sees ("You feel
+  lucky!") turns it on too, whoever cast it; a death ends them all. A failed cast ("You
+  attempt to cast bless, but fail.", or no mana) is tried again after a round; three in a row
+  hold the spell for five minutes, since one already on may not renew. The panel shows which
+  are on (`blessings`).
+- **Not done.** Buffs on other members, light, area spells, cures, spells
   that need a target the bot does not pick (a Thief's backstab is not a spell), and the
   Witchunter's no-cast rule are later slices. The average damage is the KB's formula; whether
   one spell beats another against resistances is not modelled.

@@ -180,3 +180,4 @@
   `You are now following`, the `par` row's padding and its `R` resting mark, Frontrank for a
   leader with followers [C].
 - **2026-10-23**: `navigation.md` "Item": an Item exit's item charges (a room ticket has one, so the exit takes it; ropes, the skiff, the climbing harness and the mine pass are unlimited) and where room tickets are sold, from the world pack [F]. The client's walker now buys such an item on the way (C-044).
+- **2026-10-23**: `spells.md` "Spell record": ability 115 (Descriptive Message) holds the message number of a lasting spell's wear-off line and its target's line, with bless, barkskin and holy aura [F]. `screen-patterns.md` `mon_hits_you`: spellcasting monsters (dark priest, priestess, the gypsies) name spell message 17 as a hit message, so the caster's own "You cast bless on ...!" fits the generated role; the client's typed layer reads it as a cast (C-047) [F].

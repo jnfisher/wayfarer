@@ -263,6 +263,8 @@ pub enum BotMode {
     Flee,
     /// Picking up coins left in the room.
     Loot,
+    /// Casting a lasting spell the player ticked that is off (C-047).
+    Bless,
     /// Running a loop (`run_loop`): walking to its next stop, or waiting there for respawns.
     Task,
 }
@@ -459,6 +461,26 @@ pub struct FoundRoom {
     pub no_route: bool,
     /// A boss lair: `walk_to` stops one room short of it by default.
     pub boss: bool,
+}
+
+/// A lasting spell a character knows and can keep on itself or its party (C-047: bless,
+/// barkskin, holy aura), and whether the player ticked it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct BlessingSpell {
+    pub short: String,
+    pub name: String,
+    pub mana: u32,
+    /// The player ticked it: the bot keeps it on.
+    pub chosen: bool,
+    /// On the character now, as far as the brain knows.
+    pub on: bool,
+}
+
+/// One character's blessings: the lasting spells it knows, ticked or not.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct Blessings {
+    pub session: SessionId,
+    pub spells: Vec<BlessingSpell>,
 }
 
 /// A party as the player defined it (`docs/plan/10-party-play.md`): its leader and one to five
@@ -997,6 +1019,9 @@ pub enum ToClient {
     Parties {
         parties: Vec<PartyStatus>,
     },
+    Blessings {
+        characters: Vec<Blessings>,
+    },
 
     // From a UI, relayed to the brain.
     Resync {
@@ -1116,6 +1141,11 @@ pub enum ToClient {
     PartyJoin {
         session: SessionId,
         party: String,
+    },
+    BlessingsRequest,
+    BlessingsSave {
+        session: SessionId,
+        spells: Vec<String>,
     },
 
     /// To the brain only: a line went to the game, typed by a client or sent by a logon or
@@ -1374,6 +1404,14 @@ pub enum ToGateway {
         session: SessionId,
         party: String,
     },
+    /// UI → brain: ask for every character's blessings; the brain answers with `blessings`.
+    BlessingsRequest,
+    /// UI → brain: the lasting spells (by short name) `session` keeps on itself (C-047),
+    /// replacing the ones it kept. Stored by the brain.
+    BlessingsSave {
+        session: SessionId,
+        spells: Vec<String>,
+    },
 
     /// Brain → UIs: one parsed event, as `wayfarer-parse` produced it, with the output `seq`
     /// its line came from. The gateway never reads `fields`.
@@ -1489,6 +1527,11 @@ pub enum ToGateway {
     Parties {
         parties: Vec<PartyStatus>,
     },
+    /// Brain → UIs: each character's lasting spells, which are ticked and which are on; sent
+    /// when a UI asks and when one changes.
+    Blessings {
+        characters: Vec<Blessings>,
+    },
 
     /// Brain → gateway: the answer to `logging_off`: the brain sends the session nothing more,
     /// and the log-off may start.
@@ -1546,6 +1589,7 @@ impl ToClient {
         "settings",
         "found",
         "parties",
+        "blessings",
         "resync",
         "state_request",
         "walk_to",
@@ -1569,6 +1613,8 @@ impl ToClient {
         "party_delete",
         "party_leave",
         "party_join",
+        "blessings_request",
+        "blessings_save",
         "sent",
         "brain_state",
         "brain_lagged",
@@ -1601,6 +1647,7 @@ impl ToClient {
             Self::Settings { .. } => "settings",
             Self::Found { .. } => "found",
             Self::Parties { .. } => "parties",
+            Self::Blessings { .. } => "blessings",
             Self::Resync { .. } => "resync",
             Self::StateRequest { .. } => "state_request",
             Self::WalkTo { .. } => "walk_to",
@@ -1624,6 +1671,8 @@ impl ToClient {
             Self::PartyDelete { .. } => "party_delete",
             Self::PartyLeave { .. } => "party_leave",
             Self::PartyJoin { .. } => "party_join",
+            Self::BlessingsRequest => "blessings_request",
+            Self::BlessingsSave { .. } => "blessings_save",
             Self::Sent { .. } => "sent",
             Self::BrainState { .. } => "brain_state",
             Self::BrainLagged { .. } => "brain_lagged",
@@ -1653,6 +1702,7 @@ impl ToClient {
             | Self::SetMonsterRule { session, .. }
             | Self::PartyLeave { session }
             | Self::PartyJoin { session, .. }
+            | Self::BlessingsSave { session, .. }
             | Self::Resync { session }
             | Self::WalkTo { session, .. }
             | Self::WalkStop { session }
@@ -1683,7 +1733,9 @@ impl ToClient {
             | Self::BrainState { .. }
             | Self::BrainLagged { .. }
             | Self::Parties { .. }
+            | Self::Blessings { .. }
             | Self::PartiesRequest
+            | Self::BlessingsRequest
             | Self::PartySave { .. }
             | Self::PartyDelete { .. } => None,
         }
@@ -1730,6 +1782,8 @@ impl ToGateway {
         "party_delete",
         "party_leave",
         "party_join",
+        "blessings_request",
+        "blessings_save",
         "event",
         "character",
         "character_patch",
@@ -1743,6 +1797,7 @@ impl ToGateway {
         "settings",
         "found",
         "parties",
+        "blessings",
         "ready_to_leave",
         "arbitrate",
     ];
@@ -1779,6 +1834,8 @@ impl ToGateway {
             Self::PartyDelete { .. } => "party_delete",
             Self::PartyLeave { .. } => "party_leave",
             Self::PartyJoin { .. } => "party_join",
+            Self::BlessingsRequest => "blessings_request",
+            Self::BlessingsSave { .. } => "blessings_save",
             Self::Event { .. } => "event",
             Self::Character { .. } => "character",
             Self::CharacterPatch { .. } => "character_patch",
@@ -1792,6 +1849,7 @@ impl ToGateway {
             Self::Settings { .. } => "settings",
             Self::Found { .. } => "found",
             Self::Parties { .. } => "parties",
+            Self::Blessings { .. } => "blessings",
             Self::ReadyToLeave { .. } => "ready_to_leave",
             Self::Arbitrate { .. } => "arbitrate",
         }
@@ -1828,7 +1886,9 @@ impl ToGateway {
             | Self::PartySave { .. }
             | Self::PartyDelete { .. }
             | Self::PartyLeave { .. }
-            | Self::PartyJoin { .. } => Family::Control,
+            | Self::PartyJoin { .. }
+            | Self::BlessingsRequest
+            | Self::BlessingsSave { .. } => Family::Control,
             Self::Event { .. }
             | Self::Character { .. }
             | Self::CharacterPatch { .. }
@@ -1841,7 +1901,8 @@ impl ToGateway {
             | Self::SpellPlan { .. }
             | Self::Settings { .. }
             | Self::Found { .. }
-            | Self::Parties { .. } => Family::Brain,
+            | Self::Parties { .. }
+            | Self::Blessings { .. } => Family::Brain,
             Self::ReadyToLeave { .. } | Self::Arbitrate { .. } => Family::BrainToGateway,
         }
     }
@@ -1926,6 +1987,8 @@ impl ToGateway {
             Self::PartyDelete { id } => ToClient::PartyDelete { id },
             Self::PartyLeave { session } => ToClient::PartyLeave { session },
             Self::PartyJoin { session, party } => ToClient::PartyJoin { session, party },
+            Self::BlessingsRequest => ToClient::BlessingsRequest,
+            Self::BlessingsSave { session, spells } => ToClient::BlessingsSave { session, spells },
             Self::Event {
                 session,
                 seq,
@@ -2029,6 +2092,7 @@ impl ToGateway {
                 results,
             },
             Self::Parties { parties } => ToClient::Parties { parties },
+            Self::Blessings { characters } => ToClient::Blessings { characters },
             Self::Hello { .. }
             | Self::InputLine { .. }
             | Self::InputKeys { .. }

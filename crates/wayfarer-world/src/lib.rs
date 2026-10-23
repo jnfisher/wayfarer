@@ -43,7 +43,7 @@ pub use route::{
     Costs, Purchase, Route, Step, Traveller, distances, distances_any, distances_buying,
     pocket_exits, route, route_buying, route_or_search, route_within, route_within_or_search,
 };
-pub use spells::{SpellDef, SpellKind, Spells};
+pub use spells::{BuffDef, SpellDef, SpellKind, Spells};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
