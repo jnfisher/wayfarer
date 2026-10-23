@@ -53,7 +53,7 @@ scripts/dev/gateway.sh
 
 builds `wayfarer` in release mode, rebuilds the web UI (`npm ci` and `npm run build` in
 `ui/`, so the page always matches the checkout), and runs `wayfarer gateway` with the config
-from your data directory, `~/Library/Application Support/wayfarer/` (override with `WAYFARER_DATA_DIR`). The
+from your data directory, `~/Library/Application Support/wayfarer/` on macOS or `~/.local/share/wayfarer/` on Linux (override with `WAYFARER_DATA_DIR`). The
 first run copies [`examples/dev.toml`](../examples/dev.toml) there as `wayfarer.toml`; after
 that the script never overwrites it. Edit the copy: change the placeholder characters to your
 test characters, and put their accounts in `credentials.toml` beside it
@@ -135,18 +135,18 @@ install cargo-watch` or `brew install cargo-watch` (a developer tool, not part o
 
 The brain needs the world pack in the data directory. Both `scripts/dev/gateway.sh` and
 `scripts/dev/brain.sh` build it from `tests/fixtures/world` if it is missing, so either may go
-first. They add **MegaMud's path set** (Winterhawk's paths: 1,957 paths, 195 of them loops, 183
-verified against the stock world) when the zip is at hand: `$WAYFARER_MEGAMUD`, else
-mmud-exploration's `reference/megamud/MegaMUD_v2.0_Alpha_-_With_Paths.zip` beside this
-checkout. Without it the pack has no MegaMud loops and the map panel lists only generated
-ones. The same files are published as "Winterhawk's Paths Files Only v2.0" on mudinfo.net.
+first. They add **MegaMud's path set** from [`data/megamud/`](../data/megamud/PROVENANCE.md):
+the paths that ship with stock MegaMud v2.2 (1,957 paths, 195 of them loops, 183 verified
+against the stock world). `$WAYFARER_MEGAMUD` points them at another set, a `Default/`
+directory's parent or a MegaMud zip. Without one the pack has no MegaMud loops and the map
+panel lists only generated ones.
 
 The scripts never rebuild an existing pack. To rebuild it by hand, with the gateway and the
 brain stopped:
 
 ```sh
 wayfarer import-world --export tests/fixtures/world \
-  --megamud ../mmud-exploration/reference/megamud/MegaMUD_v2.0_Alpha_-_With_Paths.zip \
+  --megamud data/megamud \
   --out "$WAYFARER_DATA_DIR/world.sqlite"
 ```
 

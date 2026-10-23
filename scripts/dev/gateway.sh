@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 # Build wayfarer in release mode and run the gateway with the dev config.
 # Usage: scripts/dev/gateway.sh [extra `wayfarer gateway` arguments]
-# The config lives in WAYFARER_DATA_DIR (default: the macOS per-user data directory); the first
+# The config lives in WAYFARER_DATA_DIR (default: the per-user data directory); the first
 # run copies examples/dev.toml there. Re-running never overwrites it.
 set -euo pipefail
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-data=${WAYFARER_DATA_DIR:-$HOME/Library/Application Support/wayfarer}
+# The platform's per-user data directory, as the binary picks it (Paths::default_data_dir).
+case "$(uname -s)" in
+  Darwin) default_data="$HOME/Library/Application Support/wayfarer" ;;
+  *) default_data="${XDG_DATA_HOME:-$HOME/.local/share}/wayfarer" ;;
+esac
+data=${WAYFARER_DATA_DIR:-$default_data}
 
 mkdir -p "$data"
 if [ ! -e "$data/wayfarer.toml" ]; then
@@ -24,15 +29,15 @@ else
   echo "gateway.sh: npm not found; serving ui/dist as it is" >&2
 fi
 # The world pack is the brain's (and `wayfarer serve`'s); build it here too so either script may go first.
-# With MegaMud's path set (Winterhawk's paths) when the zip is at hand: $WAYFARER_MEGAMUD, else
-# mmud-exploration's reference copy beside this checkout; docs/dev-rig.md "The world pack".
-megamud="${WAYFARER_MEGAMUD:-$root/../mmud-exploration/reference/megamud/MegaMUD_v2.0_Alpha_-_With_Paths.zip}"
+# With MegaMud's path set: data/megamud (stock v2.2 paths), or a directory or zip in
+# $WAYFARER_MEGAMUD; docs/dev-rig.md "The world pack".
+megamud="${WAYFARER_MEGAMUD:-$root/data/megamud}"
 if [ ! -f "$data/world.sqlite" ]; then
   echo "gateway.sh: building the world pack into $data/world.sqlite" >&2
-  if [ -f "$megamud" ]; then
+  if [ -e "$megamud" ]; then
     ./target/release/wayfarer import-world --export tests/fixtures/world --megamud "$megamud" --out "$data/world.sqlite"
   else
-    echo "gateway.sh: no MegaMud zip at $megamud; the pack has no MegaMud loops" >&2
+    echo "gateway.sh: no MegaMud path set at $megamud; the pack has no MegaMud loops" >&2
     ./target/release/wayfarer import-world --export tests/fixtures/world --out "$data/world.sqlite"
   fi
 fi
