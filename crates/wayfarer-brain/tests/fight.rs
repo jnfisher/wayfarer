@@ -196,32 +196,23 @@ async fn a_monster_that_attacks_while_resting_wakes_fight() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_typed_line_pauses_after_the_action_in_flight_and_resume_resyncs() {
+async fn pause_with_nothing_to_go_on_with_turns_the_bot_off_and_start_resyncs() {
     let (mut g, run) = in_arena(&["large giant rat"]).await;
     start(&mut g, &["large giant rat"], 35).await;
     g.expect("a rat", line(ENGAGED, 35));
-    g.after_cmd = Some((
-        "a rat".into(),
-        ToClient::Sent {
-            session: ID.into(),
-            seq: 1,
-            text: "say hi".into(),
-        },
-    ));
-    let said = g.narrated("Paused: you took over").await;
-    assert!(
-        said.contains(&"You took over Aldric".to_owned()),
-        "{said:?}"
-    );
-    // Paused: the fight goes on by itself, and nothing is sent after the kill.
+    g.narrated("Fight: large giant rat").await;
+    // No loop or journey: pausing is turning the bot off.
+    g.bot(BotAction::Pause).await;
+    g.narrated("Stopped: asked to pause").await;
+    // Off: the fight goes on by itself, and nothing is sent after the kill.
     g.round("The large giant rat lunges at you!", 33).await;
     g.output(&kill(33)).await;
     g.idle(Duration::from_secs(60)).await;
-    // Resume: re-sync (`st` ... `look`) first, then decide.
+    // ►: on again where it stands, re-syncing (`st` ... `look`) first.
     g.expect("st", status(33));
     g.expect("look", arena(&[], 33));
-    g.bot(BotAction::Resume).await;
-    g.narrated("Resuming: re-syncing").await;
+    g.bot(BotAction::Start).await;
+    g.narrated("Starting in Newhaven, Arena: re-syncing").await;
     g.narrated("Waiting here").await;
     let (seen, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "a rat", "st", "look"]);
@@ -229,13 +220,11 @@ async fn a_typed_line_pauses_after_the_action_in_flight_and_resume_resyncs() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn pause_and_stop_from_the_ui() {
+async fn stop_with_nothing_to_drop_turns_the_bot_off() {
     let (mut g, run) = in_arena(&["large giant rat"]).await;
     start(&mut g, &["large giant rat"], 35).await;
     g.expect("a rat", line(ENGAGED, 35));
     g.narrated("Fight: large giant rat").await;
-    g.bot(BotAction::Pause).await;
-    g.narrated("Paused: asked to pause").await;
     g.bot(BotAction::Stop).await;
     g.narrated("Stopped: asked to stop").await;
     g.output(&kill(35)).await;
@@ -377,27 +366,19 @@ fn every_attack_refusal_line_refuses_the_attack() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn walk_to_pauses_the_bot() {
+async fn a_go_to_keeps_the_bot_on_and_it_plays_where_it_arrives() {
     let (mut g, run) = in_arena(&[]).await;
     start(&mut g, &[], 35).await;
     g.narrated("Waiting here").await;
     g.expect("u", room(NARROW_ROAD));
     g.walk_to(NARROW_ROAD).await;
-    let said = g.narrated("Paused: you took over").await;
-    assert!(
-        said.contains(&"You took over Aldric".to_owned()),
-        "{said:?}"
-    );
     g.narrated("Arrived: Newhaven, Narrow Road").await;
-    // Paused: nothing more goes, not even back to the Arena.
+    // On, and at home where it arrived: it does not walk back to the Arena.
     g.idle(Duration::from_secs(60)).await;
     let (seen, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "u"]);
     let b = bot(&seen);
-    assert_eq!(
-        (b.state, b.reason.as_deref()),
-        (BotState::Paused, Some("you took over"))
-    );
+    assert_eq!((b.state, b.journey), (BotState::Running, None));
 }
 
 #[tokio::test(start_paused = true)]
@@ -424,7 +405,7 @@ async fn walk_to_while_the_bots_look_is_in_flight_walks_once_it_is_answered() {
     g.idle(Duration::from_secs(30)).await;
     let (seen, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "a rat", "look", "u"]);
-    assert_eq!(bot(&seen).state, BotState::Paused);
+    assert_eq!(bot(&seen).state, BotState::Running);
 }
 
 #[tokio::test(start_paused = true)]
@@ -756,8 +737,74 @@ async fn the_bot_says_what_it_is_doing() {
     g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
         .await;
     g.bot(BotAction::Pause).await;
-    g.narrated("Paused: asked to pause").await;
+    g.narrated("Stopped: asked to pause").await;
     let (seen, _) = g.close(run).await;
-    // Paused: nothing.
+    // Off: nothing.
     assert_eq!(bot(&seen).doing, None);
+}
+
+/// From the Arena, a Go to the Village Entrance (`u`, `e`, `e`) paused once `u` has gone.
+async fn paused_on_a_go_to(g: &mut Game) {
+    start(g, &[], 35).await;
+    g.narrated("Waiting here").await;
+    g.expect("u", room(NARROW_ROAD));
+    g.after_cmd = Some((
+        "u".into(),
+        ToClient::BotControl {
+            session: ID.into(),
+            action: BotAction::Pause,
+        },
+    ));
+    g.walk_to(VILLAGE_ENTRANCE).await;
+    g.narrated("Paused: asked to pause").await;
+    // Paused: the walk stopped after its move in flight, and nothing more goes.
+    g.idle(Duration::from_secs(30)).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn pause_on_a_go_to_keeps_it_and_resume_walks_on() {
+    let (mut g, run) = in_arena(&[]).await;
+    paused_on_a_go_to(&mut g).await;
+    // ►: re-sync, then on from where the walk stopped.
+    g.expect("st", status(35));
+    g.expect("look", room(NARROW_ROAD));
+    g.expect("e", room(NARROW_PATH));
+    g.expect("e", room(VILLAGE_ENTRANCE));
+    g.bot(BotAction::Resume).await;
+    g.narrated("Resuming: re-syncing").await;
+    g.walk_narrated("Arrived: Newhaven, Village Entrance").await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u", "st", "look", "e", "e"]);
+    let b = bot(&seen);
+    assert_eq!((b.state, b.journey), (BotState::Running, None));
+}
+
+#[tokio::test(start_paused = true)]
+async fn stop_while_paused_on_a_go_to_drops_it_and_the_bot_stays_off() {
+    let (mut g, run) = in_arena(&[]).await;
+    paused_on_a_go_to(&mut g).await;
+    g.bot(BotAction::Stop).await;
+    g.narrated("Stopped: asked to stop").await;
+    g.idle(Duration::from_secs(30)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u"]);
+    let b = bot(&seen);
+    assert_eq!((b.state, b.journey), (BotState::Stopped, None));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_go_to_with_the_bot_off_turns_it_on() {
+    let (mut g, run) = in_arena(&[]).await;
+    g.expect("st", status(35));
+    g.expect("look", arena(&[], 35));
+    g.expect("u", room(NARROW_ROAD));
+    g.walk_to(NARROW_ROAD).await;
+    g.narrated("Going to Newhaven, Narrow Road: re-syncing")
+        .await;
+    g.narrated("Arrived: Newhaven, Narrow Road").await;
+    g.idle(Duration::from_secs(30)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u"]);
+    let b = bot(&seen);
+    assert_eq!((b.state, b.journey), (BotState::Running, None));
 }

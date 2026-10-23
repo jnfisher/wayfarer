@@ -31,7 +31,7 @@ export const KEY_ROWS: KeyRow[] = [
     keys: "Alt+M, or the map button",
     does: "Open the drawer on the map of the focused character's surroundings, or close it (on a Mac, Option)",
   },
-  { group: "Map", keys: "Click a room on the map", does: "Walk the character there; stop under the map ends the walk" },
+  { group: "Map", keys: "Click a room on the map", does: "Go there: the bot turns on, fights on the way and plays where it arrives; stop under the map ends the walk, as [■]" },
   {
     group: "Map",
     keys: "Alt+G, or the go button",
@@ -69,13 +69,13 @@ export const KEY_ROWS: KeyRow[] = [
   },
   {
     group: "Bot",
-    keys: "F10, or [►] and [■] in the tile's header",
-    does: "Start the focused character's bot where it stands (fight what comes, rest when low), or stop it",
+    keys: "F10, or [■] in the tile's header",
+    does: "Drop the focused character's loop or Go to: it plays on where it is (paused, it stays off); with neither, turn the bot off, or on",
   },
   {
     group: "Bot",
     keys: "F9, or [║] and [►] in the tile's header",
-    does: "Pause or resume the focused character's bot; a line you type pauses it too",
+    does: "Pause the focused character's loop or Go to and go on with it; with neither, turn the bot off and on where it stands (fight what comes, rest when low)",
   },
   {
     group: "Bot",

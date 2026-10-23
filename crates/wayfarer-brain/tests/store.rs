@@ -68,7 +68,8 @@ async fn a_restarted_brain_resumes_the_bot_paused_with_its_home_and_stop_clears_
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
 
-    // The first brain: Start, a kill, a sample, Pause.
+    // The first brain: Start, a kill, a sample; gone while running. Its record is then made
+    // paused, as a bot paused on a Go to leaves it (a journey is not stored).
     let (mut g, run) = arena_brain(brain_on(&path), &["large giant rat"]).await;
     start(&mut g, &["large giant rat"], 35).await;
     g.expect("a rat", line(ENGAGED, 35));
@@ -78,8 +79,6 @@ async fn a_restarted_brain_resumes_the_bot_paused_with_its_home_and_stop_clears_
     g.output(&kill(33)).await;
     g.narrated("Waiting here").await;
     g.idle(SAMPLE_EVERY + Duration::from_secs(5)).await;
-    g.bot(BotAction::Pause).await;
-    g.narrated("Paused: asked to pause").await;
     let (seen, _) = g.close(run).await;
     let ui = as_ui_sees(&seen);
     let r = ui.run.expect("the run on the snapshot");
@@ -87,10 +86,12 @@ async fn a_restarted_brain_resumes_the_bot_paused_with_its_home_and_stop_clears_
     assert_eq!(r.run_started_at, "2026-10-19T12:00:20Z");
 
     let store = store_at(&path);
-    let saved = store.bot(ID).unwrap().unwrap();
-    assert_eq!(saved.state, wayfarer_store::BotState::Paused);
+    let mut saved = store.bot(ID).unwrap().unwrap();
+    assert_eq!(saved.state, wayfarer_store::BotState::Running);
     assert_eq!(saved.home, Some(ARENA));
-    assert_eq!(saved.paused_reason.as_deref(), Some("asked to pause"));
+    saved.state = wayfarer_store::BotState::Paused;
+    saved.paused_reason = Some("asked to pause".into());
+    store.save_bot(ID, &saved, 0).unwrap();
     let open = store
         .open_run(ID)
         .unwrap()

@@ -1,7 +1,7 @@
 //! Typing beside the bot (docs/brain.md "Typing beside the bot"): the lines a UI types while the
-//! bot plays come to the brain as `user_input`; talk and look goes between the bot's actions,
-//! an act pauses the bot then goes, an attack while engaged is held until forced, and keys
-//! pause. Against the fake gateway of `game/mod.rs`, which fails a test that sends a line while
+//! bot plays come to the brain as `user_input`; every line goes between the bot's actions, and
+//! none pauses the bot: a move (typed, or keys) drops its loop or journey and it plays where
+//! the character goes. Against the fake gateway of `game/mod.rs`, which fails a test that sends a line while
 //! another is in flight. On a paused clock.
 
 mod game;
@@ -131,27 +131,19 @@ async fn talk_goes_between_the_steps_of_the_bots_walk() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_act_pauses_the_bot_after_the_action_in_flight_then_goes() {
+async fn a_typed_move_keeps_the_bot_on_where_the_character_goes() {
     let (mut g, run) = in_arena(&["large giant rat"]).await;
     start(&mut g, &["large giant rat"], 35).await;
     g.expect("a rat", line(ENGAGED, 35));
     g.after_cmd = Some(("a rat".into(), user_input("u")));
     g.expect("u", at_hp(&room(NARROW_ROAD), 35));
-    let said = g.narrated("Paused: you took over").await;
-    assert!(
-        said.contains(&"You took over Aldric".to_owned()),
-        "{said:?}"
-    );
-    // Paused, up the stairs: nothing more goes.
-    g.idle(Duration::from_secs(60)).await;
+    g.narrated("Fight: large giant rat").await;
+    g.idle(Duration::from_secs(5)).await;
+    g.freeze();
     let (seen, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "a rat", "u"]);
-    let b = bot(&seen);
-    assert_eq!(
-        (b.state, b.reason.as_deref()),
-        (BotState::Paused, Some("you took over"))
-    );
-    // Paused is still played by the brain: arbitration stays on.
+    // Still on: a move typed by hand pauses nothing.
+    assert_eq!(bot(&seen).state, BotState::Running);
     assert_eq!(arbitrated(&seen), [true]);
     assert_eq!(
         as_ui_sees(&seen).position.unwrap().room,
@@ -160,24 +152,25 @@ async fn an_act_pauses_the_bot_after_the_action_in_flight_then_goes() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_attack_typed_while_engaged_pauses_the_bot_and_goes() {
+async fn an_attack_typed_while_engaged_goes_and_the_bot_stays_on() {
     let (mut g, run) = in_arena(&["large giant rat", "fat giant rat"]).await;
     start(&mut g, &["large giant rat", "fat giant rat"], 35).await;
     g.expect("a rat", line(ENGAGED, 35));
     g.narrated("Fight: large giant rat").await;
     g.round("The large giant rat lunges at you!", 34).await;
-    // The player's own attack is theirs to type: an act, the bot pauses, the line goes.
+    // The player's own attack is theirs to type: it goes, and the bot plays on.
     g.expect("a fat", line(ENGAGED, 34));
     g.user_input("a fat").await;
-    g.narrated("Paused: you took over").await;
-    g.idle(Duration::from_secs(10)).await;
+    g.idle(Duration::from_secs(1)).await;
+    g.freeze();
     let (seen, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "a rat", "a fat"]);
-    assert_eq!(bot(&seen).state, BotState::Paused);
+    assert_eq!(bot(&seen).state, BotState::Running);
+    assert_eq!(lines(&seen).last().map(String::as_str), Some("a fat"));
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_attack_out_of_combat_is_an_act() {
+async fn an_attack_out_of_combat_goes_and_the_bot_stays_on() {
     let (mut g, run) = in_arena(&[]).await;
     start(&mut g, &[], 35).await;
     g.narrated("Waiting here").await;
@@ -185,27 +178,25 @@ async fn an_attack_out_of_combat_is_an_act() {
     g.idle(Duration::from_secs(30)).await;
     g.expect("a rat", line(ENGAGED, 35));
     g.user_input("a rat").await;
-    g.narrated("Paused: you took over").await;
+    g.idle(Duration::from_secs(1)).await;
+    g.freeze();
     let (seen, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "a rat"]);
-    assert_eq!(bot(&seen).state, BotState::Paused);
+    assert_eq!(bot(&seen).state, BotState::Running);
 }
 
 #[tokio::test(start_paused = true)]
-async fn keys_pause_the_bot() {
+async fn keys_count_as_a_move_and_leave_the_bot_on() {
     let (mut g, run) = in_arena(&["large giant rat"]).await;
     start(&mut g, &["large giant rat"], 35).await;
     g.expect("a rat", line(ENGAGED, 35));
     g.narrated("Fight: large giant rat").await;
     g.send(ToClient::KeysSent { session: ID.into() }).await;
-    let said = g.narrated("Paused: you took over").await;
-    assert!(
-        said.contains(&"You took over Aldric".to_owned()),
-        "{said:?}"
-    );
+    g.idle(Duration::from_secs(1)).await;
+    g.freeze();
     let (seen, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "a rat"]);
-    assert_eq!(bot(&seen).state, BotState::Paused);
+    assert_eq!(bot(&seen).state, BotState::Running);
 }
 
 #[tokio::test(start_paused = true)]
@@ -234,11 +225,12 @@ async fn an_attack_typed_while_the_bots_attack_is_in_flight_goes_after_its_answe
     g.expect("a rat", line(ENGAGED, 35));
     g.expect("a fat", line(ENGAGED, 35));
     g.after_cmd = Some(("a rat".into(), user_input("a fat")));
-    g.narrated("Paused: you took over").await;
-    g.idle(Duration::from_secs(10)).await;
+    g.narrated("Fight: large giant rat").await;
+    g.idle(Duration::from_secs(1)).await;
+    g.freeze();
     let (seen, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "a rat", "a fat"]);
-    assert_eq!(bot(&seen).state, BotState::Paused);
+    assert_eq!(bot(&seen).state, BotState::Running);
 }
 
 #[tokio::test(start_paused = true)]

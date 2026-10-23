@@ -13,20 +13,31 @@ export interface BotButton {
 /** Cells one button takes in the header: `[►]`. */
 export const BUTTON_CELLS = 3;
 
-const START: BotButton = { action: "start", label: "►", title: "Start the bot here: fight what comes, rest when low (F10)" };
-const PAUSE: BotButton = { action: "pause", label: "║", title: "Pause the bot (F9)" };
-const RESUME: BotButton = { action: "resume", label: "►", title: "Resume the bot (F9)" };
-const STOP: BotButton = { action: "stop", label: "■", title: "Stop the bot: you play (F10)" };
+const START: BotButton = { action: "start", label: "►", title: "Start the bot here: fight what comes, rest when low (F9)" };
+const PAUSE: BotButton = { action: "pause", label: "║", title: "Pause the loop or Go to; ► goes on with it (F9)" };
+const OFF: BotButton = { action: "pause", label: "║", title: "Turn the bot off: you play (F9)" };
+const RESUME: BotButton = { action: "resume", label: "►", title: "Go on with the loop or Go to (F9)" };
+const STOP: BotButton = { action: "stop", label: "■", title: "Drop the loop or Go to: the bot plays where it is (F10)" };
+const DROP: BotButton = { action: "stop", label: "■", title: "Drop the loop or Go to: the bot stays off (F10)" };
 
-/** The buttons for the bot's state: start; pause and stop; resume and stop. None without a bot. */
+/** The bot is on a loop or a Go to (a journey): ║ keeps it, ■ drops it. */
+export function hasRoute(bot: Bot | undefined): boolean {
+  return !!(bot?.task || bot?.journey);
+}
+
+/**
+ * The buttons for the bot's state (docs/web-ui.md "The bot"): ► when off; ║ when on, and ■ beside
+ * either while it has a loop or a Go to to drop. None without a bot.
+ */
 export function botButtons(bot: Bot | undefined): BotButton[] {
+  const route = hasRoute(bot);
   switch (bot?.state) {
     case "stopped":
       return [START];
     case "running":
-      return [PAUSE, STOP];
+      return route ? [PAUSE, STOP] : [OFF];
     case "paused":
-      return [RESUME, STOP];
+      return route ? [RESUME, DROP] : [RESUME];
     default:
       return [];
   }
@@ -47,11 +58,15 @@ export function narrationLine(bot: Bot | undefined): string | null {
 export const PAUSE_KEY = "F9";
 export const START_KEY = "F10";
 
-/** What `F9` (pause or resume) or `F10` (start or stop) asks of a bot in this state. */
+/**
+ * What a key asks of a bot in this state: `F9` is ║ and ► (pause, resume, or start when off);
+ * `F10` is ■ (it drops the loop or Go to; with none, it turns a bot that is on off, and starts
+ * one that is off).
+ */
 export function botKeyAction(key: string, bot: Bot | undefined): BotAction | null {
   if (!bot) return null;
   if (key === PAUSE_KEY) {
-    return bot.state === "running" ? "pause" : bot.state === "paused" ? "resume" : null;
+    return bot.state === "running" ? "pause" : bot.state === "paused" ? "resume" : "start";
   }
   if (key === START_KEY) return bot.state === "stopped" ? "start" : "stop";
   return null;

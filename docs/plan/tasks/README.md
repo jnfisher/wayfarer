@@ -157,8 +157,10 @@ and a follower walked away by hand comes back and re-joins.
 | [C-046](C-046-member-activity.md) | What each member is doing: a short activity on the bot's state, on the Parties panel | B | S | C-040 | |
 | [C-047](C-047-blessings.md) | Blessings: each character keeps up the self-buffs the player ticks, in a Blessings panel | B | M | C-043 | |
 | [C-048](C-048-sneak-and-backstab.md) | Sneaking and backstab: sneak before moving and after a fight, re-sneak on failure, open with `bs` | B | M | C-042 | |
+| [C-049](C-049-bot-states.md) | The bot's states: on or off, and a route; Go to and walk-once become the bot's journeys, ■ drops the route, only a typed move changes what the bot does | B | M | C-048 | |
 
-Wave 7 was built in one session, one card after another, in one pull request (as wave 6 was).
+Wave 7 was built in one session, one card after another, in one pull request (as wave 6 was);
+C-049 came after it, at John's request, in its own.
 
 Tier: B Opus, C Sonnet. Size: S under half a day of agent time, M about a day, L two to three
 days.

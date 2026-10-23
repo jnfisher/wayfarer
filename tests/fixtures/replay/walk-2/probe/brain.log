@@ -1,0 +1,6 @@
+{"seq":10,"ts":1792791123078,"attached":true}
+{"seq":20,"ts":1792791125438,"msg":{"type":"walk_to","session":"probe","map":1,"room":2141}}
+{"seq":38,"ts":1792791138055,"msg":{"type":"bot_control","session":"probe","action":"stop"}}
+{"seq":38,"ts":1792791138098,"msg":{"type":"walk_to","session":"probe","map":1,"room":2146}}
+{"seq":56,"ts":1792791143051,"msg":{"type":"bot_control","session":"probe","action":"stop"}}
+{"seq":56,"ts":1792791143094,"attached":false}

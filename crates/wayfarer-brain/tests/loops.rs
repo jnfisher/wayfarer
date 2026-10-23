@@ -3,8 +3,9 @@
 
 mod game;
 
+use game::arena::{arena, bot};
 use game::*;
-use wayfarer_proto::{BossStatus, GeneratedLoop, MegaMudLoop};
+use wayfarer_proto::{BossStatus, BotState, GeneratedLoop, MegaMudLoop};
 
 /// North of the Dungeon Entrance: a Lair of cave bears.
 const SMALL_CAVERN: Key = (1, 2156);
@@ -144,13 +145,13 @@ async fn walk_loop_walks_each_stop_and_back_to_the_first() {
     let (mut g, run) = Game::start(SessionState::Realm, VILLAGE_ENTRANCE).await;
     g.expect("w", room(NARROW_PATH));
     g.expect("w", room(NARROW_ROAD));
-    g.expect("d", room(ARENA));
+    g.expect("d", arena(&[], 35));
     g.expect("n", says("The door is closed!"));
     g.expect("bash n", says("You bashed the door open."));
     g.expect("n", room(BEYOND_ARENA));
     g.expect("n", room(SMALL_CAVERN));
     g.expect("s", room(BEYOND_ARENA));
-    g.expect("s", room(ARENA));
+    g.expect("s", arena(&[], 35));
     // Asked for without a `loops_request` first: the id says which loop.
     g.walk_loop(NEWHAVEN_LOOP).await;
     let said = g
@@ -190,7 +191,7 @@ async fn walk_loop_starts_at_the_nearest_stop() {
     let (mut g, run) = Game::start(SessionState::Realm, BEYOND_ARENA).await;
     g.expect("n", room(SMALL_CAVERN));
     g.expect("s", room(BEYOND_ARENA));
-    g.expect("s", room(ARENA));
+    g.expect("s", arena(&[], 35));
     g.expect("n", room(BEYOND_ARENA));
     g.walk_loop(NEWHAVEN_LOOP).await;
     let said = g
@@ -211,13 +212,15 @@ async fn walk_stop_ends_the_loop() {
     let (mut g, run) = Game::start(SessionState::Realm, VILLAGE_ENTRANCE).await;
     g.expect("w", room(NARROW_PATH));
     g.walk_loop(NEWHAVEN_LOOP).await;
+    g.walk_narrated("Walking to Newhaven, Arena: 3 steps").await;
     g.send(ToClient::WalkStop { session: ID.into() }).await;
     let said = g.narrated("Stopped walking: asked to stop").await;
     assert!(
         said.iter()
-            .any(|s| s == "Loop Newhaven stopped: asked to stop")
+            .any(|s| s == "Stopped loop Newhaven: playing here"),
+        "{said:?}"
     );
-    // No next stop, however long it waits.
+    // No next stop, however long it waits: the bot plays where it is.
     g.idle(Duration::from_secs(30)).await;
     let (seen, played) = g.close(run).await;
     assert_eq!(played, ["w"]);
@@ -225,11 +228,12 @@ async fn walk_stop_ends_the_loop() {
         as_ui_sees(&seen).position.unwrap().room,
         Some(NARROW_PATH.1)
     );
+    let b = bot(&seen);
+    assert_eq!((b.state, b.journey), (BotState::Running, None));
 }
 
 #[tokio::test(start_paused = true)]
-async fn combat_ends_the_loop() {
-    // On the way to a stop.
+async fn combat_on_the_way_stops_the_leg_and_the_loop_walk_stays() {
     let (mut g, run) = Game::start(SessionState::Realm, VILLAGE_ENTRANCE).await;
     let path = room(NARROW_PATH);
     let cut = path.rfind(PROMPT).unwrap();
@@ -238,36 +242,13 @@ async fn combat_ends_the_loop() {
         format!("{}\x1b[1;31m*Combat Engaged*\r\n{PROMPT}", &path[..cut]),
     );
     g.walk_loop(NEWHAVEN_LOOP).await;
-    let said = g.narrated("Stopped walking: combat started").await;
-    assert!(
-        said.iter()
-            .any(|s| s == "Loop Newhaven stopped: combat started")
-    );
-    g.idle(Duration::from_secs(30)).await;
-    let (_, played) = g.close(run).await;
-    assert_eq!(played, ["w"]);
-
-    // Arriving at a stop: the walk arrives, and the loop goes no further.
-    let (mut g, run) = Game::start(SessionState::Realm, NARROW_ROAD).await;
-    let arena = room(ARENA);
-    let cut = arena.rfind(PROMPT).unwrap();
-    g.expect(
-        "d",
-        format!("{}\x1b[1;31m*Combat Engaged*\r\n{PROMPT}", &arena[..cut]),
-    );
-    g.walk_loop(NEWHAVEN_LOOP).await;
-    let said = g.narrated("Arrived: Newhaven, Arena").await;
-    assert!(
-        said.iter()
-            .any(|s| s == "Loop Newhaven stopped: combat started")
-    );
-    g.idle(Duration::from_secs(30)).await;
+    g.walk_narrated("Stopped walking: combat started").await;
+    // The bot fights; the loop walk goes on after.
+    g.freeze();
     let (seen, played) = g.close(run).await;
-    assert_eq!(played, ["d"]);
-    assert!(!seen.iter().any(|m| matches!(
-        m,
-        ToGateway::Notice { text, .. } if text.starts_with("Loop stop")
-    )));
+    assert_eq!(played, ["w"]);
+    let journey = bot(&seen).journey.expect("still on the loop walk");
+    assert_eq!(journey.name, "loop Newhaven");
 }
 
 #[tokio::test(start_paused = true)]

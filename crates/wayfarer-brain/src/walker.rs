@@ -344,14 +344,9 @@ impl Walker {
         )
     }
 
-    /// `walk_to`. `busy`: an action of the walk in progress is in flight; the new walk starts
-    /// when it is done.
-    pub fn start(&mut self, pos: &mut Position, atlas: &Atlas, to: Key, busy: bool) -> Next {
-        self.start_with(pos, atlas, to, busy, false, false)
-    }
-
-    /// `start`, pipelining the moves when `pipelined`, and stopping one room short of `to`
-    /// when `short` and `to` is a boss lair (docs/brain.md "Go to").
+    /// A walk to `to`. `busy`: an action of the walk in progress is in flight; the new walk
+    /// starts when it is done. It pipelines the moves when `pipelined`, and stops one room
+    /// short of `to` when `short` and `to` is a boss lair (docs/brain.md "Go to").
     pub fn start_with(
         &mut self,
         pos: &mut Position,

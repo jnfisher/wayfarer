@@ -73,15 +73,23 @@ async fn replay(name: &str) -> (Vec<String>, Vec<String>) {
 
 #[tokio::test(start_paused = true)]
 async fn the_walk_recording_replays_to_the_same_commands() {
-    let (wanted, live) = replay("walk").await;
-    assert_eq!(live, ["st", "exp", "i", "look", "w", "w", "e", "e"]);
+    // Recorded after a Go to became the bot's journey: each walk turns the bot on (a re-sync
+    // first) and the live check turns it off again on arrival.
+    let (wanted, live) = replay("walk-2").await;
+    assert_eq!(
+        live,
+        [
+            "st", "exp", "i", "look", "st", "exp", "i", "look", "e", "e", "n", "st", "exp", "i",
+            "look", "s", "w", "w"
+        ]
+    );
     assert_eq!(wanted, live);
 }
 
 #[tokio::test(start_paused = true)]
 async fn the_fight_recording_replays_to_the_same_commands() {
-    let (wanted, live) = replay("fight").await;
-    assert!(live.contains(&"a thief".to_owned()), "{live:?}");
+    let (wanted, live) = replay("fight-2").await;
+    assert!(live.contains(&"a rat".to_owned()), "{live:?}");
     assert_eq!(wanted, live);
 }
 

@@ -18,6 +18,7 @@ use crate::brain::Atlas;
 use crate::executor::{Action, Outcome};
 use crate::fight::Fight;
 use crate::flee::Flee;
+use crate::journey::Journey;
 use crate::loot::Loot;
 use crate::policy;
 use crate::recover::Recover;
@@ -498,8 +499,8 @@ impl View<'_> {
 pub(crate) enum Do {
     /// Through the executor.
     Send(Action),
-    /// Through the walker, step by confirmed step.
-    Walk(Key),
+    /// Through the walker, step by confirmed step; `true`: stop one room short of a boss lair.
+    Walk(Key, bool),
 }
 
 /// A mode's decision: what to do (nothing, to wait), and the narration, said as a warning
@@ -535,10 +536,18 @@ impl Step {
 
     pub fn walk(to: Key, narration: impl Into<String>) -> Step {
         Step {
-            act: Some(Do::Walk(to)),
+            act: Some(Do::Walk(to, false)),
             narration: narration.into(),
             warn: false,
             doing: None,
+        }
+    }
+
+    /// A walk to `to` that stops one room short of it when `short` and it is a boss lair.
+    pub fn walk_short(to: Key, short: bool, narration: impl Into<String>) -> Step {
+        Step {
+            act: Some(Do::Walk(to, short)),
+            ..Step::walk(to, narration)
         }
     }
 
@@ -591,6 +600,10 @@ pub(crate) struct Bot {
     pausing: Option<String>,
     /// The loop it runs (Task mode).
     task: Option<Task>,
+    /// The Go to or loop walk it is on (Task mode too); never with a loop.
+    journey: Option<Journey>,
+    /// The player moved the character by hand: its home becomes where it is.
+    rehome: bool,
     /// Monsters a stalemate gave up, for the session to make *never fight*.
     learned: Vec<String>,
 }
@@ -631,6 +644,7 @@ impl Bot {
             doing: self.doing.clone().filter(|_| self.running()),
             reason: self.reason.clone(),
             task: self.task.as_ref().map(Task::snapshot),
+            journey: self.journey.as_ref().map(Journey::snapshot),
             // The session's: it keeps the rules.
             monster_rules: Vec::new(),
         }
@@ -663,6 +677,7 @@ impl Bot {
         self.fight = Fight::default();
         self.recover = Recover::new(home);
         self.task = None;
+        self.journey = None;
         self.narrate(format!("Starting in {room_name}: re-syncing"), &mut says);
         says
     }
@@ -680,8 +695,102 @@ impl Bot {
         self.fight = Fight::default();
         self.recover = Recover::new(Some(task.home()));
         self.task = Some(task);
+        self.journey = None;
         self.narrate(format!("Running loop {loop_name}: re-syncing"), &mut says);
         says
+    }
+
+    /// `walk_to` or `walk_loop`: go on `journey`, fighting on the way, from any state (it
+    /// replaces a loop). A bot that was not running starts afresh and the session re-syncs
+    /// first (`resync`).
+    pub fn go(&mut self, journey: Journey, resync: bool) -> Vec<Say> {
+        let mut says = Vec::new();
+        let name = journey.name().to_owned();
+        if resync {
+            self.state = BotState::Running;
+            self.mode = BotMode::Idle;
+            self.reason = None;
+            self.leaving = false;
+            self.flee.restart();
+            self.fight = Fight::default();
+            self.recover = Recover::new(Some(journey.to()));
+        } else {
+            self.recover.set_home(journey.to());
+        }
+        self.pausing = None;
+        self.task = None;
+        self.journey = Some(journey);
+        let text = if resync {
+            format!("Going to {name}: re-syncing")
+        } else {
+            format!("Going to {name}")
+        };
+        self.narrate(text, &mut says);
+        says
+    }
+
+    /// A loop or a journey to go on with (`stop` drops it; `pause` keeps it).
+    pub fn has_route(&self) -> bool {
+        self.task.is_some() || self.journey.is_some()
+    }
+
+    /// `stop` (■, the map's stop): the loop or journey is dropped. A running bot plays on where
+    /// it is (`here` becomes its home); a paused one, or one with nothing to drop, stops.
+    pub fn halt(&mut self, here: Option<Key>) -> Vec<Say> {
+        let mut says = Vec::new();
+        let dropped = match (self.task.take(), self.journey.take()) {
+            (Some(t), _) => Some(format!("loop {}", t.snapshot().loop_name)),
+            (_, Some(j)) => Some(j.name().to_owned()),
+            _ => None,
+        };
+        match dropped {
+            Some(what) if self.state == BotState::Running => {
+                if let Some(here) = here {
+                    self.recover.set_home(here);
+                }
+                self.narrate(format!("Stopped {what}: playing here"), &mut says);
+            }
+            _ => says.extend(self.stop("asked to stop", false)),
+        }
+        says
+    }
+
+    /// The player moved the character by hand while the bot runs: the loop or journey is
+    /// dropped and the bot plays on where the character ends up.
+    pub fn hand_move(&mut self) -> Vec<Say> {
+        let mut says = Vec::new();
+        if self.state != BotState::Running {
+            return says;
+        }
+        self.rehome = true;
+        if self.has_route() {
+            let what = match (self.task.take(), self.journey.take()) {
+                (Some(t), _) => format!("loop {}", t.snapshot().loop_name),
+                (_, Some(j)) => j.name().to_owned(),
+                _ => unreachable!(),
+            };
+            self.narrate(
+                format!("You moved: stopped {what}; playing where you go"),
+                &mut says,
+            );
+        }
+        says
+    }
+
+    /// The walker ended a leg of the bot's at `at`.
+    pub fn walk_arrived(&mut self, at: Key) {
+        if let Some(j) = &mut self.journey {
+            j.arrived(at);
+        }
+    }
+
+    /// The walker could not start the bot's walk (no route).
+    pub fn walk_failed(&mut self) {
+        if self.acting == Some(BotMode::Task)
+            && let Some(j) = &mut self.journey
+        {
+            j.walk_failed();
+        }
     }
 
     /// Made a follower of `leader`'s party: the loop it runs, if any, stops (the bot runs on
@@ -690,6 +799,9 @@ impl Bot {
         let mut says = Vec::new();
         if self.task.take().is_some() {
             self.narrate(format!("In {leader}'s party: the loop stops"), &mut says);
+        }
+        if self.journey.take().is_some() {
+            self.narrate(format!("In {leader}'s party: the walk stops"), &mut says);
         }
         says
     }
@@ -750,6 +862,11 @@ impl Bot {
     /// The walk in progress is a leg of Task's.
     pub fn task_walking(&self) -> bool {
         self.acting == Some(BotMode::Task)
+    }
+
+    /// The walk in progress is a leg of a loop's (not a journey's: those go a move at a time).
+    pub fn loop_walking(&self) -> bool {
+        self.task_walking() && self.journey.is_none()
     }
 
     /// Whether Fight would take the character here: a monster it would attack, or one
@@ -849,6 +966,7 @@ impl Bot {
         self.mode = BotMode::Idle;
         self.pausing = None;
         self.task = None;
+        self.journey = None;
         self.reason = Some(why.to_owned());
         // "Stopped at 24% HP: ...", "Stopped: asked to stop".
         let sep = if why.starts_with("at ") { " " } else { ": " };
@@ -872,6 +990,7 @@ impl Bot {
         self.pausing = None;
         self.leaving = true;
         self.task = None;
+        self.journey = None;
         self.flee.leave();
         self.narrate(
             "Logging off under attack: fleeing first".to_owned(),
@@ -895,6 +1014,10 @@ impl Bot {
         let mut says = Vec::new();
         if self.state != BotState::Running || self.pausing.is_some() {
             return says;
+        }
+        // With no loop or journey to go on with, pausing is turning the bot off.
+        if !self.has_route() {
+            return self.stop(why, false);
         }
         if busy {
             self.pausing = Some(why.to_owned());
@@ -933,6 +1056,9 @@ impl Bot {
         self.sneak.on_event(ev, now);
         if let Some(t) = &mut self.task {
             t.on_event(ev, now);
+        }
+        if let Some(j) = &mut self.journey {
+            j.on_event(ev, now);
         }
         let mut says = Vec::new();
         if let Some(name) = self.fight.take_stalemate() {
@@ -1008,7 +1134,7 @@ impl Bot {
 
     /// What a mode is doing when its step does not say (C-046).
     fn default_doing(&self, mode: BotMode, step: &Step, v: &View) -> String {
-        let walking = matches!(step.act, Some(Do::Walk(_)));
+        let walking = matches!(step.act, Some(Do::Walk(..)));
         match mode {
             BotMode::Flee => "fleeing".to_owned(),
             BotMode::Fight => match self.fight.target() {
@@ -1060,6 +1186,37 @@ impl Bot {
             // Recover rests from, and walks back to, the stop Task is at or walking to.
             self.recover.set_home(t.home());
         }
+        // Moved by hand: the bot plays where the player took it.
+        if std::mem::take(&mut self.rehome)
+            && let Some(here) = v.room
+        {
+            self.recover.set_home(here);
+        }
+        if let Some(j) = &mut self.journey {
+            j.observe(v);
+            let (notes, done, name, to) =
+                (j.take_notes(), j.take_done(), j.name().to_owned(), j.to());
+            for note in notes {
+                self.narrate(note, &mut says);
+            }
+            match done {
+                // Over: it plays where it is.
+                Some(why) => {
+                    self.journey = None;
+                    if let Some(here) = v.room {
+                        self.recover.set_home(here);
+                    }
+                    if let Some(why) = why {
+                        self.narrate_as(
+                            format!("Not going to {name}: {why}; playing here"),
+                            true,
+                            &mut says,
+                        );
+                    }
+                }
+                None => self.recover.set_home(to),
+            }
+        }
         if !self.leaving
             && let Some(home) = self.recover.find_home(v)
         {
@@ -1087,6 +1244,8 @@ impl Bot {
             } else if v.party.rejoin().is_some_and(|k| v.room != Some(k)) {
                 // Out of its party: back to the leader, the one walk a follower makes.
                 (BotMode::Task, "walking back to the party".to_owned())
+            } else if let Some(r) = self.journey.as_ref().and_then(|j| j.wants(v)) {
+                (BotMode::Task, r)
             } else if let Some(r) = self.task.as_ref().and_then(|t| t.wants(v)) {
                 (BotMode::Task, r)
             } else {
@@ -1107,6 +1266,7 @@ impl Bot {
                     let leader = v.party.following().unwrap_or("the leader");
                     Step::walk(to, format!("Walking back to {leader}"))
                 }
+                BotMode::Task if let Some(j) = &mut self.journey => j.step(v),
                 BotMode::Task => {
                     let task = self.task.as_mut().expect("Task has a loop");
                     let step = task.step(v);
@@ -1134,18 +1294,18 @@ impl Bot {
             // aside (docs/plan/10-party-play.md §5).
             let rejoining = v.party.rejoin().is_some() && mode == BotMode::Task;
             let step = match (&step.act, v.party.following(), v.party.hold()) {
-                (Some(Do::Walk(_)), Some(leader), _) if mode != BotMode::Flee && !rejoining => {
+                (Some(Do::Walk(..)), Some(leader), _) if mode != BotMode::Flee && !rejoining => {
                     Step::wait(format!("Following {leader}: staying with the party"))
                         .doing(format!("following {leader}"))
                 }
                 // A leader holds its loop while a member walks back (C-041).
-                (Some(Do::Walk(_)), _, Some(why)) if mode == BotMode::Task => {
+                (Some(Do::Walk(..)), _, Some(why)) if mode == BotMode::Task => {
                     Step::wait(why.to_owned()).doing("waiting for the party")
                 }
                 _ => step,
             };
             // A sneaker sneaks before a move it makes itself; Flee never waits (C-048).
-            let step = if matches!(step.act, Some(Do::Walk(_))) && mode != BotMode::Flee {
+            let step = if matches!(step.act, Some(Do::Walk(..))) && mode != BotMode::Flee {
                 if self.sneak.before_move(v) {
                     match mode {
                         BotMode::Recover => self.recover.walk_deferred(),

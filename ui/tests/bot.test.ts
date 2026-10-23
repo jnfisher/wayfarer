@@ -37,14 +37,29 @@ const stopped: Bot = { state: "stopped", mode: "idle", narration: "" };
 const running: Bot = { state: "running", mode: "fight", narration: "Fight: large giant rat" };
 const paused: Bot = { state: "paused", mode: "fight", narration: "Paused: you took over", reason: "you took over" };
 
+const looping: Bot = {
+  ...running,
+  task: { loop_id: "1:2140:8:doors:0", loop_name: "Newhaven", stop: 0, stops: [], skip: [] },
+};
+const going: Bot = { ...running, journey: { name: "Newhaven, Arena", to: { map: 1, room: 2150 } } };
+const pausedGoing: Bot = { ...going, state: "paused", narration: "Paused: asked to pause" };
+
 describe("the bot's controls", () => {
-  it("are start; pause and stop; resume and stop; none without a bot", () => {
+  it("are ► when off; ║ when on; and ■ beside either with a loop or a Go to", () => {
     const actions = (b?: Bot) => botButtons(b).map((x) => `${x.action} ${x.label}`);
     expect(actions(stopped)).toEqual(["start ►"]);
-    expect(actions(running)).toEqual(["pause ║", "stop ■"]);
-    expect(actions(paused)).toEqual(["resume ►", "stop ■"]);
+    expect(actions(running)).toEqual(["pause ║"]);
+    expect(actions(looping)).toEqual(["pause ║", "stop ■"]);
+    expect(actions(going)).toEqual(["pause ║", "stop ■"]);
+    expect(actions(pausedGoing)).toEqual(["resume ►", "stop ■"]);
+    expect(actions(paused)).toEqual(["resume ►"]);
     expect(actions(undefined)).toEqual([]);
-    expect([botWidth(stopped), botWidth(running), botWidth(undefined)]).toEqual([6, 9, 0]);
+    expect([botWidth(stopped), botWidth(running), botWidth(going), botWidth(undefined)]).toEqual([6, 6, 9, 0]);
+  });
+
+  it("say what ║ does: pause the route, or turn the bot off", () => {
+    expect(botButtons(going)[0].title).toMatch(/^Pause the loop or Go to/);
+    expect(botButtons(running)[0].title).toMatch(/^Turn the bot off/);
   });
 
   it("narrate while running or paused", () => {
@@ -54,12 +69,13 @@ describe("the bot's controls", () => {
     expect(narrationLine(undefined)).toBeNull();
   });
 
-  it("F9 pauses or resumes, F10 starts or stops", () => {
+  it("F9 is ║ and ►, F10 is ■", () => {
     expect(botKeyAction("F9", running)).toBe("pause");
     expect(botKeyAction("F9", paused)).toBe("resume");
-    expect(botKeyAction("F9", stopped)).toBeNull();
+    expect(botKeyAction("F9", stopped)).toBe("start");
     expect(botKeyAction("F10", stopped)).toBe("start");
     expect(botKeyAction("F10", running)).toBe("stop");
+    expect(botKeyAction("F10", going)).toBe("stop");
     expect(botKeyAction("F10", paused)).toBe("stop");
     expect(botKeyAction("F10", undefined)).toBeNull();
     expect(botKeyAction("F8", running)).toBeNull();
@@ -195,7 +211,7 @@ describe("the tile", () => {
   });
 
   it("shows the narration under the header while running, with pause and stop", async () => {
-    const el = tile({ bot: running });
+    const el = tile({ bot: going });
     expect(el.querySelector(".controls + .narration")?.textContent).toBe("Fight: large giant rat");
     expect([...el.querySelectorAll(".controls .ctl:not(.link):not([aria-label=Errands])")].map((b) => b.textContent)).toEqual(["[║]", "[■]"]);
     await fireEvent.click(screen.getByRole("button", { name: "pause the bot" }));

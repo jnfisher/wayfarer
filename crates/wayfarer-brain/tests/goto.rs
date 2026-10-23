@@ -31,7 +31,7 @@ async fn in_the_passage() -> (Game, Run) {
     g.expect("n", room(BY_CHIEFTAIN));
     g.expect("n", room(PASSAGE));
     g.walk_to(PASSAGE).await;
-    g.narrated("Arrived: Wooden Passage").await;
+    g.walk_narrated("Arrived: Wooden Passage").await;
     (g, run)
 }
 
@@ -74,11 +74,11 @@ async fn a_walk_to_a_boss_lair_stops_one_room_short() {
     g.expect("s", room(BY_CHIEFTAIN));
     g.walk_to(CHIEFTAIN).await;
     assert_eq!(
-        g.narration().await,
+        g.walk_narration().await,
         "Walking to Large Wooden Room: one step, stopping one room short"
     );
     assert_eq!(
-        g.narration().await,
+        g.walk_narration().await,
         "Stopped one room short of Large Wooden Room (boss: minotaur chieftain)"
     );
     let (seen, played) = g.close(run).await;
@@ -102,8 +102,11 @@ async fn with_stop_short_off_it_walks_in() {
     g.expect("s", room(BY_CHIEFTAIN));
     g.expect("s", room(CHIEFTAIN));
     g.walk_to_short(CHIEFTAIN, Some(false)).await;
-    assert_eq!(g.narration().await, "Walking to Large Wooden Room: 2 steps");
-    assert_eq!(g.narration().await, "Arrived: Large Wooden Room");
+    assert_eq!(
+        g.walk_narration().await,
+        "Walking to Large Wooden Room: 2 steps"
+    );
+    assert_eq!(g.walk_narration().await, "Arrived: Large Wooden Room");
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["n", "n", "s", "s"]);
 }
@@ -115,7 +118,7 @@ async fn next_to_the_lair_it_stops_at_once() {
     let (mut g, run) = Game::start(SessionState::Realm, start).await;
     g.walk_to((1, 2124)).await;
     assert_eq!(
-        g.narration().await,
+        g.walk_narration().await,
         "Stopped one room short of Crystal-Studded Cavern, Southern End (boss: minotaur champion)"
     );
     let (_, played) = g.close(run).await;
@@ -125,12 +128,12 @@ async fn next_to_the_lair_it_stops_at_once() {
 #[tokio::test(start_paused = true)]
 async fn an_ordinary_lair_is_walked_into() {
     // The Dungeon Entrance is a Lair room of plain monsters, not a boss's.
-    let (mut g, run) = Game::start(SessionState::Realm, ARENA).await;
+    let (mut g, run) = Game::start_with(SessionState::Realm, game::arena::arena(&[], 35)).await;
     g.expect("n", says("The door is Closed!"));
     g.expect("open n", says("The door is now open."));
     g.expect("n", room(BEYOND_ARENA));
     g.walk_to(BEYOND_ARENA).await;
-    g.narrated("Arrived: Dungeon, Entrance").await;
+    g.walk_narrated("Arrived: Dungeon, Entrance").await;
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["n", "open n", "n"]);
 }

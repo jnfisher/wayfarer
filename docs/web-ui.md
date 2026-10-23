@@ -64,23 +64,32 @@ controls, just left of the server:
  Fight: large giant rat
 ```
 
+The bot is **on or off**, and it may have a **route**: a loop it runs, or a Go to (a click on
+the map, a row of the go box, a loop's `walk once`) it has not finished
+([brain.md](brain.md) "The bot's states"). `║` and `►` turn it off and on and keep the route;
+`■` drops the route and leaves it on or off as it was.
+
 | State | Buttons | Line under the header |
 |---|---|---|
-| Stopped (every character to begin with) | `[►]` start | none |
-| Running | `[║]` pause, `[■]` stop | the narration, light cyan: "Fight: large giant rat", "Recover: resting to 85% in Newhaven, Narrow Road", "Waiting here" |
-| Paused | `[►]` resume, `[■]` stop | yellow: "Paused: you took over" |
+| Off (every character to begin with) | `[►]` start | none |
+| On, no route: it plays where it stands | `[║]` off | the narration, light cyan: "Fight: large giant rat", "Recover: resting to 85% in Newhaven, Narrow Road", "Waiting here" |
+| On, with a route | `[║]` pause, `[■]` drop the route | the narration: "Loop Newhaven: to stop 2/3 Dungeon, Entrance", "Going to Newhaven, Arena" |
+| Off, with a route (paused) | `[►]` go on with it, `[■]` drop it | yellow: "Paused: asked to pause" |
 
 **Start** plays the character where it stands: it fights what comes, keeps auto-combat on,
 rests when HP is low (in the nearest quiet room if this one spawns, then walks back), and
 flees below 25% HP to a room where nothing spawns, rests there and walks back; when a monster
-follows it through every room it turns and fights it ([brain.md](brain.md) "Flee"). **Typing beside
-it**: talk and look (`gossip hi`, `st`, `look`, `who`) goes between the bot's commands and does
-not pause it; a line that acts (`n`, `rest`, `buy sword`) pauses it after the command in flight
-("You took over Waydeva" in the dev panel), then goes; so do keys, and clicking a room on the
-map. An attack (`a rat`) is an act like any other ([brain.md](brain.md) "Typing beside the bot"). `F9` or `[►]` resumes: the
-brain re-syncs first. `F10` starts or stops the focused character's bot. Hovering the line
-shows why the bot stopped or paused. The glyphs are the VGA font's own: code page 437 has `►`
-and `■` but no pause sign, so pause is `[║]`.
+follows it through every room it turns and fights it ([brain.md](brain.md) "Flee"). **A Go
+to or a loop** turns the bot on whatever it was: it fights on the way, and at the end of a Go
+to it plays where it arrived. **`■`**, or `stop` under the map, ends the loop or Go to: a bot
+that is on plays on where it is, one that is paused stays off. **`║`** with a route pauses it
+(`►` goes on with it, re-syncing first); with none it turns the bot off. **Typing beside
+it**: a line goes between the bot's commands and does not pause it (`gossip hi`, `st`, `rest`,
+`a rat`); a move you type (`n`), or keys in the terminal, ends its loop or Go to, and it plays
+on wherever you take the character ([brain.md](brain.md) "Typing beside the bot"). `F9` is
+`║` and `►`; `F10` is `■` (with no route it turns the bot off, or on). Hovering the line shows
+why the bot stopped or paused. The glyphs are the VGA font's own: code page 437 has `►` and `■`
+but no pause sign, so pause is `[║]`.
 
 ## Keys
 
@@ -98,7 +107,7 @@ and `■` but no pause sign, so pause is `[║]`.
 | `?` on an empty input line, or the `?` button | Open or close this help |
 | `Esc`, `?` again, or a click outside | Close this help |
 | `Alt+M`, or the `map` button | Open the drawer on the map of the focused character's surroundings, or close it (on a Mac, `Option`) |
-| Click a room on the map | Walk the character there; `stop` under the map ends the walk |
+| Click a room on the map | Go there: the bot turns on, fights on the way and plays where it arrives; `stop` under the map ends the walk, as `[■]` |
 | `Alt+G`, or the `go` button | Open the go box above the map: type part of the name of a room, a shop, bank or trainer, or a monster (two letters or more) and the list fills as you type (on a Mac, `Option`) |
 | `Up`, `Down`, `Enter` in the go box | Choose a row (the map centres on its room when in view) and walk there; a boss lair's row has a ticked `stop short` box: the walk stops one room before it |
 | `Esc` in the go box | Clear it; `Esc` again closes it |
@@ -107,8 +116,8 @@ and `■` but no pause sign, so pause is `[║]`.
 | `Alt+P`, or the `parties` button | Open the drawer on the parties: pick a leader, tick its followers, save; each member's state under it (on a Mac, `Option`) |
 | The party chip in the tile's header | `★ Leading`, `Following` or `Separated`; click it to leave the party, or to join one |
 | `Alt+B`, or the `blessings` button | Open the drawer on the blessings: tick the lasting spells each character keeps on itself (bless, barkskin, holy aura); ● marks one that is on (on a Mac, `Option`) |
-| `F10`, or `[►]` and `[■]` in the tile's header | Start the focused character's bot where it stands (fight what comes, rest when low), or stop it |
-| `F9`, or `[║]` and `[►]` in the tile's header | Pause or resume the focused character's bot; a line you type pauses it too |
+| `F10`, or `[■]` in the tile's header | Drop the focused character's loop or Go to: it plays on where it is (paused, it stays off); with neither, turn the bot off, or on |
+| `F9`, or `[║]` and `[►]` in the tile's header | Pause the focused character's loop or Go to and go on with it; with neither, turn the bot off and on where it stands (fight what comes, rest when low) |
 | `Alt+S`, or the `stats` button | Open the drawer on the stats of the focused character's runs: exp per hour, kills, deaths and flees, now and for the last runs; or close it (on a Mac, `Option`) |
 | `Alt+T`, or the `settings` button | Open the drawer on the focused character's settings (the form, "The settings" below), or close it (on a Mac, `Option`) |
 | `Alt+D`, or the `dev` button | Open the drawer on the dev panel: the focused character's events, unclassified lines and the brain; or close it (on a Mac, `Option`) |
@@ -274,8 +283,8 @@ and works nothing out itself.
   to hunt on it", or the leg no route takes and why). An unticked stop is passed by
   (the Minotaur Chieftain's room is the case for it). While the bot runs the loop, the list
   shows `▶ 2/3` in place of **run** and a green bar beside the row, the stop it is at or walking to is lit in the stops list, and the
-  ticks are the bot's: a tick changed then goes to the bot at once. Pause and resume (`F9`),
-  and stop (`F10`), work as for "fight here"; the tile's narration says what it is doing
+  ticks are the bot's: a tick changed then goes to the bot at once. Pause and go on (`F9`)
+  keep the loop; `■` (`F10`) drops it, and the bot plays where it is; the tile's narration says what it is doing
   ("Loop Newhaven: to stop 2/3 Dungeon, Entrance (one step, one door)", "Stop 1/3 cleared: 1
   large giant rat").
 
