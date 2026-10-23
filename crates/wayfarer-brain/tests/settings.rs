@@ -105,15 +105,18 @@ async fn the_search_limit_is_a_setting() {
     g.expect("search n", nothing.clone());
     g.expect("search n", nothing);
     g.walk_to(keep_wall).await;
-    let stop = loop {
+    // Blocked, the walk plans again: the long way round, by a rope and grapple bought on the
+    // way (docs/brain.md "Walking"), is not this test's.
+    let replan = loop {
         let n = g.narration().await;
-        if n.starts_with("Stopped walking") {
+        if n.starts_with("Replanned") || n.starts_with("Stopped walking") {
             break n;
         }
     };
+    g.freeze();
     assert!(
-        stop.starts_with("Stopped walking: no hidden exit north found"),
-        "{stop}"
+        replan.starts_with("Replanned (no hidden exit north found)"),
+        "{replan}"
     );
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["search n", "look", "search n", "search n"]);

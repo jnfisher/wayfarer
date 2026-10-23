@@ -93,8 +93,15 @@ pub(crate) fn coin_text(copper: u64) -> String {
 
 impl Shopping {
     /// `wants`: the usable scrolls the plan found, cheapest first; `bank`: where to draw money;
-    /// `cash`: the copper carried.
+    /// `cash`: the copper carried. A scroll at a shop with no way there is left at once, and
+    /// does not count towards a trip to the bank.
     pub fn new(wants: Vec<Want>, bank: Option<Key>, cash: u64) -> Self {
+        let (wants, unreachable): (Vec<Want>, Vec<Want>) =
+            wants.into_iter().partition(|w| w.steps.is_some());
+        let left = unreachable
+            .into_iter()
+            .map(|w| format!("{} (no way to {})", w.spell, w.shop))
+            .collect();
         Shopping {
             wants,
             bank,
@@ -106,7 +113,7 @@ impl Shopping {
             balance: None,
             spent: 0,
             learned: Vec::new(),
-            left: Vec::new(),
+            left,
         }
     }
 
@@ -535,6 +542,29 @@ mod tests {
                 "walk 20",
                 "buy scroll of mend",
                 "= Spells done: nothing learned (spent nothing); left: mend (cannot afford it)"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_shop_with_no_way_there_is_left_without_a_walk_or_a_bank_trip() {
+        // The cash covers mend; lore's shop has no way there, so its price does not send the
+        // errand to the bank.
+        let mut far = want("lore", "Bard Song Store", 40, 5000, 0);
+        far.steps = None;
+        let mut s = Shopping::new(
+            vec![want("mend", "Spell Shop", 20, 800, 5), far],
+            Some((1, 297)),
+            1000,
+        );
+        let log = play(&mut s, &[(1, 20), (1, 297)], game);
+        assert_eq!(
+            log,
+            [
+                "walk 20",
+                "buy scroll of mend",
+                "read scroll of mend",
+                "= Spells done: learned mend (spent 8 gold 3 silver 2 copper); left: lore (no way to Bard Song Store)"
             ]
         );
     }

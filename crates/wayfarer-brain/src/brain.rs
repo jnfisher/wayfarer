@@ -72,6 +72,8 @@ pub struct Atlas {
     pub item_names: HashMap<i64, String>,
     /// The shops where `train` takes a character up a level.
     pub trainers: Vec<wayfarer_world::trainers::Trainer>,
+    /// The items Item and Key exits ask for that a shop sells: the walker buys one on the way.
+    pub exit_items: std::collections::BTreeMap<i64, wayfarer_world::ExitItem>,
 }
 
 /// Room types (`kb/game-data.md` "Enumerations") and shop types (`kb/economy.md`).
@@ -137,11 +139,22 @@ impl Atlas {
                 _ => None,
             })
             .collect();
-        for n in wanted {
+        for &n in &wanted {
             if let Some(item) = pack.item(n)? {
                 item_names.insert(n, item.name);
             }
         }
+        let gate_items: std::collections::BTreeSet<i64> = graph
+            .all_edges()
+            .iter()
+            .filter_map(|e| match e.gate {
+                wayfarer_world::Gate::Item { item } | wayfarer_world::Gate::Key { item } => {
+                    Some(item)
+                }
+                _ => None,
+            })
+            .collect();
+        let exit_items = wayfarer_world::exit_items::load(pack, &gate_items)?;
         let monsters = Monsters::load(pack)?;
         let mm_loops = wayfarer_world::loops::megamud_loops(pack, &graph, &monsters)?;
         Ok(Atlas {
@@ -161,6 +174,7 @@ impl Atlas {
                 .collect(),
             item_names,
             trainers: wayfarer_world::trainers::load(pack)?,
+            exit_items,
             godfrey: pack
                 .rooms_by_name("Bank of Godfrey")?
                 .into_iter()
@@ -581,7 +595,7 @@ impl Brain {
                 Some(s) => s.set_monster_rule(&pattern, rule.map(rules::from_wire), now, out),
                 None => out.push(no_session("set_monster_rule", &session)),
             },
-            ToClient::SpellPlanRequest { session } => match self.sessions.get(&session) {
+            ToClient::SpellPlanRequest { session } => match self.sessions.get_mut(&session) {
                 Some(s) => s.spell_plan(out),
                 None => out.push(no_session("spell_plan_request", &session)),
             },

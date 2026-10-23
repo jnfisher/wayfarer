@@ -147,6 +147,17 @@ progress (after the move in flight).
   moves again; an Item exit just works while the item is carried. Without them the exit is not
   taken, and the reason names it: "the exit east of Stone Passageway, Guardroom needs the large iron
   key" (Thrag's cavern, 1:1810, is in by that key and nothing else).
+- **Items a shop sells**: when the item an Item or Key exit asks for is sold in a shop (a room
+  ticket for the Homely Hearth's stairs in Silvermere, a rope and grapple, a wooden skiff, a mine
+  pass), the exit is not a wall: the walk also plans the way through the nearest shop selling it,
+  from here to the shop and on from there holding it, and takes it when it is the only way or
+  shorter than the plain one ("Walking to Bard's Room: 6 steps, one door, buying a room ticket at
+  The Homely Hearth, Common Room"). In the shop it sends `buy <item>`: "You just bought ..." and
+  it goes on; a refusal stops the walk ("Stopped walking: could not buy a room ticket: cannot
+  afford it"). An item with one charge (the room ticket) is used up by its exit (`kb/navigation.md`
+  "Item"), so the walker stops counting it as carried and the next walk up buys another. One
+  item is bought per plan; a second is found when the walk plans again. Moves don't go ahead of
+  the buy. The pack's items, shops and charges are read once (`wayfarer_world::exit_items`).
 - **Hidden exits as a last resort**: when no route takes only the exits known, a walk the player
   asked for (`walk_to`, the go box, an errand) may use the pack's Hidden exits (`route_or_search`),
   each costing a search, and `find` counts a room only hidden exits lead to as reachable
@@ -846,7 +857,9 @@ is bought or walked (the errand that does comes after the plan).
 - **What it lacks**: not in the `spells` screen's rows (the re-sync reads them): the plan waits
   for the class and the spellbook ("spell plan: the spellbook is not known yet").
 - **The best shop** for a spell: the cheapest it can be reached at, then the nearest by route
-  from the believed room; a shop with no way there is listed with no steps.
+  from the believed room; a shop with no way there is listed with no steps. A shop behind an exit
+  whose item a shop sells (the Bard Song Store, up the Homely Hearth's ticket stairs) counts as
+  reachable, in steps as if the item were held: the walk buys it on the way ("Walking").
 - **Prices** are in copper: the item's cost in its currency, plus the shop's markup, then the
   Charm discount (`kb/economy.md` "Prices"; a Charm not known counts as 50). `cash` is the coins
   carried, in copper (the bank is not counted: its balance is read at the bank).
@@ -856,19 +869,21 @@ is bought or walked (the errand that does comes after the plan).
 **The shopping errand** (`bot_control` `buy_spells`, the plan's **buy spells** button) does it, with
 the bot stopped or paused like the other errands ("Errands"), and `cancel_errand` ends it:
 
-1. When the cash on hand is less than all the usable scrolls cost, it walks to the **Bank of
+1. Scrolls at a shop with no way there are left at once ("song of lore (no way to Bard Song
+   Store)"), with no walk, and don't count towards the bank.
+2. When the cash on hand is less than all the reachable usable scrolls cost, it walks to the **Bank of
    Godfrey in Silvermere** (the room of that name; never another bank, John 2026-10-22), sends
    `bankbook`, reads the `On deposit:` line, and `withdraw`s the most the balance and the need
    allow. A bank it cannot reach, or an empty balance, is noted and the shopping goes on with the
    cash on hand.
-2. It picks the scrolls the cash now covers, the cheapest first ("if there is not enough cash, buy
+3. It picks the scrolls the cash now covers, the cheapest first ("if there is not enough cash, buy
    what we can"; the others are listed as left with their price), groups them by shop and walks to
    each shop, the nearest first, with the player's walker.
-3. In a shop it sends `buy <scroll>` and, on "You just bought ...", `read <scroll>`: "You read ...
+4. In a shop it sends `buy <scroll>` and, on "You just bought ...", `read <scroll>`: "You read ...
    and learn the spell ..." counts it learned. A refusal (cannot afford, not sold now, unknown),
    "you already know this scroll" and an unreadable scroll are noted, not retried. A shop it cannot
    reach is left and the next goes on.
-4. It says what it did: "Spells done: learned illuminate (spent 4 gold 1 silver 6 copper); left:
+5. It says what it did: "Spells done: learned illuminate (spent 4 gold 1 silver 6 copper); left:
    mend (8 gold)". Something attacking, or the bot starting, ends it ("Spells stopped: something is
    attacking"), keeping what was bought.
 

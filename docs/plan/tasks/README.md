@@ -141,6 +141,7 @@ Cards don't repeat these:
 | [C-041](C-041-separation.md) | Separation: the leader waits, the follower walks back and re-joins; a time limit and an unreachable stop | B | M | C-039 | |
 | [C-042](C-042-party-rest-flee-assist.md) | Party rests, party flees and assisting the leader's target | B | L | C-041 | review |
 | [C-043](C-043-healing-members.md) | Healing party members: heal-a-member lines, party heals chosen by how many are hurt | B | M | C-042 | |
+| [C-044](C-044-bought-exit-items.md) | Exits that need a bought item: the walker buys the room ticket (or rope, skiff, key) on the way (added 2026-10-23 at John's request) | B | M | C-037 | |
 
 Wave 6: C-038; then C-039; then C-040 and C-041 together (UI and brain); then C-042; then
 C-043. **Wave 6 is done** when Penny leads Lauren, Faye and Manuel round a loop for an hour on

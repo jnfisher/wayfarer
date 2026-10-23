@@ -758,6 +758,7 @@ impl Session {
                 if let Some(errand) = &mut self.errand {
                     errand.on_event(&typed);
                 }
+                self.walker.heard(&typed);
                 // The items carried: the Item exits they open may be routed through.
                 if let GameEvent::Inventory { items, .. } = &typed {
                     self.position.traveller.items = items
@@ -1051,7 +1052,14 @@ impl Session {
     /// The plan for the character: its coins in copper, and the spells its class could learn that
     /// it lacks, each at its best shop ([`wayfarer_world::spellshop::plan`]); an `Err` says what
     /// is not known yet.
-    fn spell_plan_items(&self) -> Result<(u64, Vec<wayfarer_world::spellshop::PlanItem>), String> {
+    fn spell_plan_items(
+        &mut self,
+    ) -> Result<(u64, Vec<wayfarer_world::spellshop::PlanItem>), String> {
+        // The routes for the character as it is now: its level shuts the Newhaven gate.
+        if let Some(atlas) = self.atlas.clone() {
+            self.position
+                .refresh(&atlas, &self.character.snapshot(), self.clock.instant());
+        }
         let atlas = self
             .atlas
             .as_ref()
@@ -1090,7 +1098,14 @@ impl Session {
                 .map(|k| k.count * wayfarer_world::spellshop::unit(coin_currency(&k.coin)))
                 .sum::<u64>()
         });
-        let dist = distances(&atlas.graph, here, 10_000, &self.position.traveller);
+        // A shop up stairs that take a room ticket counts: the walk buys one on the way.
+        let dist = wayfarer_world::distances_buying(
+            &atlas.graph,
+            here,
+            10_000,
+            &self.position.traveller,
+            &atlas.exit_items,
+        );
         let items = wayfarer_world::spellshop::plan(&atlas.scrolls, who, &known, cash, |rooms| {
             rooms
                 .iter()
@@ -1101,7 +1116,7 @@ impl Session {
     }
 
     /// `spell_plan_request`.
-    pub fn spell_plan(&self, out: &mut Vec<ToGateway>) {
+    pub fn spell_plan(&mut self, out: &mut Vec<ToGateway>) {
         let (cash, items) = match self.spell_plan_items() {
             Ok(plan) => plan,
             Err(why) => {
@@ -2559,7 +2574,7 @@ impl Session {
 
     /// The spell shopping from the plan: the scrolls usable now, cheapest first, and the Bank of
     /// Godfrey to draw from when the cash on hand falls short.
-    fn shopping_errand(&self) -> Result<Active, String> {
+    fn shopping_errand(&mut self) -> Result<Active, String> {
         let (cash, items) = self.spell_plan_items()?;
         let wants: Vec<crate::shopping::Want> = items
             .into_iter()
