@@ -94,6 +94,29 @@ async fn a_caster_with_no_spells_yet_is_offered_a_plan() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn the_plan_knows_newhaven_shuts_its_gate_to_level_five() {
+    // In the Bank of Godfrey, a level 5 Mage: the Newhaven gate (1:33 north, levels up to 3) is
+    // shut to it, so no scroll is planned at the Newhaven Spell Shop with a way there, though no
+    // walk has happened since the status screen came.
+    let bank: Key = (1, 297);
+    let (mut g, run) = Game::start(SessionState::Realm, bank).await;
+    let level_one = "Level: \x1b[36m1             ";
+    let screen = caster_status("Mage", 35, 20);
+    assert!(screen.contains(level_one));
+    g.output(&screen.replacen(level_one, "Level: \x1b[36m5             ", 1))
+        .await;
+    g.output(&spells_screen(&[(1, 1, "mmis", "magic missile")], 35))
+        .await;
+    let (_, items) = plan(&mut g).await;
+    let newhaven: Vec<_> = items
+        .iter()
+        .filter(|i| i.shop == "Newhaven Spell Shop" && i.steps.is_some())
+        .collect();
+    assert!(newhaven.is_empty(), "{newhaven:?}");
+    g.close(run).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn the_plan_waits_for_the_class_and_the_spellbook() {
     let (mut g, run) = in_arena(&[]).await;
     g.send(ToClient::SpellPlanRequest { session: ID.into() })

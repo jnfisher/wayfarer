@@ -595,7 +595,7 @@ impl Brain {
                 Some(s) => s.set_monster_rule(&pattern, rule.map(rules::from_wire), now, out),
                 None => out.push(no_session("set_monster_rule", &session)),
             },
-            ToClient::SpellPlanRequest { session } => match self.sessions.get(&session) {
+            ToClient::SpellPlanRequest { session } => match self.sessions.get_mut(&session) {
                 Some(s) => s.spell_plan(out),
                 None => out.push(no_session("spell_plan_request", &session)),
             },
