@@ -109,6 +109,37 @@ async fn a_search_finds_the_matching_loops_from_anywhere_nearest_first_and_cuts_
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_search_keeps_to_the_area_asked_for() {
+    // Generating loops over a 30 step area took over a minute in the dev build, and no character
+    // was played meanwhile: a search matches the loops of the radius asked for.
+    let (mut g, run) = Game::start(SessionState::Realm, VILLAGE_ENTRANCE).await;
+    g.send(ToClient::LoopsRequest {
+        session: ID.into(),
+        anchor: None,
+        radius: 8,
+        doors: None,
+        query: Some("newhaven".into()),
+        limit: None,
+    })
+    .await;
+    let (radius, generated) = g
+        .until(|m| match m {
+            ToGateway::Loops {
+                radius, generated, ..
+            } => Some((*radius, generated.clone())),
+            ToGateway::Warning { text, .. } => panic!("{text}"),
+            _ => None,
+        })
+        .await;
+    assert_eq!(radius, 8);
+    assert_eq!(
+        generated.iter().map(|l| l.id.as_str()).collect::<Vec<_>>(),
+        [NEWHAVEN_LOOP]
+    );
+    g.close(run).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn the_loops_of_the_area_around_the_character() {
     let (mut g, run) = Game::start(SessionState::Realm, VILLAGE_ENTRANCE).await;
     let (generated, megamud) = g.loops_request(None).await;

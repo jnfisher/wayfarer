@@ -1645,13 +1645,9 @@ impl Session {
         let limit = limit
             .map_or(LOOPS_SHOWN, |n| n as usize)
             .clamp(1, MOST_LOOPS_SHOWN);
-        // A search looks wide: the loops generated over the area go out to the largest radius.
-        let radius = if query.is_empty() {
-            radius
-        } else {
-            MAX_LOOP_RADIUS
-        }
-        .min(MAX_LOOP_RADIUS);
+        // A search matches the loops already generated over the area, never a wider one: loops
+        // over 30 steps took the brain over a minute to generate, and no character was played.
+        let radius = radius.min(MAX_LOOP_RADIUS);
         self.position
             .refresh(&atlas, &self.character.snapshot(), self.clock.instant());
         let key = LoopsKey {

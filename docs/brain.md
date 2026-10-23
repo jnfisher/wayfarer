@@ -259,8 +259,9 @@ nearest room of its walk, by a breadth-first walk over the whole world by exits 
 may take. The generated loops come from the area (below); MegaMud's verified loops and the
 player's own come from anywhere the character can walk to, so a search finds a loop however far
 it is, and `matches` says how many matched before the cut. A `query` keeps the loops whose
-name, file, description, author or any stop's room name holds every word of it (any case); it
-also widens the area the loops are generated over to 30 steps. A loop the character cannot
+name, file, description, author or any stop's room name holds every word of it (any case),
+among the loops already generated over the area: a search never generates over a wider one.
+A loop the character cannot
 walk to at all is left out.
 
 - **The area** of the generated loops: the rooms within `radius` steps (at most 30) of
