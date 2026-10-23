@@ -197,12 +197,26 @@ pub(crate) struct View<'a> {
     /// Mana now and at most, and the character's level; the attack and heal spells it knows.
     pub mana: Option<(i64, i64)>,
     pub hp_missing: Option<i64>,
+    /// HP now and at most, in points.
+    pub hp_points: Option<(i64, i64)>,
     pub level: i64,
     pub book: &'a Spellbook,
     /// What the character carries, in weight units now and at most (`i`'s `Encumbrance:`),
     /// and the coins it holds.
     pub load: Option<(u64, u64)>,
     pub coins: &'a [wayfarer_proto::CoinCount],
+    /// How fast it gets HP and mana back (C-045).
+    pub regen: crate::regen::Regen,
+}
+
+/// Who a heal reaches, for [`View::heal_pays`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Healed<'a> {
+    Me,
+    /// A party member, by the name a heal is cast at.
+    Mate(&'a str),
+    /// The whole party in the room, the caster too.
+    All,
 }
 
 impl View<'_> {
@@ -282,8 +296,92 @@ impl View<'_> {
     /// character itself below `own_line` (counted for a party heal only; its own heal is its
     /// self-heal's): none when the line is 0 or healing spells are off.
     pub fn party_heal(&self, member_line: i32, own_line: i32) -> Option<PartyCast<'_>> {
-        if member_line == 0
-            || self.settings.choice("spells.heal") != "auto"
+        if member_line == 0 {
+            return None;
+        }
+        self.heal_for(|_| member_line, own_line)
+    }
+
+    /// The party heal between fights (Recover). In a party rest (C-045) each member is healed
+    /// up to its own rest-until line, the caster too, and only when the cast does not make the
+    /// rest longer ([`View::heal_pays`]); out of one, below the heal-a-member line (C-043).
+    pub fn rest_party_heal(&self) -> Option<PartyCast<'_>> {
+        if self.party.party_rest().is_none() {
+            return self.party_heal(self.member_heal_resting(), self.rest_heal_below());
+        }
+        if self.member_heal_resting() == 0 {
+            return None;
+        }
+        let cast = self.heal_for(|m| m.until, self.rest_until())?;
+        let who = match &cast {
+            PartyCast::On(s, name) => (s, Healed::Mate(name)),
+            PartyCast::Party(s) => (s, Healed::All),
+        };
+        self.heal_pays(who.0, who.1).then_some(cast)
+    }
+
+    /// The HP line below which Recover heals the character itself: its rest-until line in a
+    /// party rest (C-045), else `spells.heal_resting_below_hp`.
+    pub fn own_heal_below(&self) -> i32 {
+        let line = self.rest_heal_below();
+        if line > 0 && self.party.party_rest().is_some() {
+            line.max(self.rest_until())
+        } else {
+            line
+        }
+    }
+
+    /// Whether casting `spell` on `who` now shortens the party rest, or at least does not
+    /// lengthen it: the rest lasts until every member with the caster has its HP (at the
+    /// resting rate) and its mana back at its rest-until lines, and the cast spends the
+    /// caster's mana to take HP off someone's wait. Out of a party rest, always. With a rate
+    /// not known, the cast must leave the mana above the caster's rest line.
+    pub fn heal_pays(&self, spell: &SpellDef, who: Healed) -> bool {
+        if self.party.party_rest().is_none() {
+            return true;
+        }
+        let Some((mana, max)) = self.mana else {
+            return false;
+        };
+        let after = mana - spell.mana;
+        let fallback = || after * 100 >= max * i64::from(self.setting("health.rest_mana_below", 30));
+        let heal = spell.average(self.level) as i64;
+        let mana_until = max * i64::from(self.setting("health.rest_mana_until", 90)) / 100;
+        let (Some(mana_rate), Some((hp, hp_max))) = (self.regen.mana, self.hp_points) else {
+            return fallback();
+        };
+        let mana_wait = |m: i64| crate::regen::wait_secs(mana_until - m, mana_rate);
+        let me = crate::regen::Waiting {
+            hp_short: (hp_max * i64::from(self.rest_until()) / 100 - hp).max(0),
+            hp_rate: self.regen.hp,
+            mana_before: mana_wait(mana),
+            mana_after: mana_wait(after),
+            healed: matches!(who, Healed::Me | Healed::All),
+        };
+        let party: Vec<crate::regen::Waiting> = std::iter::once(me)
+            .chain(self.party.mates().iter().map(|m| crate::regen::Waiting {
+                hp_short: m.short,
+                hp_rate: m.hp_rate,
+                mana_before: m.mana_wait,
+                mana_after: m.mana_wait,
+                healed: match who {
+                    Healed::All => true,
+                    Healed::Me => false,
+                    Healed::Mate(n) => n == m.name,
+                },
+            }))
+            .collect();
+        crate::regen::shortens(&party, heal).unwrap_or_else(fallback)
+    }
+
+    /// The heal for the party with each member's line from `member_line`, the caster's
+    /// `own_line` (C-043's choice, `Spellbook::for_party`).
+    fn heal_for(
+        &self,
+        member_line: impl Fn(&crate::party::Mate) -> i32,
+        own_line: i32,
+    ) -> Option<PartyCast<'_>> {
+        if self.settings.choice("spells.heal") != "auto"
             || !self.book.heals_others()
             || self.party.mates().is_empty()
         {
@@ -298,7 +396,7 @@ impl View<'_> {
                 name: Some(&m.name),
                 hp: m.hp,
                 missing: m.missing,
-                line: member_line,
+                line: member_line(m),
                 fleeing: m.flee,
             })
             .collect();

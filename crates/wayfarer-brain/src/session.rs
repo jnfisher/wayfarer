@@ -2735,6 +2735,7 @@ impl Session {
         self.position
             .refresh(&atlas, &self.character.snapshot(), self.clock.instant());
         let in_combat = self.combat(now);
+        let regen = self.regen();
         let c = self.character.state();
         let view = View {
             atlas: &atlas,
@@ -2760,6 +2761,7 @@ impl Session {
                 .zip(c.mana_max)
                 .map(|(m, max)| (i64::from(m), i64::from(max))),
             hp_missing: c.hp.zip(c.hp_max).map(|(h, m)| i64::from(m - h)),
+            hp_points: c.hp.zip(c.hp_max).map(|(h, m)| (i64::from(h), i64::from(m))),
             level: c.level.map_or(1, i64::from),
             book: &self.spellbook,
             load: c
@@ -2767,6 +2769,7 @@ impl Session {
                 .as_ref()
                 .and_then(|e| Some((u64::from(e.current?), u64::from(e.max?)))),
             coins: c.coins.as_ref().map_or(&[], |c| c.carried.as_slice()),
+            regen,
         };
         let (act, says) = self.bot.tick(&view);
         self.say(says, out);
@@ -2852,6 +2855,7 @@ impl Session {
             && self.settings.choice("spells.attack") == "auto")
             || (self.spellbook.has_heal() && self.settings.choice("spells.heal") == "auto");
         let uses_mana = mana.is_some() && casts;
+        let regen = self.regen();
         Health {
             hp,
             missing: c.hp.zip(c.hp_max).map(|(h, m)| i64::from(m - h)),
@@ -2860,6 +2864,38 @@ impl Session {
             rested: hp.is_none_or(|h| h >= line("health.rest_until_hp"))
                 && (!uses_mana || mana.is_none_or(|m| m >= line("health.rest_mana_until"))),
             flee: hp.is_some_and(|h| h < self.bot.flee_below()),
+            until: line("health.rest_until_hp"),
+            short: c
+                .hp
+                .zip(c.hp_max)
+                .map(|(h, m)| (i64::from(m) * i64::from(line("health.rest_until_hp")) / 100 - i64::from(h)).max(0)),
+            hp_rate: regen.hp,
+            mana_wait: if uses_mana {
+                c.mana.zip(c.mana_max).and_then(|(m, max)| {
+                    let short = i64::from(max) * i64::from(line("health.rest_mana_until")) / 100
+                        - i64::from(m);
+                    crate::regen::wait_secs(short, regen.mana?)
+                })
+            } else {
+                Some(0)
+            },
+        }
+    }
+
+    /// How fast the character gets HP and mana back, from its level and stats.
+    fn regen(&self) -> crate::regen::Regen {
+        let c = self.character.state();
+        let level = c.level.map_or(1, i64::from);
+        let stats = c.stats.clone().unwrap_or_default();
+        let mana = self.atlas.as_ref().zip(c.class.as_deref()).and_then(|(a, class)| {
+            let &(magery, magery_level) = a.class_magery.get(class)?;
+            crate::regen::mana_per_hour(magery, magery_level, level, &stats)
+        });
+        crate::regen::Regen {
+            hp: stats
+                .health
+                .map(|h| crate::regen::hp_per_hour(level, i64::from(h))),
+            mana,
         }
     }
 

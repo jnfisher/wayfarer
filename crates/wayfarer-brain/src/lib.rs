@@ -37,6 +37,7 @@ mod party_game;
 pub mod policy;
 mod position;
 mod recover;
+mod regen;
 mod rules;
 mod session;
 mod session_settings;

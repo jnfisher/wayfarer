@@ -1028,7 +1028,10 @@ own, one at a time:
   them is back to its own rest-until lines. The leader's loop holds; its Recover rests too,
   walking the party to a quiet room first when the room spawns (the game's follow brings the
   others), and waits there, narrated "Recover: Resting for Lauren (62%)", while it is rested
-  itself. Followers below their lines rest where they stand. A monster that comes is fought,
+  itself. Every follower with the leader that is below its own rest-until lines rests where
+  it stands too ("Recover: resting with the party"), not only those below their rest lines:
+  standing, a character gets its HP back several times more slowly than resting (C-045). A
+  monster that comes is fought,
   then the rest goes on. After `party.wait_rest_minutes` (Party, 10 by default) the leader's
   loop stops with a warning naming who has not recovered. Afterwards the leader walks back to
   its loop as after any rest.
@@ -1058,6 +1061,18 @@ own, one at a time:
   rain. In a fight the healer goes back to its target after the cast, as after its own heal.
   A Witchunter is healed like anyone, though its anti-magic may resist the cast. There is no
   mana kept back for heals.
+- **Heals in a party rest** (C-045). While the party rests, a healer heals each member up to
+  that member's own rest-until line (`health.rest_until_hp`), itself included, instead of
+  only below the heal-a-member line, and says so ("Recover: casting minor healing on lauren
+  (party rest)"). A cast goes only when it leaves the rest no longer than it is: the rest
+  lasts until the slowest member has its HP back at the resting rate and its mana back at
+  its rest-until mana line, and the cast moves HP off someone's wait onto the healer's mana.
+  The rates are the game's base ones from the level and the stats `st` shows (`kb/recovery.md`:
+  `max((level+20)*Hea/750, 1)` HP a unit, one unit per 30 s and three more every 21 s
+  resting; mana `stat*(level+20)*(magery level+2)/1650` per 30 s whether resting or not, the
+  stat by magery); gear that alters them is not counted. Until a member's stats are known the
+  cast goes only if it leaves the healer above its rest mana line. A heal-a-member line of 0
+  turns these heals off too.
 - **The UIs** get `parties` when one changes or a member's state does: `joined`,
   `not_joined` ("forming up", "in another room"), `away` (with why), `separated`, `walking`,
   `unreachable` or `resting` (with its HP).
