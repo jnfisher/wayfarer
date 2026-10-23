@@ -118,6 +118,12 @@ entry for that id; the rest are stale names. The client identifies endpoints by 
 - **Paths.md is an index (cache) of all `.mp` headers**, one record per file keyed by file name
   (1,957 keys = the 1,957 files) [C]. MegaMud builds its route graph from it: nodes = Rooms.md ids,
   edges = point-to-point paths. Header fields 6 and 7 chain paths together (prerequisite, next).
+- **v2.2 names carry the start room.** In the stock v2.2 set (`data/megamud/`, 2026-10-22) path
+  descriptions, location brackets and Rooms.md waypoint names end in `-MAP ROOM`
+  (`[Black Star Key Gather Loop-1 1224]`, `Ancient Ruin Dark Alley-3 606`); 171 of 1,957 `.mp`
+  descriptions and 669 of 783 waypoints [C]. The ids are unchanged: the v2.2 set gives the same
+  totals as v2.0 (783 waypoints, 726 resolved; 1,957 paths; 183 loops walked and closed) [C].
+  wayfarer's importer drops the suffix from names.
 - No path calls another path inline. Composition happens through the route graph and fields 6/7
   [I].
 

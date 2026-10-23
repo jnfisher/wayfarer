@@ -29,7 +29,7 @@ Real output (release build, about 1.5 s; a debug build about 2 s):
 
 ```
 $ wayfarer import-world --export tests/fixtures/world \
-    --megamud ../mmud-exploration/reference/megamud --out world.sqlite
+    --megamud data/megamud --out world.sqlite
 tables (rows, MANIFEST.json rows):
   rooms       26720   26720  WCCMP001
   items        1950    1950  WCCITEMS
@@ -44,7 +44,7 @@ tables (rows, MANIFEST.json rows):
   exits       62352          from rooms
   shop_stock   1203          from shops
 run-time tables, not imported: WCCACMSR 795, WCCITOWN 37, WCCUSERS 0, WCCGANGS 0, WCCBANKS 0
-megamud (MegaMUD_v2.0_Alpha_-_With_Paths.zip):
+megamud (megamud):
   waypoints 783: 726 resolve to a game room (584 to exactly one)
   paths 1957 (195 loops): 1781 walk to the end, 62 break, 114 have no start room
   loops walked to the end 183: 183 close in their start room
@@ -53,9 +53,8 @@ megamud (MegaMUD_v2.0_Alpha_-_With_Paths.zip):
 wrote world.sqlite
 ```
 
-The MegaMud check runs as an ignored test, outside CI:
-`WAYFARER_MEGAMUD=../mmud-exploration/reference/megamud cargo nextest run -p wayfarer-world
---run-ignored only`.
+The MegaMud check runs as an ignored test, outside CI, against `data/megamud` (or
+`$WAYFARER_MEGAMUD`): `cargo nextest run -p wayfarer-world --run-ignored only`.
 
 The pack is about 80 MB, most of it the export's records kept as JSON. It is built, never
 committed (`*.sqlite` is ignored).

@@ -159,10 +159,23 @@ fn bracket_fields(line: &str) -> Vec<String> {
         let Some(close) = rest[open..].find(']') else {
             break;
         };
-        out.push(rest[open + 1..open + close].to_string());
+        out.push(without_room_suffix(&rest[open + 1..open + close]).to_string());
         rest = &rest[open + close + 1..];
     }
     out
+}
+
+/// A name without the `-MAP ROOM` suffix MegaMud 2.2 adds to path descriptions, locations and
+/// waypoint names (`Black Star Key Gather Loop-1 1224`); the ids say where, the name is for show.
+fn without_room_suffix(name: &str) -> &str {
+    let Some((head, tail)) = name.rsplit_once('-') else {
+        return name;
+    };
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    match tail.split_once(' ') {
+        Some((map, room)) if digits(map) && digits(room) => head,
+        _ => name,
+    }
 }
 
 /// Split `dir[a,b]` into (`dir`, `Some(["a", "b"])`).
@@ -313,7 +326,7 @@ pub fn parse_rooms_md(bytes: &[u8]) -> (Vec<Waypoint>, Vec<String>) {
                     class: f[4].parse().ok()?,
                     code: f[5].to_string(),
                     group: f[6].to_string(),
-                    name: f[7].to_string(),
+                    name: without_room_suffix(f[7]).to_string(),
                 })
             })
             .flatten();
@@ -419,6 +432,28 @@ mod tests {
         assert_eq!(mp.steps[1].flags, 1);
         assert_eq!(mp.steps[1].base, "n");
         assert!(mp.bad_lines.is_empty());
+    }
+
+    #[test]
+    fn v2_2_room_suffixes_are_dropped_from_names() {
+        let src = b"[Black Star Key Gather Loop-1 1224][Winterhawk]\r\n\
+                    [SLMB:Slums:Outside Black House-1 1224]\r\n\
+                    A0700025:A0700025:1:-1:0:::\r\nA0700025:0000:s\r\n";
+        let mp = parse_mp("SLMBLOOP.mp", src).unwrap();
+        assert_eq!(mp.description, "Black Star Key Gather Loop");
+        assert_eq!(
+            mp.start_location.as_deref(),
+            Some("SLMB:Slums:Outside Black House")
+        );
+        let (wps, bad) = parse_rooms_md(
+            b"CAB00180:00004040:0:0:0:AALY:Ancient Ruin:Ancient Ruin Dark Alley-3 606\r\n",
+        );
+        assert!(bad.is_empty());
+        assert_eq!(wps[0].name, "Ancient Ruin Dark Alley");
+        // Only a trailing `-<map> <room>` goes.
+        for keep in ["Orc Camp-Upper", "Loop-1", "Arena -1 2b", "Gnoll Den- 4 5"] {
+            assert_eq!(without_room_suffix(keep), keep);
+        }
     }
 
     #[test]

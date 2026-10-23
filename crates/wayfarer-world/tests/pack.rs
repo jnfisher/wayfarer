@@ -193,17 +193,16 @@ fn building_from_a_missing_export_fails_and_writes_nothing() {
     assert!(!out.exists());
 }
 
-/// MegaMud's path set, checked against the real rooms. The data lives outside this repository
-/// (`jnfisher/mmud-exploration`, `reference/megamud/`); point `WAYFARER_MEGAMUD` at that
-/// directory or the zip and run `cargo nextest run -p wayfarer-world --run-ignored only`.
+/// MegaMud's path set, checked against the real rooms: `data/megamud` (stock v2.2), or the
+/// directory or zip in `WAYFARER_MEGAMUD`. Run it with
+/// `cargo nextest run -p wayfarer-world --run-ignored only`.
 // Slow (builds the whole pack and walks 1,957 paths); never run in CI.
 #[test]
-#[ignore = "needs WAYFARER_MEGAMUD: MegaMud's path set is kept outside this repository"]
+#[ignore = "slow: builds the whole pack and walks every MegaMud path"]
 fn megamud_paths_verify() {
-    let megamud = PathBuf::from(
-        std::env::var_os("WAYFARER_MEGAMUD")
-            .expect("set WAYFARER_MEGAMUD to mmud-exploration's reference/megamud directory"),
-    );
+    let megamud = std::env::var_os("WAYFARER_MEGAMUD")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| repo("data/megamud"));
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("world.sqlite");
     let report = build(&repo("tests/fixtures/world"), Some(&megamud), &out).unwrap();

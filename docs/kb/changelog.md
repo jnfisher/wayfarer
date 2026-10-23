@@ -172,3 +172,6 @@
 - **2026-10-21**: `combat.md` and pitfall 31: re-issuing an attack or a spell in a fight does not
   reset anything (rounds run on a global timer); the rule against attacking in combat, and the
   held-line machinery built on it, are gone [F, John].
+- **2026-10-22**: `megamud-formats.md`: MegaMud v2.2's stock path set (now in `data/megamud/`)
+  appends `-MAP ROOM` to path descriptions, locations and waypoint names; ids and totals match
+  v2.0.

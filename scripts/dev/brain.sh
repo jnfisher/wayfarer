@@ -6,7 +6,12 @@
 set -euo pipefail
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-data=${WAYFARER_DATA_DIR:-$HOME/Library/Application Support/wayfarer}
+# The platform's per-user data directory, as the binary picks it (Paths::default_data_dir).
+case "$(uname -s)" in
+  Darwin) default_data="$HOME/Library/Application Support/wayfarer" ;;
+  *) default_data="${XDG_DATA_HOME:-$HOME/.local/share}/wayfarer" ;;
+esac
+data=${WAYFARER_DATA_DIR:-$default_data}
 
 if ! cargo watch --version >/dev/null 2>&1; then
   echo "brain.sh: cargo-watch is not installed; install it with" >&2
@@ -16,15 +21,15 @@ fi
 
 mkdir -p "$data"
 cd "$root"
-# The world pack, with MegaMud's path set when the zip is at hand (see gateway.sh and
+# The world pack, with MegaMud's path set from data/megamud (see gateway.sh and
 # docs/dev-rig.md "The world pack").
-megamud="${WAYFARER_MEGAMUD:-$root/../mmud-exploration/reference/megamud/MegaMUD_v2.0_Alpha_-_With_Paths.zip}"
+megamud="${WAYFARER_MEGAMUD:-$root/data/megamud}"
 if [ ! -f "$data/world.sqlite" ]; then
   echo "brain.sh: building the world pack into $data/world.sqlite" >&2
-  if [ -f "$megamud" ]; then
+  if [ -e "$megamud" ]; then
     cargo run -q -p wayfarer -- import-world --export tests/fixtures/world --megamud "$megamud" --out "$data/world.sqlite"
   else
-    echo "brain.sh: no MegaMud zip at $megamud; the pack has no MegaMud loops" >&2
+    echo "brain.sh: no MegaMud path set at $megamud; the pack has no MegaMud loops" >&2
     cargo run -q -p wayfarer -- import-world --export tests/fixtures/world --out "$data/world.sqlite"
   fi
 fi
