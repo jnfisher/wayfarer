@@ -394,6 +394,35 @@ async fn a_follower_does_not_run_a_loop_and_leaves_on_request() {
     .await;
 }
 
+/// The follower's next errand warning, or the notice that one started.
+async fn follower_said(g: &mut Gateway) -> String {
+    g.until(|m| match m {
+        ToGateway::Warning { session, text } | ToGateway::Notice { session, text }
+            if session.as_deref() == Some(FOLLOWER)
+                && (text.starts_with("errand") || text.ends_with("started")) =>
+        {
+            Some(text.clone())
+        }
+        _ => None,
+    })
+    .await
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_follower_picks_up_and_equips_where_it_stands_but_does_not_train() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    formed(&mut g).await;
+    g.bot(FOLLOWER, BotAction::Pause).await;
+    g.bot(FOLLOWER, BotAction::Train).await;
+    assert_eq!(
+        follower_said(&mut g).await,
+        "errands: following Penny: it goes where the party goes"
+    );
+    g.bot(FOLLOWER, BotAction::EquipAll).await;
+    let started = follower_said(&mut g).await;
+    assert!(started.ends_with("started"), "{started}");
+}
+
 #[tokio::test(start_paused = true)]
 async fn parties_survive_a_restart_and_a_formed_party_is_only_checked() {
     let dir = tempfile::tempdir().unwrap();

@@ -14,7 +14,7 @@
   import { FONT_FAMILY, FONT_NAME, VGA_THEME } from "./lib/theme";
   import type { SpellPlan } from "./lib/spells";
   import { planRow, planTotals } from "./lib/spells";
-  import { chipFor, chipMenu, followingName, lockedTitle, type Names } from "./lib/parties";
+  import { chipFor, chipMenu, followerErrands, followingName, type Names } from "./lib/parties";
   import type { CharacterState, PartyStatus, SessionInfo } from "./proto";
 
   interface Props {
@@ -77,14 +77,7 @@
   const party = $derived(chipFor(parties, info.id, names));
   const partyMenu = $derived(chipMenu(parties, info.id, names));
   const following = $derived(followingName(parties, info.id, names));
-  /** A follower's errands are off, all but cancelling one: it goes where the party goes. */
-  const errands = $derived(
-    errandItems(c?.bot, errand, c?.places ?? []).map((item) =>
-      following && item.action !== "cancel_errand"
-        ? { ...item, disabled: true, title: lockedTitle(following) }
-        : item,
-    ),
-  );
+  const errands = $derived(followerErrands(errandItems(c?.bot, errand, c?.places ?? []), following));
   /** The party chip's menu is open. */
   let partyOpen = $state(false);
   /** The errand menu is open. */

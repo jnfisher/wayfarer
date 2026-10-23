@@ -87,6 +87,21 @@ export function lockedTitle(leader: string): string {
   return `Following ${leader}: it goes where the party goes`;
 }
 
+/** Errands that stay in the room: a follower may run them, and cancel any. */
+const IN_THE_ROOM = ["pick_up_all", "equip_all", "cancel_errand"];
+
+/** A follower's errand menu: the errands that walk are off, it goes where the party goes. */
+export function followerErrands<T extends { action: string; disabled: boolean; title: string }>(
+  items: T[],
+  following: string | null,
+): T[] {
+  return items.map((item) =>
+    following && !IN_THE_ROOM.includes(item.action)
+      ? { ...item, disabled: true, title: lockedTitle(following) }
+      : item,
+  );
+}
+
 /** A member's line in the Parties panel. */
 export function memberLine(m: MemberStatus, leader: string): string {
   const detail = m.detail ? `: ${m.detail}` : "";

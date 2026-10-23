@@ -4,6 +4,7 @@ import {
   chipMenu,
   draftProblem,
   elsewhere,
+  followerErrands,
   followingName,
   memberLine,
   activityLine,
@@ -116,5 +117,21 @@ describe("activityLine", () => {
     expect(activityLine({ hp: 35, hp_max: 35 })).toBe("100%");
     expect(activityLine(undefined)).toBeNull();
     expect(activityLine({})).toBeNull();
+  });
+});
+
+describe("followerErrands", () => {
+  const items = ["pick_up_all", "equip_all", "train", "recover_pile", "spell_plan", "cancel_errand"].map(
+    (action) => ({ action, label: action, title: "", disabled: false }),
+  );
+  it("leaves a follower the errands that stay in the room", () => {
+    const open = followerErrands(items, "Penny").filter((i) => !i.disabled).map((i) => i.action);
+    expect(open).toEqual(["pick_up_all", "equip_all", "cancel_errand"]);
+    expect(followerErrands(items, "Penny").find((i) => i.action === "train")?.title).toBe(
+      "Following Penny: it goes where the party goes",
+    );
+  });
+  it("changes nothing for a character that follows no one", () => {
+    expect(followerErrands(items, null)).toEqual(items);
   });
 });

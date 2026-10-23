@@ -2293,9 +2293,12 @@ impl Session {
                 | BotAction::RecoverPile
                 | BotAction::CancelErrand
         ) {
-            if action != BotAction::CancelErrand
-                && let Some(leader) = self.party_role.following()
-            {
+            // A follower's errands that stay in the room are its own; the others walk.
+            let walks = !matches!(
+                action,
+                BotAction::PickUpAll | BotAction::EquipAll | BotAction::CancelErrand
+            );
+            if walks && let Some(leader) = self.party_role.following() {
                 out.push(self.warning(&format!(
                     "errands: following {leader}: it goes where the party goes"
                 )));
