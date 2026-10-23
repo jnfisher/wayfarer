@@ -32,7 +32,7 @@ use crate::custom;
 use crate::errand::{Active, Ctx, Errand, ErrandKind, ErrandNext};
 use crate::executor::{Action, Executor, Expect};
 use crate::modes::{Bot, Do, Presence, View};
-use crate::party::{MemberInfo, PartyRole};
+use crate::party::{MemberInfo, PartyRole, WalkBack};
 use crate::policy::{COMBAT_QUIET, hp_percent};
 use crate::position::Position;
 use crate::rules::{self, RuleBook, Sightings};
@@ -50,6 +50,8 @@ pub const MAP_RADIUS: u32 = 15;
 /// section 6). `look`, not an empty line: an empty line shows the room only in statline FULL
 /// modes (`kb/screen-parsing.md`).
 pub const RESYNC_COMMANDS: [&str; 5] = ["st", "exp", "i", "look", "spells"];
+/// How long a follower that found no way back to its leader waits before it tries again.
+pub const STUCK_RETRY: Duration = Duration::from_secs(30);
 /// The commands before `spells`, which only a character that casts sends.
 const RESYNC_BASE: usize = 4;
 /// How often the settings files are looked at for a change.
@@ -349,6 +351,9 @@ pub(crate) struct Session {
     party_game: crate::party_game::GameParty,
     /// What the party coordinator makes of it.
     party_role: PartyRole,
+    /// The leader's room it could not walk to, why, and when (tried again after
+    /// [`STUCK_RETRY`] or when the leader moves).
+    party_stuck: Option<(Key, String, Instant)>,
     /// The walk in progress is the bot's.
     bot_walk: bool,
     /// A walk asked for while the bot's action was in flight: it starts once that is answered.
@@ -466,6 +471,7 @@ impl Session {
             presence: Presence::default(),
             party_game: Default::default(),
             party_role: PartyRole::None,
+            party_stuck: None,
             bot_walk: false,
             walk_after: None,
             loops: HashMap::new(),
@@ -2772,6 +2778,13 @@ impl Session {
                 self.bot_walk = self.walker.walking();
                 if !self.bot_walk {
                     self.bot.forget();
+                    // The walk back to the party's leader found no way.
+                    if self.party_role.rejoin() == Some(to) {
+                        let who = self.party_role.following().unwrap_or("the leader");
+                        let why = format!("no way to {who}'s room is known");
+                        out.push(self.warning(&format!("Can't reach {who}: {why}")));
+                        self.party_stuck = Some((to, why, now));
+                    }
                 }
                 self.apply(next, out);
             }
@@ -2781,12 +2794,23 @@ impl Session {
 
     /// What the party coordinator reads of this session.
     pub(crate) fn party_info(&self) -> MemberInfo {
+        let rejoin = self.party_role.rejoin();
+        let walking_back = self.bot_walk && rejoin.is_some() && self.walker.destination() == rejoin;
         MemberInfo {
             realm: self.state == SessionState::Realm && self.live(),
             running: self.bot.running(),
             name: self.character.state().name.clone(),
             room: self.position.best(),
             game: self.party_game.clone(),
+            walk: WalkBack {
+                steps_left: walking_back
+                    .then(|| self.walker.snapshot().map(|w| w.steps_left))
+                    .flatten(),
+                stuck: self.party_stuck.as_ref().map(|(_, why, _)| why.clone()),
+            },
+            wait_separated: Duration::from_secs(
+                u64::try_from(self.settings.int("party.wait_separated_minutes")).unwrap_or(5) * 60,
+            ),
         }
     }
 
@@ -2816,6 +2840,21 @@ impl Session {
     /// The coordinator's role for this session. Made a follower, it stops the loop it ran:
     /// it goes where the party goes.
     pub(crate) fn set_party_role(&mut self, role: PartyRole, out: &mut Vec<ToGateway>) {
+        // A walk back that found no way is tried again later, or when the leader moves.
+        let now = self.clock.instant();
+        if self.party_stuck.as_ref().is_some_and(|(to, _, at)| {
+            role.rejoin().is_some_and(|r| r != *to) || now >= *at + STUCK_RETRY
+        }) {
+            self.party_stuck = None;
+        }
+        // Holding: a leg of its loop already walking stops where it is.
+        if let Some(why) = role.hold()
+            && self.bot_walk
+            && self.bot.task_walking()
+        {
+            let why = why.to_owned();
+            self.stop_walk(&why, out);
+        }
         if role == self.party_role {
             return;
         }
@@ -2826,6 +2865,13 @@ impl Session {
             self.say(says, out);
         }
         self.party_role = role;
+    }
+
+    /// The party's leader waited too long for a member: its loop stops, it fights on where it
+    /// is, and the player is told.
+    pub(crate) fn party_give_up(&mut self, why: &str, out: &mut Vec<ToGateway>) {
+        let says = self.bot.stop_loop(why);
+        self.say(says, out);
     }
 
     /// `map_request`.

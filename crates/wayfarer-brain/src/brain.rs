@@ -720,6 +720,12 @@ impl Brain {
                 self.parties.sent(&id, &line, now);
             }
         }
+        for (id, why) in plan.give_up {
+            if let Some(s) = self.sessions.get_mut(&id) {
+                tracing::warn!(session = %id, %why, "party");
+                s.party_give_up(&why, out);
+            }
+        }
         if let Some(parties) = plan.statuses {
             out.push(ToGateway::Parties { parties });
         }

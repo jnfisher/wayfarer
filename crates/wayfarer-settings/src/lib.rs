@@ -75,6 +75,7 @@ pub enum Group {
     Spells,
     Cash,
     Combat,
+    Party,
 }
 
 impl Group {
@@ -87,6 +88,7 @@ impl Group {
             Group::Spells => "spells",
             Group::Cash => "cash",
             Group::Combat => "combat",
+            Group::Party => "party",
         }
     }
 }
@@ -118,13 +120,14 @@ pub const ATTACK_COMMANDS: &[&str] = &[
 ];
 
 /// The groups, in the order a file lists them.
-const GROUPS: [Group; 6] = [
+const GROUPS: [Group; 7] = [
     Group::Health,
     Group::Movement,
     Group::Bot,
     Group::Spells,
     Group::Cash,
     Group::Combat,
+    Group::Party,
 ];
 
 /// Every setting. A test fails if one lacks help or a default inside its range.
@@ -326,6 +329,17 @@ pub const CATALOGUE: &[Setting] = &[
         tier: Tier::Essential,
         group: Group::Spells,
         megamud: None,
+    },
+    Setting {
+        key: "party.wait_separated_minutes",
+        label: "Wait for a separated member",
+        help: "How long a party's leader waits for a member the game dropped from the party to walk back and join again, before it stops its loop and tells you. It never walks on without the member.",
+        kind: Kind::Int { min: 1, max: 60 },
+        default: Value::Int(5),
+        unit: "minutes",
+        tier: Tier::Standard,
+        group: Group::Party,
+        megamud: Some("Wait No Longer Than"),
     },
     Setting {
         key: "combat.attack_command",

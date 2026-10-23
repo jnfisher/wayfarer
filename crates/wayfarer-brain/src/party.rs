@@ -37,6 +37,9 @@ pub(crate) enum PartyRole {
     Leader {
         party: String,
         followers: Vec<String>,
+        /// Why its bot does not move on: a member is out of the party and walking back
+        /// (`Waiting for Lauren to catch up`).
+        hold: Option<String>,
     },
     Follower {
         party: String,
@@ -45,6 +48,8 @@ pub(crate) enum PartyRole {
         leader_name: String,
         /// In the leader's party in the game.
         joined: bool,
+        /// Out of the party: walk to the leader's room to join it again.
+        rejoin: Option<Key>,
     },
 }
 
@@ -56,6 +61,31 @@ impl PartyRole {
             _ => None,
         }
     }
+
+    /// The leader's room, when this follower walks back to it.
+    pub fn rejoin(&self) -> Option<Key> {
+        match self {
+            PartyRole::Follower { rejoin, .. } => *rejoin,
+            _ => None,
+        }
+    }
+
+    /// Why this leader's bot waits, when it does.
+    pub fn hold(&self) -> Option<&str> {
+        match self {
+            PartyRole::Leader { hold, .. } => hold.as_deref(),
+            _ => None,
+        }
+    }
+}
+
+/// A follower's walk back to its leader, as its session sees it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct WalkBack {
+    /// The rooms still to go, while the walker takes it.
+    pub steps_left: Option<u32>,
+    /// It cannot get there, and why (no route, or every route refused).
+    pub stuck: Option<String>,
 }
 
 /// What the coordinator reads of one session.
@@ -69,6 +99,10 @@ pub(crate) struct MemberInfo {
     pub name: Option<String>,
     pub room: Option<Key>,
     pub game: GameParty,
+    /// Its walk back to the leader.
+    pub walk: WalkBack,
+    /// How long it waits, as a leader, for a separated member (`party.wait_separated_minutes`).
+    pub wait_separated: Duration,
 }
 
 /// One tick's plan: the lines to send, each session's role, and the parties for the UIs when
@@ -78,6 +112,8 @@ pub(crate) struct Plan {
     pub lines: Vec<(String, String)>,
     pub roles: BTreeMap<String, PartyRole>,
     pub statuses: Option<Vec<PartyStatus>>,
+    /// Leaders that waited too long for a member: stop the loop, and why.
+    pub give_up: Vec<(String, String)>,
 }
 
 #[derive(Debug, Default)]
@@ -92,6 +128,15 @@ pub(crate) struct Parties {
     apart: HashMap<String, Instant>,
     /// Sessions taken out of a party that still owe the game a `leave`.
     leaving: BTreeSet<String>,
+    /// Followers that were in the party in the game since they were added.
+    was_joined: BTreeSet<String>,
+    /// Followers that walk to their leader to join it: separated ones, and those added with
+    /// `party_join`.
+    walk_in: BTreeSet<String>,
+    /// Since when each follower walking in has been out of the party.
+    out_since: HashMap<String, Instant>,
+    /// Followers the leader gave up waiting for (its loop stopped), until they are back.
+    gave_up: BTreeSet<String>,
     /// The last statuses sent, to send again only on a change.
     sent: Option<Vec<PartyStatus>>,
 }
@@ -189,6 +234,10 @@ impl Parties {
         for gone in before.difference(&members) {
             self.leaving.insert(gone.clone());
         }
+        let gone: Vec<String> = before.difference(&members).cloned().collect();
+        for g in &gone {
+            self.forget(g);
+        }
         match self.defs.iter_mut().find(|d| d.id == def.id) {
             Some(d) => *d = def.clone(),
             None => self.defs.push(def.clone()),
@@ -207,6 +256,9 @@ impl Parties {
             return false;
         };
         let def = self.defs.remove(i);
+        for f in &def.followers {
+            self.forget(f);
+        }
         self.leaving.extend(def.followers);
         self.sent = None;
         true
@@ -224,6 +276,7 @@ impl Parties {
             self.delete(&id);
             return Some(Err(id));
         }
+        self.forget(session);
         let d = &mut self.defs[i];
         d.followers.retain(|f| f != session);
         self.leaving.insert(session.to_owned());
@@ -250,7 +303,19 @@ impl Parties {
         if !def.followers.iter().any(|f| f == session) {
             def.followers.push(session.to_owned());
         }
-        self.save(def, known)
+        let saved = self.save(def, known)?;
+        // Joined from wherever it is: it walks to the leader.
+        self.walk_in.insert(session.to_owned());
+        Ok(saved)
+    }
+
+    /// What the coordinator remembers of a follower taken out of its party.
+    fn forget(&mut self, session: &str) {
+        self.was_joined.remove(session);
+        self.walk_in.remove(session);
+        self.out_since.remove(session);
+        self.gave_up.remove(session);
+        self.apart.remove(session);
     }
 
     fn new_id(&self) -> String {
@@ -321,8 +386,11 @@ impl Parties {
                 PartyRole::Leader {
                     party: def.id.clone(),
                     followers: def.followers.clone(),
+                    hold: None,
                 },
             );
+            // The followers walking back, by name, for the leader's hold.
+            let mut waiting: Vec<String> = Vec::new();
             let mut members = vec![MemberStatus {
                 session: def.leader.clone(),
                 state: if l.realm {
@@ -350,15 +418,7 @@ impl Parties {
                 );
                 let joined =
                     follows && (!fresh(fi) || fi.name.as_deref().is_some_and(|n| l.game.lists(n)));
-                plan.roles.insert(
-                    f.clone(),
-                    PartyRole::Follower {
-                        party: def.id.clone(),
-                        leader: def.leader.clone(),
-                        leader_name: lfirst.map_or_else(|| def.leader.clone(), str::to_owned),
-                        joined,
-                    },
-                );
+                let mut rejoin = None;
                 let (state, detail) = if !fi.realm || !fi.running || !l.realm {
                     let why = if !fi.realm {
                         "not in the realm"
@@ -370,6 +430,10 @@ impl Parties {
                     (MemberState::Away, Some(why.to_owned()))
                 } else if joined {
                     counted += 1;
+                    self.was_joined.insert(f.clone());
+                    self.walk_in.remove(f);
+                    self.out_since.remove(f);
+                    self.gave_up.remove(f);
                     if fi.room.is_some() && fi.room != l.room {
                         let since = *self.apart.entry(f.clone()).or_insert(now);
                         if now >= since + APART {
@@ -416,15 +480,63 @@ impl Parties {
                             plan.lines.push((f.clone(), format!("follow {lead}")));
                         }
                     }
-                    let detail = if together {
-                        "forming up"
-                    } else if fi.room.is_none() || l.room.is_none() {
-                        "where it is is not known"
+                    // Dropped by the game (an exit refused it, a flee, a stun), or added with
+                    // `party_join`: it walks back to the leader, and the leader waits.
+                    if self.was_joined.contains(f) {
+                        self.walk_in.insert(f.clone());
+                    }
+                    if self.walk_in.contains(f) {
+                        let name = ffirst.map_or_else(|| f.clone(), str::to_owned);
+                        waiting.push(name.clone());
+                        let since = *self.out_since.entry(f.clone()).or_insert(now);
+                        if now >= since + l.wait_separated && self.gave_up.insert(f.clone()) {
+                            let minutes = l.wait_separated.as_secs() / 60;
+                            plan.give_up.push((
+                                def.leader.clone(),
+                                format!("{name} did not catch up in {minutes} minutes"),
+                            ));
+                        }
+                        let leader = lfirst.unwrap_or(&def.leader);
+                        if together {
+                            (MemberState::NotJoined, Some("forming up".to_owned()))
+                        } else if let Some(why) = &fi.walk.stuck {
+                            (MemberState::Unreachable, Some(why.clone()))
+                        } else if l.room.is_none() {
+                            (
+                                MemberState::Separated,
+                                Some(format!("where {leader} is is not known")),
+                            )
+                        } else {
+                            rejoin = l.room;
+                            match fi.walk.steps_left {
+                                Some(n) => (
+                                    MemberState::Walking,
+                                    Some(format!("{n} room{}", if n == 1 { "" } else { "s" })),
+                                ),
+                                None => (MemberState::Separated, None),
+                            }
+                        }
                     } else {
-                        "in another room"
-                    };
-                    (MemberState::NotJoined, Some(detail.to_owned()))
+                        let detail = if together {
+                            "forming up"
+                        } else if fi.room.is_none() || l.room.is_none() {
+                            "where it is is not known"
+                        } else {
+                            "in another room"
+                        };
+                        (MemberState::NotJoined, Some(detail.to_owned()))
+                    }
                 };
+                plan.roles.insert(
+                    f.clone(),
+                    PartyRole::Follower {
+                        party: def.id.clone(),
+                        leader: def.leader.clone(),
+                        leader_name: lfirst.map_or_else(|| def.leader.clone(), str::to_owned),
+                        joined,
+                        rejoin,
+                    },
+                );
                 if fi
                     .game
                     .changed
@@ -443,6 +555,11 @@ impl Parties {
             }
             if owe_par && ago(self.par_at.get(&def.leader), PAR_GAP) {
                 plan.lines.push((def.leader.clone(), "par".to_owned()));
+            }
+            if !waiting.is_empty()
+                && let Some(PartyRole::Leader { hold, .. }) = plan.roles.get_mut(&def.leader)
+            {
+                *hold = Some(format!("Waiting for {} to catch up", waiting.join(" and ")));
             }
             statuses.push(PartyStatus {
                 party: def.clone(),
@@ -484,6 +601,8 @@ mod tests {
             name: Some(name.into()),
             room: Some(room),
             game: GameParty::default(),
+            walk: WalkBack::default(),
+            wait_separated: Duration::from_secs(300),
         }
     }
 
@@ -565,7 +684,8 @@ mod tests {
                 party: "party-1".into(),
                 leader: "penny".into(),
                 leader_name: "Penny".into(),
-                joined: false
+                joined: false,
+                rejoin: None,
             }
         );
         p.sent("lauren", "follow penny", now);
@@ -678,6 +798,156 @@ mod tests {
         // Left in the game: nothing more.
         m.get_mut("lauren").unwrap().game.following = None;
         assert!(!lines(&p.plan(&m, now)).contains(&("lauren", "leave")));
+    }
+
+    /// Penny, Lauren joined in her room, then the game dropping Lauren after she walked on.
+    fn dropped(p: &mut Parties, now: Instant) -> BTreeMap<String, MemberInfo> {
+        p.save(def("penny", &["lauren"]), &known()).unwrap();
+        let mut m = two(now, &["Lauren Phillips"]);
+        m.get_mut("lauren").unwrap().game.following = Some("Penny".into());
+        let plan = p.plan(&m, now);
+        assert_eq!(
+            plan.statuses.unwrap()[0].members[1].state,
+            MemberState::Joined
+        );
+        // Penny went on to (1, 2); her `par` no longer lists Lauren.
+        let later = now + Duration::from_secs(1);
+        let penny = m.get_mut("penny").unwrap();
+        penny.room = Some((1, 2));
+        penny.game.members.retain(|r| r.name == "Penny Pax");
+        penny.game.as_of = Some(later);
+        m
+    }
+
+    fn state(plan: &Plan, i: usize) -> (MemberState, Option<String>) {
+        let st = plan.statuses.as_ref().expect("statuses");
+        let m = &st[0].members[i];
+        (m.state, m.detail.clone())
+    }
+
+    #[tokio::test]
+    async fn a_dropped_follower_walks_back_and_the_leader_waits() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        let mut m = dropped(&mut p, now);
+        let t = now + Duration::from_secs(2);
+        let plan = p.plan(&m, t);
+        assert_eq!(state(&plan, 1), (MemberState::Separated, None));
+        assert_eq!(plan.roles["lauren"].rejoin(), Some((1, 2)));
+        assert_eq!(
+            plan.roles["penny"].hold(),
+            Some("Waiting for Lauren to catch up")
+        );
+        // On the way: how far, and the leader still waits.
+        m.get_mut("lauren").unwrap().walk.steps_left = Some(4);
+        let plan = p.plan(&m, t);
+        assert_eq!(
+            state(&plan, 1),
+            (MemberState::Walking, Some("4 rooms".into()))
+        );
+        // Back in her room: forming up, no walk; joined again, the hold lifts.
+        let lauren = m.get_mut("lauren").unwrap();
+        lauren.room = Some((1, 2));
+        lauren.walk.steps_left = None;
+        let plan = p.plan(&m, t);
+        assert_eq!(state(&plan, 1).0, MemberState::NotJoined);
+        assert_eq!(plan.roles["lauren"].rejoin(), None);
+        assert!(plan.roles["penny"].hold().is_some());
+        let penny = m.get_mut("penny").unwrap();
+        penny.game.members.insert(0, row("Lauren Phillips", false));
+        penny.game.as_of = Some(t);
+        let plan = p.plan(&m, t);
+        assert_eq!(state(&plan, 1).0, MemberState::Joined);
+        assert_eq!(plan.roles["penny"].hold(), None);
+    }
+
+    #[tokio::test]
+    async fn no_way_back_is_unreachable() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        let mut m = dropped(&mut p, now);
+        m.get_mut("lauren").unwrap().walk.stuck = Some("no way to Penny's room is known".into());
+        let plan = p.plan(&m, now + Duration::from_secs(2));
+        assert_eq!(
+            state(&plan, 1),
+            (
+                MemberState::Unreachable,
+                Some("no way to Penny's room is known".into())
+            )
+        );
+        assert_eq!(plan.roles["lauren"].rejoin(), None);
+    }
+
+    #[tokio::test]
+    async fn the_leader_gives_up_at_the_limit_once() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        let m = dropped(&mut p, now);
+        let t = now + Duration::from_secs(2);
+        assert!(p.plan(&m, t).give_up.is_empty());
+        assert!(p.plan(&m, t + Duration::from_secs(299)).give_up.is_empty());
+        let plan = p.plan(&m, t + Duration::from_secs(300));
+        assert_eq!(
+            plan.give_up,
+            [(
+                "penny".to_owned(),
+                "Lauren did not catch up in 5 minutes".to_owned()
+            )]
+        );
+        // Said once; the leader still holds (it never walks on without her).
+        let plan = p.plan(&m, t + Duration::from_secs(400));
+        assert!(plan.give_up.is_empty());
+        assert!(plan.roles["penny"].hold().is_some());
+    }
+
+    #[tokio::test]
+    async fn two_out_at_once_are_waited_for_together() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        p.save(def("penny", &["lauren", "faye"]), &known()).unwrap();
+        let mut m = two(now, &["Lauren Phillips", "Faye Reagan"]);
+        m.insert("faye".into(), member("Faye Reagan", (1, 1)));
+        for f in ["lauren", "faye"] {
+            m.get_mut(f).unwrap().game.following = Some("Penny".into());
+        }
+        p.plan(&m, now);
+        let later = now + Duration::from_secs(1);
+        let penny = m.get_mut("penny").unwrap();
+        penny.room = Some((1, 2));
+        penny.game.members.retain(|r| r.name == "Penny Pax");
+        penny.game.as_of = Some(later);
+        let plan = p.plan(&m, later);
+        assert_eq!(
+            plan.roles["penny"].hold(),
+            Some("Waiting for Lauren and Faye to catch up")
+        );
+    }
+
+    #[tokio::test]
+    async fn followers_stand_while_the_leader_is_away() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        let mut m = dropped(&mut p, now);
+        m.get_mut("penny").unwrap().realm = false;
+        let plan = p.plan(&m, now + Duration::from_secs(2));
+        assert_eq!(state(&plan, 1).0, MemberState::Away);
+        assert_eq!(plan.roles["lauren"].rejoin(), None);
+    }
+
+    #[tokio::test]
+    async fn joined_from_elsewhere_walks_to_the_leader() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        p.save(def("penny", &["lauren"]), &known()).unwrap();
+        let mut m = two(now, &[]);
+        m.insert("faye".into(), member("Faye Reagan", (1, 9)));
+        p.join("faye", "party-1", &known()).unwrap();
+        let plan = p.plan(&m, now);
+        assert_eq!(plan.roles["faye"].rejoin(), Some((1, 1)));
+        // A follower saved with the party, never in it, does not walk.
+        m.get_mut("lauren").unwrap().room = Some((1, 7));
+        let plan = p.plan(&m, now);
+        assert_eq!(plan.roles["lauren"].rejoin(), None);
     }
 
     #[test]

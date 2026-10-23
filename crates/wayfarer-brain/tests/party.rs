@@ -30,11 +30,21 @@ fn said(text: &str) -> String {
     format!("\x1b[79D\x1b[K\x1b[0;37m{text}\r\n{PROMPT}")
 }
 
-/// The game behind the gateway: both characters in the Arena, and the party between them.
+/// The game behind the gateway: where each character is, and the party between them.
 #[derive(Default)]
 struct World {
     invited: bool,
     following: bool,
+    rooms: BTreeMap<String, Key>,
+}
+
+/// A room as `look` shows it; the Arena with nothing in it, so nobody stops to fight.
+fn shown(k: Key) -> String {
+    if k == ARENA {
+        game::arena::arena(&[], 35)
+    } else {
+        room(k)
+    }
 }
 
 struct Gateway {
@@ -61,7 +71,10 @@ impl Gateway {
             tx,
             rx,
             logs: BTreeMap::new(),
-            world: World::default(),
+            world: World {
+                rooms: BTreeMap::from([(LEADER.to_owned(), ARENA), (FOLLOWER.to_owned(), ARENA)]),
+                ..World::default()
+            },
             lines: Vec::new(),
             seen: Vec::new(),
         };
@@ -70,7 +83,7 @@ impl Gateway {
                 s.to_owned(),
                 vec![Chunk {
                     seq: 1,
-                    text: room(ARENA),
+                    text: shown(ARENA),
                 }],
             );
         }
@@ -122,7 +135,19 @@ impl Gateway {
                 "\x1b[0;32mName: \x1b[36m{:<25}\x1b[32mLives/CP:\x1b[36m     9/0\r\n{PROMPT}",
                 name(session)
             )),
-            "look" => me(room(ARENA)),
+            "look" => me(shown(self.world.rooms[session])),
+            t if is_direction(t) => {
+                let here = self.world.rooms[session];
+                let atlas = game::atlas();
+                match atlas.graph.edges(here).iter().find(|e| e.command == t) {
+                    Some(e) => {
+                        let to = e.to;
+                        self.world.rooms.insert(session.to_owned(), to);
+                        me(shown(to))
+                    }
+                    None => me(said("There is no exit in that direction!")),
+                }
+            }
             "par" => {
                 let row = |s: &str| {
                     format!(
@@ -390,4 +415,47 @@ async fn parties_survive_a_restart_and_a_formed_party_is_only_checked() {
         "{:?}",
         g.lines
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_follower_the_game_dropped_walks_back_and_joins_again() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    formed(&mut g).await;
+    // The player walks Penny up out of the Arena; the game drops Lauren without a word (an
+    // exit she could not take, say), so she stays behind.
+    g.world.following = false;
+    let up = game::atlas()
+        .graph
+        .edges(ARENA)
+        .iter()
+        .find(|e| e.to == NARROW_ROAD)
+        .expect("the way up")
+        .command
+        .clone();
+    g.world.rooms.insert(LEADER.to_owned(), NARROW_ROAD);
+    let seq = g.logs[LEADER].len() as u64;
+    g.send(ToClient::Sent {
+        session: LEADER.into(),
+        seq,
+        text: up.clone(),
+    })
+    .await;
+    g.output(LEADER, format!("{up}\r\n{}", shown(NARROW_ROAD)))
+        .await;
+    // The leader's `par` no longer lists her: separated, and she walks back.
+    g.member(FOLLOWER, MemberState::Separated).await;
+    g.until(|m| {
+        matches!(m, ToGateway::InputLine { session, text } if session == FOLLOWER && *text == up)
+            .then_some(())
+    })
+    .await;
+    g.member(FOLLOWER, MemberState::Joined).await;
+    assert_eq!(g.world.rooms[FOLLOWER], NARROW_ROAD);
+    let back: Vec<_> = g
+        .lines
+        .iter()
+        .filter(|(s, l)| s == FOLLOWER && (l.starts_with("follow") || *l == up))
+        .map(|(_, l)| l.as_str())
+        .collect();
+    assert_eq!(back[back.len() - 2..], [up.as_str(), "follow penny"]);
 }

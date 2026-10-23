@@ -993,9 +993,23 @@ own, one at a time:
 - **Leaving.** `party_leave` takes a follower out (a party with no followers left is deleted;
   the leader's, the whole party): it sends `leave` while the game has it following, and plays
   on its own. A follower dropped from a party by `party_save` or `party_delete` does the same.
+- **Separation.** A follower that was in the party in the game and no longer is (the
+  leader's `par` leaves it out: an exit refused it, a flee, a stun) is `separated`. Its bot
+  walks it to the leader's believed room, the one walk a follower makes, fighting what attacks
+  it on the way (`walking`, with the rooms left), and re-targets when the leader moves; there
+  it forms up again. A follower added with `party_join` walks in the same way; one saved with
+  the party but never in it does not. Meanwhile the leader **holds**: its loop's next leg (and
+  a leg already walking) waits, narrated "Waiting for Lauren to catch up" (all who are out, by
+  name); it still fights and flees, and moves the player types or a Go to are not held. With
+  no way to the leader's room known, the follower is `unreachable` ("no way to Penny's room is
+  known", a warning on its tile) and tries again after 30 s or when the leader moves. After
+  `party.wait_separated_minutes` (Party, 5 by default) the leader's loop stops with a warning
+  ("Loop stopped: Lauren did not catch up in 5 minutes"); it never walks on without the
+  member, and the follower keeps trying. While the leader is out of the realm its followers
+  stand where they are.
 - **The UIs** get `parties` when one changes or a member's state does: `joined`,
-  `not_joined` ("forming up", "in another room") or `away` (with why). Separation, party rests
-  and flees and healing members come with C-041 to C-043.
+  `not_joined` ("forming up", "in another room"), `away` (with why), `separated`, `walking`
+  or `unreachable`. Party rests and flees and healing members come with C-042 and C-043.
 
 ## Not yet
 

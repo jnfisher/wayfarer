@@ -511,6 +511,16 @@ impl Bot {
         says
     }
 
+    /// The party's leader gave up waiting for a member: the loop stops (the bot fights on
+    /// where it is), said as a warning.
+    pub fn stop_loop(&mut self, why: &str) -> Vec<Say> {
+        let mut says = Vec::new();
+        if self.task.take().is_some() {
+            self.narrate_as(format!("Loop stopped: {why}"), true, &mut says);
+        }
+        says
+    }
+
     /// The loop it runs, if it runs one.
     pub fn task_mut(&mut self) -> Option<&mut Task> {
         self.task.as_mut()
@@ -807,6 +817,9 @@ impl Bot {
                 (BotMode::Recover, r)
             } else if let Some(r) = self.fight.wants(v) {
                 (BotMode::Fight, r)
+            } else if v.party.rejoin().is_some_and(|k| v.room != Some(k)) {
+                // Out of its party: back to the leader, the one walk a follower makes.
+                (BotMode::Task, "walking back to the party".to_owned())
             } else if let Some(r) = self.task.as_ref().and_then(|t| t.wants(v)) {
                 (BotMode::Task, r)
             } else {
@@ -821,6 +834,10 @@ impl Bot {
                 BotMode::Recover => self.recover.step(v),
                 BotMode::Loot => self.loot.step(v),
                 BotMode::Fight => self.fight.step(v),
+                BotMode::Task if let Some(to) = v.party.rejoin().filter(|k| v.room != Some(*k)) => {
+                    let leader = v.party.following().unwrap_or("the leader");
+                    Step::walk(to, format!("Walking back to {leader}"))
+                }
                 BotMode::Task => {
                     let task = self.task.as_mut().expect("Task has a loop");
                     let step = task.step(v);
@@ -846,9 +863,14 @@ impl Bot {
             };
             // A follower goes where its leader takes it: none of its own modes walks it, Flee
             // aside (docs/plan/10-party-play.md §5).
-            let step = match (&step.act, v.party.following()) {
-                (Some(Do::Walk(_)), Some(leader)) if mode != BotMode::Flee => {
+            let rejoining = v.party.rejoin().is_some() && mode == BotMode::Task;
+            let step = match (&step.act, v.party.following(), v.party.hold()) {
+                (Some(Do::Walk(_)), Some(leader), _) if mode != BotMode::Flee && !rejoining => {
                     Step::wait(format!("Following {leader}: staying with the party"))
+                }
+                // A leader holds its loop while a member walks back (C-041).
+                (Some(Do::Walk(_)), _, Some(why)) if mode == BotMode::Task => {
+                    Step::wait(why.to_owned())
                 }
                 _ => step,
             };
