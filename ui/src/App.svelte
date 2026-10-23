@@ -5,6 +5,7 @@
   import Help from "./Help.svelte";
   import DevPanel from "./DevPanel.svelte";
   import MapPanel from "./MapPanel.svelte";
+  import PartiesPanel from "./PartiesPanel.svelte";
   import SettingsPanel from "./SettingsPanel.svelte";
   import StatsPanel from "./StatsPanel.svelte";
   import type { SettingsMessage } from "./lib/settings";
@@ -16,6 +17,7 @@
     FOCUS_TILE_CODE,
     GO_CODE,
     MAP_PANEL_CODE,
+    PARTIES_PANEL_CODE,
     RESET_LAYOUT_CODE,
     SETTINGS_PANEL_CODE,
     STATS_PANEL_CODE,
@@ -26,6 +28,7 @@
   import { LOOP_RADIUS, MAP_RADIUS, type Loops, type MapView } from "./lib/map";
   import { chip, dockSessions, loadMinimized, saveMinimized } from "./lib/minimized";
   import type { FoundMessage } from "./lib/goto";
+  import { followingName, namesOf } from "./lib/parties";
   import {
     drag,
     equalWeights,
@@ -55,7 +58,7 @@
     toggleDrawer,
     type DrawerPanel,
   } from "./lib/state";
-  import type { SessionInfo } from "./proto";
+  import type { PartyStatus, SessionInfo } from "./proto";
 
   let sessions = $state<SessionInfo[]>([]);
   const brain = $state(emptyBrainView());
@@ -85,6 +88,7 @@
 
   const DRAWER_BUTTONS: { panel: DrawerPanel; title: string }[] = [
     { panel: "map", title: "Map (Alt+M)" },
+    { panel: "parties", title: "Parties (Alt+P)" },
     { panel: "stats", title: "Stats (Alt+S)" },
     { panel: "settings", title: "Settings (Alt+T)" },
     { panel: "dev", title: "Dev panel (Alt+D)" },
@@ -102,6 +106,17 @@
   let settingsBySession = $state.raw<Record<string, SettingsMessage>>({});
   // The brain's last `found` per session, for the map panel's go box.
   let foundBySession = $state.raw<Record<string, FoundMessage>>({});
+  // The brain's last `parties` (undefined until the first since the brain attached).
+  let parties = $state.raw<PartyStatus[] | undefined>(undefined);
+  const names = $derived(namesOf(sessions));
+  // Asked for whenever the connection opens or a brain attaches; changes come by themselves.
+  $effect(() => {
+    if (status !== "open" || !brain.attached) {
+      parties = undefined;
+      return;
+    }
+    client.requestParties();
+  });
   /** Bumped by Alt+G: the map panel opens its go box and focuses it. */
   let goAsked = $state(0);
   // Sessions whose map has been asked for since the connection opened or the brain attached:
@@ -307,6 +322,9 @@
       found: (found) => {
         foundBySession = { ...foundBySession, [found.session]: found };
       },
+      parties: (list) => {
+        parties = list;
+      },
       event: (id, e) => {
         addEvent(dev, id, e);
         devChanged();
@@ -359,7 +377,9 @@
     const drawer: DrawerPanel | null =
       e.code === MAP_PANEL_CODE
         ? "map"
-        : e.code === STATS_PANEL_CODE
+        : e.code === PARTIES_PANEL_CODE
+          ? "parties"
+          : e.code === STATS_PANEL_CODE
           ? "stats"
           : e.code === SETTINGS_PANEL_CODE
             ? "settings"
@@ -451,6 +471,8 @@
           plan={plansBySession[info.id]}
           hidden={minimized.has(info.id)}
           onminimize={() => minimize(i)}
+          parties={brain.attached ? (parties ?? []) : []}
+          {names}
         />
       {:else}
         <p class="empty">
@@ -518,6 +540,15 @@
             onrunloop={(id, loop, skip) => client.runLoop(id, loop, skip)}
             onsaveloop={(id, name, base, stops) => client.saveLoop(id, name, base, stops)}
             ondeleteloop={(id, loop) => client.deleteLoop(id, loop)}
+            following={followingName(parties ?? [], focusedId, names)}
+          />
+        {:else if devPrefs.panel === "parties"}
+          <PartiesPanel
+            {sessions}
+            {parties}
+            attached={brain.attached}
+            onsave={(party) => client.saveParty(party)}
+            ondelete={(id) => client.deleteParty(id)}
           />
         {:else if devPrefs.panel === "settings"}
           <SettingsPanel

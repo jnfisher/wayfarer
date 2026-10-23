@@ -100,6 +100,8 @@ and `■` but no pause sign, so pause is `[║]`.
 | `Esc` in the go box | Clear it; `Esc` again closes it |
 | Mouse wheel, drag on the map | Zoom (three sizes), pan; `centre` goes back to the character |
 | `loops`, beside `go` | The 12 loops nearest the character, nearest first, with a box to find one by name, file, author or a stop, however far: hover or pick one to draw it in yellow, `walk once` walks it, `run` hunts round it (untick a stop to pass it by) |
+| `Alt+P`, or the `parties` button | Open the drawer on the parties: pick a leader, tick its followers, save; each member's state under it (on a Mac, `Option`) |
+| The party chip in the tile's header | `★ Leading`, `Following` or `Separated`; click it to leave the party, or to join one |
 | `F10`, or `[►]` and `[■]` in the tile's header | Start the focused character's bot where it stands (fight what comes, rest when low), or stop it |
 | `F9`, or `[║]` and `[►]` in the tile's header | Pause or resume the focused character's bot; a line you type pauses it too |
 | `Alt+S`, or the `stats` button | Open the drawer on the stats of the focused character's runs: exp per hour, kills, deaths and flees, now and for the last runs; or close it (on a Mac, `Option`) |
@@ -132,9 +134,9 @@ is per browser until settings arrive (`docs/plan/04-settings.md`); it is not wri
 
 ## The drawer
 
-The map, the stats, the settings and the dev panel share one drawer on the right, a third of
-the window at most; the tiles refit beside it. Its title has the four tabs, `map`, `stats`,
-`settings` and `dev`, the
+The map, the parties, the stats, the settings and the dev panel share one drawer on the right,
+a third of the window at most; the tiles refit beside it. Its title has the five tabs, `map`,
+`parties`, `stats`, `settings` and `dev`, the
 focused character's name and a close button. `Alt+M` (on a Mac, `Option+M`) or the `map`
 button opens it on the map, and again closes it; `Alt+S` or the `stats` button and `Alt+D` or
 the `dev` button do the same for the stats and the dev panel, and each key switches tabs when
@@ -287,6 +289,34 @@ and works nothing out itself.
 The panel asks the brain for the view when it opens on a character, and again after a
 reconnect or when the brain re-attaches; after that the brain sends a new one whenever the
 believed room or the route changes. The view holds the rooms within 15 steps.
+
+## The parties
+
+The `parties` tab (`Alt+P`) lists every party the brain keeps ([brain.md](brain.md)
+"Parties"). Each box is one party: its leader, picked from a list of the characters, and a
+tick for each follower (five at most). A character already in another party says so beside
+its name; ticking it moves it. Changing a box shows `save` and `undo`; `delete` asks again
+(`really delete?`) before the party goes and its followers leave it in the game. `+ New
+party` opens an empty box led by the first character in no party. The panel only edits the
+parties: the brain forms them in the game when a leader and a follower with its bot running
+are in one room.
+
+Under each follower is its state: `joined`, `not joined yet: forming up` (in the leader's
+room) or `: in another room`, `away: its bot is not running` (or not in the realm),
+`separated`, `walking to Penny (4 rooms)`, `resting 62%`, or `can't reach Penny: ...` with the
+reason.
+
+**The party chip.** A character in a party has a chip in its tile's header, beside the bot
+buttons: `★ Leading: Lauren, Faye, Manuel` in yellow on the leader, `Following Penny` in cyan
+on a follower, or `Separated` on yellow while a follower is out of the party in the game; its
+title is the member's state. Click it for **Leave party** (a follower: it sends `leave` and
+plays on its own). A character in the realm in no party has a dim `[party]` button instead,
+whose menu offers **Join Penny's party** for each party with room.
+
+**A follower's own walks are off.** Its errands (all but cancelling one) and, in the map
+panel, `go`, `walk once`, `run` and clicking a room are disabled, with "Following Penny: it
+goes where the party goes"; the map says so above its tools. Its bot's play and pause work as
+for any character.
 
 ## The stats
 

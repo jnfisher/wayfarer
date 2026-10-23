@@ -14,7 +14,8 @@
   import { FONT_FAMILY, FONT_NAME, VGA_THEME } from "./lib/theme";
   import type { SpellPlan } from "./lib/spells";
   import { planRow, planTotals } from "./lib/spells";
-  import type { CharacterState, SessionInfo } from "./proto";
+  import { chipFor, chipMenu, followingName, lockedTitle, type Names } from "./lib/parties";
+  import type { CharacterState, PartyStatus, SessionInfo } from "./proto";
 
   interface Props {
     info: SessionInfo;
@@ -38,6 +39,10 @@
     hidden?: boolean;
     /** The `[▬]` button: minimize this tile. */
     onminimize?: () => void;
+    /** The brain's parties, for the party chip. */
+    parties?: PartyStatus[];
+    /** Display names by session id. */
+    names?: Names;
   }
 
   let {
@@ -54,6 +59,8 @@
     plan,
     hidden = false,
     onminimize,
+    parties = [],
+    names = {},
   }: Props = $props();
 
   let headerWidth = $state(0);
@@ -64,7 +71,19 @@
   const narration = $derived(narrationLine(c?.bot));
   const link = $derived(linkButton(info.state));
   const errand = $derived(c?.errand ?? undefined);
-  const errands = $derived(errandItems(c?.bot, errand, c?.places ?? []));
+  const party = $derived(chipFor(parties, info.id, names));
+  const partyMenu = $derived(chipMenu(parties, info.id, names));
+  const following = $derived(followingName(parties, info.id, names));
+  /** A follower's errands are off, all but cancelling one: it goes where the party goes. */
+  const errands = $derived(
+    errandItems(c?.bot, errand, c?.places ?? []).map((item) =>
+      following && item.action !== "cancel_errand"
+        ? { ...item, disabled: true, title: lockedTitle(following) }
+        : item,
+    ),
+  );
+  /** The party chip's menu is open. */
+  let partyOpen = $state(false);
   /** The errand menu is open. */
   let menuOpen = $state(false);
   /** The spell plan is showing. */
@@ -242,6 +261,31 @@
       {/if}
     {/if}
     <span class="frame fill"></span>
+    {#if party}
+      <button
+        class="ctl party {party.tone}"
+        title={party.title}
+        aria-label="Party: {party.text}"
+        aria-expanded={partyOpen}
+        onclick={(e) => {
+          e.stopPropagation();
+          partyOpen = !partyOpen;
+        }}>{party.text}</button
+      >
+      <span class="frame">{" ═ "}</span>
+    {:else if partyMenu.length > 0 && c && info.state === "realm"}
+      <button
+        class="ctl party none"
+        title="Join a party"
+        aria-label="Join a party"
+        aria-expanded={partyOpen}
+        onclick={(e) => {
+          e.stopPropagation();
+          partyOpen = !partyOpen;
+        }}>[party]</button
+      >
+      <span class="frame">{" ═ "}</span>
+    {/if}
     {#if buttons.length > 0}
       {#each buttons as b (b.action)}
         <button
@@ -301,6 +345,23 @@
     {/if}
     <span class="frame">{" ═╗"}</span>
   </header>
+    {#if partyOpen && partyMenu.length > 0}
+      <ul class="errands party-menu" role="menu" aria-label="Party">
+        {#each partyMenu as item (item.label)}
+          <li role="none">
+            <button
+              role="menuitem"
+              onclick={(e) => {
+                e.stopPropagation();
+                partyOpen = false;
+                if (item.kind === "leave") client.leaveParty(info.id);
+                else client.joinParty(info.id, item.party);
+              }}>{item.label}</button
+            >
+          </li>
+        {/each}
+      </ul>
+    {/if}
     {#if menuOpen}
       <ul class="errands" role="menu" aria-label="Errands">
         {#each errands as item (item.action)}
@@ -341,7 +402,7 @@
         <p class="totals">{planTotals(plan)}</p>
         <button
           class="buy-btn"
-          disabled={errands[0]?.disabled !== false || !plan.items.some((i) => i.usable)}
+          disabled={!!following || errands[0]?.disabled !== false || !plan.items.some((i) => i.usable)}
           title="Withdraw from the Bank of Godfrey if the cash falls short, walk to the shops, buy what the money covers (the cheapest first) and read the scrolls"
           onclick={() => client.botControl(info.id, "buy_spells")}>buy spells</button
         >
@@ -556,6 +617,30 @@
   }
   header .ctl.minimize {
     margin-left: 1ch;
+  }
+  /* The party chip: long follower lists are cut, the whole list is its title. */
+  header .ctl.party {
+    max-width: 32ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  header .ctl.party.leader {
+    color: var(--vga-yellow);
+  }
+  header .ctl.party.follower {
+    color: var(--vga-lightcyan);
+  }
+  header .ctl.party.warn {
+    color: var(--vga-black);
+    background: var(--vga-yellow);
+  }
+  header .ctl.party.none {
+    color: var(--vga-darkgray);
+  }
+  ul.party-menu {
+    right: auto;
+    left: 50%;
   }
   header .menu {
     position: relative;

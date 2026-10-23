@@ -30,6 +30,7 @@
   } from "./lib/map";
   import { centreOn, FIND_DEBOUNCE_MS, goRows, MIN_QUERY, moveChoice, type FoundMessage, type GoRow } from "./lib/goto";
   import { FONT_FAMILY } from "./lib/theme";
+  import { lockedTitle } from "./lib/parties";
   import type { CharacterState, GeneratedLoop, LoopStop, MapRoom, MegaMudLoop, Place, RoomKey, SessionInfo } from "./proto";
 
   interface Props {
@@ -61,6 +62,8 @@
     onfind?: (session: string, query: string) => void;
     /** Bumped by Alt+G: open the go box and focus it. */
     goAsked?: number;
+    /** The leader's name when the character follows one: its own walks are off. */
+    following?: string | null;
   }
 
   let {
@@ -70,6 +73,7 @@
     attached,
     onwalk,
     onstop,
+    following = null,
     loops,
     onloops,
     onwalkloop,
@@ -138,9 +142,12 @@
     }
   }
 
+  /** Why the character's own walks are off: it follows a leader. */
+  const locked = $derived(following ? lockedTitle(following) : null);
+
   function go(row: GoRow | undefined) {
     const r = row?.room;
-    if (!r || !session) return;
+    if (!r || !session || locked) return;
     onwalk(session.id, r.map, r.room, r.boss ? !walkIn.has(row.id) : undefined);
   }
 
@@ -197,7 +204,7 @@
     return `${what} ${agoText(p.at)}: ${p.name || "?"} ${p.map}:${p.room}${more}`;
   }
   function goPlace(p: Place) {
-    if (session) onwalk(session.id, p.map, p.room);
+    if (session && !locked) onwalk(session.id, p.map, p.room);
   }
   const known = $derived(position?.room !== undefined);
   const walking = $derived(character?.walking);
@@ -279,7 +286,7 @@
   }
 
   function runLoop(l: Runnable) {
-    if (session) onrunloop?.(session.id, l.id, skipOf(l, skipped(l)));
+    if (session && !locked) onrunloop?.(session.id, l.id, skipOf(l, skipped(l)));
   }
   /** The room the list is measured from. */
   const loopsAround = $derived.by(() => {
@@ -457,7 +464,7 @@
   function onpointerup(e: PointerEvent) {
     const p = press;
     press = null;
-    if (!p || p.dragged || !view || !session) return;
+    if (!p || p.dragged || !view || !session || locked) return;
     const [x, y] = local(e);
     const room = roomAt(view, vs, x, y);
     if (room && !(room.map === view.center.map && room.room === view.center.room)) {
@@ -506,7 +513,9 @@
   {#if task?.loop_id === l.id}
     <span class="running" title="The bot is running this loop">▶ {task.stop + 1}/{task.stops.length}</span>
   {:else}
-    <button class="run" onclick={() => runLoop(l)} title="Hunt round this loop: fight at each ticked stop">run</button>
+    <button class="run" disabled={!!locked} onclick={() => runLoop(l)} title={locked ?? "Hunt round this loop: fight at each ticked stop"}
+      >run</button
+    >
   {/if}
 {/snippet}
 
@@ -532,6 +541,9 @@
   {:else if !known}
     <p class="msg">position unknown: re-sync or look</p>
   {:else}
+    {#if locked}
+      <p class="msg locked">{locked}</p>
+    {/if}
     <div class="tools">
       <button class="gobutton" aria-expanded={goOpen} onclick={toggleGo} title="Go to a room, a place or a monster by name (Alt+G)"
         >go</button
@@ -572,7 +584,7 @@
                   >{placeText(p)}</button
                 >
                 {#if chosen === i}
-                  <button class="walk" onclick={() => goPlace(p)}>go</button>
+                  <button class="walk" disabled={!!locked} title={locked ?? undefined} onclick={() => goPlace(p)}>go</button>
                 {/if}
               </li>
             {/each}
@@ -605,7 +617,7 @@
                     </label>
                   {/if}
                   {#if chosen === i && row.room}
-                    <button class="walk" onclick={() => go(row)}>go</button>
+                    <button class="walk" disabled={!!locked} title={locked ?? undefined} onclick={() => go(row)}>go</button>
                     {#if base}
                       <button class="walk" onclick={() => stage(row)} title={`Put this room in a loop made from ${base.name}`}
                         >add to loop</button
@@ -663,7 +675,12 @@
                     onblur={() => (hoverLoop = null)}>{l ? l.name : m!.description || m!.file}</button
                   >
                   <span class="acts">
-                    <button class="walk" onclick={() => session && onwalkloop?.(session.id, r.id)}>walk once</button>
+                    <button
+                      class="walk"
+                      disabled={!!locked}
+                      title={locked ?? undefined}
+                      onclick={() => session && !locked && onwalkloop?.(session.id, r.id)}>walk once</button
+                    >
                     {#if m && !m.runnable}
                       <button class="run" disabled title={m.reason}>run</button>
                     {:else}
@@ -787,6 +804,10 @@
   .msg {
     margin: 1em 1ch;
     color: var(--vga-darkgray);
+  }
+  .msg.locked {
+    margin: 2px 1ch;
+    color: var(--vga-lightcyan);
   }
   .tools,
   .bar {
