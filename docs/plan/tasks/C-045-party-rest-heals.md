@@ -53,10 +53,9 @@ What this card makes it do:
   furthest below its line first, a party heal for two or more).
 - **The mana check.** A cast during a party rest goes only when, after it, the healer's mana
   would still be back at its *Rest until* mana line no later than the slowest member's HP. The
-  regeneration rates come from what the session has seen: HP and mana gained per minute while
-  resting, measured from the prompts (a rise bigger than a regeneration tick, a heal, is left
-  out). Until a rate is known the check falls back to "the cast does not take the healer below
-  its *Rest below* mana line".
+  regeneration rates are the game's base ones from the level and the stats `st` shows
+  (`kb/recovery.md`; gear that alters them is not counted). Until a rate is known the check
+  falls back to "the cast does not take the healer below its *Rest below* mana line".
 - **Narration and status**: the healer's line says who it heals and why ("Recover: casting
   minor healing on lauren (party rest)"); a member resting for the party says "Recover: resting
   with the party".
@@ -66,8 +65,8 @@ What this card makes it do:
 - `PartyRole::Follower` gets the party's rest (`Option<String>`) like the leader;
   `PartyRole::party_rest()` returns it for both.
 - `Mate` gets `until: i32` (its rest-until HP line) so the healer can use it.
-- `Regen` in the session: HP and mana per minute while resting, a running average over the
-  last few minutes, fed from prompts; read by `View`.
+- `regen.rs`: the two rates from the KB formulas, and the wait check as a pure function;
+  the session fills `View::regen` and each member's waits for the coordinator.
 - `Recover::wants`: a party rest with the member not rested is a reason to rest.
 
 ## Done when
@@ -83,7 +82,7 @@ What this card makes it do:
 - `recover.rs`: a follower between its lines rests in a party rest; a rested one does not.
 - `modes.rs`/`spellcraft.rs`: the heal line during a party rest; the mana check with and
   without measured rates.
-- `session.rs`: the regeneration rate from prompts leaves a heal out.
+- `regen.rs`: the rates against the KB's level-1 figure; the wait check.
 
 ## Notes for the agent
 
