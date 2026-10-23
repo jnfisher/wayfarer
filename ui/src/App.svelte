@@ -9,7 +9,7 @@
   import SettingsPanel from "./SettingsPanel.svelte";
   import StatsPanel from "./StatsPanel.svelte";
   import type { SettingsMessage } from "./lib/settings";
-  import type { SpellPlan } from "./lib/spells";
+  import { planRefusal, type SpellPlan } from "./lib/spells";
   import { STATS_REFRESH_MS, type Stats } from "./lib/stats";
   import { PAUSE_KEY, START_KEY, botKeyAction } from "./lib/bot";
   import {
@@ -100,6 +100,8 @@
   let loopsBySession = $state.raw<Record<string, Loops>>({});
   // The brain's last `spell_plan` per session, for the tiles' errand menus.
   let plansBySession = $state.raw<Record<string, SpellPlan>>({});
+  // Why the brain gave no spell plan, per session, until it gives one.
+  let planRefusals = $state.raw<Record<string, string>>({});
   // The brain's last `stats` per session.
   let statsBySession = $state.raw<Record<string, Stats>>({});
   // The brain's last `settings` per session, for the settings tab.
@@ -315,6 +317,8 @@
       },
       spellPlan: (plan) => {
         plansBySession = { ...plansBySession, [plan.session]: plan };
+        const { [plan.session]: _, ...rest } = planRefusals;
+        planRefusals = rest;
       },
       settings: (settings) => {
         settingsBySession = { ...settingsBySession, [settings.session]: settings };
@@ -337,6 +341,12 @@
         devChanged();
       },
       notice: (kind, text, id) => {
+        const why = kind === "warning" && id ? planRefusal(text) : null;
+        if (id && why) {
+          const { [id]: _, ...rest } = plansBySession;
+          plansBySession = rest;
+          planRefusals = { ...planRefusals, [id]: why };
+        }
         addNote(dev, kind, text, id, Date.now());
         devChanged();
       },
@@ -469,6 +479,7 @@
           onhelp={toggleHelp}
           character={brain.attached ? (brain.characters[info.id] ?? {}) : null}
           plan={plansBySession[info.id]}
+          planRefusal={planRefusals[info.id]}
           hidden={minimized.has(info.id)}
           onminimize={() => minimize(i)}
           parties={brain.attached ? (parties ?? []) : []}

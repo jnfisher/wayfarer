@@ -35,6 +35,8 @@
     character?: CharacterState | null;
     /** The brain's last spell plan for the character. */
     plan?: SpellPlan;
+    /** Why the brain gave no plan, when it said. */
+    planRefusal?: string;
     /** Minimized to the dock: kept running, but not shown. */
     hidden?: boolean;
     /** The `[▬]` button: minimize this tile. */
@@ -57,6 +59,7 @@
     onhelp,
     character = null,
     plan,
+    planRefusal,
     hidden = false,
     onminimize,
     parties = [],
@@ -397,7 +400,7 @@
         <button class="ctl" aria-label="Close the spell plan" onclick={() => (planOpen = false)}>[x]</button>
       </div>
       {#if !plan}
-        <p>Asking the brain…</p>
+        <p>{planRefusal ?? "Asking the brain…"}</p>
       {:else}
         <ul>
           {#each plan.items as item (item.spell)}

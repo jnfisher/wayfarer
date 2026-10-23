@@ -79,6 +79,21 @@ async fn a_mage_is_offered_the_scrolls_it_lacks_nearest_the_arena() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_caster_with_no_spells_yet_is_offered_a_plan() {
+    let (mut g, run) = in_arena(&[]).await;
+    g.expect("st", caster_status("Mage", 35, 20));
+    g.expect("look", arena(&[], 35));
+    g.expect("spells", line("You have no spells.", 35));
+    g.bot(BotAction::Start).await;
+    g.narrated("Starting in Newhaven, Arena: re-syncing").await;
+    g.narrated("re-synced").await;
+    // An empty spellbook is a known one: the plan offers the first scrolls.
+    let (_, items) = plan(&mut g).await;
+    assert!(items.iter().any(|i| i.usable), "{items:?}");
+    g.close(run).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn the_plan_waits_for_the_class_and_the_spellbook() {
     let (mut g, run) = in_arena(&[]).await;
     g.send(ToClient::SpellPlanRequest { session: ID.into() })

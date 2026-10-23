@@ -45,3 +45,9 @@ export function planTotals(plan: SpellPlan): string {
     `all ${usable.length} cost ${coinText(sum(usable))}`
   );
 }
+
+/** The brain's reason for not giving a plan, from its `warning` (`spell plan: …`); null for any other warning. */
+export function planRefusal(text: string): string | null {
+  const why = text.match(/^spell plan: (.+)$/s)?.[1];
+  return why ? why[0].toUpperCase() + why.slice(1) : null;
+}

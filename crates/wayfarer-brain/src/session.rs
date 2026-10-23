@@ -307,6 +307,8 @@ pub(crate) struct Session {
     settings_layer: Layer,
     /// The rows of the last `spells` screen, and the attacks and heals among them.
     spell_rows: Vec<SpellRow>,
+    /// A `spells` screen has been seen, so empty rows mean no spells rather than not known.
+    spells_seen: bool,
     spellbook: Spellbook,
     registry: Arc<Registry>,
     parser: Parser,
@@ -462,6 +464,7 @@ impl Session {
             settings_check: None,
             settings_layer: Layer::Character,
             spell_rows: Vec::new(),
+            spells_seen: false,
             spellbook: Spellbook::default(),
             map_radius: MAP_RADIUS,
             map_center: None,
@@ -1066,7 +1069,7 @@ impl Session {
             .position
             .best()
             .ok_or("spell plan: the position is unknown")?;
-        if self.spell_rows.is_empty() {
+        if !self.spells_seen {
             return Err(
                 "spell plan: the spellbook is not known yet (re-sync, or wait for the first `spells`)"
                     .to_owned(),
@@ -2986,7 +2989,10 @@ impl Session {
     /// The `spells` screen, row by row: the attacks and heals among them are the spellbook.
     fn spell_event(&mut self, ev: &GameEvent) {
         match ev {
-            GameEvent::SpellsHeader | GameEvent::SpellsNone => self.spell_rows.clear(),
+            GameEvent::SpellsHeader | GameEvent::SpellsNone => {
+                self.spell_rows.clear();
+                self.spells_seen = true;
+            }
             GameEvent::SpellRow {
                 level,
                 mana,
