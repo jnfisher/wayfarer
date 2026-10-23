@@ -103,8 +103,11 @@ impl Mode for Recover {
         if v.engaged || !v.presence.attackers.is_empty() {
             return None;
         }
-        // A party member in the room is hurt and a heal is ready (C-043).
+        // A party member in the room is hurt and a heal is ready (C-043), between fights: with
+        // something to fight here the heals are Fight's, and taking control would only cast
+        // again in the round Fight just cast in.
         if self.heal_ready.is_none_or(|t| v.now >= t)
+            && crate::policy::quiet(&v.atlas.monsters, v.rules, &v.presence.here)
             && v.party_heal(v.member_heal_resting(), v.rest_heal_below())
                 .is_some()
         {
@@ -133,6 +136,7 @@ impl Mode for Recover {
     fn step(&mut self, v: &View) -> Step {
         // Between rests, a heal for a hurt member of the party: it shortens a party rest.
         if self.heal_ready.is_none_or(|t| v.now >= t)
+            && crate::policy::quiet(&v.atlas.monsters, v.rules, &v.presence.here)
             && let Some(cast) = v.party_heal(v.member_heal_resting(), v.rest_heal_below())
         {
             self.heal_ready = Some(v.now + HEAL_GAP);
