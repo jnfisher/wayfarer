@@ -72,7 +72,9 @@ It claims and logs on a character, then:
    characters start, through rooms nothing spawns in. No door: the only one near Newhaven is
    the Arena's into the Dungeon (`docs/kb/pitfalls.md` 36), and the Arena's monsters would
    start a fight, which stops a walk; the in-process tests (`crates/wayfarer-brain/tests/walk.rs`)
-   cover doors.
+   cover doors. A Go to turns the bot on (it re-syncs first and fights on the way,
+   `docs/brain.md` "The bot's states"); every scenario that walks with the bot off turns it off
+   again on arrival (`■`, twice if the walk was not finished), to play the character itself.
 3. **A walk back** to the room it started in, checked the same way.
 4. **Stopping the brain**, then the gateway logs off as in M0.
 
@@ -195,8 +197,8 @@ Steps 1 to 3 of "fight" (to the Arena, Start), then, from the check's own WebSoc
 4. **The bot fighting**: its narration `Fight: ...` and `*Combat Engaged*` on the screen.
 5. **`st` beside the bot**: the status screen comes, and no "took over" or "Paused" notice: the
    bot is still running.
-6. **`u` beside the bot**: "You took over ...", then "Paused: you took over", the bot paused,
-   and the character up the stairs on the Narrow Road (the Arena's way out is up, not north).
+6. **`u` beside the bot**: the character up the stairs on the Narrow Road (the Arena's way out
+   is up, not north), and the bot still running there: a move the player types pauses nothing.
 7. **Stop**, **walk out** (already out), **rest by hand** if HP is low, **stopping the brain**,
    and the gateway logs off.
 
@@ -216,8 +218,8 @@ It claims and logs on a character, then:
    at the Arena, the Dungeon Entrance and the Small Cavern, the Arena flagged, under 40
    steps.
 4. **`walk_loop`** on it, and `walk_stop` as soon as the brain narrates the walk to its first
-   stop (the Arena, three steps away): the brain narrates "Loop Newhaven stopped: asked to
-   stop" and the walk stops after the move in flight, short of the Arena. Every stop of the
+   stop (the Arena, three steps away): the brain narrates "Stopped loop Newhaven: playing here"
+   and the walk stops after the move in flight, short of the Arena; the bot is turned off again. Every stop of the
    loop spawns monsters, and a fight stops a walk, so the check never walks one round; the
    in-process tests (`crates/wayfarer-brain/tests/loops.rs`) walk the whole loop and back.
    If the character did reach the Arena, it walks out as in "fight" and the step fails.

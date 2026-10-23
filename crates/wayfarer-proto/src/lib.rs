@@ -291,6 +291,10 @@ pub struct Bot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub task: Option<Task>,
+    /// The walk it was asked for (`walk_to`, `walk_loop`), while it is on one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub journey: Option<Journey>,
     /// The monster rules it plays by: the defaults, what this session learned (a stalemate)
     /// and what the player set (`set_monster_rule`). The longest pattern a name holds wins.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -343,6 +347,16 @@ pub struct Task {
     /// The stops it passes by (unticked).
     #[serde(default)]
     pub skip: Vec<RoomKey>,
+}
+
+/// A walk the bot was asked for: a Go to (`walk_to`) or a loop walked once (`walk_loop`). It
+/// fights on the way; at the end the journey is over and the bot plays where it is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct Journey {
+    /// "Newhaven, Arena" for a Go to, "loop Newhaven" for a loop walk.
+    pub name: String,
+    /// Where it is walking to now.
+    pub to: RoomKey,
 }
 
 /// A `bot_control` request.

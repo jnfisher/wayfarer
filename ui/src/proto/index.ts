@@ -22,6 +22,7 @@ export type { Found } from "./Found";
 export type { FoundKind } from "./FoundKind";
 export type { FoundRoom } from "./FoundRoom";
 export type { GeneratedLoop } from "./GeneratedLoop";
+export type { Journey } from "./Journey";
 export type { LoopStop } from "./LoopStop";
 export type { MapExit } from "./MapExit";
 export type { MapRoom } from "./MapRoom";

@@ -138,7 +138,7 @@ async fn a_monster_to_flee_from_ends_the_stop_and_the_loop_goes_on_from_the_next
     g.narrated("Stop 2/3 cleared: nothing there").await;
     g.freeze();
     g.bot(BotAction::Stop).await;
-    g.narrated("Stopped: asked to stop").await;
+    g.narrated("Stopped loop Newhaven: playing here").await;
     let (seen, played) = g.close(run).await;
     assert_eq!(
         played,

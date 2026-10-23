@@ -52,23 +52,24 @@ async fn a_walk_upstairs_buys_a_room_ticket_on_the_way_and_the_next_buys_another
     assert!(at.is_some(), "a ticket to buy: {up:?}");
     script(&mut g, &up, at);
     g.walk_to(BARDS_ROOM).await;
-    let said = g.narration().await;
+    let said = g.walk_narration().await;
     assert!(
         said.starts_with("Walking to Bard's Room: ")
             && said.ends_with(", buying a room ticket at The Homely Hearth, Common Room"),
         "{said}"
     );
-    assert_eq!(g.narration().await, "Arrived: Bard's Room");
+    assert_eq!(g.walk_narration().await, "Arrived: Bard's Room");
     // Down needs no ticket; up again needs a new one: the last went into the box.
     let (down, none) = plan(BARDS_ROOM, STAIRWELL);
     assert_eq!(none, None);
     script(&mut g, &down, None);
     // The stairwell is the sheriff's lair: walk in, not one room short.
     g.walk_to_short(STAIRWELL, Some(false)).await;
-    g.narrated("Arrived: The Homely Hearth, Stairwell").await;
+    g.walk_narrated("Arrived: The Homely Hearth, Stairwell")
+        .await;
     script(&mut g, &up, at);
     g.walk_to(BARDS_ROOM).await;
-    g.narrated("Arrived: Bard's Room").await;
+    g.walk_narrated("Arrived: Bard's Room").await;
     let (_, played) = g.close(run).await;
     assert_eq!(
         played.iter().filter(|c| *c == "buy room ticket").count(),
@@ -122,7 +123,7 @@ async fn a_ticket_carried_is_used_and_none_is_bought() {
     assert_eq!(buy, None);
     script(&mut g, &up, None);
     g.walk_to(BARDS_ROOM).await;
-    g.narrated("Arrived: Bard's Room").await;
+    g.walk_narrated("Arrived: Bard's Room").await;
     let (_, played) = g.close(run).await;
     assert!(
         !played.contains(&"buy room ticket".to_owned()),

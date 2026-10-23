@@ -241,8 +241,6 @@ const SETTLE: Duration = Duration::from_secs(180);
 /// for the minutes asked, a line a minute; Stop (after Recover or Flee if one is going), a
 /// walk to the anchor, the brain stopped; the numbers in `ctx.soak`. Whether it all went.
 pub async fn scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
-    use wayfarer_proto::BotAction;
-
     let soak = ctx.args.soak.clone();
     let extra = flee_from_args(&ctx.args.flee_from);
     let Some((running, start)) = placed_brain(ctx, gw, "soak", &extra).await else {
@@ -313,19 +311,7 @@ pub async fn scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
         let run_secs = started.elapsed().as_secs();
         let longest_gap = gw.gaps.longest(Instant::now());
         let started = Instant::now();
-        let stopped = match gw.bot(BotAction::Stop).await {
-            Ok(()) => {
-                gw.wait_for(Duration::from_secs(10), "the bot stopped", |g| {
-                    (bot_field(&g.character, "state") == Some("stopped")).then(|| {
-                        bot_field(&g.character, "narration")
-                            .unwrap_or("")
-                            .to_owned()
-                    })
-                })
-                .await
-            }
-            Err(e) => Err(e),
-        };
+        let stopped = crate::turn_off(gw).await;
         ctx.record("stop the bot", started, &stopped);
         ok &= stopped.is_ok();
 

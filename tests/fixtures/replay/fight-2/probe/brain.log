@@ -1,0 +1,8 @@
+{"seq":10,"ts":1792791151755,"attached":true}
+{"seq":21,"ts":1792791154130,"msg":{"type":"walk_to","session":"probe","map":1,"room":2150}}
+{"seq":36,"ts":1792791164057,"msg":{"type":"bot_control","session":"probe","action":"stop"}}
+{"seq":36,"ts":1792791164139,"msg":{"type":"bot_control","session":"probe","action":"start"}}
+{"seq":56,"ts":1792791182049,"msg":{"type":"bot_control","session":"probe","action":"stop"}}
+{"seq":59,"ts":1792791197051,"msg":{"type":"walk_to","session":"probe","map":1,"room":2146}}
+{"seq":73,"ts":1792791198051,"msg":{"type":"bot_control","session":"probe","action":"stop"}}
+{"seq":73,"ts":1792791198094,"attached":false}

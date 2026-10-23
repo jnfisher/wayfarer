@@ -31,6 +31,7 @@ use crate::commands::{Kind, classify};
 use crate::custom;
 use crate::errand::{Active, Ctx, Errand, ErrandKind, ErrandNext};
 use crate::executor::{Action, Executor, Expect};
+use crate::journey::Journey;
 use crate::modes::{Bot, Do, Presence, View};
 use crate::party::{Health, MemberInfo, PartyRole, WalkBack};
 use crate::policy::{COMBAT_QUIET, hp_percent};
@@ -176,27 +177,6 @@ fn room_key(k: Key) -> RoomKey {
     RoomKey {
         map: k.0,
         room: k.1,
-    }
-}
-
-/// A loop being walked once (`walk_loop`): a `walk_to` per stop.
-#[derive(Debug)]
-struct LoopWalk {
-    name: String,
-    /// The stops from the one nearest where the walk started, then that one again.
-    stops: Vec<Key>,
-    /// The stop being walked to.
-    next: usize,
-}
-
-impl LoopWalk {
-    /// Stops on the loop (the last of `stops` is the first again).
-    fn total(&self) -> usize {
-        if self.stops.len() > 1 {
-            self.stops.len() - 1
-        } else {
-            1
-        }
     }
 }
 
@@ -360,12 +340,12 @@ pub(crate) struct Session {
     party_stuck: Option<(Key, String, Instant)>,
     /// The walk in progress is the bot's.
     bot_walk: bool,
+    /// The session stopped the walk in progress (`stop_walk`): its end is no give-up.
+    walk_halted: bool,
     /// A walk asked for while the bot's action was in flight: it starts once that is answered.
     walk_after: Option<(Key, bool)>,
     /// The generated loops of the areas asked for, made once each.
     loops: HashMap<LoopsKey, Arc<Vec<GeneratedLoop>>>,
-    /// The loop being walked once.
-    loop_walk: Option<LoopWalk>,
     /// When the character's own auto-combat last showed (`*Combat Engaged*`, its blows), or
     /// the brain attached, or it got up after being knocked down: for how long it has been
     /// quiet, since auto-combat can end without a word (`kb/pitfalls.md` 42).
@@ -479,9 +459,9 @@ impl Session {
             party_role: PartyRole::None,
             party_stuck: None,
             bot_walk: false,
+            walk_halted: false,
             walk_after: None,
             loops: HashMap::new(),
-            loop_walk: None,
             last_combat: now,
             down: false,
             wounded_noted: false,
@@ -1324,11 +1304,16 @@ impl Session {
             Resync::Want { idle, .. } => *idle = true,
             Resync::Off => {}
         }
-        if self.walker.walking() {
+        if self
+            .atlas
+            .as_ref()
+            .is_some_and(|a| self.position.is_move(a, text))
+        {
+            self.hand_move(out);
+        } else if self.walker.walking() && !self.bot_walk {
             // The player comes first (docs/plan/02-architecture.md "Input arbitration").
             self.stop_walk("you typed a line", out);
         }
-        self.take_over(out);
         self.flush_views(out);
     }
 
@@ -1351,13 +1336,17 @@ impl Session {
             kind = Kind::Talk;
         }
         tracing::info!(session = %self.id, %text, ?kind, "typed beside the bot");
-        let line = TypedLine { text, at: now };
-        if kind != Kind::Talk {
-            if self.walker.walking() {
-                self.stop_walk("you typed a line", out);
-            }
-            self.take_over(out);
+        // A move the player types takes the character elsewhere: the bot drops its loop or
+        // journey and plays where it goes. Any other line goes between the bot's actions.
+        if kind != Kind::Talk
+            && self
+                .atlas
+                .as_ref()
+                .is_some_and(|a| self.position.is_move(a, &text))
+        {
+            self.hand_move(out);
         }
+        let line = TypedLine { text, at: now };
         self.typed.push_back(line);
         self.drive(now, out);
         self.flush_views(out);
@@ -1373,13 +1362,14 @@ impl Session {
         })
     }
 
-    /// `keys_sent`: the player's keys went straight to the game; the bot pauses after the
-    /// action in flight, and a walk stops.
+    /// `keys_sent`: the player's keys went straight to the game. They may be a move, so they
+    /// count as one: a walk stops, and a running bot drops its loop or journey and plays where
+    /// the character ends up.
     pub fn keys_sent(&mut self, out: &mut Vec<ToGateway>) {
         if self.walker.walking() {
             self.stop_walk("you pressed a key", out);
         }
-        self.take_over(out);
+        self.hand_move(out);
         self.flush_views(out);
     }
 
@@ -1441,23 +1431,15 @@ impl Session {
         true
     }
 
-    /// The player acted (a typed line, a walk): a running bot pauses after the action in
-    /// flight.
-    fn take_over(&mut self, out: &mut Vec<ToGateway>) {
-        if !self.bot.running() {
-            return;
+    /// The player moved the character by hand (a typed move, keys): the bot's walk stops after
+    /// the move in flight, and a running bot drops its loop or journey and plays on where the
+    /// character ends up (docs/brain.md "The bot's states").
+    fn hand_move(&mut self, out: &mut Vec<ToGateway>) {
+        if self.bot_walk && self.walker.walking() {
+            self.stop_walk("you moved", out);
         }
-        let name = self.character.state().name.as_deref().unwrap_or(&self.id);
-        let first = name.split_whitespace().next().unwrap_or(name).to_owned();
-        out.push(ToGateway::Notice {
-            session: Some(self.id.clone()),
-            text: format!("You took over {first}"),
-        });
-        let says = self
-            .bot
-            .pause("you took over", self.executor.in_flight().is_some());
+        let says = self.bot.hand_move();
         self.say(says, out);
-        self.bot_held(out);
     }
 
     /// The bot is pausing, paused or stopped: its walk stops after the move in flight, and an
@@ -1544,20 +1526,19 @@ impl Session {
             )));
             return;
         }
-        self.take_over(out);
-        self.bot_walk = false;
-        if let Some(l) = self.loop_walk.take() {
-            out.push(self.notice(&format!("Loop {} stopped: walking elsewhere", l.name)));
-        }
-        // An action queued but not sent yet is the old walk's (or the bot's): drop it.
-        if self.executor.in_flight().is_none() {
-            self.cancel(out);
+        if self.errand.is_some() {
+            out.push(self.warning("walk_to: an errand is in progress; cancel it first"));
+            return;
         }
         self.position
             .refresh(&atlas, &self.character.snapshot(), self.clock.instant());
-        self.start_walk(&atlas, to, stop_short.unwrap_or(true), out);
-        self.drive(now, out);
-        self.flush_views(out);
+        let name = atlas
+            .graph
+            .room(to)
+            .map_or_else(|| format!("{}/{}", to.0, to.1), |r| r.name.clone());
+        let short =
+            stop_short.unwrap_or(true) && atlas.finder.boss_lair(to, &atlas.monsters).is_some();
+        self.go(Journey::go_to(to, name, short), now, out);
     }
 
     /// Start the player's walk (or loop walk) to `to`: after the walker's move in flight, or
@@ -2018,6 +1999,10 @@ impl Session {
             )));
             return;
         }
+        if self.errand.is_some() {
+            out.push(self.warning("walk_loop: an errand is in progress; cancel it first"));
+            return;
+        }
         let Some(l) = self.find_loop(&atlas, id) else {
             out.push(self.warning(&format!("walk_loop: no loop {id:?}")));
             return;
@@ -2045,11 +2030,6 @@ impl Session {
             )));
             return;
         };
-        self.take_over(out);
-        self.bot_walk = false;
-        if self.executor.in_flight().is_none() {
-            self.cancel(out);
-        }
         let mut order: Vec<Key> = stops[first..]
             .iter()
             .chain(&stops[..first])
@@ -2073,12 +2053,29 @@ impl Session {
             l.steps,
             name(start)
         )));
-        self.loop_walk = Some(LoopWalk {
-            name: l.name.clone(),
-            stops: order,
-            next: 0,
-        });
-        self.start_walk(&atlas, start, false, out);
+        let stops = order.into_iter().map(|k| (k, name(k))).collect();
+        self.go(Journey::walk_loop(&l.name, stops), now, out);
+    }
+
+    /// Go on `journey` (a Go to, a loop walked once): the bot runs it, from whatever state it
+    /// was in, replacing a loop or journey it had. A bot that was not running re-syncs first.
+    fn go(&mut self, journey: Journey, now: Instant, out: &mut Vec<ToGateway>) {
+        if self.walker.walking() {
+            self.stop_walk("walking elsewhere", out);
+        }
+        self.bot_walk = false;
+        self.walk_after = None;
+        // An action queued but not sent yet is the old walk's (or the bot's): drop it.
+        if self.executor.in_flight().is_none() {
+            self.cancel(out);
+        }
+        let resync = !self.bot.running();
+        if resync {
+            self.request_resync();
+        }
+        let says = self.bot.go(journey, resync);
+        self.say(says, out);
+        self.bot_held(out);
         self.drive(now, out);
         self.flush_views(out);
     }
@@ -2199,9 +2196,6 @@ impl Session {
             )));
             return;
         };
-        if let Some(lw) = self.loop_walk.take() {
-            out.push(self.notice(&format!("Loop {} stopped: running a loop", lw.name)));
-        }
         if self.walker.walking() {
             self.stop_walk("running a loop", out);
         }
@@ -2262,53 +2256,10 @@ impl Session {
         }
     }
 
-    /// The loop walk after the walker's latest word: on to the next stop when it arrived at
-    /// this one, over when the walk ended anywhere else.
-    fn loop_step(&mut self, arrived: Option<Key>, out: &mut Vec<ToGateway>) {
-        let Some(atlas) = self.atlas.clone() else {
-            return;
-        };
-        let Some(lw) = &mut self.loop_walk else {
-            return;
-        };
-        let at = lw.stops[lw.next];
-        if arrived != Some(at) {
-            if !self.walker.walking() {
-                let lw = self.loop_walk.take().expect("walking a loop");
-                let text = format!(
-                    "Loop {} stopped before stop {}/{}",
-                    lw.name,
-                    (lw.next % lw.total()) + 1,
-                    lw.total()
-                );
-                out.push(self.warning(&text));
-            }
-            return;
-        }
-        let name = atlas.graph.room(at).map_or("", |r| r.name.as_str());
-        let text = if lw.next + 1 == lw.stops.len() && lw.stops.len() > 1 {
-            format!("Loop {} done: back at {name}", lw.name)
-        } else {
-            format!("Loop stop {}/{}: {name}", lw.next + 1, lw.total())
-        };
-        lw.next += 1;
-        let to = lw.stops.get(lw.next).copied();
-        if to.is_none() {
-            self.loop_walk = None;
-        }
-        out.push(self.notice(&text));
-        if let Some(to) = to {
-            let busy = self.executor.in_flight().is_some();
-            let next = self.walker.start(&mut self.position, &atlas, to, busy);
-            self.apply(next, out);
-        }
-    }
-
-    /// `walk_stop`: the map's `stop`. A walk of the bot's (a loop it runs) is stopped by
-    /// stopping the bot, or it would take its next leg at once; a walk the player asked for
-    /// (the bot is not running then) just ends.
+    /// `walk_stop`: the map's `stop`, as ■ when the bot has a loop or journey: it is dropped,
+    /// and a running bot plays on where it is. Any other walk just ends.
     pub fn walk_stop(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
-        if self.bot.running() {
+        if self.bot.has_route() {
             self.bot_control(BotAction::Stop, now, out);
         }
         self.stop_walk("asked to stop", out);
@@ -2316,11 +2267,9 @@ impl Session {
     }
 
     /// Stop walking after the action in flight (and a move pipelined ahead of it that has gone);
-    /// at once if none has gone. A loop walk ends.
+    /// at once if none has gone.
     fn stop_walk(&mut self, why: &str, out: &mut Vec<ToGateway>) {
-        if let Some(l) = self.loop_walk.take() {
-            out.push(self.notice(&format!("Loop {} stopped: {why}", l.name)));
-        }
+        self.walk_halted = true;
         if self.owner == Some(Owner::Walker) && self.executor.drop_ahead() {
             self.walker.ahead_dropped();
         }
@@ -2382,7 +2331,13 @@ impl Session {
                 self.request_resync();
                 self.bot.start(home, &name)
             }
-            BotAction::Stop => self.bot.stop("asked to stop", false),
+            // ■: the loop or journey is dropped; a running bot plays on where it is.
+            BotAction::Stop => {
+                if self.bot_walk && self.walker.walking() {
+                    self.stop_walk("asked to stop", out);
+                }
+                self.bot.halt(self.position.best())
+            }
             BotAction::Pause => {
                 let busy = self.executor.in_flight().is_some();
                 self.bot.pause("asked to pause", busy)
@@ -2803,14 +2758,18 @@ impl Session {
                     self.say(says, out);
                 }
             },
-            Some(Do::Walk(to)) => {
-                // Task's legs pipeline their moves; a sneaker's do not, so a move that showed no
-                // `Sneaking...` can be followed by a sneak (C-048).
-                let pipelined = self.bot.task_walking() && !self.settings.bool("movement.sneak");
+            Some(Do::Walk(to, short)) => {
+                // A loop's legs pipeline their moves; a journey's and a sneaker's do not (a move
+                // that showed no `Sneaking...` can be followed by a sneak, C-048).
+                let pipelined = self.bot.loop_walking() && !self.settings.bool("movement.sneak");
                 let next =
                     self.walker
-                        .start_with(&mut self.position, &atlas, to, false, pipelined, false);
+                        .start_with(&mut self.position, &atlas, to, false, pipelined, short);
                 self.bot_walk = self.walker.walking();
+                self.walk_halted = false;
+                if !self.bot_walk && next.arrived.is_none() {
+                    self.bot.walk_failed();
+                }
                 if !self.bot_walk {
                     self.bot.forget();
                     // The walk back to the party's leader found no way.
@@ -3030,7 +2989,11 @@ impl Session {
         if let Some(action) = ahead {
             self.pipeline(action);
         }
-        self.loop_step(arrived, out);
+        if self.bot_walk
+            && let Some(at) = arrived
+        {
+            self.bot.walk_arrived(at);
+        }
     }
 
     /// Move the executor on: hand a finished action's outcome to the walker, and send the next
@@ -3327,7 +3290,17 @@ impl Session {
                         outcome,
                         seen.as_ref(),
                     );
+                    let arrived = next.arrived;
                     self.apply(next, out);
+                    // The walker gave the bot's walk up by itself (lost, a door that will not
+                    // open): a journey ends there.
+                    if self.bot_walk
+                        && !self.walker.walking()
+                        && arrived.is_none()
+                        && !self.walk_halted
+                    {
+                        self.bot.walk_failed();
+                    }
                     // A leg of Task's stops where Fight would take the character.
                     if self.bot_walk
                         && self.bot.task_walking()

@@ -449,6 +449,29 @@ impl Game {
         }
     }
 
+    /// The next narration that is not the bot's own about a journey (a Go to turns the bot on:
+    /// it re-syncs, says where it goes, and plays where it ends up): the walker's lines.
+    pub async fn walk_narration(&mut self) -> String {
+        loop {
+            let n = self.narration().await;
+            if !is_bots_own(&n) {
+                return n;
+            }
+        }
+    }
+
+    /// Read until the walker's narration is `text`; the walker's lines on the way.
+    pub async fn walk_narrated(&mut self, text: &str) -> Vec<String> {
+        let mut all = Vec::new();
+        loop {
+            let n = self.walk_narration().await;
+            all.push(n.clone());
+            if n == text {
+                return all;
+            }
+        }
+    }
+
     /// Let the clock run (the paused clock jumps), answering what the brain sends meanwhile.
     pub async fn idle(&mut self, d: Duration) {
         let end = tokio::time::Instant::now() + d;
@@ -514,4 +537,15 @@ impl Game {
         })
         .await
     }
+}
+
+/// A line of the bot's own on a journey, not the walker's: "Going to ...", "...: re-syncing",
+/// "re-synced", "Waiting here", "Not going to ...", "Playing from ...".
+pub fn is_bots_own(line: &str) -> bool {
+    line.starts_with("Going to ")
+        || line.starts_with("Not going to ")
+        || line.starts_with("Playing from ")
+        || line.ends_with(": re-syncing")
+        || line == "re-synced"
+        || line == "Waiting here"
 }

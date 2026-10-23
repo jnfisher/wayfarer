@@ -120,8 +120,9 @@ async fn round_the_loop() -> (Vec<ToGateway>, Vec<String>, Vec<String>) {
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_maps_stop_while_the_bot_walks_a_loop_stops_the_bot() {
-    // The map's stop sends `walk_stop`: it ended the leg and the bot took the next at once.
+async fn the_maps_stop_while_the_bot_walks_a_loop_drops_the_loop() {
+    // The map's stop sends `walk_stop`: as ■, the loop is dropped and the bot plays where the
+    // leg stopped (it ended only the leg once, and the bot took the next at once).
     let (mut g, run) = ready_at(VILLAGE_ENTRANCE).await;
     g.expect("w", room(NARROW_PATH));
     g.expect("w", room(NARROW_ROAD));
@@ -133,7 +134,8 @@ async fn the_maps_stop_while_the_bot_walks_a_loop_stops_the_bot() {
     let (seen, played) = g.close(run).await;
     // Nothing after the moves in flight: the third step (`d`) and the stops never came.
     assert!(!played.iter().any(|c| c == "d"), "{played:?}");
-    assert_eq!(bot(&seen).state, BotState::Stopped);
+    let b = bot(&seen);
+    assert_eq!((b.state, b.task), (BotState::Running, None));
 }
 
 #[tokio::test(start_paused = true)]
@@ -341,7 +343,7 @@ async fn unticking_the_stop_it_walks_to_turns_it_round() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn stop_ends_the_loop() {
+async fn stop_drops_the_loop_and_the_bot_plays_where_it_is() {
     let (mut g, run) = ready_at(VILLAGE_ENTRANCE).await;
     g.expect("w", room(NARROW_PATH));
     g.expect("w", room(NARROW_ROAD));
@@ -349,12 +351,12 @@ async fn stop_ends_the_loop() {
     g.narrated("Loop Newhaven: to stop 1/3 Newhaven, Arena (3 steps)")
         .await;
     g.bot(BotAction::Stop).await;
-    g.narrated("Stopped: asked to stop").await;
+    g.narrated("Stopped loop Newhaven: playing here").await;
     g.idle(Duration::from_secs(30)).await;
     let (seen, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "w", "w"]);
     let b = bot(&seen);
-    assert_eq!((b.state, b.task), (BotState::Stopped, None));
+    assert_eq!((b.state, b.task), (BotState::Running, None));
 }
 
 fn brain_on(path: &Path) -> Brain {

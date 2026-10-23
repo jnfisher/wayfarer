@@ -21,10 +21,10 @@ async fn a_key_exit_is_turned_with_use_when_the_key_is_carried() {
     // Thrag's lair: walk in, not one room short of it.
     g.walk_to_short(CAVERN, Some(false)).await;
     assert_eq!(
-        g.narration().await,
+        g.walk_narration().await,
         "Walking to Gigantic Cavern: one step, one door"
     );
-    assert_eq!(g.narration().await, "Arrived: Gigantic Cavern");
+    assert_eq!(g.walk_narration().await, "Arrived: Gigantic Cavern");
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["e", "use large iron key", "e"]);
 }

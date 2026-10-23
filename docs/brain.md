@@ -234,6 +234,15 @@ for the map panel's go box (`docs/web-ui.md`, "The map").
   at once with the same narration. Looking into a dead boss's room brings it back
   (`kb/pitfalls.md` 51): stopping short does not look in.
 
+- **The bot walks it.** `walk_to` gives the bot a *journey* there and turns it on, whatever it
+  was doing (it replaces a loop or another journey; a bot that was off re-syncs first: "Going
+  to Newhaven, Arena: re-syncing"). The journey is in Task's place in the mode stack, so the
+  bot fights on the way and walks on from wherever the fight left it; a journey's moves go one
+  at a time. At the end the journey is over and the bot plays there, that room its home. A
+  walk the walker cannot start (no route) or gives up by itself (lost, a door that will not
+  open) ends the journey: "Not going to Burning Valley: the walk stopped; playing here". The
+  snapshot's `bot.journey` says where it goes (`{name, to}`). See "The bot's states".
+
 **The guard** lives in the executor every action goes through, so nothing the bot ever does can
 break it: never `train stats` (`docs/plan/01-goals.md` "Rules").
 
@@ -324,14 +333,37 @@ walk to at all is left out.
   after the last Living Quarters stop: "Hidden Keep with Leo the Quick".
 
 `walk_loop {session, id}` walks a loop once (a generated loop's id, or a MegaMud loop's file):
-a `walk_to` to its stop nearest the
-character, then to each stop in turn, and back to that first one. Narrated: "Walking loop
-Newhaven: 3 stops, 4 steps, from Newhaven, Arena", the walker's own lines for each leg, "Loop
-stop 2/3: Dungeon, Entrance" at each stop, and "Loop Newhaven done: back at Newhaven, Arena".
-Whatever stops a walk stops the loop ("Loop Newhaven stopped: combat started"), and a
-`walk_to` replaces it. A generated loop's `id` says the area and the loop
+a journey ("Go to", above) to its stop nearest the character, then to each stop in turn, and
+back to that first one. Narrated: "Walking loop Newhaven: 3 stops, 4 steps, from Newhaven,
+Arena", the walker's own lines for each leg, "Loop stop 2/3: Dungeon, Entrance" at each stop,
+and "Loop Newhaven done: back at Newhaven, Arena"; then the bot plays there. A fight on the way
+stops the leg and the walk goes on after it; `■` ends it, and a `walk_to` replaces it. A generated loop's `id` says the area and the loop
 (`map:room:radius:doors|nodoors:index`), so a restarted brain walks the same one; a MegaMud
 loop's is its file (`Mwodloop.mp`, any case).
+
+## The bot's states
+
+The bot is **on or off**, and it may have a **route**: a loop it runs ("Running a loop") or a
+journey (a Go to or a loop walked once, "Go to" and "Loops"). Each control changes one of the
+two (John, 2026-10-23: "both go to and loop are initialized by me, so different behavior
+doesn't make sense"):
+
+| State | `bot.state` | `pause` (║) / `resume`, `start` (►) | `stop` (■, the map's `stop`) |
+|---|---|---|---|
+| On, with a route: walking it, fighting what comes | `running` | Paused, the route kept | The route dropped: it plays where it is ("Stopped loop Newhaven: playing here") |
+| On, no route: it plays where it stands ("Fight here") | `running` | Off ("Stopped: asked to pause") | Off ("Stopped: asked to stop") |
+| Off, with a route (paused) | `paused` | `resume`: re-sync, then on with the route from wherever the character is | Off, the route dropped |
+| Off, no route | `stopped` | `start`: on where it stands | (nothing to do) |
+
+- **A Go to or a loop** (`walk_to`, `walk_loop`, `run_loop`) gives the bot that route and turns
+  it on, from any state.
+- **A Go to arriving** ends the journey: the bot stays on and plays there, that room its home.
+- **A move the player makes** (a typed move, keys) while the bot is on drops the route, and the
+  bot plays on wherever the player takes the character; any other typed line pauses nothing
+  ("Typing beside the bot").
+- **A death, a hang-up, the realm left, logging off** turn it off and drop the route, as before.
+- A journey is not stored: a brain restarted on one puts the bot back on (or paused) with no
+  route.
 
 ## Fight here
 
@@ -378,12 +410,11 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
   session leaves the realm, with a warning (and when a log-off under attack finds no way out,
   "Flee", below). Auto-combat goes on in
   the game: the fight is the player's.
-- **Pause and take-over**: a line the player types that acts in the game (a move, `rest`,
-  `get`, ...; "Typing beside the bot", below), or keys, pause the bot after the action in
-  flight: "You took over Waydeva", then "Paused: you took over". Talk and look (`gossip`, `st`)
-  do not. So do a `walk_to` from the map and `pause` (`F9`, `[║]`). Paused, it sends nothing. **Resume**
-  (`F9`, `[►]`) re-syncs first, then narrates what it does next. **Stop** (`F10`, `[■]`)
-  sends nothing more; a walk of the bot's stops after the move in flight.
+- **Off and the player**: with no loop or journey, `pause` (`F9`, `[║]`) and `stop` (`F10`)
+  both turn the bot off ("The bot's states"): it sends nothing more, and a walk of the bot's
+  stops after the move in flight. A line the player types pauses nothing; a move typed (or
+  keys) makes the room the character goes to its home ("Typing beside the bot", below). A
+  `walk_to` from the map gives it a journey there, and it plays where it arrives.
 - **Constants** in this slice, settings in M4 (`docs/plan/04-settings.md` section 3): rest
   below 60%, rest until 85%, flee below 25%, a 1.5 s watch for a follower, a quiet room within
   5 steps (`crates/wayfarer-brain/src/policy.rs`).
@@ -507,7 +538,8 @@ stayed):
 Task mode (`docs/plan/03-engine.md` section 4): the bot hunts round a loop the player chose,
 generated or MegaMud's. `run_loop {session, id, skip?}` (the map panel's **run**; `id` a
 generated loop's id or a MegaMud loop's file) starts it, replacing a running
-"fight here"; `bot_control` stops, pauses and resumes it as it does "fight here". The snapshot's
+"fight here" or a journey; `pause` keeps it and `resume` goes on with it, `stop` drops it and
+the bot plays where it is ("The bot's states"). The snapshot's
 `bot.mode` is `task` while it walks between stops or waits, and `bot.task` says the loop, the
 stop it is at or walking to, and the stops it passes by.
 
@@ -587,9 +619,10 @@ stop it is at or walking to, and the stops it passes by.
   move in flight. An unticked stop is not avoided as a room on the way to another (a loop's
   stops are rarely on each other's routes; a dead end such as the Minotaur Chieftain's room
   never is).
-- **Pause and resume**: a typed act, keys, a `walk_to` or `pause` pause it after the action in
-  flight (a leg stops after its moves in flight); talk and look lines go between its actions
-  ("Typing beside the bot"). Resume re-syncs and goes on to the same stop.
+- **Pause and resume**: `pause` pauses it after the action in flight (a leg stops after its
+  moves in flight); resume re-syncs and goes on to the same stop. `stop` drops the loop and
+  the bot plays where it is; a move the player types or a `walk_to` drops it too, and typed
+  lines that are no move go between its actions ("Typing beside the bot", "The bot's states").
 - **Restarts**: the loop's id, its stops, the stop it is at or walking to and the stops it passes
   by are saved on every change ("Restarts", below), so a restarted brain goes on to the same
   stop: "Resumed: running loop Newhaven at stop 2/3 (brain restarted)". When the stops were
@@ -612,12 +645,14 @@ against silvermere's oracle, `tests/fixtures/command-words/`) and sends it as it
 | Kind | Commands | What happens |
 |---|---|---|
 | Talk and look | `gossip`, `broadcast` (`br`, `'`, `-`), `auction`, `whisper` (`/`), `>`, `broadgang`; `look` (not at a direction), `st`, `exp`, `i`, `health`, `who`/`scan`, `help`/`?`, `wealth`, `spells`, `exits`, `keys`, `topten`, `version`; `set`; an empty line | Goes at the next prompt with nothing in flight, between the bot's actions: the bot's next action waits for the prompt after it. The bot keeps going, unpaused. Its output is parsed like any (a `st` refreshes HP), and confirms none of the bot's actions, which only go once it is answered |
-| Acts | moves, `cast`, `rest`, `get`, `drop`, `buy`, `sell`, `wear`, `wield`, `open`, `search`, `look <dir>` (it shows the next room), `bash <dir>`, `x`, ... | The bot pauses after the action in flight ("You took over Waydeva", "Paused: you took over"), a walk stops after its move in flight, then the line goes the same way. Resume with `F9` |
-| Attacks | `a`/`attack`/`au`, `bash` (`aa`, `allout`, `force`), `backstab` (`bs`), `killblow` (`kil`), `punch` (`pu`, `purg`) | An act, whether or not combat is engaged: the bot pauses after the action in flight, then the line goes |
-| No command | `borrow skiff`, `hello there`, `say hi`, `heya` (MajorMUD has no SAY: talking is a line the parser does not take) | A text exit's phrase moves the character, so it is an act (the bot pauses) if it may be one: if the position is in doubt, or the line is a Text exit's phrase of a room the character may be in. Otherwise (the position is sure and no exit of the room takes the line) it is talk, and pauses nothing |
+| Moves | a direction (`n`, `u`, `nw`), an exit's word or a Text exit's phrase the position may take | Goes the same way. A running bot drops its loop or journey ("You moved: stopped loop Newhaven; playing where you go"), a walk of the bot's stops after its move in flight, and the bot plays on where the character goes: the room it is in becomes its home once the move's room shows. A paused bot keeps its route |
+| Acts | `cast`, `rest`, `get`, `drop`, `buy`, `sell`, `wear`, `wield`, `open`, `search`, `look <dir>` (it shows the next room), `bash <dir>`, `x`, ... | Goes the same way, between the bot's actions; the bot keeps going, unpaused (John, 2026-10-23: only a move changes what the bot does) |
+| Attacks | `a`/`attack`/`au`, `bash` (`aa`, `allout`, `force`), `backstab` (`bs`), `killblow` (`kil`), `punch` (`pu`, `purg`) | As an act: the line goes, and the bot keeps going |
+| No command | `borrow skiff`, `hello there`, `say hi`, `heya` (MajorMUD has no SAY: talking is a line the parser does not take) | A text exit's phrase moves the character, so it is a move if it may be one: if the position is in doubt, or the line is a Text exit's phrase of a room the character may be in. Otherwise (the position is sure and no exit of the room takes the line) it is talk |
 
 - **Keys** (`input_keys`) always go straight to the game; the gateway tells the brain
-  (`keys_sent`) and the bot pauses as for an act.
+  (`keys_sent`), and since they may be a move they count as one: a walk stops, and a running
+  bot drops its route and plays where the character ends up.
 - **One line at a time**: a typed line goes only at a prompt with nothing in flight and no
   re-sync command waiting for its answer, so it never interleaves with the bot's exchange;
   several typed lines go one per prompt, in order. One that has waited 5 s for a prompt goes
@@ -765,7 +800,7 @@ stop reached. A brain that starts (the watcher, a crash, `scripts/dev/brain.sh`)
 each session as it first sees it and, once that session's catch-up is done:
 
 - **running** or **paused**: puts the bot back in that state with its home and loop, narrating
-  "Resumed: fighting in Newhaven, Arena (brain restarted)", "Resumed paused (you took over):
+  "Resumed: fighting in Newhaven, Arena (brain restarted)", "Resumed paused (asked to pause):
   ..." or "Resumed: running loop Newhaven at stop 2/3 (brain restarted)"; the attach's re-sync
   goes first, then a running bot decides as usual. Its run goes on (the same row: the run's
   wall time includes the restart).

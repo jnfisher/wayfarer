@@ -4,9 +4,9 @@
 use wayfarer_proto::{
     BlessingSpell, Blessings, Bot, BotAction, BotMode, BotState, CharacterState, Chunk, ClientKind,
     CoinCount, Coins, DecodeError, Encumbrance, ExitKind, ExpSample, Family, Found, FoundKind,
-    FoundRoom, GeneratedLoop, LoopStop, MapExit, MapRoom, MegaMudLoop, MemberState, MemberStatus,
-    MonsterRuleEntry, MonsterRuleKind, PROTOCOL, ParseCounts, PartyDef, PartyStatus, Position,
-    RoomKey, RoomKind, RuleSource, RunSummary, SessionAction, SessionInfo, SessionState,
+    FoundRoom, GeneratedLoop, Journey, LoopStop, MapExit, MapRoom, MegaMudLoop, MemberState,
+    MemberStatus, MonsterRuleEntry, MonsterRuleKind, PROTOCOL, ParseCounts, PartyDef, PartyStatus,
+    Position, RoomKey, RoomKind, RuleSource, RunSummary, SessionAction, SessionInfo, SessionState,
     SettingChange, SettingKind, SettingRow, SettingValue, SettingsFile, SpellPlanItem, Stats,
     ToClient, ToGateway, Walking, WorldPackInfo, protocol_mismatch,
 };
@@ -99,6 +99,10 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                         doing: Some("attacking large giant rat".into()),
                         reason: None,
                         task: None,
+                        journey: Some(Journey {
+                            name: "Newhaven, Arena".into(),
+                            to: RoomKey { map: 1, room: 2150 },
+                        }),
                         monster_rules: vec![MonsterRuleEntry {
                             pattern: "gigantic black ooze".into(),
                             rule: MonsterRuleKind::FleeFrom,
@@ -108,7 +112,7 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                     ..CharacterState::default()
                 }),
             },
-            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]},"bot":{"state":"running","mode":"fight","narration":"Fight: large giant rat","doing":"attacking large giant rat","monster_rules":[{"pattern":"gigantic black ooze","rule":"flee_from","source":"default"}]}}}"#,
+            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]},"bot":{"state":"running","mode":"fight","narration":"Fight: large giant rat","doing":"attacking large giant rat","journey":{"name":"Newhaven, Arena","to":{"map":1,"room":2150}},"monster_rules":[{"pattern":"gigantic black ooze","rule":"flee_from","source":"default"}]}}}"#,
         ),
         (
             ToGateway::CharacterPatch {

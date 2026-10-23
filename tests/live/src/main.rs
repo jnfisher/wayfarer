@@ -1002,8 +1002,64 @@ fn believed(c: &serde_json::Value) -> Option<((i64, i64), String)> {
     Some((key, p.get("title")?.as_str()?.to_owned()))
 }
 
-/// `walk_to` `to`, and wait for "Arrived: ..." with the room title to match.
+/// The bot off: ■, and ■ again if the first only dropped a loop or journey (the bot then plays
+/// on where it is). Its narration once off.
+pub(crate) async fn turn_off(gw: &mut Gateway) -> Result<String, String> {
+    fn route(c: &serde_json::Value) -> bool {
+        c.get("bot").is_some_and(|b| {
+            [b.get("task"), b.get("journey")]
+                .iter()
+                .any(|v| v.is_some_and(|v| !v.is_null()))
+        })
+    }
+    fn stopped(c: &serde_json::Value) -> Option<String> {
+        (bot_field(c, "state") == Some("stopped"))
+            .then(|| bot_field(c, "narration").unwrap_or("").to_owned())
+    }
+    if route(&gw.character) {
+        gw.bot(wayfarer_proto::BotAction::Stop).await?;
+        gw.wait_for(
+            Duration::from_secs(10),
+            "the loop or journey dropped",
+            |g| (!route(&g.character) || stopped(&g.character).is_some()).then_some(()),
+        )
+        .await?;
+        if let Some(narration) = stopped(&gw.character) {
+            return Ok(narration);
+        }
+    }
+    gw.bot(wayfarer_proto::BotAction::Stop).await?;
+    gw.wait_for(Duration::from_secs(10), "the bot stopped", |g| {
+        stopped(&g.character)
+    })
+    .await
+}
+
+/// Whether the bot is off (or there is none): a Go to turns it on, and the scenarios that walk
+/// with it off turn it off again on arrival, to play the character themselves.
+fn bot_off(gw: &Gateway) -> bool {
+    bot_field(&gw.character, "state").is_none_or(|s| s == "stopped")
+}
+
+/// After a Go to that turned the bot on (`was_off`): off again ([`turn_off`]: a journey not
+/// finished, a rest first or a walk that timed out, is dropped first).
+async fn off_again(gw: &mut Gateway, was_off: bool) -> Result<(), String> {
+    if !was_off || bot_off(gw) {
+        return Ok(());
+    }
+    turn_off(gw).await.map(|_| ())
+}
+
+/// `walk_to` `to`, and wait for "Arrived: ..." with the room title to match. A bot that was off
+/// is off again after it.
 async fn walk(gw: &mut Gateway, to: (i64, i64)) -> Result<String, String> {
+    let was_off = bot_off(gw);
+    let walked = walk_on(gw, to).await;
+    off_again(gw, was_off).await?;
+    walked
+}
+
+async fn walk_on(gw: &mut Gateway, to: (i64, i64)) -> Result<String, String> {
     let (notices, warnings) = (gw.notices.len(), gw.warnings.len());
     gw.walk_to(to.0, to.1).await?;
     let said = gw
@@ -1316,8 +1372,16 @@ async fn exits_listing(gw: &mut Gateway, dir: &str) -> Result<String, String> {
 }
 
 /// `walk_to` `to` and wait for "Arrived: ..." with the position there; unlike [`walk`], the room
-/// may be dark (no title shown). The walk's narration, or the warning that ended it.
+/// may be dark (no title shown). The walk's narration, or the warning that ended it. A bot that
+/// was off is off again after it.
 async fn walk_into(gw: &mut Gateway, to: (i64, i64)) -> Result<String, String> {
+    let was_off = bot_off(gw);
+    let walked = walk_into_on(gw, to).await;
+    off_again(gw, was_off).await?;
+    walked
+}
+
+async fn walk_into_on(gw: &mut Gateway, to: (i64, i64)) -> Result<String, String> {
     let (notices, warnings) = (gw.notices.len(), gw.warnings.len());
     gw.walk_to(to.0, to.1).await?;
     gw.wait_for(WALK_TIMEOUT, "\"Arrived: ...\" there", |g| {
@@ -1739,8 +1803,6 @@ const UNTICKED: [(i64, i64); 2] = [(1, 2152), (1, 2156)];
 /// itself, at least one kill at the Arena, the unticked stops passed by with a word and never
 /// walked to, and the Arena (no respawn delay) never waited on.
 async fn run_the_loop(ctx: &mut Ctx, gw: &mut Gateway, id: &str) -> bool {
-    use wayfarer_proto::BotAction;
-
     let started = Instant::now();
     let from = gw.notices.len();
     let warned = gw.warnings.len();
@@ -1753,19 +1815,7 @@ async fn run_the_loop(ctx: &mut Ctx, gw: &mut Gateway, id: &str) -> bool {
 
     // Whatever happened: the bot stopped, out of the Arena, HP back before logging off.
     let started = Instant::now();
-    let stopped = match gw.bot(BotAction::Stop).await {
-        Ok(()) => {
-            gw.wait_for(Duration::from_secs(10), "the bot stopped", |g| {
-                (bot_field(&g.character, "state") == Some("stopped")).then(|| {
-                    bot_field(&g.character, "narration")
-                        .unwrap_or("")
-                        .to_owned()
-                })
-            })
-            .await
-        }
-        Err(e) => Err(e),
-    };
+    let stopped = turn_off(gw).await;
     ctx.record("stop the bot", started, &stopped);
     let out = walk_out(ctx, gw).await;
     let rested = rest_by_hand(ctx, gw).await;
@@ -1856,6 +1906,13 @@ fn tail_of<'a>(said: &[(&'a str, Instant)]) -> Vec<&'a str> {
 /// `walk_loop`, then `walk_stop` as soon as the brain narrates the loop's first walk; the
 /// stop narrated and the walk ended short of the Arena.
 async fn walk_loop_and_stop(gw: &mut Gateway, id: &str) -> Result<String, String> {
+    let was_off = bot_off(gw);
+    let stopped = walk_loop_and_stop_on(gw, id).await;
+    off_again(gw, was_off).await?;
+    stopped
+}
+
+async fn walk_loop_and_stop_on(gw: &mut Gateway, id: &str) -> Result<String, String> {
     let (notices, warnings) = (gw.notices.len(), gw.warnings.len());
     gw.walk_loop(id).await?;
     gw.wait_for(
@@ -1874,10 +1931,10 @@ async fn walk_loop_and_stop(gw: &mut Gateway, id: &str) -> Result<String, String
     .await??;
     gw.walk_stop().await?;
     let said = gw
-        .wait_for(WALK_TIMEOUT, "\"Loop Newhaven stopped\"", |g| {
+        .wait_for(WALK_TIMEOUT, "\"Stopped loop Newhaven\"", |g| {
             let new = &g.notices[notices..];
             (new.iter()
-                .any(|n| n == "Loop Newhaven stopped: asked to stop")
+                .any(|n| n == "Stopped loop Newhaven: playing here")
                 && new.iter().any(|n| n.starts_with("Stopped walking")))
             .then(|| new.join("; "))
         })
@@ -1936,8 +1993,6 @@ enum Fought {
 /// the fight left to end; a walk out to the Narrow Road; rest by hand if HP is low; the brain
 /// stopped.
 async fn fight_scenario(ctx: &mut Ctx, gw: &mut Gateway, under_attack: bool) -> Fought {
-    use wayfarer_proto::BotAction;
-
     // 1. The brain attaches and re-syncs.
     let Some((running, start)) = placed_brain(ctx, gw, "fight", &[]).await else {
         return Fought::Out(false);
@@ -1984,19 +2039,7 @@ async fn fight_scenario(ctx: &mut Ctx, gw: &mut Gateway, under_attack: bool) -> 
 
     // Whatever happened: the bot stopped, out of the Arena, HP back before logging off.
     let started = Instant::now();
-    let stopped = match gw.bot(BotAction::Stop).await {
-        Ok(()) => {
-            gw.wait_for(Duration::from_secs(10), "the bot stopped", |g| {
-                (bot_field(&g.character, "state") == Some("stopped")).then(|| {
-                    bot_field(&g.character, "narration")
-                        .unwrap_or("")
-                        .to_owned()
-                })
-            })
-            .await
-        }
-        Err(e) => Err(e),
-    };
+    let stopped = turn_off(gw).await;
     ctx.record("stop the bot", started, &stopped);
     let out = walk_out(ctx, gw).await;
     let rested = rest_by_hand(ctx, gw).await;
@@ -2010,8 +2053,6 @@ async fn fight_scenario(ctx: &mut Ctx, gw: &mut Gateway, under_attack: bool) -> 
 /// the new brain resumes the bot running in the Arena; `stats_request` shows the kills so far;
 /// then as the fight scenario ends: Stop, out of the Arena, rest by hand, the brain stopped.
 async fn restart_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
-    use wayfarer_proto::BotAction;
-
     let Some((running, start)) = placed_brain(ctx, gw, "restart", &[]).await else {
         return false;
     };
@@ -2131,21 +2172,7 @@ async fn restart_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
 
     // Whatever happened: the bot stopped, out of the Arena, HP back, the brain stopped.
     let started = Instant::now();
-    let stopped = match gw.bot(BotAction::Stop).await {
-        Ok(()) => {
-            gw.wait_for(Duration::from_secs(10), "the bot stopped", |g| {
-                (bot_field(&g.character, "state") != Some("running")
-                    && bot_field(&g.character, "state") != Some("paused"))
-                .then(|| {
-                    bot_field(&g.character, "narration")
-                        .unwrap_or("")
-                        .to_owned()
-                })
-            })
-            .await
-        }
-        Err(e) => Err(e),
-    };
+    let stopped = turn_off(gw).await;
     ctx.record("stop the bot", started, &stopped);
     let out = walk_out(ctx, gw).await;
     let rested = rest_by_hand(ctx, gw).await;
@@ -2158,12 +2185,10 @@ async fn restart_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
 
 /// The typing scenario, with the gateway in the realm: a brain; to the Arena and Start; once
 /// the bot is fighting, `st` typed from the UI connection shows the status screen while the bot
-/// keeps running (no "took over"); then `u` typed pauses it ("You took over", "Paused: you took
-/// over") and the character goes up the stairs to the Narrow Road. Then the bot stopped, rest by
-/// hand if HP is low, the brain stopped.
+/// keeps running (no "took over"); then `u` typed moves the character up the stairs to the
+/// Narrow Road with the bot still running there (a move the player makes pauses nothing). Then
+/// the bot stopped, rest by hand if HP is low, the brain stopped.
 async fn typing_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
-    use wayfarer_proto::BotAction;
-
     let Some((running, start)) = placed_brain(ctx, gw, "typing", &[]).await else {
         return false;
     };
@@ -2220,43 +2245,27 @@ async fn typing_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
         ok = status.is_ok();
     }
 
-    // 6. `u` beside the bot: it pauses, and the character goes up the stairs.
+    // 6. `u` beside the bot: the character goes up the stairs, and the bot plays on there.
     if ok {
         let started = Instant::now();
-        let notices = gw.notices.len();
         let moved = match gw.send_line("u").await {
             Ok(()) => {
-                gw.wait_for(Duration::from_secs(20), "the pause and the move", |g| {
-                    let said = &g.notices[notices..];
-                    let took = said.iter().find(|n| n.starts_with("You took over"))?;
-                    said.iter().find(|n| *n == "Paused: you took over")?;
+                gw.wait_for(Duration::from_secs(20), "the move, the bot on", |g| {
                     let (room, title) = believed(&g.character)?;
-                    (bot_field(&g.character, "state") == Some("paused") && room == WALK_TO)
-                        .then(|| format!("{took}; paused; now in {title}"))
+                    (bot_field(&g.character, "state") == Some("running") && room == WALK_TO)
+                        .then(|| format!("now in {title}; the bot still running"))
                 })
                 .await
             }
             Err(e) => Err(e),
         };
-        ctx.record("`u` pauses the bot and moves", started, &moved);
+        ctx.record("`u` moves, the bot still running", started, &moved);
         ok = moved.is_ok();
     }
 
     // Whatever happened: the bot stopped, out of the Arena, HP back, the brain stopped.
     let started = Instant::now();
-    let stopped = match gw.bot(BotAction::Stop).await {
-        Ok(()) => {
-            gw.wait_for(Duration::from_secs(10), "the bot stopped", |g| {
-                (bot_field(&g.character, "state") == Some("stopped")).then(|| {
-                    bot_field(&g.character, "narration")
-                        .unwrap_or("")
-                        .to_owned()
-                })
-            })
-            .await
-        }
-        Err(e) => Err(e),
-    };
+    let stopped = turn_off(gw).await;
     ctx.record("stop the bot", started, &stopped);
     let out = walk_out(ctx, gw).await;
     let rested = rest_by_hand(ctx, gw).await;
@@ -2400,8 +2409,6 @@ fn after(g: &Gateway, from: usize) -> &[String] {
 /// there; back to the Arena. Then as "fight" ends: Stop, out of the Arena, rest by hand,
 /// the brain stopped; and no death on the way. Whether all of it passed.
 async fn flee_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
-    use wayfarer_proto::BotAction;
-
     let extra = ["--flee-below".to_owned(), FLEE_LINE.to_owned()];
     let Some((running, start)) = placed_brain(ctx, gw, "flee", &extra).await else {
         return false;
@@ -2476,19 +2483,7 @@ async fn flee_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
 
     // Whatever happened: the bot stopped, out of the Arena, HP back, the brain stopped.
     let started = Instant::now();
-    let stopped = match gw.bot(BotAction::Stop).await {
-        Ok(()) => {
-            gw.wait_for(Duration::from_secs(10), "the bot stopped", |g| {
-                (bot_field(&g.character, "state") == Some("stopped")).then(|| {
-                    bot_field(&g.character, "narration")
-                        .unwrap_or("")
-                        .to_owned()
-                })
-            })
-            .await
-        }
-        Err(e) => Err(e),
-    };
+    let stopped = turn_off(gw).await;
     ctx.record("stop the bot", started, &stopped);
     let out = walk_out(ctx, gw).await;
     let rested = rest_by_hand(ctx, gw).await;
@@ -2528,8 +2523,6 @@ fn flee_from_args(names: &[String]) -> Vec<String> {
 /// comes): Flee, at full HP, with no attack sent; Safe. Then Stop, out of the Arena, the brain
 /// stopped. Whether all of it passed.
 async fn flee_from_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
-    use wayfarer_proto::BotAction;
-
     let names: Vec<String> = if ctx.args.flee_from.is_empty() {
         ARENA_MONSTERS.map(str::to_owned).to_vec()
     } else {
@@ -2570,19 +2563,7 @@ async fn flee_from_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
     }
 
     let started = Instant::now();
-    let stopped = match gw.bot(BotAction::Stop).await {
-        Ok(()) => {
-            gw.wait_for(Duration::from_secs(10), "the bot stopped", |g| {
-                (bot_field(&g.character, "state") == Some("stopped")).then(|| {
-                    bot_field(&g.character, "narration")
-                        .unwrap_or("")
-                        .to_owned()
-                })
-            })
-            .await
-        }
-        Err(e) => Err(e),
-    };
+    let stopped = turn_off(gw).await;
     ctx.record("stop the bot", started, &stopped);
     let started = Instant::now();
     let rules = gw.character["bot"]["monster_rules"]
