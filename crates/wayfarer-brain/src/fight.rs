@@ -100,8 +100,7 @@ impl Mode for Fight {
         if self.look {
             return Some("looking for the next".to_owned());
         }
-        self.pick(v.atlas, v.rules, v.presence)
-            .map(|t| format!("{t} is here"))
+        self.choose(v).map(|t| format!("{t} is here"))
     }
 
     fn step(&mut self, v: &View) -> Step {
@@ -123,7 +122,7 @@ impl Mode for Fight {
                 "Fight: looking for the next",
             );
         }
-        match self.pick(v.atlas, v.rules, v.presence) {
+        match self.choose(v) {
             Some(t) => {
                 let t = t.to_owned();
                 self.target = Some(t.clone());
@@ -272,6 +271,32 @@ impl Fight {
         ))
     }
 
+    /// The monster to go for: the party leader's, when this follower is with it and nothing
+    /// attacks it (exp is shared only among those fighting the monster that dies,
+    /// `kb/grouping.md` §9) and its own rules would fight it; else its own pick.
+    fn choose<'a>(&self, v: &View<'a>) -> Option<&'a str> {
+        if v.presence.attackers.is_empty()
+            && let Some(lead) = v.party.assist()
+            && let Some(name) = v
+                .presence
+                .here
+                .iter()
+                .find(|n| n.eq_ignore_ascii_case(lead))
+            && target(
+                &v.atlas.monsters,
+                v.rules,
+                std::slice::from_ref(name),
+                &[],
+                &self.skip,
+                self.cornered,
+            )
+            .is_some()
+        {
+            return Some(name);
+        }
+        self.pick(v.atlas, v.rules, v.presence)
+    }
+
     fn pick<'a>(
         &self,
         atlas: &Atlas,
@@ -292,6 +317,11 @@ impl Fight {
     /// attack, or anything attacking.
     pub fn would_fight(&self, atlas: &Atlas, rules: &MonsterRules, presence: &Presence) -> bool {
         !presence.attackers.is_empty() || self.pick(atlas, rules, presence).is_some()
+    }
+
+    /// The monster it fights or last went for.
+    pub fn target(&self) -> Option<&str> {
+        self.target.as_deref()
     }
 
     /// Flee could not leave a monster to flee from (`true`): fight it if it attacks.

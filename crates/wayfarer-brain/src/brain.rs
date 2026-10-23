@@ -720,6 +720,12 @@ impl Brain {
                 self.parties.sent(&id, &line, now);
             }
         }
+        for (id, why) in plan.flee {
+            if let Some(s) = self.sessions.get_mut(&id) {
+                tracing::info!(session = %id, %why, "party flee");
+                s.party_flee(&why);
+            }
+        }
         for (id, why) in plan.give_up {
             if let Some(s) = self.sessions.get_mut(&id) {
                 tracing::warn!(session = %id, %why, "party");

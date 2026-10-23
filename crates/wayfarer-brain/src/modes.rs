@@ -511,6 +511,23 @@ impl Bot {
         says
     }
 
+    /// The monster it fights, while it fights one.
+    pub fn fight_target(&self) -> Option<&str> {
+        (self.mode == BotMode::Fight)
+            .then(|| self.fight.target())
+            .flatten()
+    }
+
+    /// Its flee line, per cent of the maximum HP.
+    pub fn flee_below(&self) -> i32 {
+        self.flee.below()
+    }
+
+    /// The party's leader is to run now, for a member under its flee line (C-042).
+    pub fn party_flee(&mut self, why: &str) {
+        self.flee.run_from(format!("Fleeing with the party: {why}"));
+    }
+
     /// The party's leader gave up waiting for a member: the loop stops (the bot fights on
     /// where it is), said as a warning.
     pub fn stop_loop(&mut self, why: &str) -> Vec<Say> {

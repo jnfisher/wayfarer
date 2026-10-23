@@ -342,6 +342,17 @@ pub const CATALOGUE: &[Setting] = &[
         megamud: Some("Wait No Longer Than"),
     },
     Setting {
+        key: "party.wait_rest_minutes",
+        label: "Wait for a resting party",
+        help: "How long a party's leader holds for a party rest (anyone below its own rest line, until everyone is back to its own rest-until line) before it stops its loop and tells you who has not recovered.",
+        kind: Kind::Int { min: 1, max: 60 },
+        default: Value::Int(10),
+        unit: "minutes",
+        tier: Tier::Standard,
+        group: Group::Party,
+        megamud: Some("Wait No Longer Than"),
+    },
+    Setting {
         key: "combat.attack_command",
         label: "Attack with",
         help: "The command that starts a fight, followed by the monster's name: a (attack), bash (aa, allout, force), bs (backstab: needs sneaking), kil (killblow, also spelt kill) or pu (punch), or their longer spellings. It is checked against the game's own command table, so only an attack command is accepted.",

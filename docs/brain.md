@@ -1007,9 +1007,29 @@ own, one at a time:
   ("Loop stopped: Lauren did not catch up in 5 minutes"); it never walks on without the
   member, and the follower keeps trying. While the leader is out of the realm its followers
   stand where they are.
+- **Party rests.** The leader and the followers with it (joined, in its room, bots running)
+  rest together: when any of them falls below its own rest line (`health.rest_below_hp`, or
+  `health.rest_mana_below` for a character that casts), the party rests until every one of
+  them is back to its own rest-until lines. The leader's loop holds; its Recover rests too,
+  walking the party to a quiet room first when the room spawns (the game's follow brings the
+  others), and waits there, narrated "Recover: Resting for Lauren (62%)", while it is rested
+  itself. Followers below their lines rest where they stand. A monster that comes is fought,
+  then the rest goes on. After `party.wait_rest_minutes` (Party, 10 by default) the leader's
+  loop stops with a warning naming who has not recovered. Afterwards the leader walks back to
+  its loop as after any rest.
+- **Party flees.** A follower with the leader never flees on its own (that would break the
+  party): when it goes under its own flee line, the leader runs, once for each time it goes
+  under ("Fleeing with the party: Lauren at 20%"), by its own Flee and `health.flee_rooms`,
+  and the game's follow takes the others out behind it. The leader under its own line flees as
+  ever, and the party with it. Afterwards, anyone the game left behind is separated (above),
+  and the party rests. A follower away from the leader flees on its own.
+- **Assist.** A follower with the leader, with nothing attacking it, goes for the monster the
+  leader fights (if its own monster rules would fight it): the game shares exp only among
+  those fighting the monster that dies (`kb/grouping.md` §9). Attacked by another, it fights
+  that one.
 - **The UIs** get `parties` when one changes or a member's state does: `joined`,
-  `not_joined` ("forming up", "in another room"), `away` (with why), `separated`, `walking`
-  or `unreachable`. Party rests and flees and healing members come with C-042 and C-043.
+  `not_joined` ("forming up", "in another room"), `away` (with why), `separated`, `walking`,
+  `unreachable` or `resting` (with its HP). Healing members comes with C-043.
 
 ## Not yet
 

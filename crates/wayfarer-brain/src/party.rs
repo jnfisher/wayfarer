@@ -40,6 +40,9 @@ pub(crate) enum PartyRole {
         /// Why its bot does not move on: a member is out of the party and walking back
         /// (`Waiting for Lauren to catch up`).
         hold: Option<String>,
+        /// The party rests: why (`Resting for Lauren (62%)`). Its Recover rests the party
+        /// where the quiet-room rule allows; its loop holds.
+        rest: Option<String>,
     },
     Follower {
         party: String,
@@ -50,6 +53,11 @@ pub(crate) enum PartyRole {
         joined: bool,
         /// Out of the party: walk to the leader's room to join it again.
         rejoin: Option<Key>,
+        /// Joined and in the leader's room: it runs when the leader runs (its own Flee waits
+        /// for the leader's), and fights the leader's target.
+        with_leader: bool,
+        /// The monster the leader fights, when it is with the leader.
+        assist: Option<String>,
     },
 }
 
@@ -70,13 +78,52 @@ impl PartyRole {
         }
     }
 
-    /// Why this leader's bot waits, when it does.
+    /// Why this leader's loop waits, when it does: a member walking back, or a party rest.
     pub fn hold(&self) -> Option<&str> {
         match self {
-            PartyRole::Leader { hold, .. } => hold.as_deref(),
+            PartyRole::Leader { hold, rest, .. } => hold.as_deref().or(rest.as_deref()),
             _ => None,
         }
     }
+
+    /// Why this leader rests the party, when it does.
+    pub fn party_rest(&self) -> Option<&str> {
+        match self {
+            PartyRole::Leader { rest, .. } => rest.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// A follower with its leader: its own Flee waits for the leader's.
+    pub fn with_leader(&self) -> bool {
+        matches!(
+            self,
+            PartyRole::Follower {
+                with_leader: true,
+                ..
+            }
+        )
+    }
+
+    /// The leader's target, for a follower with it.
+    pub fn assist(&self) -> Option<&str> {
+        match self {
+            PartyRole::Follower { assist, .. } => assist.as_deref(),
+            _ => None,
+        }
+    }
+}
+
+/// A member's HP and mana against its own lines (`health.*`), as its session sees them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Health {
+    pub hp: Option<i32>,
+    /// Below its rest line, for HP or (casting) mana.
+    pub low: bool,
+    /// At or above its rest-until lines.
+    pub rested: bool,
+    /// Below its flee line.
+    pub flee: bool,
 }
 
 /// A follower's walk back to its leader, as its session sees it.
@@ -103,6 +150,11 @@ pub(crate) struct MemberInfo {
     pub walk: WalkBack,
     /// How long it waits, as a leader, for a separated member (`party.wait_separated_minutes`).
     pub wait_separated: Duration,
+    /// How long it holds, as a leader, for a party rest (`party.wait_rest_minutes`).
+    pub wait_rest: Duration,
+    pub health: Health,
+    /// The monster it fights, when it fights one.
+    pub target: Option<String>,
 }
 
 /// One tick's plan: the lines to send, each session's role, and the parties for the UIs when
@@ -114,6 +166,8 @@ pub(crate) struct Plan {
     pub statuses: Option<Vec<PartyStatus>>,
     /// Leaders that waited too long for a member: stop the loop, and why.
     pub give_up: Vec<(String, String)>,
+    /// Leaders to flee now, for a member under its flee line, and why.
+    pub flee: Vec<(String, String)>,
 }
 
 #[derive(Debug, Default)]
@@ -137,6 +191,10 @@ pub(crate) struct Parties {
     out_since: HashMap<String, Instant>,
     /// Followers the leader gave up waiting for (its loop stopped), until they are back.
     gave_up: BTreeSet<String>,
+    /// Parties resting, since when, and whether the leader gave up on it.
+    resting: HashMap<String, (Instant, bool)>,
+    /// Followers whose flee line set the leader fleeing, until they are above it again.
+    fled_for: BTreeSet<String>,
     /// The last statuses sent, to send again only on a change.
     sent: Option<Vec<PartyStatus>>,
 }
@@ -387,6 +445,7 @@ impl Parties {
                     party: def.id.clone(),
                     followers: def.followers.clone(),
                     hold: None,
+                    rest: None,
                 },
             );
             // The followers walking back, by name, for the leader's hold.
@@ -535,6 +594,10 @@ impl Parties {
                         leader_name: lfirst.map_or_else(|| def.leader.clone(), str::to_owned),
                         joined,
                         rejoin,
+                        with_leader: joined && fi.room.is_some() && fi.room == l.room,
+                        assist: (joined && fi.room.is_some() && fi.room == l.room)
+                            .then(|| l.target.clone())
+                            .flatten(),
                     },
                 );
                 if fi
@@ -560,6 +623,83 @@ impl Parties {
                 && let Some(PartyRole::Leader { hold, .. }) = plan.roles.get_mut(&def.leader)
             {
                 *hold = Some(format!("Waiting for {} to catch up", waiting.join(" and ")));
+            }
+            // Party rest and flee, over the leader and the followers with it.
+            let together: Vec<(&String, &MemberInfo)> = std::iter::once((&def.leader, l))
+                .chain(def.followers.iter().filter_map(|f| {
+                    let fi = m.get(f)?;
+                    plan.roles[f].with_leader().then_some((f, fi))
+                }))
+                .filter(|(_, i)| i.realm && i.running)
+                .collect();
+            let name = |id: &String, i: &MemberInfo| {
+                i.name
+                    .as_deref()
+                    .map_or_else(|| id.clone(), |n| first(n).to_owned())
+            };
+            for (f, fi) in together.iter().skip(1) {
+                if fi.health.flee {
+                    if self.fled_for.insert((*f).clone()) {
+                        let hp = fi
+                            .health
+                            .hp
+                            .map_or_else(String::new, |h| format!(" at {h}%"));
+                        plan.flee
+                            .push((def.leader.clone(), format!("{}{hp}", name(f, fi))));
+                    }
+                } else {
+                    self.fled_for.remove(*f);
+                }
+            }
+            let any_low = together.iter().any(|(_, i)| i.health.low);
+            let unrested: Vec<(&String, &MemberInfo)> = together
+                .iter()
+                .filter(|(_, i)| !i.health.rested)
+                .copied()
+                .collect();
+            let resting = match self.resting.get(&def.id) {
+                Some(_) if unrested.is_empty() => {
+                    self.resting.remove(&def.id);
+                    false
+                }
+                Some(_) => true,
+                None if any_low && l.realm => {
+                    self.resting.insert(def.id.clone(), (now, false));
+                    true
+                }
+                None => false,
+            };
+            if resting {
+                let who: Vec<String> = unrested
+                    .iter()
+                    .map(|(id, i)| match i.health.hp {
+                        Some(hp) => format!("{} ({hp}%)", name(id, i)),
+                        None => name(id, i),
+                    })
+                    .collect();
+                if let Some(PartyRole::Leader { rest, .. }) = plan.roles.get_mut(&def.leader) {
+                    *rest = Some(format!("Resting for {}", who.join(", ")));
+                }
+                for (id, i) in &unrested {
+                    if let Some(ms) = members.iter_mut().find(|ms| ms.session == **id)
+                        && ms.state == MemberState::Joined
+                    {
+                        ms.state = MemberState::Resting;
+                        ms.detail = i.health.hp.map(|h| format!("{h}%"));
+                    }
+                }
+                let entry = self.resting.get_mut(&def.id).expect("resting");
+                if !entry.1 && now >= entry.0 + l.wait_rest {
+                    entry.1 = true;
+                    let minutes = l.wait_rest.as_secs() / 60;
+                    plan.give_up.push((
+                        def.leader.clone(),
+                        format!(
+                            "the party rested {minutes} minutes; not recovered: {}",
+                            who.join(", ")
+                        ),
+                    ));
+                }
             }
             statuses.push(PartyStatus {
                 party: def.clone(),
@@ -603,6 +743,14 @@ mod tests {
             game: GameParty::default(),
             walk: WalkBack::default(),
             wait_separated: Duration::from_secs(300),
+            wait_rest: Duration::from_secs(600),
+            health: Health {
+                hp: Some(100),
+                low: false,
+                rested: true,
+                flee: false,
+            },
+            target: None,
         }
     }
 
@@ -686,6 +834,8 @@ mod tests {
                 leader_name: "Penny".into(),
                 joined: false,
                 rejoin: None,
+                with_leader: false,
+                assist: None,
             }
         );
         p.sent("lauren", "follow penny", now);
@@ -948,6 +1098,118 @@ mod tests {
         m.get_mut("lauren").unwrap().room = Some((1, 7));
         let plan = p.plan(&m, now);
         assert_eq!(plan.roles["lauren"].rejoin(), None);
+    }
+
+    /// Penny and Lauren joined in one room.
+    fn formed(p: &mut Parties, now: Instant) -> BTreeMap<String, MemberInfo> {
+        p.save(def("penny", &["lauren"]), &known()).unwrap();
+        let mut m = two(now, &["Lauren Phillips"]);
+        m.get_mut("lauren").unwrap().game.following = Some("Penny".into());
+        m
+    }
+
+    fn hurt(i: &mut MemberInfo, hp: i32, low: bool, flee: bool) {
+        i.health = Health {
+            hp: Some(hp),
+            low,
+            rested: false,
+            flee,
+        };
+    }
+
+    #[tokio::test]
+    async fn one_member_low_rests_the_party_until_all_are_back() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        let mut m = formed(&mut p, now);
+        hurt(m.get_mut("lauren").unwrap(), 40, true, false);
+        hurt(m.get_mut("penny").unwrap(), 70, false, false);
+        let plan = p.plan(&m, now);
+        assert_eq!(
+            plan.roles["penny"].party_rest(),
+            Some("Resting for Penny (70%), Lauren (40%)")
+        );
+        assert!(plan.roles["penny"].hold().is_some());
+        assert_eq!(state(&plan, 1), (MemberState::Resting, Some("40%".into())));
+        // Lauren above her rest line but not her rest-until: still resting.
+        hurt(m.get_mut("lauren").unwrap(), 60, false, false);
+        m.get_mut("penny").unwrap().health.rested = true;
+        let plan = p.plan(&m, now);
+        assert_eq!(
+            plan.roles["penny"].party_rest(),
+            Some("Resting for Lauren (60%)")
+        );
+        // Everyone rested: the rest ends and the loop goes on.
+        m.get_mut("lauren").unwrap().health.rested = true;
+        let plan = p.plan(&m, now);
+        assert_eq!(plan.roles["penny"].party_rest(), None);
+        assert_eq!(plan.roles["penny"].hold(), None);
+    }
+
+    #[tokio::test]
+    async fn a_rest_that_never_ends_stops_the_loop_once() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        let mut m = formed(&mut p, now);
+        hurt(m.get_mut("lauren").unwrap(), 40, true, false);
+        assert!(p.plan(&m, now).give_up.is_empty());
+        let plan = p.plan(&m, now + Duration::from_secs(600));
+        assert_eq!(
+            plan.give_up,
+            [(
+                "penny".to_owned(),
+                "the party rested 10 minutes; not recovered: Lauren (40%)".to_owned()
+            )]
+        );
+        assert!(
+            p.plan(&m, now + Duration::from_secs(700))
+                .give_up
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_follower_at_its_flee_line_makes_the_leader_flee_once() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        let mut m = formed(&mut p, now);
+        hurt(m.get_mut("lauren").unwrap(), 20, true, true);
+        let plan = p.plan(&m, now);
+        assert_eq!(
+            plan.flee,
+            [("penny".to_owned(), "Lauren at 20%".to_owned())]
+        );
+        assert!(plan.roles["lauren"].with_leader());
+        // Still under it: no second flee until she is above it again.
+        assert!(p.plan(&m, now).flee.is_empty());
+        hurt(m.get_mut("lauren").unwrap(), 50, false, false);
+        p.plan(&m, now);
+        hurt(m.get_mut("lauren").unwrap(), 20, true, true);
+        assert_eq!(p.plan(&m, now).flee.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_follower_out_of_the_leaders_room_flees_on_its_own() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        let mut m = formed(&mut p, now);
+        m.get_mut("lauren").unwrap().room = Some((1, 9));
+        hurt(m.get_mut("lauren").unwrap(), 20, true, true);
+        let plan = p.plan(&m, now);
+        assert!(plan.flee.is_empty());
+        assert!(!plan.roles["lauren"].with_leader());
+    }
+
+    #[tokio::test]
+    async fn a_follower_with_the_leader_goes_for_its_target() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        let mut m = formed(&mut p, now);
+        m.get_mut("penny").unwrap().target = Some("giant rat".into());
+        let plan = p.plan(&m, now);
+        assert_eq!(plan.roles["lauren"].assist(), Some("giant rat"));
+        m.get_mut("lauren").unwrap().room = Some((1, 9));
+        assert_eq!(p.plan(&m, now).roles["lauren"].assist(), None);
     }
 
     #[test]

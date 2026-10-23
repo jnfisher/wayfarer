@@ -32,7 +32,7 @@ use crate::custom;
 use crate::errand::{Active, Ctx, Errand, ErrandKind, ErrandNext};
 use crate::executor::{Action, Executor, Expect};
 use crate::modes::{Bot, Do, Presence, View};
-use crate::party::{MemberInfo, PartyRole, WalkBack};
+use crate::party::{Health, MemberInfo, PartyRole, WalkBack};
 use crate::policy::{COMBAT_QUIET, hp_percent};
 use crate::position::Position;
 use crate::rules::{self, RuleBook, Sightings};
@@ -687,7 +687,8 @@ impl Session {
                 // Every HP value, not only those the bot sees at its ticks: a walk or an
                 // action in flight does not hold Flee back.
                 let c = self.character.state();
-                if self.bot.hp(hp_percent(c.hp, c.hp_max)) {
+                // A follower with its leader runs when the leader does (the coordinator).
+                if !self.party_role.with_leader() && self.bot.hp(hp_percent(c.hp, c.hp_max)) {
                     self.give_way(out);
                 }
             }
@@ -2794,6 +2795,9 @@ impl Session {
 
     /// What the party coordinator reads of this session.
     pub(crate) fn party_info(&self) -> MemberInfo {
+        let minutes = |key: &str| {
+            Duration::from_secs(u64::try_from(self.settings.int(key)).unwrap_or(5) * 60)
+        };
         let rejoin = self.party_role.rejoin();
         let walking_back = self.bot_walk && rejoin.is_some() && self.walker.destination() == rejoin;
         MemberInfo {
@@ -2808,9 +2812,42 @@ impl Session {
                     .flatten(),
                 stuck: self.party_stuck.as_ref().map(|(_, why, _)| why.clone()),
             },
-            wait_separated: Duration::from_secs(
-                u64::try_from(self.settings.int("party.wait_separated_minutes")).unwrap_or(5) * 60,
-            ),
+            wait_separated: minutes("party.wait_separated_minutes"),
+            wait_rest: minutes("party.wait_rest_minutes"),
+            health: self.party_health(),
+            target: self.bot.fight_target().map(str::to_owned),
+        }
+    }
+
+    /// HP and mana against the character's own lines, by the rules the bot's View uses
+    /// (`View::rest_below`, `mana_low`, `mana_restored`): for a party rest and flee.
+    fn party_health(&self) -> Health {
+        let c = self.character.state();
+        let hp = hp_percent(c.hp, c.hp_max);
+        let mana = c
+            .mana
+            .zip(c.mana_max)
+            .filter(|&(_, max)| max > 0)
+            .map(|(m, max)| i32::try_from(i64::from(m) * 100 / i64::from(max)).unwrap_or(100));
+        let line = |key: &str| i32::try_from(self.settings.int(key)).unwrap_or(0);
+        let casts = (self.spellbook.has_attack()
+            && self.settings.choice("spells.attack") == "auto")
+            || (self.spellbook.has_heal() && self.settings.choice("spells.heal") == "auto");
+        let uses_mana = mana.is_some() && casts;
+        Health {
+            hp,
+            low: hp.is_some_and(|h| h < line("health.rest_below_hp"))
+                || (uses_mana && mana.is_some_and(|m| m < line("health.rest_mana_below"))),
+            rested: hp.is_none_or(|h| h >= line("health.rest_until_hp"))
+                && (!uses_mana || mana.is_none_or(|m| m >= line("health.rest_mana_until"))),
+            flee: hp.is_some_and(|h| h < self.bot.flee_below()),
+        }
+    }
+
+    /// The party's leader runs now, for a member under its flee line.
+    pub(crate) fn party_flee(&mut self, why: &str) {
+        if self.bot.running() {
+            self.bot.party_flee(why);
         }
     }
 

@@ -157,6 +157,11 @@ impl Flee {
         };
     }
 
+    /// The flee line, per cent of the maximum HP.
+    pub fn below(&self) -> i32 {
+        self.below
+    }
+
     /// The gateway is logging off and the character is attacked: flee first, whatever the HP.
     pub fn leave(&mut self) {
         self.leaving = true;
@@ -307,6 +312,11 @@ impl Mode for Flee {
         }
         if let Some(why) = &self.forced {
             return Some(why.clone());
+        }
+        // With its party's leader, it runs when the leader runs: the game's follow takes it
+        // out behind the leader, and a flee of its own would break the party (C-042).
+        if v.party.with_leader() {
+            return None;
         }
         if let Some(name) = to_flee(v.rules, v.presence)
             && !self.trapped_in(v.room)

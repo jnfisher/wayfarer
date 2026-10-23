@@ -103,6 +103,12 @@ impl Mode for Recover {
         if v.engaged || !v.presence.attackers.is_empty() {
             return None;
         }
+        // The leader of a resting party rests with it (C-042).
+        if let Some(why) = v.party.party_rest()
+            && !Self::low(v)
+        {
+            return Some(why.to_owned());
+        }
         if Self::low(v) {
             return Some(match v.hp {
                 Some(hp) if hp < v.rest_below() => format!("HP {hp}%"),
@@ -125,6 +131,23 @@ impl Mode for Recover {
         self.active = true;
         let here = v.room_name(v.room);
         if Self::rested(v) {
+            // Rested itself, the leader holds the party where the quiet-room rule allows until
+            // everyone is (the coordinator lifts it); then it walks back home as after any rest.
+            if let Some(why) = v.party.party_rest() {
+                if self.walks_out < WALKS
+                    && let RestAt::Walk(quiet) = rest_at(v.atlas, v.room, v.certain, v.traveller)
+                {
+                    self.walks_out += 1;
+                    return Step::walk(
+                        quiet,
+                        format!(
+                            "Recover: walking the party to {} to rest ({here} spawns)",
+                            v.room_name(Some(quiet))
+                        ),
+                    );
+                }
+                return Step::wait(format!("Recover: {why}"));
+            }
             if let Some((home, name)) = self.shunned(v) {
                 // Still active: it walks back once the sighting is forgotten.
                 return Step::wait(format!(
