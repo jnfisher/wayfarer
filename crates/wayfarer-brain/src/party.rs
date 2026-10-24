@@ -182,6 +182,15 @@ pub(crate) struct WalkBack {
 }
 
 /// What the coordinator reads of one session.
+/// Whether two members may be in one room: the same believed room, or a room both beliefs
+/// hold. Unknown for either is not.
+fn same_room(a: &MemberInfo, b: &MemberInfo) -> bool {
+    match (a.room, b.room) {
+        (Some(x), Some(y)) => x == y || a.rooms.iter().any(|k| b.rooms.contains(k)),
+        _ => false,
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub(crate) struct MemberInfo {
     /// In the realm, and the brain following it live.
@@ -190,7 +199,12 @@ pub(crate) struct MemberInfo {
     pub running: bool,
     /// The in-game name (`Penny Pax`), once `st` has shown it.
     pub name: Option<String>,
+    /// Its believed room: the lowest of `rooms` when the belief is not sure.
     pub room: Option<Key>,
+    /// Every room the belief has it in (empty: only `room` is known). Slum Street has dozens of
+    /// rooms of one name, so a leader and a follower side by side may each be unsure, with
+    /// different lowest keys (C-053).
+    pub rooms: Vec<Key>,
     pub game: GameParty,
     /// Its walk back to the leader.
     pub walk: WalkBack,
@@ -547,7 +561,7 @@ impl Parties {
                     self.walk_in.remove(f);
                     self.out_since.remove(f);
                     self.gave_up.remove(f);
-                    if fi.room.is_some() && fi.room != l.room {
+                    if fi.room.is_some() && !same_room(fi, l) {
                         let since = *self.apart.entry(f.clone()).or_insert(now);
                         if now >= since + APART {
                             owe_par = true;
@@ -559,7 +573,7 @@ impl Parties {
                 } else {
                     counted += 1;
                     self.apart.remove(f);
-                    let together = fi.room.is_some() && fi.room == l.room;
+                    let together = same_room(fi, l);
                     // Forming waits for a `par` that shows the party as it is (after a
                     // restart, for one): a formed party gets no invites.
                     if together
@@ -648,8 +662,8 @@ impl Parties {
                         leader_name: lfirst.map_or_else(|| def.leader.clone(), str::to_owned),
                         joined,
                         rejoin,
-                        with_leader: joined && fi.room.is_some() && fi.room == l.room,
-                        assist: (joined && fi.room.is_some() && fi.room == l.room)
+                        with_leader: joined && same_room(fi, l),
+                        assist: (joined && same_room(fi, l))
                             .then(|| l.target.clone())
                             .flatten(),
                         rest: None,
@@ -826,6 +840,7 @@ mod tests {
             running: true,
             name: Some(name.into()),
             room: Some(room),
+            rooms: Vec::new(),
             game: GameParty::default(),
             walk: WalkBack::default(),
             wait_separated: Duration::from_secs(300),
@@ -1010,6 +1025,27 @@ mod tests {
             lines(&p.plan(&m, now + Duration::from_secs(6))),
             [("penny", "par")]
         );
+    }
+
+    #[tokio::test]
+    async fn unsure_side_by_side_is_not_apart() {
+        // C-053: both on a Slum Street of many; each belief has the other's lowest room among
+        // its candidates. Together: no `par` for it, and the follower is with the leader.
+        let now = Instant::now();
+        let mut p = Parties::default();
+        p.save(def("penny", &["lauren"]), &known()).unwrap();
+        let mut m = two(now, &["Lauren Phillips"]);
+        m.get_mut("lauren").unwrap().game.following = Some("Penny".into());
+        let penny = m.get_mut("penny").unwrap();
+        penny.room = Some((1, 2));
+        penny.rooms = vec![(1, 2), (1, 9)];
+        let lauren = m.get_mut("lauren").unwrap();
+        lauren.room = Some((1, 9));
+        lauren.rooms = vec![(1, 9), (1, 12)];
+        assert!(p.plan(&m, now).lines.is_empty());
+        let plan = p.plan(&m, now + Duration::from_secs(6));
+        assert!(plan.lines.is_empty(), "{:?}", plan.lines);
+        assert!(plan.roles["lauren"].with_leader());
     }
 
     #[tokio::test]

@@ -10,12 +10,10 @@ use std::time::UNIX_EPOCH;
 use game::arena::*;
 use game::*;
 use wayfarer_brain::{Brain, FixedClock};
-use wayfarer_settings::{Layer, Overrides, Settings};
 
 /// The Arena with the brain's settings from `text`, its first re-sync done.
 async fn in_arena_with(monsters: &[&str], text: &str) -> (Game, Run) {
-    let over = Overrides::parse(text).unwrap();
-    let settings = Settings::resolve(&[(Layer::Character, &over)]).unwrap();
+    let settings = test_settings(text);
     let clock = Arc::new(FixedClock(UNIX_EPOCH + Duration::from_secs(T0)));
     let brain = Brain::new(world(), clock, None).with_settings(settings);
     let (mut g, run) = Game::start_brain(SessionState::Realm, arena(monsters, 35), brain).await;
@@ -128,8 +126,7 @@ fn sneaking(room_text: &str) -> String {
 
 #[tokio::test(start_paused = true)]
 async fn a_move_that_shows_no_sneaking_is_followed_by_another_sneak() {
-    let over = Overrides::parse(SNEAK).unwrap();
-    let settings = Settings::resolve(&[(Layer::Character, &over)]).unwrap();
+    let settings = test_settings(SNEAK);
     let clock = Arc::new(FixedClock(UNIX_EPOCH + Duration::from_secs(T0)));
     let brain = Brain::new(world(), clock, None).with_settings(settings);
     let (mut g, run) = Game::start_brain(SessionState::Realm, room(VILLAGE_ENTRANCE), brain).await;

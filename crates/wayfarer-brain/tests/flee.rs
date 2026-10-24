@@ -13,7 +13,6 @@ use wayfarer_brain::policy::{self, Candidate};
 use wayfarer_brain::{Brain, FixedClock};
 use wayfarer_parse::Parser;
 use wayfarer_proto::{BotAction, BotMode, BotState};
-use wayfarer_settings::{Layer, Overrides, Settings};
 use wayfarer_world::LockState;
 
 const RAT: &str = "large giant rat";
@@ -39,8 +38,7 @@ async fn fighting() -> (Game, Run) {
 
 /// The same, the brain's settings being `text` (a TOML character file).
 async fn fighting_with(text: &str) -> (Game, Run) {
-    let over = Overrides::parse(text).unwrap();
-    let settings = Settings::resolve(&[(Layer::Character, &over)]).unwrap();
+    let settings = test_settings(text);
     let clock = Arc::new(FixedClock(UNIX_EPOCH + Duration::from_secs(T0)));
     let brain = Brain::new(world(), clock, None).with_settings(settings);
     let (mut g, run) = Game::start_brain(SessionState::Realm, arena(&[RAT], 35), brain).await;

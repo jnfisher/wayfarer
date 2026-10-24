@@ -75,7 +75,9 @@ impl Belief {
     /// of that name. When nothing fits: the rooms within [`WIDEN_RADIUS`] steps of the old
     /// candidates by name and exits, then by name alone, then the world by name and exits,
     /// then by name alone. Without a title, the exits narrow the candidates if any fit. A title
-    /// no room has changes nothing.
+    /// no room has changes nothing on its own (it may be a line misread as one), but with its
+    /// `Obvious exits` it is a whole room the pack lacks, a player's house (C-053): the
+    /// position is unknown, and the next room the pack has relocates it from the old one.
     pub fn observe(
         &mut self,
         graph: &RoomGraph,
@@ -96,7 +98,11 @@ impl Belief {
         };
         let all = graph.rooms_named(title);
         if all.is_empty() {
-            // no room has that name: not a title after all
+            if exits.is_some() {
+                // A whole room the pack does not have: nowhere it knows.
+                self.cands.clear();
+            }
+            // Otherwise no room has that name: not a title after all.
             return;
         }
         let named = |k: &Key| graph.room(*k).is_some_and(|r| r.name == title);

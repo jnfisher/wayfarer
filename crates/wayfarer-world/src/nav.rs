@@ -216,6 +216,8 @@ pub enum Gate {
         min: i64,
         max: i64,
     },
+    /// Into a room the pack has no name for: a player's house (C-053). Never taken.
+    Unnamed,
 }
 
 /// One exit, as the graph keeps it.
@@ -394,6 +396,10 @@ pub struct RoomGraph {
     by_name: HashMap<String, Vec<u32>>,
     /// Exits whose destination isn't a room of the pack (left out).
     pub dangling: usize,
+    /// Exits into a room the pack has no name for, from a room it has one for: the doors of
+    /// players' houses (map 15), whose titles the game makes up as it runs. They stay (they show
+    /// in `Obvious exits`) behind [`Gate::Unnamed`], which no route, rest or flee goes through.
+    pub into_unnamed: usize,
 }
 
 impl RoomGraph {
@@ -416,6 +422,12 @@ impl RoomGraph {
         let mut edges = Vec::with_capacity(exits.len());
         let mut nodes = Vec::with_capacity(rooms.len());
         let mut dangling = 0;
+        let unnamed: std::collections::HashSet<Key> = rooms
+            .iter()
+            .filter(|r| r.name.trim().is_empty())
+            .map(|r| (r.map, r.room))
+            .collect();
+        let mut into_unnamed = 0;
         let mut ex = exits.into_iter().peekable();
         for room in rooms {
             let key = (room.map, room.room);
@@ -428,6 +440,8 @@ impl RoomGraph {
                     dangling += 1;
                     continue;
                 };
+                let house = unnamed.contains(&to) && !unnamed.contains(&key);
+                into_unnamed += usize::from(house);
                 let p = e.params;
                 let texts = if kind == ExitType::Text {
                     match phrases.entry(p[0]) {
@@ -480,6 +494,7 @@ impl RoomGraph {
                     },
                     _ => Gate::None,
                 };
+                let gate = if house { Gate::Unnamed } else { gate };
                 let door = match kind {
                     ExitType::Door | ExitType::Gate => Some(LockState::from_param(p[0])),
                     ExitType::Key => Some(LockState::from_param(p[1])),
@@ -541,6 +556,7 @@ impl RoomGraph {
             index,
             by_name,
             dangling,
+            into_unnamed,
         })
     }
 

@@ -85,6 +85,25 @@ async fn the_same_game_gives_the_same_commands() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn by_default_low_hp_rests_where_it_stands_even_in_a_room_that_spawns() {
+    // C-053: `health.rest_quiet_room` off (the default): the Arena spawns, and it rests there.
+    let clock = Arc::new(wayfarer_brain::FixedClock(
+        std::time::UNIX_EPOCH + Duration::from_secs(T0),
+    ));
+    let brain = wayfarer_brain::Brain::new(world(), clock, None);
+    let (mut g, run) = Game::start_brain(SessionState::Realm, arena(&[], 35), brain).await;
+    g.until(|m| matches!(m, ToGateway::MapView { .. }).then_some(()))
+        .await;
+    g.idle(Duration::from_secs(20)).await;
+    start(&mut g, &[], 20).await;
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
+    g.narrated("Recover: resting to 85% in Newhaven, Arena")
+        .await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "rest"]);
+}
+
+#[tokio::test(start_paused = true)]
 async fn low_hp_rests_in_a_quiet_room_then_walks_back() {
     let (mut g, run) = in_arena(&[]).await;
     // 20 of 35 is 57%: below 80. The Arena spawns; the Narrow Road, up the stairs, doesn't.
@@ -663,18 +682,44 @@ fn the_arena_spawns_and_the_narrow_road_is_where_to_rest() {
     assert!(!policy::spawns_here(&a, Some(NARROW_ROAD), true));
     // Not sure where it is: as if it spawned.
     assert!(policy::spawns_here(&a, Some(NARROW_ROAD), false));
+    // With `health.rest_quiet_room` on.
     assert_eq!(
-        policy::rest_at(&a, Some(ARENA), true, &anyone),
+        policy::rest_at(&a, Some(ARENA), true, &anyone, true),
         RestAt::Walk(NARROW_ROAD)
     );
     assert_eq!(
-        policy::rest_at(&a, Some(NARROW_ROAD), true, &anyone),
+        policy::rest_at(&a, Some(NARROW_ROAD), true, &anyone, true),
         RestAt::Here
     );
     assert_eq!(
-        policy::rest_at(&a, None, false, &anyone),
+        policy::rest_at(&a, None, false, &anyone, true),
         RestAt::HereAnyway
     );
+    // Off (the default, C-053): where it stands, a lair or an arena too.
+    assert_eq!(
+        policy::rest_at(&a, Some(ARENA), true, &anyone, false),
+        RestAt::Here
+    );
+}
+
+#[test]
+fn no_rest_is_walked_into_a_players_house() {
+    // Slum Street, Bend (1:1096) spawns; north of it is a house (15:874) the pack has no name
+    // for, which the graph leaves out (C-053): the quiet room is elsewhere, or none.
+    let a = atlas();
+    let anyone = wayfarer_world::Traveller::anyone();
+    let bend = (1, 1096);
+    let house = a
+        .graph
+        .edges(bend)
+        .iter()
+        .find(|e| e.to == (15, 874))
+        .unwrap();
+    assert!(!anyone.can_take(house));
+    match policy::rest_at(&a, Some(bend), true, &anyone, true) {
+        RestAt::Walk(k) => assert!(!a.graph.room(k).unwrap().name.is_empty(), "{k:?}"),
+        RestAt::Here | RestAt::HereAnyway => {}
+    }
 }
 
 #[test]

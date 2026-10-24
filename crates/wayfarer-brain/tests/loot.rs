@@ -11,7 +11,6 @@ use game::arena::*;
 use game::*;
 use wayfarer_brain::{Brain, FixedClock};
 use wayfarer_proto::BotAction;
-use wayfarer_settings::{Layer, Overrides, Settings};
 
 /// The Arena with `monsters` and, in the room's description, the floor's `notice`.
 fn floor_room(monsters: &[&str], hp: i32, notice: &str) -> String {
@@ -37,8 +36,7 @@ fn inventory(current: u32, max: u32, hp: i32) -> String {
 }
 
 async fn in_arena_with(monsters: &[&str], text: &str) -> (Game, Run) {
-    let over = Overrides::parse(text).unwrap();
-    let settings = Settings::resolve(&[(Layer::Character, &over)]).unwrap();
+    let settings = test_settings(text);
     let clock = Arc::new(FixedClock(UNIX_EPOCH + Duration::from_secs(T0)));
     let brain = Brain::new(world(), clock, None).with_settings(settings);
     let (mut g, run) = Game::start_brain(SessionState::Realm, arena(monsters, 35), brain).await;

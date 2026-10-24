@@ -146,7 +146,7 @@ pub const CATALOGUE: &[Setting] = &[
     Setting {
         key: "health.rest_below_hp",
         label: "Rest below",
-        help: "Between fights, rest when HP is below this per cent of the maximum (never in a room that spawns monsters).",
+        help: "Between fights, rest when HP is below this per cent of the maximum (where the character stands, unless \"Walk to a quiet room to rest\" is on).",
         kind: Kind::Int { min: 10, max: 99 },
         default: Value::Int(60),
         unit: "%",
@@ -164,6 +164,17 @@ pub const CATALOGUE: &[Setting] = &[
         tier: Tier::Essential,
         group: Group::Health,
         megamud: Some("HP Rest Until"),
+    },
+    Setting {
+        key: "health.rest_quiet_room",
+        label: "Walk to a quiet room to rest",
+        help: "In a room that spawns monsters (a lair too), walk to the nearest room within a few steps that does not, rest there and walk back. Off: rest where the character stands; spawns are slow enough that a rest is seldom broken.",
+        kind: Kind::Bool,
+        default: Value::Bool(false),
+        unit: "",
+        tier: Tier::Standard,
+        group: Group::Health,
+        megamud: None,
     },
     Setting {
         key: "health.hangup",
@@ -278,7 +289,7 @@ pub const CATALOGUE: &[Setting] = &[
     Setting {
         key: "health.rest_mana_below",
         label: "Rest for mana below",
-        help: "A caster rests between fights when mana is below this per cent of the maximum (never in a room that spawns monsters, and not before it has finished with the HP). 0 (the default) never rests for mana: a rest is for HP alone, and ends at the HP line whatever the mana.",
+        help: "A caster rests between fights when mana is below this per cent of the maximum (as an HP rest does, and not before it has finished with the HP). 0 (the default) never rests for mana: a rest is for HP alone, and ends at the HP line whatever the mana.",
         kind: Kind::Int { min: 0, max: 90 },
         default: Value::Int(0),
         unit: "%",

@@ -2822,6 +2822,7 @@ impl Session {
             running: self.bot.running(),
             name: self.character.state().name.clone(),
             room: self.position.best(),
+            rooms: self.position.belief.candidates().iter().copied().collect(),
             game: self.party_game.clone(),
             walk: WalkBack {
                 steps_left: walking_back

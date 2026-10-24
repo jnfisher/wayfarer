@@ -192,6 +192,12 @@ progress (after the move in flight).
 - **"There is no exit in that direction!"** means the belief is wrong (`kb/pitfalls.md` 34):
   the brain sends `look`, relocates from the room shown, and plans again. A second one in the
   same walk stops it.
+- **A room the map lacks** (C-053). A room shown whole (title and `Obvious exits`) whose title
+  no room of the pack has, a player's house ("Shop White House Room"), leaves the position
+  unknown: the walk stops ("…; in Shop White House Room, a room not on the map") and the next
+  room the pack knows relocates it, from the rooms around where it was. A title seen alone (a
+  line misread as one) changes nothing. The doors of players' houses (map 15, 34 of them) are in
+  the graph, so `Obvious exits` still fit, but no route, rest or flee takes them.
 - **Stops**: `walk_stop`, `*Combat Engaged*`, a line the player typed, or no answer to a move
   within 5 s stop the walk after the move in flight (the walker never fights); leaving the realm
   or the brain re-attaching stop it at once. Narrated: "Stopped walking: combat started".
@@ -399,7 +405,7 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
   | Mode | Wants control when | Does |
   |---|---|---|
   | Flee | HP below 25% (`health.flee_below_hp`) while running, whether or not engaged, with something to run from (a fight, an attacker, or a room that spawns); a monster to *flee from* in the room, whatever the HP; a stalemate; until it is done | Leaves by a confirmed exit toward a room that spawns nothing, keeps running if followed, then hands over to Recover ("Flee", below) |
-  | Recover | HP below 60% (`health.rest_below_hp`) (or poisoned) and not fighting; or a rest it began is not finished | Rests: in this room if nothing spawns here; else walks (through the walker, each step confirmed) to the nearest room within 5 steps where nothing spawns, and rests there; else rests here anyway. `rest` again when the next prompt lacks `(Resting)` (three times, then a 30 s wait; `You are too sick to rest!` waits 30 s too). Rested at 95%, it walks back home. Each walk is tried twice (a fight can stop one): after two walks out that were stopped it rests where it is, against the quiet-room rule, and says so with a warning ("Recover: resting in Newhaven, Arena though it spawns: 2 walks to a quiet room were stopped"); after two walks home that were stopped it waits where it rested: "Rested; could not walk home, waiting here" |
+  | Recover | HP below 60% (`health.rest_below_hp`) (or poisoned) and not fighting; or a rest it began is not finished | Rests where it stands (a lair or an arena too: spawns are slow enough, John, 2026-10-24). With `health.rest_quiet_room` on: in this room if nothing spawns here; else walks (through the walker, each step confirmed) to the nearest room within 5 steps where nothing spawns, never a player's house (a room the pack has no name for), and rests there; else rests here anyway. `rest` again when the next prompt lacks `(Resting)` (three times, then a 30 s wait; `You are too sick to rest!` waits 30 s too). Rested at 95%, it walks back home. Each walk is tried twice (a fight can stop one): after two walks out that were stopped it rests where it is, against the quiet-room rule, and says so with a warning ("Recover: resting in Newhaven, Arena though it spawns: 2 walks to a quiet room were stopped"); after two walks home that were stopped it waits where it rested: "Rested; could not walk home, waiting here" |
   | Fight | Engaged; or a monster worth fighting is here | Picks one that is attacking the character first, else the first listed, by the monster rules ("Monster rules", below: never one to *never fight* unless it attacks, never one to *flee from*); sends `a <its last word>` once and lets auto-combat run. After `*Combat Off*` or a kill it looks (`look`) and picks the next. A target the game refuses (`You do not see rat here!`, `Your weapon has no effect`) is left alone for the rest of the session. Four rounds of the character's swings with no damage dealt, one of them glancing off the target's armour at least, are a stalemate: it gives the target up and the bot leaves ("Monster rules"). Never leaves the room itself |
   | Idle | Otherwise | Sends nothing: "Waiting here" |
 
@@ -604,8 +610,10 @@ stop it is at or walking to, and the stops it passes by.
 - **On the way**: a monster Fight would attack in a room on the way, or one attacking, stops the
   leg after the moves in flight; Fight takes the character, and then Task walks on to the same
   stop from wherever it is. `*Combat Engaged*` stops it the same way. Flee and Recover work as in
-  "fight here"; after a flee Recover rests and walks back to the stop. A leg that ends elsewhere
-  three times with no fight between is given up: the stop is passed by this time round, with a
+  "fight here"; after a flee Recover rests and walks back to the stop. After a leg that ends
+  elsewhere the next waits 5 s (`LEG_PAUSE`, "Loop Newhaven: did not get to stop 2/3; trying
+  again in a moment"), so a walk that keeps failing at once never floods the game (C-053). A leg
+  that ends elsewhere three times with no fight between is given up: the stop is passed by this time round, with a
   warning-like notice ("Stop 2/3 Dungeon, Entrance: could not get there; passing it by this time
   round"). A stop passed by (a leg that would not get there, a monster to keep away from, a
   stalemate) is left alone for five minutes (`PASSED_FOR`) before the bot tries it again. Three stops passed by in a row, with no stop reached and nothing
@@ -1128,7 +1136,10 @@ own, one at a time:
 - **Checking.** The leader sends `par` when it has none yet (a fresh brain: it forms nothing
   before), after any join, drop or removal line, when a joined follower has been out of its
   room for 3 s, and every 30 s while the party has members; at most one every 5 s. A follower
-  the leader's `par` does not list is not joined, whatever its own lines said.
+  the leader's `par` does not list is not joined, whatever its own lines said. "Out of its
+  room" is by both beliefs: on a street of many rooms of one name each may be unsure, and two
+  that hold a room in common are taken as together (C-053; before, the lowest of each one's
+  rooms was compared, and a party in the slums sent `par` every 5 s).
 - **Followers don't walk.** A follower's own `run_loop`, `walk_loop` and `walk_to` are refused
   with a warning ("following Penny: it goes where the party goes"). Its errands run: pick up all
   and equip all where it stands, in the party; one that walks (train, recover the pile, buy
@@ -1158,7 +1169,8 @@ own, one at a time:
   rest together: when any of them falls below its own rest line (`health.rest_below_hp`, or
   `health.rest_mana_below` for a character that casts and has one set), the party rests until
   every one of them is back to its own rest-until lines (the mana's only with a mana line). The leader's loop holds; its Recover rests too,
-  walking the party to a quiet room first when the room spawns (the game's follow brings the
+  walking the party to a quiet room first when the room spawns and `health.rest_quiet_room` is
+  on (the game's follow brings the
   others), and waits there, narrated "Recover: Resting for Lauren (62%)", while it is rested
   itself. Every follower with the leader that is below its own rest-until lines rests where
   it stands too ("Recover: resting with the party"), not only those below their rest lines:

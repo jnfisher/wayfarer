@@ -12,11 +12,10 @@ use game::arena::*;
 use game::*;
 use wayfarer_brain::{Brain, FixedClock, HIDDEN_FOR, MAX_SEARCHES};
 use wayfarer_proto::BotAction;
-use wayfarer_settings::{Layer, Overrides, Settings, SettingsDir};
+use wayfarer_settings::{Settings, SettingsDir};
 
 fn settings(text: &str) -> Settings {
-    let over = Overrides::parse(text).unwrap();
-    Settings::resolve(&[(Layer::Character, &over)]).unwrap()
+    test_settings(text)
 }
 
 fn clock() -> Arc<FixedClock> {
@@ -133,7 +132,12 @@ async fn the_files_of_a_settings_directory_are_this_characters_layers() {
     // Everyone is Careful (rest below 70 to 90); the server asks for 93 and this character 90. The character
     // (`aldric`) is the layer that wins; the server's file (`bbs.example.org:23`) sits between.
     let dir = tempfile::tempdir().unwrap();
-    write(dir.path(), "settings.toml", "[bot]\nstyle = \"careful\"\n");
+    // The rest is walked to the Narrow Road (`test_settings`' quiet room, from the file here).
+    write(
+        dir.path(),
+        "settings.toml",
+        "[bot]\nstyle = \"careful\"\n[health]\nrest_quiet_room = true\n",
+    );
     write(
         dir.path(),
         "servers/bbs.example.org_23.toml",
@@ -152,6 +156,11 @@ async fn the_files_of_a_settings_directory_are_this_characters_layers() {
 #[tokio::test(start_paused = true)]
 async fn another_characters_file_does_not_apply() {
     let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "settings.toml",
+        "[health]\nrest_quiet_room = true\n",
+    );
     write(
         dir.path(),
         "characters/someone-else.toml",

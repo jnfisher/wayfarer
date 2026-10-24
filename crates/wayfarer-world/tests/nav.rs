@@ -46,6 +46,8 @@ fn graph_loads_every_room_and_exit() {
     assert_eq!(g.len(), 26_720);
     // The pack's 62,352 exits and 40 ways through rooms' command texts (C-052).
     assert_eq!(g.edge_count(), 62_392);
+    // Into players' houses, which have no name: there, but never taken (C-053).
+    assert_eq!(g.into_unnamed, 34);
     assert_eq!(g.dangling, 0);
     // Every exit type name in the pack is known (load fails on one that isn't), and the
     // counts by type equal the pack's.
@@ -646,4 +648,34 @@ fn an_item_exit_is_taken_with_the_item_carried() {
     let r = route(&g, below, above, &with).expect("a way with the rope");
     assert_eq!(r.len(), 1);
     assert_eq!(r[0].exit_type, ExitType::Item);
+}
+
+#[test]
+fn a_whole_room_the_pack_lacks_leaves_the_position_unknown_until_a_known_one() {
+    // C-053: Faye in a player's house north of Slum Street, Bend (1:1096): "Shop White House
+    // Room" is no room of the pack. Seen whole (its exits too), the position is unknown;
+    // a title alone (a line misread as one) changes nothing.
+    let (_, g) = graph();
+    let bend = (1, 1096);
+    let mut b = Belief::at(bend);
+    b.observe(&g, Some("Shop White House Room"), None, false);
+    assert!(b.certain(), "a title alone");
+    b.observe(&g, Some("Shop White House Room"), Some(dirs(&["w"])), false);
+    assert!(b.is_unknown());
+    // Out again: the Bend it left is near, and it relocates there.
+    b.observe(
+        &g,
+        Some("Slum Street, Bend"),
+        Some(dirs(&["n", "s", "e"])),
+        false,
+    );
+    assert_eq!(b.best(), Some(bend));
+    // The way into the house is there, and shows, but no one takes it.
+    let door = g
+        .edges(bend)
+        .iter()
+        .find(|e| e.to.0 == 15)
+        .expect("the house");
+    assert_eq!(door.gate, wayfarer_world::Gate::Unnamed);
+    assert!(!Traveller::anyone().can_take(door));
 }

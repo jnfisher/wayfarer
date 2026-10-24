@@ -176,7 +176,13 @@ impl Mode for Recover {
             if let Some(why) = v.party.party_rest() {
                 if self.walks_out < WALKS
                     && v.party.following().is_none()
-                    && let RestAt::Walk(quiet) = rest_at(v.atlas, v.room, v.certain, v.traveller)
+                    && let RestAt::Walk(quiet) = rest_at(
+                        v.atlas,
+                        v.room,
+                        v.certain,
+                        v.traveller,
+                        v.settings.bool("health.rest_quiet_room"),
+                    )
                 {
                     self.walks_out += 1;
                     self.last_walk = Some(true);
@@ -225,11 +231,23 @@ impl Mode for Recover {
         let against_the_rule = self.walks_out >= WALKS
             && !self.warned
             && matches!(
-                rest_at(v.atlas, v.room, v.certain, v.traveller),
+                rest_at(
+                    v.atlas,
+                    v.room,
+                    v.certain,
+                    v.traveller,
+                    v.settings.bool("health.rest_quiet_room")
+                ),
                 RestAt::Walk(_)
             );
         if self.walks_out < WALKS && v.party.following().is_none() {
-            match rest_at(v.atlas, v.room, v.certain, v.traveller) {
+            match rest_at(
+                v.atlas,
+                v.room,
+                v.certain,
+                v.traveller,
+                v.settings.bool("health.rest_quiet_room"),
+            ) {
                 RestAt::Walk(quiet) => {
                     self.walks_out += 1;
                     self.last_walk = Some(true);

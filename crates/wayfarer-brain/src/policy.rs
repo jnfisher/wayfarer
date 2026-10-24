@@ -129,10 +129,17 @@ pub enum RestAt {
     HereAnyway,
 }
 
-/// Rest here if the room is quiet, else in the nearest quiet room within [`QUIET_WITHIN`]
-/// steps (the lowest key among the nearest), else here anyway.
-pub fn rest_at(atlas: &Atlas, room: Option<Key>, certain: bool, t: &Traveller) -> RestAt {
-    if !spawns_here(atlas, room, certain) {
+/// Rest here if the room is quiet or `quiet_room` is off (`health.rest_quiet_room`), else in
+/// the nearest quiet room within [`QUIET_WITHIN`] steps (the lowest key among the nearest;
+/// never a room the pack has no name for, a player's house), else here anyway.
+pub fn rest_at(
+    atlas: &Atlas,
+    room: Option<Key>,
+    certain: bool,
+    t: &Traveller,
+    quiet_room: bool,
+) -> RestAt {
+    if !quiet_room || !spawns_here(atlas, room, certain) {
         return RestAt::Here;
     }
     let Some(from) = room else {
@@ -140,7 +147,14 @@ pub fn rest_at(atlas: &Atlas, room: Option<Key>, certain: bool, t: &Traveller) -
     };
     let mut near: Vec<(u32, Key)> = distances(&atlas.graph, from, QUIET_WITHIN, t)
         .into_iter()
-        .filter(|&(k, d)| d > 0 && !spawns_here(atlas, Some(k), true))
+        .filter(|&(k, d)| {
+            d > 0
+                && !spawns_here(atlas, Some(k), true)
+                && atlas
+                    .graph
+                    .room(k)
+                    .is_some_and(|r| !r.name.trim().is_empty())
+        })
         .map(|(k, d)| (d, k))
         .collect();
     near.sort_unstable();
