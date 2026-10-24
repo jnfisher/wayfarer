@@ -295,6 +295,47 @@ impl WorldPack {
             .optional()?)
     }
 
+    /// Every room with a command text (`cmdtext`, `kb/navigation.md` "Text blocks"), with the
+    /// text: `(map, room, text)`, in key order.
+    pub fn room_commands(&self) -> Result<Vec<(i64, i64, String)>, Error> {
+        // One pass: the LIKE leaves out the rooms with none before any JSON is read (it is
+        // what keeps `RoomGraph::load` quick), then each text's parts in order.
+        let mut st = self.conn.prepare(
+            "SELECT r.map, r.room, t.part, t.text FROM rooms r \
+             JOIN texts t ON t.number = json_extract(r.raw, '$.cmdtext') \
+             WHERE r.raw NOT LIKE '%\"cmdtext\":0,%' AND json_extract(r.raw, '$.cmdtext') > 0 \
+             ORDER BY r.map, r.room, t.part",
+        )?;
+        let rows = st.query_map([], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, String>(3)?,
+            ))
+        })?;
+        let mut out: Vec<(i64, i64, String)> = Vec::new();
+        // Parts joined from 0 on, stopping at the first missing one (as `text_block`).
+        let mut next_part = 0;
+        for row in rows {
+            let (map, room, part, text) = row?;
+            match out.last_mut() {
+                Some((m, r, t)) if (*m, *r) == (map, room) => {
+                    if part == next_part {
+                        t.push_str(&text);
+                        next_part += 1;
+                    }
+                }
+                _ if part == 0 => {
+                    out.push((map, room, text));
+                    next_part = 1;
+                }
+                _ => next_part = -1,
+            }
+        }
+        Ok(out)
+    }
+
     /// A room's exits, in direction order.
     pub fn exits(&self, map: i64, room: i64) -> Result<Vec<Exit>, Error> {
         let mut st = self.conn.prepare_cached(

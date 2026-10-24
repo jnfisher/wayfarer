@@ -1,5 +1,5 @@
-//! The pack built from `tests/fixtures/world` and the MegaMud paths in `tests/fixtures/megamud`,
-//! shared by the tests that read one.
+//! The pack built from `tests/fixtures/world` and the MegaMud paths in `tests/fixtures/megamud`
+//! and `tests/fixtures/megamud-crossings` (C-052), shared by the tests that read one.
 
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
@@ -20,14 +20,14 @@ pub fn pack_path() -> &'static Path {
     static PATH: OnceLock<PathBuf> = OnceLock::new();
     PATH.get_or_init(|| {
         let export = repo("tests/fixtures/world");
-        let megamud = repo("tests/fixtures/megamud");
         let mut manifest = std::fs::read(export.join("MANIFEST.json")).unwrap();
-        let mut files: Vec<_> = std::fs::read_dir(megamud.join("Default"))
-            .unwrap()
+        let mut files: Vec<_> = ["tests/fixtures/megamud", "tests/fixtures/megamud-crossings"]
+            .iter()
+            .flat_map(|d| std::fs::read_dir(repo(d).join("Default")).unwrap())
             .map(|e| e.unwrap().path())
             .collect();
-        files.sort();
-        for f in files {
+        files.sort_by_key(|f| f.file_name().map(ToOwned::to_owned));
+        for f in &files {
             manifest.extend(std::fs::read(f).unwrap());
         }
         let builder = [
@@ -71,8 +71,15 @@ pub fn pack_path() -> &'static Path {
                 return path;
             }
         }
+        // The fixture directories' paths side by side, as MegaMud's own `Default/` holds them.
+        let megamud = dir.join(format!("megamud-{tag:016x}.{}", std::process::id()));
+        std::fs::create_dir_all(megamud.join("Default")).unwrap();
+        for f in &files {
+            std::fs::copy(f, megamud.join("Default").join(f.file_name().unwrap())).unwrap();
+        }
         let mine = dir.join(format!("world-{tag:016x}.{}.sqlite", std::process::id()));
         wayfarer_world::build(&export, Some(&megamud), &mine).unwrap();
+        let _ = std::fs::remove_dir_all(&megamud);
         std::fs::rename(&mine, &path).unwrap();
         let _ = std::fs::remove_file(&lock);
         path

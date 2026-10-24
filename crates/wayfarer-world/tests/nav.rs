@@ -21,7 +21,8 @@ fn graph() -> (WorldPack, RoomGraph) {
     let g = RoomGraph::load(&pack).unwrap();
     let took = t.elapsed();
     eprintln!("RoomGraph::load: {took:?}");
-    // About 50 ms (this crate is optimised in test builds too); the card's bound is 500 ms.
+    // About 180 ms, of which some 55 ms read the rooms' command texts (C-052); this crate is
+    // optimised in test builds too. The card's bound is 500 ms.
     assert!(took.as_millis() < 500, "RoomGraph::load took {took:?}");
     (pack, g)
 }
@@ -43,12 +44,13 @@ const SMALL_PIER: Key = (1, 2335);
 fn graph_loads_every_room_and_exit() {
     let (pack, g) = graph();
     assert_eq!(g.len(), 26_720);
-    assert_eq!(g.edge_count(), 62_352);
+    // The pack's 62,352 exits and 40 ways through rooms' command texts (C-052).
+    assert_eq!(g.edge_count(), 62_392);
     assert_eq!(g.dangling, 0);
     // Every exit type name in the pack is known (load fails on one that isn't), and the
     // counts by type equal the pack's.
     let mut kinds = std::collections::BTreeMap::new();
-    for e in g.all_edges() {
+    for e in g.all_edges().iter().filter(|e| !e.kind.is_command()) {
         *kinds.entry(e.kind.name()).or_insert(0) += 1;
     }
     let exits = pack.all_exits().unwrap();

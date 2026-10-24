@@ -137,3 +137,34 @@ async fn an_ordinary_lair_is_walked_into() {
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["n", "open n", "n"]);
 }
+
+/// Slum Street, Intersection, the only room of its name; Slum Street west of it, where the
+/// chime is; the Strange Mansion's Entrance the chime puts the character in (C-052).
+const SLUM_INTERSECTION: Key = (1, 1183);
+const SLUM_STREET: Key = (1, 1182);
+const MANSION_ENTRANCE: Key = (1, 65);
+const SPECTRAL_THRONE: Key = (1, 382);
+
+#[tokio::test(start_paused = true)]
+async fn the_spectral_mage_is_found_and_walked_to_by_ringing_the_chime() {
+    let (mut g, run) = Game::start(SessionState::Realm, SLUM_INTERSECTION).await;
+    let found = find(&mut g, "spectral mage").await;
+    let mage = found
+        .iter()
+        .find(|f| f.kind == FoundKind::Monster && f.name == "spectral mage")
+        .unwrap();
+    let throne = &mage.rooms[0];
+    assert_eq!((throne.map, throne.room), SPECTRAL_THRONE);
+    assert!(!throne.no_route, "the chime is a way in");
+
+    // `use chime` is the USE command, which never reaches the room's script.
+    g.expect("w", room(SLUM_STREET));
+    g.expect(
+        "ring chime",
+        format!("You ring the chime...\r\n{}", room(MANSION_ENTRANCE)),
+    );
+    g.walk_to(MANSION_ENTRANCE).await;
+    g.walk_narrated("Arrived: Strange Mansion, Entrance").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["w", "ring chime"]);
+}

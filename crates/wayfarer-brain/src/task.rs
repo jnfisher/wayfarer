@@ -92,7 +92,12 @@ pub(crate) fn why_unreachable(
     let Some((e, at)) = stuck else {
         return "no route known".to_owned();
     };
-    let dir = dir_name(e.dir);
+    // A room command or a crossing goes by its phrase: "the exit `go vortex` of ...".
+    let dir = if e.kind.is_command() {
+        format!("`{}`", e.phrases.first().map_or("", String::as_str))
+    } else {
+        dir_name(e.dir).to_owned()
+    };
     let door = if e.kind == wayfarer_world::ExitType::Gate {
         "gate"
     } else {
@@ -134,7 +139,7 @@ fn gate_need(
         },
         Gate::Ability { .. } => "needs an ability".to_owned(),
         Gate::None if e.kind == ExitType::RemoteAction => "is opened from elsewhere".to_owned(),
-        Gate::None if e.kind == ExitType::Text => "takes a phrase not known".to_owned(),
+        Gate::None if e.kind.is_phrase() => "takes a phrase not known".to_owned(),
         Gate::None => return None,
     })
 }

@@ -4,7 +4,8 @@
 //! actions written before it (`n[search n]`); a phrase (`climb tree`) takes a Text exit to the
 //! room the next step starts in. From that: the Hidden exits a path finds, which a traveller on
 //! that path may search for, and the phrase a Text exit takes where the pack's message has
-//! none.
+//! none. A phrase that takes no Text exit or room command to that room is a crossing (C-052):
+//! a way through the pack does not have, which [`RoomGraph::learn_crossings`] adds.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -32,6 +33,17 @@ pub struct PathKnowledge {
     by_file: HashMap<String, Vec<PathExit>>,
     /// Text exits by (room, direction): the phrases paths type for them, in file order.
     phrases: BTreeMap<(Key, u8), Vec<String>>,
+    /// The phrases typed where the pack has no way through to the next step's room: (room,
+    /// the room it led to, the phrase), each once, in file order.
+    crossings: Vec<(Key, Key, String)>,
+}
+
+/// A path step's phrase as the character types it alone: MegaMud's `@party ` prefix (the whole
+/// party does it) dropped. `None` for another of MegaMud's own `@` commands.
+fn phrase(base: &str) -> Option<String> {
+    let b = base.trim();
+    let b = b.strip_prefix("@party ").map_or(b, str::trim);
+    (!b.is_empty() && !b.starts_with('@')).then(|| b.to_owned())
 }
 
 impl PathKnowledge {
@@ -58,17 +70,31 @@ impl PathKnowledge {
                         actions,
                         phrase: None,
                     }),
-                    None => graph
-                        .edges(*from)
-                        .iter()
-                        .find(|e| e.kind == ExitType::Text && Some(e.to) == next)
-                        .map(|e| PathExit {
+                    None => {
+                        let Some(ph) = phrase(&s.base) else {
+                            continue;
+                        };
+                        let found = graph
+                            .edges(*from)
+                            .iter()
+                            .find(|e| e.kind.is_phrase() && Some(e.to) == next);
+                        if found.is_none()
+                            && let Some(to) = next.filter(|to| to != from)
+                            && !k
+                                .crossings
+                                .iter()
+                                .any(|c| c.0 == *from && c.1 == to && c.2 == ph)
+                        {
+                            k.crossings.push((*from, to, ph.clone()));
+                        }
+                        found.map(|e| PathExit {
                             from: *from,
                             dir: e.dir,
                             kind: e.kind,
                             actions,
-                            phrase: Some(s.base.trim().to_owned()),
-                        }),
+                            phrase: Some(ph),
+                        })
+                    }
                 };
                 if let Some(e) = exit {
                     if let Some(ph) = &e.phrase {
@@ -119,6 +145,11 @@ impl PathKnowledge {
     /// Every Text exit a path takes, with its phrases.
     pub fn text_exits(&self) -> impl Iterator<Item = ((Key, u8), &[String])> {
         self.phrases.iter().map(|(k, v)| (*k, v.as_slice()))
+    }
+
+    /// The crossings the paths know: (room, the room it leads to, the phrase).
+    pub fn crossings(&self) -> impl Iterator<Item = (Key, Key, String)> + '_ {
+        self.crossings.iter().cloned()
     }
 
     /// The paths it knows.
