@@ -306,6 +306,21 @@ walk to at all is left out.
   tree` on the Keep Wall) is not `HKEPLOOP.mp`'s own, and `HKEPLOOP.mp` run from the Hidden
   Keep searches north first. A Text exit whose message has no text takes the phrase a path
   types for it.
+- **Ways through that are not exits** (C-052). A room's command text that teleports is a way
+  through when the line does nothing else that matters: the first line with its pattern, a
+  plain pattern (no wildcard), and only `message`, `adddelay`, `minlevel`, `maxlevel`,
+  `nomonsters` and one `teleport <room> <map>` (`minlevel` and `maxlevel` gate it as a Level
+  exit). `ring chime` on Slum Street (1:1182) puts the character in the Strange Mansion's
+  Entrance (1:65), the only way in for most: the front door is -800, beyond any bash. A line
+  with a `cast`, a `random`, a skill test, an item taken or checked, or an ability or alignment
+  check is left out (120 of the 552 teleport lines of the stock data are ways through). The
+  game reads a room's command text only once its command parser has found no command in the
+  line, so the brain gives each one the first phrase its command table does not claim (`ring
+  chime`, not `use chime`); one with none is not taken. And a step of a verified MegaMud path
+  that types a phrase where the pack has no Text exit or room command to the room the next step
+  starts in is a way through too, with MegaMud's phrase (`go arch`, `pull bone`; `@party `
+  dropped). Both cost a step, never show in `Obvious exits` or on the map, and Flee never takes
+  them; Go to finds what is behind them, and the walker types the phrase and expects the room.
 - Made once per anchor, radius, level, strength, picklocks and doors for the session, so asking
   again is cheap.
 - **Boss status.** A stop that is a boss's lair (a unique monster, `maxalive` 1, back `regenhrs`

@@ -89,9 +89,20 @@ const SHOP_TRAINING: i64 = 8;
 impl Atlas {
     pub fn load(pack: &WorldPack) -> Result<Atlas, wayfarer_world::Error> {
         let mut graph = RoomGraph::load(pack)?;
-        // What MegaMud's paths know: the phrases Text exits with a blank message take.
+        // What MegaMud's paths know: the phrases Text exits with a blank message take, and the
+        // ways through the pack has no exit for (C-052).
         let knowledge = PathKnowledge::load(pack, &graph)?;
         graph.learn_phrases(&knowledge);
+        let crossings = graph.learn_crossings(&knowledge);
+        // A room command's phrase must not read as one of the game's commands, or the game
+        // never gets to the room's script.
+        graph.choose_phrases(|p| crate::commands::classify(p).cmd.is_some());
+        // Again, so the paths' steps see the crossings as the ways through they take.
+        let knowledge = if crossings > 0 {
+            PathKnowledge::load(pack, &graph)?
+        } else {
+            knowledge
+        };
         let shops: HashMap<i64, i64> = pack.shop_types()?.into_iter().collect();
         let mut kinds = HashMap::new();
         for n in graph.nodes() {

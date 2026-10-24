@@ -184,7 +184,9 @@ impl Traveller {
                         || self.found.contains(&at)
                         || self.searchable.contains(&at)
                 }
-                ExitType::Text => !e.command.is_empty(),
+                ExitType::Text | ExitType::RoomCommand | ExitType::PathCommand => {
+                    !e.command.is_empty()
+                }
                 _ => true,
             }
     }

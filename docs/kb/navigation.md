@@ -114,6 +114,16 @@ scripts (`LJNSPEC.C`). A client meets them as typed phrases that do something in
   WCCMSG 233/1093/3383/3384 from the stock export; `LJNSPEC.C:937-1004, 1233-1262, 1575-1635`;
   `LJNUTIL.C:8863-8971`]. (The crypt's `sit throne` at 6:994, text 985, is a different script: with the room
   clear it runs `remoteaction 994 1538 0 8`, which opens that room's exit 8.)
+- **For routes** (wayfarer C-052, from the stock data, 2026-10-24): 140 rooms have command lines
+  that `teleport`, 552 lines. 120 of them only show messages, wait (`adddelay`), check the level
+  (`minlevel`, `maxlevel`) or an empty room (`nomonsters`) before one `teleport <room> <map>`:
+  what they do is known beforehand, so a router can take them. The rest `cast` (358 lines, often a
+  damaging spell on arrival), roll (`random`), test a skill (`testskill`), need or take an item
+  (`roomitem`, `takeitem`, `checkitem`), or check abilities, alignment or a monster. **The Strange
+  Mansion** (1:65 and in) is entered by `ring chime` (or `use chime`, which the USE command takes
+  first) at Slum Street 1:1182 (command text 4087: `message 3177:teleport 65 1:message 837`); its
+  front door north of 1:1182 is locked at -800 and opens only from inside (-20) [C, the stock data;
+  MegaMud's `SLMCSSME.mp` ends with `@party ring chime` there].
 - **ASK and GREET** (`ask_monster_a_question`, `LJNUTIL.C:10088-10256`). The question is upper-cased; the
   monster's talk block is read (first record only) as `KEYWORDS:text number` lines and the first line whose
   keywords occur anywhere in the question (substring, not word) wins; its answer text is shown with the

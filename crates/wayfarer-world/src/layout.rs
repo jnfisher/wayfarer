@@ -74,7 +74,8 @@ fn kind(t: ExitType) -> SegmentKind {
 
 /// Place `center` at (0, 0, 0) and each room within `radius` steps one cell from the room it
 /// was reached from, in its exit's direction (breadth first, exits in direction order).
-/// Remote Action exits don't count. A room whose cell is taken is still returned, flagged
+/// Remote Action exits, room commands and MegaMud's crossings (no direction) don't count. A
+/// room whose cell is taken is still returned, flagged
 /// `collides`, and its branch stops there.
 pub fn layout(graph: &RoomGraph, center: Key, radius: u32) -> Layout {
     let mut out = Layout::default();
@@ -98,7 +99,8 @@ pub fn layout(graph: &RoomGraph, center: Key, radius: u32) -> Layout {
             continue;
         }
         for e in graph.edges(p.key) {
-            if e.kind == ExitType::RemoteAction || placed.contains_key(&e.to) {
+            if e.kind == ExitType::RemoteAction || e.kind.is_command() || placed.contains_key(&e.to)
+            {
                 continue;
             }
             let (dx, dy, dl) = OFFSETS[e.dir as usize];
@@ -122,16 +124,15 @@ pub fn layout(graph: &RoomGraph, center: Key, radius: u32) -> Layout {
     // Segments between placed rooms, a two-way pair once.
     for p in &out.rooms {
         for e in graph.edges(p.key) {
-            if e.kind == ExitType::RemoteAction || e.to == p.key {
+            if e.kind == ExitType::RemoteAction || e.kind.is_command() || e.to == p.key {
                 continue;
             }
             let Some(&j) = placed.get(&e.to) else {
                 continue;
             };
-            let back = graph
-                .edges(e.to)
-                .iter()
-                .find(|b| b.to == p.key && b.kind != ExitType::RemoteAction);
+            let back = graph.edges(e.to).iter().find(|b| {
+                b.to == p.key && b.kind != ExitType::RemoteAction && !b.kind.is_command()
+            });
             if back.is_some() && placed[&p.key] > j {
                 // drawn from the room placed first
                 continue;

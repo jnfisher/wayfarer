@@ -47,7 +47,8 @@ pub(crate) fn dir_name(d: u8) -> &'static str {
         "up",
         "down",
     ];
-    LONG[usize::from(d)]
+    // A room command or a crossing (C-052) has no direction.
+    LONG.get(usize::from(d)).copied().unwrap_or("")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

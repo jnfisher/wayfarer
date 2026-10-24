@@ -801,7 +801,11 @@ impl Walk {
     fn send(&mut self, doing: Doing) -> Action {
         self.doing = doing;
         let step = &self.route[self.next];
-        let dir = mm::DIRS[usize::from(step.dir)];
+        // A room command or a crossing has no direction; only doors are opened by one.
+        let dir = mm::DIRS
+            .get(usize::from(step.dir))
+            .copied()
+            .unwrap_or_default();
         match doing {
             Doing::Move => Action::new(step.command.clone(), Expect::RoomSeen),
             Doing::Open => Action::new(format!("open {dir}"), Expect::DoorOpened),
