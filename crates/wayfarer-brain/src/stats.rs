@@ -2,7 +2,8 @@
 //! the bot's state, saved whenever it changes, and the run from Start to Stop (or a death) with
 //! its kills, deaths, flees, rests and level-ups, and a sample of exp and HP every minute. The
 //! numbers of the run in progress are also kept here, for the snapshot's `run`. Without a store
-//! the run is still counted, in memory only.
+//! the run is still counted, in memory only. The combat numbers (C-050) live here too, across
+//! runs, until the player resets them.
 
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -15,11 +16,15 @@ use wayfarer_store::{
 use wayfarer_world::Key;
 
 use crate::clock::{Clock, rfc3339};
+use crate::combat_stats::CombatTally;
 
 /// How often a run samples the character's exp and HP.
 pub const SAMPLE_EVERY: Duration = Duration::from_secs(60);
 /// How many runs a `stats` message lists.
 pub const STATS_RUNS: usize = 10;
+/// How long the combat numbers may change before the store gets them: a brain restart loses
+/// at most this much.
+pub const COMBAT_SAVE_EVERY: Duration = Duration::from_secs(5);
 /// How many places the snapshot lists.
 pub const PLACES_SHOWN: usize = 10;
 /// The shortest time a run's exp per hour is taken over, so the first kill of a run is not
@@ -68,6 +73,17 @@ pub(crate) struct Ledger {
     custom: std::collections::BTreeMap<String, CustomLoop>,
     /// The last places of the character, newest first: the store's, and those since.
     places: Vec<Place>,
+    /// The combat numbers since the player last reset them.
+    combat: CombatTally,
+    /// When the changed combat numbers go to the store.
+    combat_save: Option<Instant>,
+}
+
+/// A session that goes keeps its last combat numbers.
+impl Drop for Ledger {
+    fn drop(&mut self) {
+        self.save_combat();
+    }
 }
 
 impl Ledger {
@@ -84,8 +100,12 @@ impl Ledger {
             bosses: std::collections::BTreeMap::new(),
             custom: std::collections::BTreeMap::new(),
             places: Vec::new(),
+            combat: CombatTally::default(),
+            combat_save: None,
         };
         ledger.saved = ledger.with(|s, id| s.bot(id)).flatten();
+        let json = ledger.with(|s, id| s.combat_stats(id)).flatten();
+        ledger.combat = CombatTally::load(json.as_deref(), ledger.now());
         ledger.places = ledger
             .with(|s, id| s.places(id, PLACES_SHOWN))
             .unwrap_or_default();
@@ -331,13 +351,62 @@ impl Ledger {
         true
     }
 
-    /// When the next sample is due.
-    pub fn deadline(&self) -> Option<Instant> {
-        self.next_sample
+    /// Zero the combat numbers, from now, and keep that.
+    pub fn reset_combat(&mut self) {
+        let at = self.now();
+        self.combat.reset(at);
+        self.save_combat();
     }
 
-    /// Take a sample if one is due.
+    /// The combat numbers, to count into; the store gets them within [`COMBAT_SAVE_EVERY`].
+    pub fn combat(&mut self, now: Instant) -> &mut CombatTally {
+        if self.combat_save.is_none() {
+            self.combat_save = Some(now + COMBAT_SAVE_EVERY);
+        }
+        &mut self.combat
+    }
+
+    /// The combat numbers for the `stats` message, the round in progress closed if it is over.
+    pub fn combat_wire(&mut self, now: Instant) -> Option<wayfarer_proto::CombatStats> {
+        self.combat.close_round_if_due(now);
+        self.combat.to_wire()
+    }
+
+    /// Close a round that is over, and save the combat numbers if they changed and their time
+    /// has come.
+    fn combat_due(&mut self, now: Instant) {
+        self.combat.close_round_if_due(now);
+        if self.combat.dirty() && self.combat_save.is_none() {
+            self.combat_save = Some(now + COMBAT_SAVE_EVERY);
+        }
+        if self.combat_save.is_some_and(|t| now >= t) {
+            self.save_combat();
+        }
+    }
+
+    /// Save the combat numbers if they changed, a round that is over closed first.
+    fn save_combat(&mut self) {
+        self.combat.close_round_if_due(self.clock.instant());
+        self.combat_save = None;
+        if self.combat.dirty() {
+            let (json, at) = (self.combat.to_json(), self.now());
+            self.with(|s, id| s.save_combat_stats(id, &json, at));
+            self.combat.saved();
+        }
+    }
+
+    /// When the next sample, or the combat numbers' save, is due.
+    pub fn deadline(&self) -> Option<Instant> {
+        self.next_sample
+            .into_iter()
+            .chain(self.combat_save)
+            .chain(self.combat.round_ends())
+            .min()
+    }
+
+    /// Take a sample if one is due, and save the combat numbers if that is.
     pub fn sample(&mut self, exp: Option<i64>, hp: Option<i64>, now: Instant) -> bool {
+        self.combat_due(now);
         let (Some(run), Some(due)) = (&self.run, self.next_sample) else {
             return false;
         };

@@ -24,6 +24,7 @@ mod boss;
 mod brain;
 pub mod character;
 mod clock;
+mod combat_stats;
 pub mod commands;
 mod custom;
 mod errand;

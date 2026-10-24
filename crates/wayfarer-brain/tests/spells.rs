@@ -106,7 +106,8 @@ async fn low_mana_is_fought_with_the_weapon() {
 
 #[tokio::test(start_paused = true)]
 async fn a_mage_with_little_mana_rests_for_it_before_looking_for_a_fight() {
-    let (mut g, run) = in_arena(&[]).await;
+    // Only with a rest-for-mana line: the default (0) never rests for mana (C-051).
+    let (mut g, run) = in_arena_with(&[], "[health]\nrest_mana_below = 30\n").await;
     start_caster(&mut g, "Mage", &MAGE_SPELLS, &[], 35, 2).await;
     g.expect("u", at_hp(&room(NARROW_ROAD), 35));
     g.expect("rest", format!("You are now resting.\r\n{}", resting(35)));
@@ -116,6 +117,18 @@ async fn a_mage_with_little_mana_rests_for_it_before_looking_for_a_fight() {
         .await;
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "spells", "u", "rest"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_mage_with_little_mana_does_not_rest_for_it_by_default() {
+    let (mut g, run) = in_arena(&[]).await;
+    start_caster(&mut g, "Mage", &MAGE_SPELLS, &[], 35, 2).await;
+    g.idle(Duration::from_secs(30)).await;
+    let (_, played) = g.close(run).await;
+    assert!(
+        !played.iter().any(|c| c == "rest" || c == "u"),
+        "{played:?}"
+    );
 }
 
 #[tokio::test(start_paused = true)]

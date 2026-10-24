@@ -829,9 +829,31 @@ The snapshot's `run` has the current run's numbers, recomputed on each event and
 `exp_per_hour` is the exp gained over the wall time since Start (a minute at least, so a first
 kill is not thousands an hour), not since the last kill. `stats_request` answers with the last
 ten runs and the newest one's samples ([protocol.md](protocol.md)); the web UI's stats tab
-shows them ([web-ui.md](web-ui.md) "The stats"). `stats_reset` ends the current run and starts
-another at once with its numbers at zero (the old run stays in the list, its loop carried
-over): the way to measure a stretch of play without stopping the bot. With no run it warns.
+shows them ([web-ui.md](web-ui.md) "The stats"). `stats_reset` zeroes the combat numbers
+(below), and ends the current run and starts another at once with its numbers at zero (the old
+run stays in the list, its loop carried over): the way to measure a stretch of play without
+stopping the bot. With no run it zeroes the combat numbers alone, and the notice says so.
+
+### Combat statistics
+
+C-050, in the shape of MegaMud's Combat tab. Every one of the character's own attack lines
+counts, whether the bot or the player is driving (a party member's blows count on its own
+numbers): `You smack rat for 9 damage!` a hit, with `critically` a crit, with `surprise` a
+backstab (one that also crits counts as a backstab, and among the backstab crits); `You swing
+at rat!` a miss, `… who dodges your attack!` a miss the target dodged; `… glances off its
+armour` a glance (landed, no damage); a cast with damage a cast, and `cast_fail` or
+`cast_resisted` in a fight (the character's auto-combat not quiet, or engaged) a cast that
+missed. A `bs` or `backstab` line sent, the bot's or typed, is a backstab try. Accuracy is
+landed (hit, crit, backstab, glance) of swings; the crit rate is crits (backstabs that crit
+among them) of landed. A **round** is the character's own attack lines within 2.5 s of the
+first (half the game's 5 s round; one round's lines arrive together): its damage, blows and
+spells, is one round's, 0 for a round of misses. Kills, flees and the lowest HP and mana seen
+are counted too.
+
+The numbers are kept per session in the store (`combat_stats`, as JSON), saved within 5 s of
+a change and when the session goes, so a brain restart loses a few seconds at most (and a
+round still going). Stop, Start, a death, a level-up and restarts leave them; only
+`stats_reset` zeroes them. `stats` carries them as `combat`.
 
 ## Errands
 
@@ -1033,10 +1055,12 @@ scroll read since is found the next time.
   is higher (Flee is the higher mode), so the setting only matters above it. Only instant heals
   count: a heal that comes with a buff (righteousness, blood ritual), one over time
   (regeneration, way of the troll) and a resurrection are left out.
-- **Mana rests.** A character that casts what it has rests when mana is below
-  `health.rest_mana_below` (30%), to `health.rest_mana_until` (90%), on the same rules as an HP
-  rest (a quiet room if one is near, a rest started is finished). With both spell settings `off`
-  mana is ignored.
+- **Mana rests.** Off by default (C-051): `health.rest_mana_below` is 0, and then mana plays
+  no part in resting, solo or in a party: a rest is for HP and ends at the HP line whatever
+  the mana. With a line set, a character that casts what it has rests when mana is below it,
+  to `health.rest_mana_until` (90%), on the same rules as an HP rest (a quiet room if one is
+  near, a rest started is finished), and every rest waits for the mana too. With both spell
+  settings `off` mana is ignored.
 - **Blessings** (C-047). The lasting spells the player ticks for a character in the
   Blessings panel (`blessings_save`, kept in the store) are kept on. They are the general
   spells (type 3) with a duration that the character's `spells` screen lists and that are cast
@@ -1117,8 +1141,8 @@ own, one at a time:
   stand where they are.
 - **Party rests.** The leader and the followers with it (joined, in its room, bots running)
   rest together: when any of them falls below its own rest line (`health.rest_below_hp`, or
-  `health.rest_mana_below` for a character that casts), the party rests until every one of
-  them is back to its own rest-until lines. The leader's loop holds; its Recover rests too,
+  `health.rest_mana_below` for a character that casts and has one set), the party rests until
+  every one of them is back to its own rest-until lines (the mana's only with a mana line). The leader's loop holds; its Recover rests too,
   walking the party to a quiet room first when the room spawns (the game's follow brings the
   others), and waits there, narrated "Recover: Resting for Lauren (62%)", while it is rested
   itself. Every follower with the leader that is below its own rest-until lines rests where

@@ -278,9 +278,9 @@ pub const CATALOGUE: &[Setting] = &[
     Setting {
         key: "health.rest_mana_below",
         label: "Rest for mana below",
-        help: "A caster with attack spells rests between fights when mana is below this per cent of the maximum (never in a room that spawns monsters, and not before it has finished with the HP).",
+        help: "A caster rests between fights when mana is below this per cent of the maximum (never in a room that spawns monsters, and not before it has finished with the HP). 0 (the default) never rests for mana: a rest is for HP alone, and ends at the HP line whatever the mana.",
         kind: Kind::Int { min: 0, max: 90 },
-        default: Value::Int(30),
+        default: Value::Int(0),
         unit: "%",
         tier: Tier::Essential,
         group: Group::Health,
@@ -289,7 +289,7 @@ pub const CATALOGUE: &[Setting] = &[
     Setting {
         key: "health.rest_mana_until",
         label: "Rest for mana until",
-        help: "Keep resting until mana is back to this per cent of the maximum.",
+        help: "Keep resting until mana is back to this per cent of the maximum. Only with a rest-for-mana line above 0.",
         kind: Kind::Int { min: 20, max: 100 },
         default: Value::Int(90),
         unit: "%",
@@ -1226,6 +1226,17 @@ mod tests {
         assert_eq!(s.int("health.rest_until_hp"), 85);
         assert_eq!(s.int("movement.search_limit"), 300);
         assert_eq!(s.int("bot.passed_by_minutes"), 5);
+        // No resting for mana unless the player sets a line (C-051), whatever the class.
+        assert_eq!(s.int("health.rest_mana_below"), 0);
+        for class in ["Mage", "Priest", "Warrior", "Ninja"] {
+            for style in ["careful", "balanced", "bold"] {
+                assert!(
+                    !preset(Some(class), style)
+                        .values
+                        .contains_key("health.rest_mana_below")
+                );
+            }
+        }
         assert_eq!(s.source("health.flee_below_hp"), Some(Layer::Default));
         assert_eq!(Settings::resolve(&[]).unwrap(), s);
     }

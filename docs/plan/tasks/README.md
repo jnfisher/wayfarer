@@ -71,9 +71,10 @@ Cards don't repeat these:
 | 2 | M1: parser, events, status; brain process | C-010 and C-011 early (they needed nothing from M0); C-012 to C-019 on 2026-10-19, after John tried M0 and said go |
 | 3 | M2: world and navigation, plus "fight here" pulled forward from M3 and the server-run page | 2026-10-19, after John tried M1 and said go |
 | 4 | M3: the solo bot: Flee, the store, Task mode running a loop, typing beside the bot, replay, the timed run | 2026-10-19, after John accepted M2 |
-| 5 | M4 onward | When the wave before is merged and John has played with it |
+| 5 | M4 onward | Never written: M4 to M6 and M8 were retired on 2026-10-24 (`../09-milestones.md`) |
 | 6 | M7: party play, brought forward (`../10-party-play.md`) | 2026-10-22, after John approved the design |
 | 7 | Party upkeep: shorter rests, member activity, blessings, sneaking | 2026-10-23, at John's request after wave 6 |
+| 8 | Combat statistics; no resting for mana by default | 2026-10-24, at John's request (the milestones after M3 were retired the same day) |
 
 ## Index (wave 1, M0)
 
@@ -147,7 +148,8 @@ Cards don't repeat these:
 Wave 6: C-038; then C-039; then C-040 and C-041 together (UI and brain); then C-042; then
 C-043. **Wave 6 is done** when Penny leads Lauren, Faye and Manuel round a loop for an hour on
 John's rig: they form up by themselves, rest and flee together, a healer keeps the others up,
-and a follower walked away by hand comes back and re-joins.
+and a follower walked away by hand comes back and re-joins. Done: John ran it and accepted
+wave 6 on 2026-10-24.
 
 ## Index (wave 7, party upkeep)
 
@@ -161,6 +163,15 @@ and a follower walked away by hand comes back and re-joins.
 
 Wave 7 was built in one session, one card after another, in one pull request (as wave 6 was);
 C-049 came after it, at John's request, in its own.
+
+## Index (wave 8)
+
+| Id | Title | Tier | Size | Depends | Review |
+|---|---|---|---|---|---|
+| [C-050](C-050-combat-stats.md) | Combat statistics: hits, misses, crits, backstabs, casts and rounds on the stats panel, kept until the player resets them | B | M | C-029, C-048 | |
+| [C-051](C-051-no-rest-for-mana.md) | Rest for mana is off by default: `health.rest_mana_below` defaults to 0 | C | S | — | |
+
+C-051 and C-050 are independent; they run one after the other in one session.
 
 Tier: B Opus, C Sonnet. Size: S under half a day of agent time, M about a day, L two to three
 days.

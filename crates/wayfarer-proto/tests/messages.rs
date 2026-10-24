@@ -3,12 +3,13 @@
 
 use wayfarer_proto::{
     BlessingSpell, Blessings, Bot, BotAction, BotMode, BotState, CharacterState, Chunk, ClientKind,
-    CoinCount, Coins, DecodeError, Encumbrance, ExitKind, ExpSample, Family, Found, FoundKind,
-    FoundRoom, GeneratedLoop, Journey, LoopStop, MapExit, MapRoom, MegaMudLoop, MemberState,
-    MemberStatus, MonsterRuleEntry, MonsterRuleKind, PROTOCOL, ParseCounts, PartyDef, PartyStatus,
-    Position, RoomKey, RoomKind, RuleSource, RunSummary, SessionAction, SessionInfo, SessionState,
-    SettingChange, SettingKind, SettingRow, SettingValue, SettingsFile, SpellPlanItem, Stats,
-    ToClient, ToGateway, Walking, WorldPackInfo, protocol_mismatch,
+    CoinCount, Coins, CombatStats, DamageRow, DecodeError, Encumbrance, ExitKind, ExpSample,
+    Family, Found, FoundKind, FoundRoom, GeneratedLoop, Journey, LoopStop, MapExit, MapRoom,
+    MegaMudLoop, MemberState, MemberStatus, MonsterRuleEntry, MonsterRuleKind, PROTOCOL,
+    ParseCounts, PartyDef, PartyStatus, Position, RoomKey, RoomKind, RuleSource, RunSummary,
+    SessionAction, SessionInfo, SessionState, SettingChange, SettingKind, SettingRow, SettingValue,
+    SettingsFile, SpellPlanItem, Stats, ToClient, ToGateway, Walking, WorldPackInfo,
+    protocol_mismatch,
 };
 
 fn kasimir(state: SessionState, last_seq: u64) -> SessionInfo {
@@ -295,8 +296,34 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                     exp: Some(355),
                     hp: Some(30),
                 }],
+                combat: Some(CombatStats {
+                    since: "2026-10-24T12:00:00Z".into(),
+                    swings: 4,
+                    accuracy_per_mille: 750,
+                    crit_rate_per_mille: 333,
+                    rows: vec![DamageRow {
+                        kind: "hit".into(),
+                        count: 2,
+                        per_mille: 500,
+                        min: 21,
+                        max: 84,
+                        avg_tenths: 525,
+                    }],
+                    misses: 1,
+                    dodged: 0,
+                    glances: 0,
+                    backstab_tries: 0,
+                    backstab_crits: 0,
+                    cast_misses: 0,
+                    cast_accuracy_per_mille: 0,
+                    round: None,
+                    kills: 1,
+                    flees: 0,
+                    lowest_hp: Some(50),
+                    lowest_mana: None,
+                }),
             },
-            r#"{"type":"stats","session":"kasimir","runs":[{"started_at":"2026-10-19T12:00:00Z","minutes":2,"exp_per_hour":540,"kills":2,"deaths":0,"flees":0,"rests":1,"exp_gained":18}],"samples":[{"at":"2026-10-19T12:01:00Z","exp":355,"hp":30}]}"#,
+            r#"{"type":"stats","session":"kasimir","runs":[{"started_at":"2026-10-19T12:00:00Z","minutes":2,"exp_per_hour":540,"kills":2,"deaths":0,"flees":0,"rests":1,"exp_gained":18}],"samples":[{"at":"2026-10-19T12:01:00Z","exp":355,"hp":30}],"combat":{"since":"2026-10-24T12:00:00Z","swings":4,"accuracy_per_mille":750,"crit_rate_per_mille":333,"rows":[{"kind":"hit","count":2,"per_mille":500,"min":21,"max":84,"avg_tenths":525}],"misses":1,"dodged":0,"glances":0,"backstab_tries":0,"backstab_crits":0,"cast_misses":0,"cast_accuracy_per_mille":0,"kills":1,"flees":0,"lowest_hp":50}}"#,
         ),
         (
             ToGateway::SpellPlan {

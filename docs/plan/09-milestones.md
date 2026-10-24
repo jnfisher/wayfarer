@@ -18,6 +18,13 @@ the bot engine comes before party play. Each milestone ends with something to lo
 The terminal UI (M8) needs only the protocol, so it can start any time after M1 if John wants
 it sooner.
 
+**Retired, 2026-10-24.** M0 to M3 and M7 are done (M7 accepted by John on 2026-10-24). The
+work since M3 followed what John found playing, not this list, so M4, M5, M6 and M8 are
+retired as milestones (John, 2026-10-24). Parts of M4 are built already: the settings tab
+with its layers and style presets, attack spells and heals, training, the spell plan and
+banking for it. Work now comes as waves of cards at John's request (`tasks/README.md`, wave 8
+onward); new milestones will be written here when John sets them.
+
 **Parity bar for M3.** On silvermere and on MBBSEmu with the original, over the same hours
 and class: exp/hr within the noise of `progress.py`'s measured baseline, no more deaths, fewer
 position relocations, unclassified-line rate under 0.2%. Then silvermere's soak layer can

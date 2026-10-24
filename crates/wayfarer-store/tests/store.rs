@@ -428,3 +428,24 @@ fn blessings_round_trip_per_session() {
     store.save_blessings("faye", &[], T0 + 1).unwrap();
     assert_eq!(store.blessings().unwrap().len(), 1);
 }
+
+#[test]
+fn combat_stats_round_trip_per_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let (store, _) = Store::open(&path).unwrap();
+    assert_eq!(store.combat_stats("penny").unwrap(), None);
+    store
+        .save_combat_stats("penny", r#"{"since":1}"#, T0)
+        .unwrap();
+    store
+        .save_combat_stats("penny", r#"{"since":2}"#, T0 + 1)
+        .unwrap();
+    drop(store);
+    let (store, _) = Store::open(&path).unwrap();
+    assert_eq!(
+        store.combat_stats("penny").unwrap().as_deref(),
+        Some(r#"{"since":2}"#)
+    );
+    assert_eq!(store.combat_stats("faye").unwrap(), None);
+}

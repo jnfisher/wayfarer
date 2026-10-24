@@ -115,12 +115,18 @@ const MIGRATIONS: &[&str] = &[
          spells TEXT NOT NULL,
          updated_at INTEGER NOT NULL
      );",
+    // 8: each session's combat numbers since the player last reset them (C-050), as JSON.
+    "CREATE TABLE combat_stats (
+         session TEXT PRIMARY KEY,
+         tally TEXT NOT NULL,
+         updated_at INTEGER NOT NULL
+     );",
 ];
 
 /// The schema version this build writes.
 pub const SCHEMA_VERSION: u32 = MIGRATIONS.len() as u32;
 
-const TABLES: [&str; 9] = [
+const TABLES: [&str; 11] = [
     "bot_state",
     "runs",
     "events",
@@ -130,6 +136,8 @@ const TABLES: [&str; 9] = [
     "custom_loops",
     "places",
     "parties",
+    "blessings",
+    "combat_stats",
 ];
 
 #[derive(Debug)]
@@ -703,6 +711,27 @@ impl Store {
             )?;
         }
         Ok(())
+    }
+
+    /// Keep `session`'s combat numbers (the brain's JSON), replacing its last.
+    pub fn save_combat_stats(&self, session: &str, tally: &str, at: i64) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO combat_stats (session, tally, updated_at) VALUES (?1, ?2, ?3)",
+            params![session, tally, at],
+        )?;
+        Ok(())
+    }
+
+    /// `session`'s combat numbers as last kept.
+    pub fn combat_stats(&self, session: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT tally FROM combat_stats WHERE session = ?1",
+                params![session],
+                |r| r.get(0),
+            )
+            .optional()?)
     }
 
     /// Every session's lasting spells, by session.
