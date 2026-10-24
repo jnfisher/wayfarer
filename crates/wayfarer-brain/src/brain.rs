@@ -9,7 +9,8 @@ use sha2::{Digest, Sha256};
 use tokio::time::Instant;
 use wayfarer_parse::{GameTexts, Registry};
 use wayfarer_proto::{
-    CharacterState, ClientKind, PROTOCOL, RoomKind, SessionInfo, ToClient, ToGateway, WorldPackInfo,
+    BotAction, CharacterState, ClientKind, PROTOCOL, RoomKind, SessionInfo, ToClient, ToGateway,
+    WorldPackInfo,
 };
 use wayfarer_settings::{Settings, SettingsDir};
 use wayfarer_store::Store;
@@ -546,6 +547,22 @@ impl Brain {
                 None => out.push(no_session("walk_stop", &session)),
             },
             ToClient::BotControl { session, action } => match self.sessions.get_mut(&session) {
+                // An errand that walks takes a follower out of its party first.
+                Some(_)
+                    if matches!(
+                        action,
+                        BotAction::Train | BotAction::RecoverPile | BotAction::BuySpells
+                    ) && self.parties.is_follower(&session) =>
+                {
+                    self.party_leave(&session, out);
+                    out.push(ToGateway::Notice {
+                        session: Some(session.clone()),
+                        text: "Left the party for the errand".to_owned(),
+                    });
+                    if let Some(s) = self.sessions.get_mut(&session) {
+                        s.bot_control(action, now, out);
+                    }
+                }
                 Some(s) => s.bot_control(action, now, out),
                 None => out.push(no_session("bot_control", &session)),
             },
@@ -677,16 +694,7 @@ impl Brain {
                 }
                 self.parties_tick(out);
             }
-            ToClient::PartyLeave { session } => {
-                match self.parties.leave(&session) {
-                    Some(Ok(changed)) => self.store_parties(&[changed], &[]),
-                    Some(Err(deleted)) => self.store_parties(&[], &[deleted]),
-                    None => out.push(party_warning(&format!(
-                        "party_leave: {session} is in no party"
-                    ))),
-                }
-                self.parties_tick(out);
-            }
+            ToClient::PartyLeave { session } => self.party_leave(&session, out),
             ToClient::PartyJoin { session, party } => {
                 let known = self.sessions.keys().cloned().collect();
                 match self.parties.join(&session, &party, &known) {
@@ -747,6 +755,18 @@ impl Brain {
 
     /// The party coordinator's tick: each session's role, the lines it plans through each
     /// session's executor, and the parties to the UIs when they changed.
+    /// `party_leave`: out of its party, in the game too (`leave`).
+    fn party_leave(&mut self, session: &str, out: &mut Vec<ToGateway>) {
+        match self.parties.leave(session) {
+            Some(Ok(changed)) => self.store_parties(&[changed], &[]),
+            Some(Err(deleted)) => self.store_parties(&[], &[deleted]),
+            None => out.push(party_warning(&format!(
+                "party_leave: {session} is in no party"
+            ))),
+        }
+        self.parties_tick(out);
+    }
+
     fn parties_tick(&mut self, out: &mut Vec<ToGateway>) {
         let now = self.clock.instant();
         let infos = self

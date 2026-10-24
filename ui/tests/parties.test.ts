@@ -4,6 +4,7 @@ import {
   chipMenu,
   draftProblem,
   elsewhere,
+  followerErrands,
   followingName,
   memberLine,
   activityLine,
@@ -116,5 +117,25 @@ describe("activityLine", () => {
     expect(activityLine({ hp: 35, hp_max: 35 })).toBe("100%");
     expect(activityLine(undefined)).toBeNull();
     expect(activityLine({})).toBeNull();
+  });
+});
+
+describe("followerErrands", () => {
+  const items = ["pick_up_all", "equip_all", "train", "recover_pile", "spell_plan", "cancel_errand"].map(
+    (action) => ({ action, label: action, title: "Why", disabled: false }),
+  );
+  it("keeps every errand open to a follower; those that walk leave the party first", () => {
+    const menu = followerErrands(items, "Penny");
+    expect(menu.every((i) => !i.disabled)).toBe(true);
+    const leaving = menu.filter((i) => i.title.startsWith("Leaves Penny's party first")).map((i) => i.action);
+    expect(leaving).toEqual(["train", "recover_pile"]);
+    expect(menu.find((i) => i.action === "train")?.title).toBe("Leaves Penny's party first. Why");
+  });
+  it("leaves a disabled errand's reason alone", () => {
+    const off = items.map((i) => ({ ...i, disabled: true, title: "Stop or pause the bot first" }));
+    expect(followerErrands(off, "Penny")).toEqual(off);
+  });
+  it("changes nothing for a character that follows no one", () => {
+    expect(followerErrands(items, null)).toEqual(items);
   });
 });

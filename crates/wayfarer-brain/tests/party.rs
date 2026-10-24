@@ -394,6 +394,67 @@ async fn a_follower_does_not_run_a_loop_and_leaves_on_request() {
     .await;
 }
 
+/// The follower's next errand warning, or the notice that one started.
+async fn follower_said(g: &mut Gateway) -> String {
+    g.until(|m| match m {
+        ToGateway::Warning { session, text } | ToGateway::Notice { session, text }
+            if session.as_deref() == Some(FOLLOWER)
+                && ["errand", "Train", "Equip"]
+                    .iter()
+                    .any(|w| text.starts_with(w)) =>
+        {
+            Some(text.clone())
+        }
+        _ => None,
+    })
+    .await
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_follower_equips_where_it_stands_in_the_party() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    formed(&mut g).await;
+    g.bot(FOLLOWER, BotAction::Pause).await;
+    g.bot(FOLLOWER, BotAction::EquipAll).await;
+    let started = follower_said(&mut g).await;
+    assert!(started.ends_with("started"), "{started}");
+    assert!(
+        !g.lines.iter().any(|(s, l)| s == FOLLOWER && l == "leave"),
+        "{:?}",
+        g.lines
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_follower_sent_to_train_leaves_the_party_first() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    formed(&mut g).await;
+    g.bot(FOLLOWER, BotAction::Pause).await;
+    g.bot(FOLLOWER, BotAction::Train).await;
+    // It leaves in the game and the party, its only follower gone, is deleted; the errand is
+    // then its own, not refused for following.
+    let (mut left, mut gone, mut said) = (false, false, None);
+    g.until(|m| {
+        match m {
+            ToGateway::InputLine { session, text } if session == FOLLOWER && text == "leave" => {
+                left = true;
+            }
+            ToGateway::Parties { parties } if parties.is_empty() => gone = true,
+            ToGateway::Warning { session, text } | ToGateway::Notice { session, text }
+                if session.as_deref() == Some(FOLLOWER)
+                    && (text.starts_with("Train") || text.starts_with("errand")) =>
+            {
+                said = Some(text.clone());
+            }
+            _ => {}
+        }
+        (left && gone && said.is_some()).then_some(())
+    })
+    .await;
+    let said = said.unwrap();
+    assert!(said.starts_with("Train"), "{said}");
+}
+
 #[tokio::test(start_paused = true)]
 async fn parties_survive_a_restart_and_a_formed_party_is_only_checked() {
     let dir = tempfile::tempdir().unwrap();

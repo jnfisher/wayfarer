@@ -330,7 +330,8 @@ title is the member's state. Click it for **Leave party** (a follower: it sends 
 plays on its own). A character in the realm in no party has a dim `[party]` button instead,
 whose menu offers **Join Penny's party** for each party with room.
 
-**A follower's own walks are off.** Its errands (all but cancelling one) and, in the map
+**A follower's own walks are off.** Its errands stay on: those that walk (train, recover the
+death pile, buy spells) say "Leaves Penny's party first", and do. In the map
 panel, `go`, `walk once`, `run` and clicking a room are disabled, with "Following Penny: it
 goes where the party goes"; the map says so above its tools. Its bot's play and pause work as
 for any character.
