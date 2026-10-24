@@ -408,6 +408,17 @@ pub const CATALOGUE: &[Setting] = &[
         megamud: None,
     },
     Setting {
+        key: "party.help_bash",
+        label: "Help the leader bash doors",
+        help: "A follower in the leader's room bashes the locked door the leader is bashing, out of a fight, until it gives way: each bash is its own roll on Strength, so more bashers open it sooner. A bash costs a moment and now and then a few HP.",
+        kind: Kind::Bool,
+        default: Value::Bool(true),
+        unit: "",
+        tier: Tier::Standard,
+        group: Group::Party,
+        megamud: Some("Help Leader Bash Doors"),
+    },
+    Setting {
         key: "party.wait_rest_minutes",
         label: "Wait for a resting party",
         help: "How long a party's leader holds for a party rest (anyone below its own rest line, until everyone is back to its own rest-until line) before it stops its loop and tells you who has not recovered.",

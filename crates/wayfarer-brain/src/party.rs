@@ -60,6 +60,9 @@ pub(crate) enum PartyRole {
         with_leader: bool,
         /// The monster the leader fights, when it is with the leader.
         assist: Option<String>,
+        /// The locked door the leader is bashing, when it is with the leader: the room and
+        /// the direction.
+        bash: Option<(Key, u8)>,
         /// The party rests (C-045): why. A follower below its own rest-until lines rests with
         /// it, as the leader does.
         rest: Option<String>,
@@ -148,6 +151,14 @@ impl PartyRole {
             _ => None,
         }
     }
+
+    /// The locked door the leader is bashing, for a follower with it: the room and direction.
+    pub fn help_bash(&self) -> Option<(Key, u8)> {
+        match self {
+            PartyRole::Follower { bash, .. } => *bash,
+            _ => None,
+        }
+    }
 }
 
 /// A member's HP and mana against its own lines (`health.*`), as its session sees them.
@@ -215,6 +226,8 @@ pub(crate) struct MemberInfo {
     pub health: Health,
     /// The monster it fights, when it fights one.
     pub target: Option<String>,
+    /// The locked door its walk is bashing: the room and direction.
+    pub bashing: Option<(Key, u8)>,
 }
 
 /// One tick's plan: the lines to send, each session's role, and the parties for the UIs when
@@ -666,6 +679,7 @@ impl Parties {
                         assist: (joined && same_room(fi, l))
                             .then(|| l.target.clone())
                             .flatten(),
+                        bash: (joined && same_room(fi, l)).then_some(l.bashing).flatten(),
                         rest: None,
                         mates: Vec::new(),
                     },
@@ -857,6 +871,7 @@ mod tests {
                 mana_wait: Some(0),
             },
             target: None,
+            bashing: None,
         }
     }
 
@@ -942,6 +957,7 @@ mod tests {
                 rejoin: None,
                 with_leader: false,
                 assist: None,
+                bash: None,
                 rest: None,
                 mates: Vec::new(),
             }
@@ -1363,6 +1379,20 @@ mod tests {
         assert_eq!(plan.roles["lauren"].assist(), Some("giant rat"));
         m.get_mut("lauren").unwrap().room = Some((1, 9));
         assert_eq!(p.plan(&m, now).roles["lauren"].assist(), None);
+    }
+
+    #[tokio::test]
+    async fn a_follower_with_the_leader_sees_the_door_it_bashes() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        let mut m = formed(&mut p, now);
+        assert_eq!(p.plan(&m, now).roles["lauren"].help_bash(), None);
+        m.get_mut("penny").unwrap().bashing = Some(((1, 1), 2));
+        let plan = p.plan(&m, now);
+        assert_eq!(plan.roles["lauren"].help_bash(), Some(((1, 1), 2)));
+        assert_eq!(plan.roles["penny"].help_bash(), None);
+        m.get_mut("lauren").unwrap().room = Some((1, 9));
+        assert_eq!(p.plan(&m, now).roles["lauren"].help_bash(), None);
     }
 
     #[tokio::test]

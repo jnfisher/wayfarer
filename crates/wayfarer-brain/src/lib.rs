@@ -19,6 +19,7 @@
 //! # Ok(()) }
 //! ```
 
+mod bash_help;
 mod bless;
 mod boss;
 mod brain;

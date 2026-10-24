@@ -1197,6 +1197,14 @@ own, one at a time:
   leader fights (if its own monster rules would fight it): the game shares exp only among
   those fighting the monster that dies (`kb/grouping.md` §9). Attacked by another, it fights
   that one.
+- **Helping bash a door.** While the leader's walk bashes a locked door, a follower in its
+  room, out of a fight, bashes the same door (`bash <dir>`, "Helping Penny bash the door
+  north") until it gives way, by *Help the leader bash doors* (`party.help_bash`, Party, on by
+  default; MegaMud's *Help Leader Bash Doors*). Each bash is the basher's own roll on Strength
+  (`kb/navigation.md` "Door / Gate"), so each member at it opens the door sooner. Its own
+  `You bashed the door open.`, or `The door is already open.` (another got it first), ends its
+  help at that door; a failure tries again. The leader's next `bash` then finds the door open
+  and walks through, and the game's follow takes the party with it.
 - **Healing members.** A character with a heal that can be cast on another player (target
   0, 2 or 6: minor healing, mend) or on the party (target 10 or 13: healing rains, divine
   mercy), with `spells.heal` on, heals the other members in its room the way it heals itself,

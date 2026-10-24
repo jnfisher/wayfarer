@@ -331,6 +331,13 @@ impl Walker {
         })
     }
 
+    /// The locked door the walk is bashing: its room and direction, while it is at it.
+    pub fn bashing(&self) -> Option<(Key, u8)> {
+        let w = self.walk.as_ref()?;
+        let step = w.route.get(w.next)?;
+        (w.doing == Doing::Bash).then_some((step.from, step.dir))
+    }
+
     /// Where the walk in progress goes.
     pub fn destination(&self) -> Option<Key> {
         self.walk.as_ref().map(|w| w.to)
