@@ -46,6 +46,12 @@ Buy Int and Wil in parallel (each point = +0.33 SC, +0.5 regen-stat); Wil first 
 | 25 | 440 | 95/95/72 | 128 | 166 | 12 | 208 | 95 |
 | 30 | 540 | 100/100/80 | 141 | 196 | 15 | 261 | 100 |
 
+**Attack or bash at L20** [C formulas from LJNCOMBT.C:338-943, 1226-1427; I: the class ladder's L20 stats, the damage roll taken as min..max, targets kobold warrior, bandit leader, guardian wolf, skeletal warrior, stone golem, slaver, barrow wight, guardian golem, minotaur champion]. Gnome on the ladder above (Str 35, Int 85, Wil 95): carrying
+capacity is 1,680, so the leather kit puts it at 61% load and AV 57. Melee with the darkwood
+staff is about 9 a round by attack and 4 by bash (16 and 13 with no armour at all). Never bash.
+Acid jet (24-68 at L20, about 98% to cast, 8 mana) does about 45 a cast; blaze (38-80, about
+75%, 12 mana) about 44. A Gnome druid is a caster: melee only to save mana, with `a`.
+
 ## 4. Spell progression [C WCCSPELS + scroll items; cast% for the Half-Elf build]
 | role | spell `cmd` | lvl | mana | target | dmg@learn | dmg@cap | dmg/mana | cast%@learn | casts | source (list price ×2 for mk 100) |
 |---|---|---|---|---|---|---|---|---|---|---|
