@@ -38,6 +38,8 @@ struct World {
     rooms: BTreeMap<String, Key>,
     /// HP of 35 where a test set it: the prompts of the game's answers show it.
     hp: BTreeMap<String, i32>,
+    /// The Arena's north door is locked: the leader's bashes fail, the follower's gives way.
+    locked: bool,
 }
 
 /// A room as `look` shows it; the Arena with nothing in it, so nobody stops to fight.
@@ -138,6 +140,30 @@ impl Gateway {
                 name(session)
             )),
             "look" => me(shown(self.world.rooms[session])),
+            "n" if self.world.locked && self.world.rooms[session] == ARENA => {
+                me(said("The door is closed!"))
+            }
+            "bash n" if !self.world.locked => me(said("The door is already open.")),
+            "bash n" if session == LEADER => vec![
+                (
+                    session.to_owned(),
+                    said("Your attempts to bash through fail!"),
+                ),
+                (
+                    other.to_owned(),
+                    said("You see Penny attempt to bash the door to the north."),
+                ),
+            ],
+            "bash n" => {
+                self.world.locked = false;
+                vec![
+                    (session.to_owned(), said("You bashed the door open.")),
+                    (
+                        other.to_owned(),
+                        said("You see Lauren bash the door to the north."),
+                    ),
+                ]
+            }
             t if is_direction(t) => {
                 let here = self.world.rooms[session];
                 let atlas = game::atlas();
@@ -577,4 +603,76 @@ async fn a_sneaking_follower_sneaks_with_the_party() {
     let _ = tokio::time::timeout(Duration::from_secs(30), wait).await;
     let sneaks: Vec<_> = g.lines.iter().filter(|(_, t)| t == "sneak").collect();
     assert_eq!(sneaks, [&(FOLLOWER.to_owned(), "sneak".to_owned())]);
+}
+
+/// A follower with its leader bashes the locked door the leader is bashing (MegaMud's *Help
+/// Leader Bash Doors*), once it gives way no more, and the leader walks through.
+#[tokio::test(start_paused = true)]
+async fn a_follower_helps_the_leader_bash_a_door() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    formed(&mut g).await;
+    g.world.locked = true;
+    g.send(ToClient::WalkTo {
+        session: LEADER.into(),
+        map: BEYOND_ARENA.0,
+        room: BEYOND_ARENA.1,
+        stop_short: None,
+    })
+    .await;
+    // The leader's first `n` finds the door locked; its second goes through.
+    let mut tries = 0;
+    g.until(|m| match m {
+        ToGateway::InputLine { session, text } if session == LEADER && text == "n" => {
+            tries += 1;
+            (tries == 2).then_some(())
+        }
+        _ => None,
+    })
+    .await;
+    let bashes: Vec<_> = g
+        .lines
+        .iter()
+        .filter(|(_, t)| t == "bash n")
+        .map(|(s, _)| s.as_str())
+        .collect();
+    // Lauren's one bash opens it; Penny's next finds it open.
+    assert_eq!(
+        bashes.iter().filter(|s| **s == FOLLOWER).count(),
+        1,
+        "{:?}",
+        g.lines
+    );
+    assert!(!g.world.locked);
+    assert_eq!(bashes.last(), Some(&LEADER), "{:?}", g.lines);
+}
+
+/// With *Help the leader bash doors* off, the follower leaves the door to the leader.
+#[tokio::test(start_paused = true)]
+async fn a_follower_does_not_bash_with_help_off() {
+    let over = wayfarer_settings::Overrides::parse("[party]\nhelp_bash = false\n").unwrap();
+    let settings =
+        wayfarer_settings::Settings::resolve(&[(wayfarer_settings::Layer::Character, &over)])
+            .unwrap();
+    let (mut g, _run) = Gateway::start(brain(None).with_settings(settings)).await;
+    formed(&mut g).await;
+    g.world.locked = true;
+    g.send(ToClient::WalkTo {
+        session: LEADER.into(),
+        map: BEYOND_ARENA.0,
+        room: BEYOND_ARENA.1,
+        stop_short: None,
+    })
+    .await;
+    g.until(|m| match m {
+        ToGateway::Warning { session, text }
+            if session.as_deref() == Some(LEADER) && text.starts_with("Stopped walking") =>
+        {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+    let bashes: Vec<_> = g.lines.iter().filter(|(_, t)| t == "bash n").collect();
+    assert!(bashes.iter().all(|(s, _)| s == LEADER), "{:?}", g.lines);
+    assert_eq!(bashes.len(), 3);
 }

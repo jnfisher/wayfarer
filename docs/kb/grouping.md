@@ -251,7 +251,7 @@ Exp/head = clear exp ÷ party size. "Why group" = what a solo player can't handl
 | Map:room | Area | Type, N, rg | Pool / boss | Steps | Why group |
 |---|---|---|---|---|---|
 | 1:2617 (+1:2637 N4, 1:2633/2647 N3) | Graveyard edges | Lair 5, rg 1 | skeleton 43/55/11, zombie 62/70/14, giant bat 35/40/5 | 34 | Five undead at once: a solo L5 takes ~5×11. A duo splits the hits. |
-| 1:824, 830, 2618, 2635, 2640 | Graveyard gravediggers | placed, 1 h | **gravedigger 130/1500/30** (Neutral: you start the fight) | 29 | 30 max-hit vs L5-8 HP. Two melee + healer kill it fast. Five of them per hour. |
+| Graveyard (gen 1-2 rooms: 1:2635, the Entry and the 59 inner rooms) | Graveyard gravedigger | boss: one alive, 1 h | **gravedigger 130/1500/30** (Neutral: you start the fight) | 29 | 30 max-hit vs L5-8 HP. Two melee + healer kill it fast. Only one exists at a time (`maxalive` 1, `regenhrs` 1), so meet it by chance, not on a loop. |
 | 9:1 → 9:146 | Slimy Sewers + **white jelly** | Normal rooms; boss 3 h | slimes 30-55 hp / 60-125; **white jelly 325/2250/18** | 51 (search w 1:619) | Normal rooms: more spawns with more members (§5). Jelly is a duo kill at L8. |
 | 1:382 | Strange Mansion, spectral mage | placed, 1 h | **200/1200/20** ac40; ancient sword 25% | 35 | ac40 hard to hit solo pre-L8. |
 | 1:1309 | Crypt mummy (bone key) | Lair 1 | 100/200/20 | 67 | The whole party can take the L10 quest route together, but class exits split it: each member takes their own class door (§2). |

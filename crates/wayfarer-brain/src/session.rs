@@ -2848,6 +2848,7 @@ impl Session {
             wait_rest: minutes("party.wait_rest_minutes"),
             health: self.party_health(),
             target: self.bot.fight_target().map(str::to_owned),
+            bashing: self.walker.bashing(),
         }
     }
 

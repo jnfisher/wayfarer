@@ -604,6 +604,8 @@ pub(crate) struct Bot {
     recover: Recover,
     bless: crate::bless::Bless,
     sneak: crate::sneak::Sneak,
+    /// A follower bashing the leader's door with it.
+    bash_help: crate::bash_help::BashHelp,
     /// The gateway is logging the character off under attack: Flee alone runs, then the bot
     /// stops.
     leaving: bool,
@@ -1108,6 +1110,8 @@ impl Bot {
             Some(BotMode::Loot) => self.loot.outcome(action, outcome),
             Some(BotMode::Bless) => self.bless.outcome(action, outcome),
             Some(BotMode::Sneak) => self.sneak.outcome(action, outcome),
+            // Idle's only action: a follower's bash at its leader's door.
+            Some(BotMode::Idle) => self.bash_help.outcome(&outcome),
             _ => {}
         }
         // Flee broke off the fight it could not run from.
@@ -1297,6 +1301,7 @@ impl Bot {
                     }
                     step
                 }
+                BotMode::Idle if let Some(step) = self.bash_help.step(v) => step,
                 BotMode::Idle if self.recover.stranded(v) => {
                     Step::wait("Rested; could not walk home, waiting here")
                 }
