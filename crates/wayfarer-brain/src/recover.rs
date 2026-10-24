@@ -105,19 +105,31 @@ impl Recover {
     }
 }
 
+impl Recover {
+    /// A party member in the room is hurt and a heal is ready (C-043), between fights: with
+    /// something to fight here the heals are Fight's, and taking control would only cast
+    /// again in the round Fight just cast in.
+    fn heal_due(&self, v: &View) -> bool {
+        self.heal_ready.is_none_or(|t| v.now >= t)
+            && crate::policy::quiet(&v.atlas.monsters, v.rules, &v.presence.here)
+            && v.rest_party_heal().is_some()
+    }
+
+    /// Whether a blessing may go ahead of a rest: not before a heal for the party, nor while
+    /// the character itself is under its rest line (it rests first). A cast ends the rest;
+    /// Recover rests again after it.
+    pub fn yields_to_bless(&self, v: &View) -> bool {
+        !self.heal_due(v) && !Self::low(v)
+    }
+}
+
 impl Mode for Recover {
     fn wants(&self, v: &View) -> Option<String> {
         // A fight comes first: Fight takes the character while engaged or attacked.
         if v.engaged || !v.presence.attackers.is_empty() {
             return None;
         }
-        // A party member in the room is hurt and a heal is ready (C-043), between fights: with
-        // something to fight here the heals are Fight's, and taking control would only cast
-        // again in the round Fight just cast in.
-        if self.heal_ready.is_none_or(|t| v.now >= t)
-            && crate::policy::quiet(&v.atlas.monsters, v.rules, &v.presence.here)
-            && v.rest_party_heal().is_some()
-        {
+        if self.heal_due(v) {
             return Some("healing the party".to_owned());
         }
         // Every member of a resting party rests with it (C-042, C-045).
@@ -142,8 +154,7 @@ impl Mode for Recover {
 
     fn step(&mut self, v: &View) -> Step {
         // Between rests, a heal for a hurt member of the party: it shortens a party rest.
-        if self.heal_ready.is_none_or(|t| v.now >= t)
-            && crate::policy::quiet(&v.atlas.monsters, v.rules, &v.presence.here)
+        if self.heal_due(v)
             && let Some(cast) = v.rest_party_heal()
         {
             self.heal_ready = Some(v.now + HEAL_GAP);

@@ -315,6 +315,41 @@ async fn a_ticked_blessing_is_kept_on() {
     assert!(on, "a blessings message with bless on");
 }
 
+/// A blessing that is off goes ahead of a rest once the character is over its rest line: it
+/// rests first from 40%, casts at 71% and rests on.
+#[tokio::test(start_paused = true)]
+async fn a_blessing_goes_ahead_of_a_rest_over_the_rest_line() {
+    let (mut g, run) = in_arena(&[]).await;
+    g.send(ToClient::BlessingsSave {
+        session: ID.into(),
+        spells: vec!["bles".into()],
+    })
+    .await;
+    start_caster(&mut g, "Cleric", &[(2, 4, "bles", "bless")], &[], 14, 20).await;
+    g.expect("u", at_hp(&room(NARROW_ROAD), 14));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(14)));
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
+        .await;
+    // The rest answered, HP comes back over the rest line.
+    g.idle(Duration::from_secs(5)).await;
+    g.expect(
+        "bles",
+        format!(
+            "You cast bless on Aldric!\r\nYou feel lucky!\r\n{}",
+            prompt(25)
+        ),
+    );
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(25)));
+    g.output(&resting(25)).await;
+    g.narrated("Blessing: casting bless").await;
+    g.idle(Duration::from_secs(20)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(
+        played,
+        ["st", "look", "spells", "u", "rest", "bles", "rest"]
+    );
+}
+
 /// A blessing the game will not cast is tried again after a round, and left alone after three
 /// failures in a row.
 #[tokio::test(start_paused = true)]
