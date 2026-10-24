@@ -589,6 +589,55 @@ async fn under_the_hangup_line_with_a_monster_hitting_it_hangs_up_once_and_stops
 }
 
 #[tokio::test(start_paused = true)]
+async fn back_in_the_realm_after_a_hangup_it_waits_for_a_new_blow_before_hanging_up_again() {
+    // Manuel, 2026-10-24: hung up at -18%, then every entry hung up again at once, the rat
+    // that had been hitting him being remembered across the drop though it had not struck.
+    // Now the rat is only here: under the flee line, it flees.
+    let (mut g, run) = fighting().await;
+    g.round("The large giant rat lunges at you!", 3).await;
+    hang_up_and_come_back(&mut g).await;
+    g.expect("st", status(3));
+    g.expect("look", arena(&[RAT], 3));
+    g.expect("u", at_hp(&room(NARROW_ROAD), 3));
+    g.bot(BotAction::Start).await;
+    // On the paused clock: a hang-up instead fails here at once rather than waiting forever.
+    tokio::time::timeout(
+        Duration::from_secs(60),
+        g.narrated("Safe in Newhaven, Narrow Road"),
+    )
+    .await
+    .expect("it fled to safety");
+    g.freeze();
+    let (seen, played) = g.close(run).await;
+    assert_eq!(hangups(&seen), 1, "{:?}", notices(&seen));
+    assert_eq!(played.last().map(String::as_str), Some("u"));
+}
+
+#[tokio::test(start_paused = true)]
+async fn back_in_the_realm_after_a_hangup_a_new_blow_hangs_up_again() {
+    let (mut g, run) = fighting().await;
+    g.round("The large giant rat lunges at you!", 3).await;
+    hang_up_and_come_back(&mut g).await;
+    // The rat strikes before the bot has looked for a way out.
+    g.freeze();
+    g.bot(BotAction::Start).await;
+    g.idle(Duration::from_secs(1)).await;
+    g.round("The large giant rat lunges at you!", 2).await;
+    let (seen, _) = g.close(run).await;
+    assert_eq!(hangups(&seen), 2, "{:?}", notices(&seen));
+}
+
+/// The line dropped: the logon menus, then into the realm again with the rat still there,
+/// not attacking.
+async fn hang_up_and_come_back(g: &mut Game) {
+    g.set_state(SessionState::Menu).await;
+    g.output("[MAJORMUD]: ").await;
+    g.idle(Duration::from_secs(5)).await;
+    g.set_state(SessionState::Realm).await;
+    g.output(&arena(&[RAT], 3)).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn the_hangup_can_be_turned_off_and_has_its_own_line() {
     // Off: HP at 8% hangs nothing up.
     let (mut g, run) = fighting_with("[health]\nhangup = false\n").await;

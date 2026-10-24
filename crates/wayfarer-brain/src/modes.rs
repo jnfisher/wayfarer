@@ -48,6 +48,12 @@ pub(crate) struct Presence {
 }
 
 impl Presence {
+    /// Out of the realm (the line dropped, or logged off): nothing is attacking any more.
+    pub fn left_the_realm(&mut self) {
+        self.attackers.clear();
+        self.pvp.clear();
+    }
+
     pub fn event(&mut self, atlas: &Atlas, ev: &GameEvent) {
         match ev {
             GameEvent::RoomTitle { .. } => {

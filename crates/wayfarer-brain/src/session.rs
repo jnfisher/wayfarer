@@ -556,6 +556,13 @@ impl Session {
             self.synced = false;
             self.leaving = false;
             self.down = false;
+            // Out of the realm nothing is hitting it: back in, only a new blow counts (a
+            // remembered attacker hung Manuel up again at every entry).
+            self.hung_up = false;
+            self.presence.left_the_realm();
+            if self.character.state().in_combat == Some(true) {
+                self.character.combat_lapsed();
+            }
             // Nothing in flight will be answered now.
             self.cancel(out);
             let says = self.bot.stop("the session left the realm", true);
