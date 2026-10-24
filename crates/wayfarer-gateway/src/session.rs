@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, WriteHalf};
 use tokio::net::TcpStream;
-use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 use wayfarer_proto::{Chunk, SessionId, SessionInfo, SessionState};
@@ -144,6 +144,8 @@ pub(crate) struct Slot {
     pub read_buffer: usize,
     pub reconnect: bool,
     pub connector: Arc<dyn Connect>,
+    /// Whether a brain is attached, when the logon waits for one to enter the realm (C-054).
+    pub brain: Option<watch::Receiver<bool>>,
     states: broadcast::Sender<StateChange>,
     state: Mutex<SessionState>,
     /// Why the session closed or was lost, when there is more to say than the state.
@@ -179,6 +181,7 @@ pub(crate) struct SlotParts {
     pub connector: Arc<dyn Connect>,
     pub subscriber_capacity: usize,
     pub states: broadcast::Sender<StateChange>,
+    pub brain: Option<watch::Receiver<bool>>,
 }
 
 impl Slot {
@@ -198,6 +201,7 @@ impl Slot {
             read_buffer: p.read_buffer.max(1),
             reconnect: p.reconnect,
             connector: p.connector,
+            brain: p.brain,
             states: p.states,
             // Never opened: nothing is connected, and on purpose.
             state: Mutex::new(SessionState::Closed),
@@ -349,6 +353,9 @@ impl End {
     }
 }
 
+/// The session's reason while its logon waits at the realm's door for a brain.
+pub const WAITING_FOR_BRAIN: &str = "waiting for a brain to enter the realm";
+
 /// One connection, from connecting until it ends.
 async fn connection(
     slot: &Slot,
@@ -396,6 +403,9 @@ async fn connection(
     }
     let mut logoff: Option<Logoff> = None;
     let mut acks = Vec::new();
+    // The logon's last line (Enter the Realm), held until a brain is attached (C-054).
+    let mut brain = slot.brain.clone();
+    let mut entry: Option<(String, String)> = None;
 
     let (mut reader, mut writer) = tokio::io::split(stream);
     let mut telnet = Telnet::new();
@@ -441,6 +451,14 @@ async fn connection(
                 for action in runner.as_mut().map(|r| r.feed(text)).unwrap_or_default() {
                     match action {
                         Action::Send { text, shown } => {
+                            let enters = runner.as_ref().is_some_and(Runner::waiting_for_realm);
+                            if enters && brain.as_ref().is_some_and(|b| !*b.borrow()) {
+                                tracing::info!(session = %slot.id, "waiting for a brain to enter the realm");
+                                slot.set_reason(Some(WAITING_FOR_BRAIN.to_owned()));
+                                entry = Some((text, shown));
+                                deadline = None;
+                                continue;
+                            }
                             let (bytes, record) = (telnet.encode_line(&text), telnet.encode_line(&shown));
                             if let Err(e) = write(slot, &mut writer, capture, &bytes, &record).await {
                                 return End::Lost(e);
@@ -490,6 +508,23 @@ async fn connection(
                         }
                         slot.sent_line(line, Origin::Script, replay);
                     }
+                }
+            }
+            changed = async { brain.as_mut().expect("held for a brain").changed().await }, if entry.is_some() => {
+                // A gateway gone takes its sender with it: enter, as without the wait.
+                if changed.is_err() {
+                    brain = None;
+                }
+                if brain.as_ref().is_none_or(|b| *b.borrow()) && runner.is_some() {
+                    let (text, shown) = entry.take().expect("held");
+                    let (bytes, record) = (telnet.encode_line(&text), telnet.encode_line(&shown));
+                    if let Err(e) = write(slot, &mut writer, capture, &bytes, &record).await {
+                        return End::Lost(e);
+                    }
+                    tracing::info!(session = %slot.id, "a brain is attached: entering the realm");
+                    slot.set_reason(None);
+                    slot.sent_line(shown, Origin::Script, replay);
+                    deadline = runner.as_ref().map(|r| Instant::now() + r.timeout());
                 }
             }
             item = next_recorded(&mut recorded), if recorded.is_some() => match item {

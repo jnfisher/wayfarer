@@ -27,12 +27,15 @@ pub use wayfarer_proto::{
 };
 pub use wayfarer_world::{Key, WorldPack};
 
-/// The brain tests' settings: `text` (a character file) over `health.rest_quiet_room` on in
-/// "my defaults". The scripts were written for walking to a quiet room to rest, the default
-/// before C-053; a test of resting where the character stands turns it off.
+/// The brain tests' settings: `text` (a character file) over "my defaults" of
+/// `health.rest_quiet_room` on and `bot.start_on_logon` off. The scripts were written for
+/// walking to a quiet room to rest, the default before C-053, and for a bot that starts only
+/// when asked, before C-054; a test of either default turns it back.
 pub fn test_settings(text: &str) -> wayfarer_settings::Settings {
     use wayfarer_settings::{Layer, Overrides, Settings};
-    let quiet = Overrides::parse("[health]\nrest_quiet_room = true\n").unwrap();
+    let quiet =
+        Overrides::parse("[health]\nrest_quiet_room = true\n[bot]\nstart_on_logon = false\n")
+            .unwrap();
     let over = Overrides::parse(text).unwrap();
     Settings::resolve(&[(Layer::Mine, &quiet), (Layer::Character, &over)]).unwrap()
 }

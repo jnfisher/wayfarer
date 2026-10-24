@@ -326,7 +326,10 @@ walk to at all is left out.
   that types a phrase where the pack has no Text exit or room command to the room the next step
   starts in is a way through too, with MegaMud's phrase (`go arch`, `pull bone`; `@party `
   dropped). Both cost a step, never show in `Obvious exits` or on the map, and Flee never takes
-  them; Go to finds what is behind them, and the walker types the phrase and expects the room.
+  them; Go to finds what is behind them. The walker types the phrase and waits for its prompt,
+  then sends `look` (C-055): a teleport prints no room ("You find yourself...elsewhere."), and a
+  phrase where the room has no such script is only speech (`You say "ring chime"`). The room
+  the look shows is checked as a move's: the one it was going to, or a drift and a new plan.
 - Made once per anchor, radius, level, strength, picklocks and doors for the session, so asking
   again is cheap.
 - **Boss status.** A stop that is a boss's lair (a unique monster, `maxalive` 1, back `regenhrs`
@@ -377,6 +380,11 @@ doesn't make sense"):
 | Off, with a route (paused) | `paused` | `resume`: re-sync, then on with the route from wherever the character is | Off, the route dropped |
 | Off, no route | `stopped` | `start`: on where it stands | (nothing to do) |
 
+- **Entering the realm starts it** (C-054, `bot.start_on_logon`, on by default): a session
+  that goes into the realm (logged on, or back after a dropped connection) gets `start`, "Entered
+  the realm: starting the bot", so it fights back, heals, rests and flees at once. A bot a
+  brain before this one left is resumed instead, as it was: one stopped by hand stays stopped
+  across a brain restart.
 - **A Go to or a loop** (`walk_to`, `walk_loop`, `run_loop`) gives the bot that route and turns
   it on, from any state.
 - **A Go to arriving** ends the journey: the bot stays on and plays there, that room its home.
