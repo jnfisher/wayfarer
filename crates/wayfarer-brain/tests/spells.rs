@@ -381,3 +381,138 @@ async fn a_blessing_that_keeps_failing_is_held() {
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "spells", "bles", "bles", "bles"]);
 }
+
+/// A Cleric with bless ticked, blessed and fighting the rat (C-056): the cast before the fight,
+/// then the attack.
+async fn blessed_and_fighting(text: &str) -> (Game, Run) {
+    let (mut g, run) = in_arena_with(&["large giant rat"], text).await;
+    g.send(ToClient::BlessingsSave {
+        session: ID.into(),
+        spells: vec!["bles".into()],
+    })
+    .await;
+    start_caster(
+        &mut g,
+        "Cleric",
+        &BLESSER_SPELLS,
+        &["large giant rat"],
+        35,
+        20,
+    )
+    .await;
+    g.expect("bles", blessed(35));
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Blessing: casting bless").await;
+    g.narrated("Fight: large giant rat").await;
+    g.round("You whap large giant rat for 6 damage!", 35).await;
+    (g, run)
+}
+
+/// The cast of bless, in a fight: it ends auto-combat (`kb/spells.md`).
+fn blessed_in_the_fight(hp: i32) -> String {
+    format!(
+        "You cast bless on Aldric!\r\nYou feel lucky!\r\n*Combat Off*\r\n{}",
+        prompt(hp)
+    )
+}
+
+fn blessed(hp: i32) -> String {
+    format!(
+        "You cast bless on Aldric!\r\nYou feel lucky!\r\n{}",
+        prompt(hp)
+    )
+}
+
+/// Bless wears off in the fight: cast there and then, and the same rat attacked again at once,
+/// with no `look`.
+#[tokio::test(start_paused = true)]
+async fn a_blessing_that_wears_off_in_a_fight_is_cast_and_the_fight_goes_on() {
+    let (mut g, run) = blessed_and_fighting("").await;
+    g.expect("bles", blessed_in_the_fight(30));
+    g.expect("a rat", line(ENGAGED, 30));
+    g.output(&format!(
+        "The large giant rat lunges at you!\r\n{}",
+        line("The effects of bless wear off!", 30)
+    ))
+    .await;
+    g.narrated("Blessing: casting bless").await;
+    g.narrated("Fight: large giant rat").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(
+        played,
+        ["st", "look", "spells", "bles", "a rat", "bles", "a rat"]
+    );
+}
+
+/// Under the heal line when it wears off: the heal first, the fight on, and the blessing in a
+/// later round.
+#[tokio::test(start_paused = true)]
+async fn in_a_fight_a_heal_goes_before_the_blessing() {
+    let (mut g, run) = blessed_and_fighting("").await;
+    g.expect(
+        "mihe",
+        format!(
+            "You cast minor healing, for 5\r\n*Combat Off*\r\n{}",
+            prompt(20)
+        ),
+    );
+    g.expect("a rat", line(ENGAGED, 20));
+    g.expect("bles", blessed_in_the_fight(20));
+    g.expect("a rat", line(ENGAGED, 20));
+    // 15 of 35 is 42%: under the 50% heal line.
+    g.output(&format!(
+        "The large giant rat lunges at you!\r\n{}",
+        line("The effects of bless wear off!", 15)
+    ))
+    .await;
+    g.narrated("Fight: HP 42%, casting minor healing").await;
+    g.narrated("Blessing: casting bless").await;
+    g.narrated("Fight: large giant rat").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(
+        played[3..],
+        ["bles", "a rat", "mihe", "a rat", "bles", "a rat"]
+    );
+}
+
+/// Off, or under the blessing's mana line: nothing is cast in the fight.
+#[tokio::test(start_paused = true)]
+async fn no_blessing_in_a_fight_when_turned_off_or_short_of_mana() {
+    for (text, before) in [
+        // Off: cast before the fight, not in it.
+        ("[spells]\nbless_in_combat = false\n", true),
+        // 20 mana, bless costs 4: 16 left is 80%, under a 90% line; never cast.
+        ("[spells]\nbless_mana_above = 90\n", false),
+    ] {
+        let (mut g, run) = in_arena_with(&["large giant rat"], text).await;
+        g.send(ToClient::BlessingsSave {
+            session: ID.into(),
+            spells: vec!["bles".into()],
+        })
+        .await;
+        start_caster(
+            &mut g,
+            "Cleric",
+            &BLESSER_SPELLS,
+            &["large giant rat"],
+            35,
+            20,
+        )
+        .await;
+        if before {
+            g.expect("bles", blessed(35));
+        }
+        g.expect("a rat", line(ENGAGED, 35));
+        g.narrated("Fight: large giant rat").await;
+        g.output(&format!(
+            "The large giant rat lunges at you!\r\n{}",
+            line("The effects of bless wear off!", 30)
+        ))
+        .await;
+        g.round("You whap large giant rat for 6 damage!", 30).await;
+        g.round("The large giant rat lunges at you!", 30).await;
+        let (_, played) = g.close(run).await;
+        let bles = played.iter().filter(|c| *c == "bles").count();
+        assert_eq!(bles, usize::from(before), "{text}: {played:?}");
+    }
+}

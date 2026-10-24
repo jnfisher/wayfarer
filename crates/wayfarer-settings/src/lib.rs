@@ -528,6 +528,28 @@ pub const CATALOGUE: &[Setting] = &[
         group: Group::Spells,
         megamud: None,
     },
+    Setting {
+        key: "spells.bless_in_combat",
+        label: "Bless in a fight",
+        help: "A ticked blessing that wears off in a fight is cast again there and then, after any heal that is due, and the fight goes on at once with the same monster. Off: blessings are cast between fights only.",
+        kind: Kind::Bool,
+        default: Value::Bool(true),
+        unit: "",
+        tier: Tier::Standard,
+        group: Group::Spells,
+        megamud: Some("Bless During Combat"),
+    },
+    Setting {
+        key: "spells.bless_mana_above",
+        label: "Bless only above mana",
+        help: "A blessing is cast, in a fight or out of one, only when the mana left after it is at least this per cent of the maximum, so it does not spend the mana a heal needs.",
+        kind: Kind::Int { min: 0, max: 90 },
+        default: Value::Int(20),
+        unit: "%",
+        tier: Tier::Advanced,
+        group: Group::Spells,
+        megamud: Some("Mana Bless If Above"),
+    },
 ];
 
 /// The setting declared for `key`.
@@ -1261,6 +1283,9 @@ mod tests {
         assert_eq!(s.int("bot.passed_by_minutes"), 5);
         // No resting for mana unless the player sets a line (C-051), whatever the class.
         assert_eq!(s.int("health.rest_mana_below"), 0);
+        // Blessings are kept on in a fight, above their own mana line (C-056).
+        assert!(s.bool("spells.bless_in_combat"));
+        assert_eq!(s.int("spells.bless_mana_above"), 20);
         for class in ["Mage", "Priest", "Warrior", "Ninja"] {
             for style in ["careful", "balanced", "bold"] {
                 assert!(

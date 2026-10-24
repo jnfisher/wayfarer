@@ -1096,10 +1096,14 @@ scroll read since is found the next time.
   Blessings panel (`blessings_save`, kept in the store) are kept on. They are the general
   spells (type 3) with a duration that the character's `spells` screen lists and that are cast
   on the caster (target 1, 2 or 6) or its party (10 or 13): bless, barkskin, holy aura. A Bless
-  mode, ahead of Recover's rests in the stack, casts one (`bles`, no target word) when
-  nothing attacks and it is not in combat, no party heal is due, the character is not under
-  its own rest line (it rests first), the spell is not believed on and the cast leaves the mana at or above `health.rest_mana_below`;
-  narrated "Blessing: casting bless". A cast ends a rest, the party's too, and Recover rests
+  mode, ahead of Recover's rests in the stack, casts one (`bles`, no target word) when the
+  spell is not believed on and the cast leaves the mana at or above `spells.bless_mana_above`
+  (20%); narrated "Blessing: casting bless". Between fights it waits for no party heal to be
+  due and for the character to be over its own rest line (it rests first). In a fight
+  (`spells.bless_in_combat`, on by default, C-056) it comes after a heal, its own or a
+  member's, and not in a round a spell of ours already went: the cast ends auto-combat, and
+  that `*Combat Off*` is the bot's own, as after a heal, so the same monster is attacked again
+  at once with no `look`. A cast ends a rest, the party's too, and Recover rests
   again after it: a blessing that wore off is not left off for a whole party rest. A cast is on from its prompt for as long as the spell
   lasts at the character's level (`duration + durinc*(L/durlvls)` 5-s rounds, the level held to
   the cap, at least `durlvl*L`), or until its wear-off line (the spell's Descriptive Message,
