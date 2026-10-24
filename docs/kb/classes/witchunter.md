@@ -79,6 +79,27 @@ Dwarf −9% (its +20% encumbrance isn't modelled). Half-Ogre also brings MR 15.
 
 ## 4. Attack style [C combat.md §2]
 - **BASH** every round with the heaviest-damage 2H weapon; Smash at L20 if obtainable. ATTACK vs AC ≳ 0.5-0.6×AV.
+- **Worked at L20** [C formulas from `move_player_to_fighter`/`calculate_attack`, LJNCOMBT.C:338-943,
+  1226-1427; I: the basher-ladder stats Str 97 Agi 62 Int 30, the damage roll taken as min..max,
+  rank and spells left out]. In the scalemail kit (about 48% load, AV 109-115, crit 1) BASH beats
+  ATTACK on every L15-20 target tried, AC 20 to AC 60 (barrow wight) and DR 0 to 12, by 25-45% a
+  round: the ×1.1 then ×3 outweighs half the blows and −15 AV, because the crit chance is 1%.
+  Damage a round averaged over kobold warrior, bandit leader, guardian wolf, skeletal warrior,
+  stone golem, slaver, barrow wight, guardian golem and minotaur champion (attack / bash):
+  Magebane sword 48/68, etched adamant greatsword 46/67, katana 43/62, bone-handled headcutter
+  42/61, mithril cutlass 41/59, three-headed flail 41/57.
+- **ATTACK wins only with a fast blow.** Under 200 energy a blow gets up to +20 crit (halved
+  from 33% load). In the leather kit (about 22% load) the katana costs 177 and gets crit 21:
+  attack 88 against bash 76 a round. Magebane in leather costs 209, just over the line, and
+  bashes (85 against 58).
+- **SMASH** (one blow a round, −25 AV, ×1.2 then ×5, and the monster down with −35 AV and DV
+  while it is smashed every round) averages, on the same targets once the monster is down:
+  etched adamant greatsword 119, headcutter 98, three-headed flail 83, Magebane 80, cutlass 66.
+  The slow heavy weapons gain most. **How to get it** [C text blocks 2940-2942, 9034]: hand
+  **50 orc-heads** (item 1101: 3% from orc captains and orc lieutenants, the 180 HP kind; 1%
+  from black orcs and other orcs) to Aldreth (1:2305, Darkwood Tree, Small House) for a quest
+  token, then at level 20 or more Aldreth gives a Witchunter Smash (Warrior and Ranger at 22,
+  Paladin 25, Cleric and Warlock 27).
 - Rest to ~80% between pulls (regen `max(1,(L+20)·Hea/750)`/tick). No potions, no heals: area choice is the defence.
 
 ## 5. Gear by level band → `corpus/gear.md` [C]
