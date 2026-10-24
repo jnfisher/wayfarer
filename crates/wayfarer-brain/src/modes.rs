@@ -1233,10 +1233,15 @@ impl Bot {
                 return (None, says);
             } else if let Some(r) = self.loot.wants(v) {
                 (BotMode::Loot, r)
+            } else if let Some(r) = self
+                .bless
+                .wants(v)
+                .filter(|_| self.recover.yields_to_bless(v))
+            {
+                // A blessing that wore off goes ahead of a rest, the party's too.
+                (BotMode::Bless, r)
             } else if let Some(r) = self.recover.wants(v) {
                 (BotMode::Recover, r)
-            } else if let Some(r) = self.bless.wants(v) {
-                (BotMode::Bless, r)
             } else if let Some(r) = self.sneak.wants(v) {
                 (BotMode::Sneak, r)
             } else if let Some(r) = self.fight.wants(v) {

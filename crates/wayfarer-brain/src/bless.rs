@@ -1,7 +1,7 @@
 //! Blessings (C-047, docs/brain.md "Blessings"): the lasting spells the player ticked for the
-//! character (bless, barkskin, holy aura) are kept on. Between fights, with nothing attacking,
-//! not resting for the party and with the mana to spare, Bless casts each one the bot does not
-//! believe is on. One is on from a cast that did not fail for as long as it lasts at the
+//! character (bless, barkskin, holy aura) are kept on. Between fights, with nothing attacking
+//! and with the mana to spare, Bless casts each one the bot does not believe is on, ahead of a
+//! rest (the party's too) unless the character is under its own rest line. One is on from a cast that did not fail for as long as it lasts at the
 //! character's level (`BuffDef::rounds`), or until its wear-off line; off at a death. A cast
 //! that fails is tried again after a round; [`FAILS`] in a row hold that spell for [`HOLD`]
 //! (it may be on already and not renewable).
@@ -108,8 +108,8 @@ impl Bless {
 
 impl Mode for Bless {
     fn wants(&self, v: &View) -> Option<String> {
-        // A cast ends a rest, so a party rest waits for its end.
-        if v.engaged || !v.presence.attackers.is_empty() || v.party.party_rest().is_some() {
+        // Not in a fight; a rest, the party's too, gives way to it (`Recover::yields_to_bless`).
+        if v.engaged || !v.presence.attackers.is_empty() {
             return None;
         }
         self.due(v).map(|k| format!("{} is off", k.def.name))
