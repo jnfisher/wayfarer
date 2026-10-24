@@ -10,7 +10,7 @@ use std::path::Path;
 
 use game::arena::*;
 use game::*;
-use wayfarer_brain::{Brain, GIVE_UPS, InstantClock, LEG_TRIES, MAX_BASHES, Store};
+use wayfarer_brain::{Brain, GIVE_UPS, InstantClock, LEG_PAUSE, LEG_TRIES, MAX_BASHES, Store};
 use wayfarer_proto::{BotAction, BotMode, BotState};
 
 const NEWHAVEN_LOOP: &str = "1:2140:8:doors:0";
@@ -456,6 +456,29 @@ async fn a_stop_it_cannot_get_to_is_passed_by_after_three_legs() {
         .filter(|s| s.starts_with("Walking to Dungeon, Entrance"))
         .count();
     assert_eq!(legs, 3, "{said:?}");
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "n", "n", "n"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_leg_that_fails_is_tried_again_only_after_a_pause() {
+    // C-053: a walk that keeps failing at once must not flood the game. Three refused legs
+    // to the Dungeon Entrance take two pauses at least, each said.
+    let (mut g, run) = ready_with(arena(&[], 35)).await;
+    g.expect("look", arena(&[], 35));
+    for _ in 0..3 {
+        g.expect("n", says("You may not enter that room while in combat."));
+    }
+    let started = tokio::time::Instant::now();
+    g.run_loop(&[SMALL_CAVERN]).await;
+    let said = g.narrated("Waiting for respawns: next in 1 m").await;
+    let took = started.elapsed();
+    assert!(took >= 2 * LEG_PAUSE, "{took:?}");
+    assert!(
+        said.iter()
+            .any(|s| s == "Loop Newhaven: did not get to stop 2/3; trying again in a moment"),
+        "{said:?}"
+    );
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "n", "n", "n"]);
 }

@@ -12,7 +12,6 @@ use game::arena::*;
 use game::*;
 use wayfarer_brain::{Brain, FixedClock};
 use wayfarer_proto::BotAction;
-use wayfarer_settings::{Layer, Overrides, Settings};
 
 /// The capture's status screen as a character of `class` with `mana` of 20.
 fn caster_status(class: &str, hp: i32, mana: i32) -> String {
@@ -56,8 +55,7 @@ async fn start_caster(
 
 /// The Arena with the brain's settings from `text`, its first re-sync done.
 async fn in_arena_with(monsters: &[&str], text: &str) -> (Game, Run) {
-    let over = Overrides::parse(text).unwrap();
-    let settings = Settings::resolve(&[(Layer::Character, &over)]).unwrap();
+    let settings = test_settings(text);
     let clock = Arc::new(FixedClock(UNIX_EPOCH + Duration::from_secs(T0)));
     let brain = Brain::new(world(), clock, None).with_settings(settings);
     let (mut g, run) = Game::start_brain(SessionState::Realm, arena(monsters, 35), brain).await;

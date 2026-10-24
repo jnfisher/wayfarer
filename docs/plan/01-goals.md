@@ -63,7 +63,7 @@ a card wants to reuse a prototype behaviour, the card says so and why.
 
 | Prototype rule | In the client |
 |---|---|
-| Never rest in a room that spawns monsters | Setting, on by default |
+| Never rest in a room that spawns monsters | Setting (`health.rest_quiet_room`), off by default: spawns are slow enough to rest anywhere, lairs too (John, 2026-10-24) |
 | Flee by a confirmed exit to a room with no spawns; keep running if followed | How Flee works; distance and direction are settings |
 | Death pile: one recovery attempt, then abandon | Setting: never, once (default), or until recovered |
 | SYSOP GOTO to named towns only | Setting for sysop characters, off by default; towns only |

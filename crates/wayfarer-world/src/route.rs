@@ -174,6 +174,7 @@ impl Traveller {
             Gate::Cast { .. } => self.allows(Category::Cast),
             Gate::Key { item } => self.allows(Category::Key) || self.keys.contains(&item),
             Gate::Ability { .. } => self.allows(Category::Ability),
+            Gate::Unnamed => false,
         };
         gate_ok
             && match e.kind {

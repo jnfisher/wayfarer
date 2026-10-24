@@ -171,9 +171,10 @@ C-049 came after it, at John's request, in its own.
 | [C-050](C-050-combat-stats.md) | Combat statistics: hits, misses, crits, backstabs, casts and rounds on the stats panel, kept until the player resets them | B | M | C-029, C-048 | |
 | [C-051](C-051-no-rest-for-mana.md) | Rest for mana is off by default: `health.rest_mana_below` defaults to 0 | C | S | — | |
 | [C-052](C-052-room-commands.md) | Room commands and MegaMud's crossings are ways through: `ring chime` takes Go to into the Strange Mansion | B | M | C-036, C-037 | |
+| [C-053](C-053-lost-and-rests.md) | Lost in a player's house: a room the map lacks is unknown, failed legs pause, `par` only when apart; rests where it stands by default | B | M | C-030, C-039 | |
 
-C-051 and C-050 are independent; they run one after the other in one session. C-052 came after
-them, at John's request, in its own.
+C-051 and C-050 are independent; they run one after the other in one session. C-052 and C-053 came after
+them, at John's request, each in its own.
 
 Tier: B Opus, C Sonnet. Size: S under half a day of agent time, M about a day, L two to three
 days.

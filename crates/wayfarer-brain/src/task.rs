@@ -46,6 +46,10 @@ pub const LEG_TRIES: u32 = 3;
 /// Stops passed by in a row, with no stop reached and nothing killed between, before the bot
 /// stops itself: the loop cannot go round.
 pub const GIVE_UPS: u32 = 3;
+/// After a leg that ended away from its stop, how long before the next leg starts (C-053): a
+/// walk that keeps failing at once (a position the game does not bear out) must not flood the
+/// game with moves.
+pub const LEG_PAUSE: Duration = Duration::from_secs(5);
 
 /// How long until a stop passed by at `passed_at` is tried again ([`PASSED_FOR`]); zero when
 /// it never was, or the time is up.
@@ -138,6 +142,7 @@ fn gate_need(
             None => "needs a key".to_owned(),
         },
         Gate::Ability { .. } => "needs an ability".to_owned(),
+        Gate::Unnamed => "leads into a player's house".to_owned(),
         Gate::None if e.kind == ExitType::RemoteAction => "is opened from elsewhere".to_owned(),
         Gate::None if e.kind.is_phrase() => "takes a phrase not known".to_owned(),
         Gate::None => return None,
@@ -207,6 +212,9 @@ pub(crate) struct Task {
     phase: Phase,
     /// Legs to the stop at `index` begun since it last arrived or fought.
     tries: u32,
+    /// When the last leg was seen to have ended away from its stop: the next waits
+    /// [`LEG_PAUSE`] from then.
+    failed_at: Option<Instant>,
     /// Lines to narrate before the step's own: the stops passed by.
     notes: Vec<String>,
     /// Waiting for respawns with HP to top up: Recover rests first.
@@ -256,6 +264,7 @@ impl Task {
             stops,
             phase: Phase::Going,
             tries: 0,
+            failed_at: None,
             notes: Vec::new(),
             rest: false,
             unreachable_said: None,
@@ -407,7 +416,8 @@ impl Task {
             .filter(|d| !d.is_zero())
             .min()
             .map(|d| now + d);
-        quiet.into_iter().chain(respawn).min()
+        let retry = self.failed_at.map(|t| t + LEG_PAUSE).filter(|&t| t > now);
+        quiet.into_iter().chain(respawn).chain(retry).min()
     }
 
     fn ready_in(&self, now: Instant, i: usize) -> Duration {
@@ -430,6 +440,7 @@ impl Task {
         self.index = i;
         self.phase = Phase::Going;
         self.tries += 1;
+        self.failed_at = None;
         let s = &self.stops[i];
         let steps = v
             .room
@@ -643,6 +654,18 @@ impl Mode for Task {
                     self.tries = 0;
                 }
                 Phase::Going => {}
+            }
+            if self.tries > 0 {
+                // The last leg ended away from the stop: a pause before the next.
+                let at = *self.failed_at.get_or_insert(v.now);
+                if v.now < at + LEG_PAUSE {
+                    return Step::wait(format!(
+                        "Loop {}: did not get to stop {}; trying again in a moment",
+                        self.name,
+                        self.nth(self.index)
+                    ))
+                    .doing("waiting");
+                }
             }
             if self.tries >= self.leg_tries {
                 let s = &self.stops[self.index];

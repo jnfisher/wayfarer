@@ -843,7 +843,13 @@ impl Walk {
             return Err(format!("{why}; gave up after {MAX_REPLANS} replans"));
         }
         let Some(from) = pos.best() else {
-            return Err(format!("{why}; the position is unknown"));
+            // In a room the map lacks (a player's house): say which.
+            return Err(match pos.title.as_deref() {
+                Some(t) if atlas.graph.rooms_named(t).is_empty() => {
+                    format!("{why}; in {t}, a room not on the map")
+                }
+                _ => format!("{why}; the position is unknown"),
+            });
         };
         // A walk stopping short of a boss lair never plans through it.
         let lair = self.short_of.as_ref().map(|l| l.key);
