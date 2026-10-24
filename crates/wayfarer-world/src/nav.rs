@@ -41,6 +41,12 @@ pub enum ExitType {
     Cast,
     Ability,
     SpellTrap,
+    /// Not an exit of the pack: a line of the room's command text that teleports (`ring chime`
+    /// on Slum Street, C-052), the phrase typed.
+    RoomCommand,
+    /// Not an exit of the pack: a phrase a MegaMud path types where the pack has no way
+    /// through to the room its next step starts in (C-052).
+    PathCommand,
 }
 
 const EXIT_TYPES: [ExitType; 25] = {
@@ -94,12 +100,34 @@ impl ExitType {
     }
 
     pub fn name(self) -> &'static str {
-        mm::EXIT_TYPES[self as usize]
+        match self {
+            ExitType::RoomCommand => "Room Command",
+            ExitType::PathCommand => "Path Command",
+            _ => mm::EXIT_TYPES[self as usize],
+        }
+    }
+
+    /// Taken by typing a phrase, not a direction: Text exits, room commands and MegaMud's
+    /// crossings.
+    pub fn is_phrase(self) -> bool {
+        matches!(
+            self,
+            ExitType::Text | ExitType::RoomCommand | ExitType::PathCommand
+        )
+    }
+
+    /// Not an exit at all, but a way through C-052 adds: never listed, never drawn, and its
+    /// `dir` is past the ten directions.
+    pub fn is_command(self) -> bool {
+        matches!(self, ExitType::RoomCommand | ExitType::PathCommand)
     }
 
     pub fn listing(self) -> Listing {
         match self {
-            ExitType::Text | ExitType::RemoteAction => Listing::Never,
+            ExitType::Text
+            | ExitType::RemoteAction
+            | ExitType::RoomCommand
+            | ExitType::PathCommand => Listing::Never,
             ExitType::Hidden | ExitType::Trap | ExitType::SpellTrap | ExitType::Timed => {
                 Listing::Maybe
             }
@@ -195,13 +223,15 @@ pub enum Gate {
 pub struct Edge {
     pub from: Key,
     pub to: Key,
-    /// 0-9: N S E W NE NW SE SW U D.
+    /// 0-9: N S E W NE NW SE SW U D; a room command or a MegaMud crossing numbers on from
+    /// [`COMMAND_DIRS`].
     pub dir: u8,
     pub kind: ExitType,
     /// What to type: `n` for a direction, the phrase for a Text exit (empty for a Text exit
-    /// whose message has no text, which can't be taken).
+    /// whose message has no text, or a room command with no phrase the game would read as
+    /// one, which can't be taken).
     pub command: String,
-    /// Every phrase a Text exit takes (its message's texts); empty for other exits.
+    /// Every phrase a Text exit, a room command or a crossing takes; empty for other exits.
     pub phrases: Vec<String>,
     pub gate: Gate,
     /// Doors, gates and key doors, with the pack's lock state.
@@ -217,17 +247,85 @@ impl Edge {
     }
 
     /// Whether typing `command` takes this exit: its direction (any spelling) for an exit
-    /// walked by direction, or one of a Text exit's phrases (whole line, any case).
+    /// walked by direction, or one of its phrases (whole line, any case) for a Text exit, a
+    /// room command or a crossing.
     pub fn taken_by(&self, command: &str) -> bool {
         match self.kind {
             ExitType::RemoteAction => false,
-            ExitType::Text => {
+            k if k.is_phrase() => {
                 let c = command.trim();
                 self.phrases.iter().any(|p| p.eq_ignore_ascii_case(c))
             }
             _ => mm::direction(command) == Some(self.dir as usize),
         }
     }
+}
+
+/// The first `dir` of the ways through that are not exits ([`ExitType::is_command`]).
+pub const COMMAND_DIRS: u8 = 10;
+
+/// The clauses a room command line may have and still be a way through: what they do can be
+/// told beforehand (`kb/navigation.md` "Text blocks"). Anything else (a `cast`, a `random`, a
+/// skill test, an item taken or checked, an ability or alignment check) leaves the line out.
+const PLAIN_CLAUSES: [&str; 6] = [
+    "message",
+    "adddelay",
+    "minlevel",
+    "maxlevel",
+    "nomonsters",
+    "teleport",
+];
+
+/// The ways through a room's command text gives (C-052): for each line that is the first with
+/// its pattern, a plain pattern (no wildcard) and only [`PLAIN_CLAUSES`] with one `teleport
+/// <room> <map>`, the room it puts the character in (on `map`, its own map when 0 or left
+/// out), gated by `minlevel` / `maxlevel`. Lines to the same room with the same gate are one
+/// way with every pattern as a phrase, in text order.
+pub fn room_commands(map: i64, text: &str) -> Vec<(Key, Gate, Vec<String>)> {
+    let mut seen: Vec<String> = Vec::new();
+    let mut out: Vec<(Key, Gate, Vec<String>)> = Vec::new();
+    for line in text.lines() {
+        let mut clauses = line.split(':');
+        let pattern = clauses.next().unwrap_or("").trim().to_lowercase();
+        if pattern.is_empty() || seen.contains(&pattern) {
+            continue;
+        }
+        seen.push(pattern.clone());
+        if pattern.contains(['*', '?']) {
+            continue;
+        }
+        let (mut to, mut min, mut max, mut plain) = (None, 0, 0, true);
+        for c in clauses {
+            let mut words = c.split_whitespace();
+            let Some(kw) = words.next().map(str::to_lowercase) else {
+                continue;
+            };
+            let num = |w: Option<&str>| w.and_then(|w| w.parse::<i64>().ok());
+            match kw.as_str() {
+                "teleport" if to.is_none() => match (num(words.next()), num(words.next())) {
+                    (Some(room), m) => to = Some((m.filter(|&m| m != 0).unwrap_or(map), room)),
+                    _ => plain = false,
+                },
+                "minlevel" => min = num(words.next()).unwrap_or(0),
+                "maxlevel" => max = num(words.next()).unwrap_or(0),
+                k if PLAIN_CLAUSES.contains(&k) && k != "teleport" => {}
+                _ => plain = false,
+            }
+        }
+        let (Some(to), true) = (to, plain) else {
+            continue;
+        };
+        let gate = if min == 0 && max == 0 {
+            Gate::None
+        } else {
+            Gate::Level { min, max }
+        };
+        match out.iter_mut().find(|(t, g, _)| *t == to && *g == gate) {
+            Some((_, _, phrases)) => phrases.push(pattern),
+            None => out.push((to, gate, vec![pattern])),
+        }
+    }
+    out
 }
 
 /// A set of directions (bit `d` for direction `d`).
@@ -310,6 +408,11 @@ impl RoomGraph {
             .map(|(i, r)| ((r.map, r.room), i as u32))
             .collect();
         let mut phrases: HashMap<i64, Vec<String>> = HashMap::new();
+        let commands: HashMap<Key, String> = pack
+            .room_commands()?
+            .into_iter()
+            .map(|(m, r, t)| ((m, r), t))
+            .collect();
         let mut edges = Vec::with_capacity(exits.len());
         let mut nodes = Vec::with_capacity(rooms.len());
         let mut dangling = 0;
@@ -392,6 +495,28 @@ impl RoomGraph {
                     gate,
                     door,
                     params: p,
+                    to_ix,
+                });
+            }
+            // The ways through the room's command text, after its exits.
+            let ways = commands
+                .get(&key)
+                .map_or_else(Vec::new, |t| room_commands(key.0, t));
+            for (dir, (to, gate, phrases)) in (COMMAND_DIRS..).zip(ways) {
+                let Some(&to_ix) = index.get(&to) else {
+                    dangling += 1;
+                    continue;
+                };
+                edges.push(Edge {
+                    from: key,
+                    to,
+                    dir,
+                    kind: ExitType::RoomCommand,
+                    command: phrases[0].clone(),
+                    phrases,
+                    gate,
+                    door: None,
+                    params: [0; 4],
                     to_ix,
                 });
             }
@@ -485,6 +610,81 @@ impl RoomGraph {
         learned
     }
 
+    /// Give each room command the first of its phrases `reads_as_command` turns down: the game
+    /// tries a room's command text only after its command parser found no command in the line
+    /// (`use chime` is the USE command; `ring chime` reaches the script). With none, the room
+    /// command can't be taken. Returns how many have a phrase.
+    pub fn choose_phrases(&mut self, reads_as_command: impl Fn(&str) -> bool) -> usize {
+        let mut usable = 0;
+        for e in self
+            .edges
+            .iter_mut()
+            .filter(|e| e.kind == ExitType::RoomCommand)
+        {
+            e.command = e
+                .phrases
+                .iter()
+                .find(|p| !reads_as_command(p))
+                .cloned()
+                .unwrap_or_default();
+            usable += usize::from(!e.command.is_empty());
+        }
+        usable
+    }
+
+    /// Add MegaMud's crossings (`PathKnowledge::crossings`) as ways through where the room has
+    /// none to that room taking the phrase: each a [`ExitType::PathCommand`] numbered after the
+    /// room's other ways. Returns how many it added.
+    pub fn learn_crossings(&mut self, k: &crate::knowledge::PathKnowledge) -> usize {
+        let mut added: HashMap<u32, Vec<Edge>> = HashMap::new();
+        for (from, to, phrase) in k.crossings() {
+            let (Some(&i), Some(&to_ix)) = (self.index.get(&from), self.index.get(&to)) else {
+                continue;
+            };
+            let have =
+                |e: &Edge| e.to == to && (e.taken_by(&phrase) || e.kind == ExitType::RoomCommand);
+            let mine = added.entry(i).or_default();
+            if self.edges_at(i).iter().any(have) || mine.iter().any(have) {
+                continue;
+            }
+            let dir = self
+                .edges_at(i)
+                .iter()
+                .chain(mine.iter())
+                .map(|e| e.dir + 1)
+                .max()
+                .unwrap_or(0)
+                .max(COMMAND_DIRS);
+            mine.push(Edge {
+                from,
+                to,
+                dir,
+                kind: ExitType::PathCommand,
+                command: phrase.clone(),
+                phrases: vec![phrase],
+                gate: Gate::None,
+                door: None,
+                params: [0; 4],
+                to_ix,
+            });
+        }
+        let count = added.values().map(Vec::len).sum();
+        if count == 0 {
+            return 0;
+        }
+        let old = std::mem::take(&mut self.edges);
+        for (i, node) in self.nodes.iter_mut().enumerate() {
+            let start = self.edges.len() as u32;
+            self.edges
+                .extend_from_slice(&old[node.edges.start as usize..node.edges.end as usize]);
+            if let Some(more) = added.remove(&(i as u32)) {
+                self.edges.extend(more);
+            }
+            node.edges = start..self.edges.len() as u32;
+        }
+        count
+    }
+
     /// The rooms with exactly this name, in key order.
     pub fn rooms_named(&self, name: &str) -> Vec<Key> {
         self.by_name.get(name).map_or_else(Vec::new, |v| {
@@ -541,6 +741,45 @@ mod tests {
             assert_eq!(t.name(), *name);
         }
         assert_eq!(ExitType::from_name("Portal"), None);
+        assert_eq!(ExitType::RoomCommand.name(), "Room Command");
+        assert_eq!(ExitType::PathCommand.listing(), Listing::Never);
+    }
+
+    #[test]
+    fn a_room_command_that_only_teleports_is_a_way_through() {
+        // Slum Street, 1:1182 (text 4087): both lines to the Entrance, one way.
+        let chime = "use chime:message 3177:teleport 65 1:message 837\n\
+                     ring chime:message 3177:teleport 65 1:message 837\n\n";
+        assert_eq!(
+            room_commands(1, chime),
+            [(
+                (1, 65),
+                Gate::None,
+                vec!["use chime".into(), "ring chime".into()]
+            )]
+        );
+        // The vortex at 3:25: gated by level; the map left out is the room's own.
+        let vortex = "go vortex:adddelay 5:minlevel 20 1220:message 1205:teleport 681 3:message 1221\n\
+                      enter vortex:adddelay 5:minlevel 20 1220:message 1205:teleport 681\n";
+        assert_eq!(
+            room_commands(3, vortex),
+            [(
+                (3, 681),
+                Gate::Level { min: 20, max: 0 },
+                vec!["go vortex".into(), "enter vortex".into()]
+            )]
+        );
+    }
+
+    #[test]
+    fn a_room_command_that_does_more_is_left_out() {
+        // A cast, a random, a wildcard, and a second line for a pattern already seen.
+        let text = "dive pool:message 1943:teleport 121 12:cast 512\n\
+                    orc invasion:random 4659:teleport 164 1\n\
+                    jump *:teleport 5 1\n\
+                    push panel:failability 3:message 1\n\
+                    push panel:teleport 9 1\n";
+        assert!(room_commands(1, text).is_empty());
     }
 
     #[test]
