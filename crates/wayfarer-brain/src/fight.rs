@@ -240,7 +240,7 @@ impl Mode for Fight {
                 self.stall = Stall::default();
             }
             GameEvent::YouHit { target, .. } => self.swing(target, true, false, now),
-            GameEvent::YouMiss { target } => self.swing(target, false, false, now),
+            GameEvent::YouMiss { target, .. } => self.swing(target, false, false, now),
             GameEvent::SwingGlanced { target } => self.swing(target, false, true, now),
             _ => {}
         }

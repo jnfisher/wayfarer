@@ -355,14 +355,21 @@ impl View<'_> {
             return false;
         };
         let after = mana - spell.mana;
-        let fallback =
-            || after * 100 >= max * i64::from(self.setting("health.rest_mana_below", 30));
+        let fallback = || after * 100 >= max * i64::from(self.setting("health.rest_mana_below", 0));
         let heal = spell.average(self.level) as i64;
         let mana_until = max * i64::from(self.setting("health.rest_mana_until", 90)) / 100;
         let (Some(mana_rate), Some((hp, hp_max))) = (self.regen.mana, self.hp_points) else {
             return fallback();
         };
-        let mana_wait = |m: i64| crate::regen::wait_secs(mana_until - m, mana_rate);
+        // A caster with no rest-for-mana line does not wait for its mana.
+        let rests_for_mana = self.rest_mana_below() > 0;
+        let mana_wait = |m: i64| {
+            if rests_for_mana {
+                crate::regen::wait_secs(mana_until - m, mana_rate)
+            } else {
+                Some(0)
+            }
+        };
         let me = crate::regen::Waiting {
             hp_short: (hp_max * i64::from(self.rest_until()) / 100 - hp).max(0),
             hp_rate: self.regen.hp,
@@ -445,20 +452,26 @@ impl View<'_> {
 
     /// The mana line Recover rests below (`health.rest_mana_below`, per cent).
     pub fn rest_mana_below(&self) -> i32 {
-        self.setting("health.rest_mana_below", 30)
+        self.setting("health.rest_mana_below", 0)
+    }
+
+    /// The character rests for mana: it uses mana and has a rest-for-mana line (0 is none).
+    pub fn rests_for_mana(&self) -> bool {
+        self.uses_mana() && self.rest_mana_below() > 0
     }
 
     /// Mana is low enough to rest for (`health.rest_mana_below`).
     pub fn mana_low(&self) -> bool {
-        self.uses_mana()
+        self.rests_for_mana()
             && self
                 .mana_percent()
-                .is_some_and(|m| m < self.setting("health.rest_mana_below", 30))
+                .is_some_and(|m| m < self.rest_mana_below())
     }
 
-    /// Mana is back to where resting for it stops (`health.rest_mana_until`).
+    /// Mana is back to where resting for it stops (`health.rest_mana_until`); always, for a
+    /// character that does not rest for mana.
     pub fn mana_restored(&self) -> bool {
-        !self.uses_mana()
+        !self.rests_for_mana()
             || self
                 .mana_percent()
                 .is_none_or(|m| m >= self.setting("health.rest_mana_until", 90))

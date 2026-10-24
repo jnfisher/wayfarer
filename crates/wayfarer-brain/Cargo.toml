@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 futures-util = "0.3.34"
+serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.11"
 thiserror.workspace = true

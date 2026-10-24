@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import StatsPanel from "../src/StatsPanel.svelte";
-import { count, sparkline, startedAt, type Stats } from "../src/lib/stats";
+import { age, combatLines, count, perCent, sparkline, startedAt, tenths, type Stats } from "../src/lib/stats";
 import type { CharacterState } from "../src/proto";
 
 const session = { id: "a", name: "Aria", server: "silvermere", state: "realm", last_seq: 0 } as never;
@@ -79,7 +79,7 @@ describe("the stats tab", () => {
     expect(onrefresh).toHaveBeenCalledWith("a");
   });
 
-  it("resets the current run from a button beside the run, and only when there is one", async () => {
+  it("resets from one button, whether or not a run is going", async () => {
     const onreset = vi.fn();
     const { container, unmount } = render(StatsPanel, {
       session,
@@ -100,7 +100,8 @@ describe("the stats tab", () => {
       onrefresh: () => {},
       onreset,
     });
-    expect(none.container.querySelector(".reset")).toBeNull();
+    await fireEvent.click(none.getByRole("button", { name: "reset" }));
+    expect(onreset).toHaveBeenCalledTimes(2);
     void container;
   });
 
@@ -117,6 +118,71 @@ describe("the stats tab", () => {
     unmount();
     const off = render(StatsPanel, { session, character, stats, attached: false, onrefresh: () => {} });
     expect(off.container.textContent).toContain("No brain attached");
+  });
+});
+
+describe("the combat numbers", () => {
+  afterEach(cleanup);
+
+  const combat: NonNullable<Stats["combat"]> = {
+    since: "2026-10-24T10:00:00Z",
+    swings: 20,
+    accuracy_per_mille: 800,
+    crit_rate_per_mille: 125,
+    rows: [
+      { kind: "hit", count: 12, per_mille: 600, min: 21, max: 84, avg_tenths: 525 },
+      { kind: "crit", count: 1, per_mille: 50, min: 120, max: 120, avg_tenths: 1200 },
+      { kind: "backstab", count: 2, per_mille: 100, min: 60, max: 90, avg_tenths: 750 },
+    ],
+    misses: 4,
+    dodged: 1,
+    glances: 1,
+    backstab_tries: 3,
+    backstab_crits: 1,
+    cast_misses: 0,
+    cast_accuracy_per_mille: 0,
+    round: { kind: "round", count: 14, per_mille: 0, min: 0, max: 150, avg_tenths: 481 },
+    kills: 5,
+    flees: 1,
+    lowest_hp: 41,
+  };
+
+  it("formats rates, tenths and ages", () => {
+    expect(perCent(714)).toBe("71.4%");
+    expect(tenths(525)).toBe("52.5");
+    const now = new Date("2026-10-24T13:12:00Z");
+    expect(age("2026-10-24T10:00:00Z", now)).toBe("3h 12m");
+    expect(age("2026-10-24T13:00:00Z", now)).toBe("12m");
+    expect(age("2026-10-22T10:00:00Z", now)).toBe("2d 3h");
+  });
+
+  it("lists MegaMud's rows, leaving out those with nothing counted", () => {
+    const l = combatLines(combat);
+    expect(l.map((x) => x.label)).toEqual(["miss", "hit", "crit", "bs", "glance", "round"]);
+    expect(l[0]).toMatchObject({ count: "4", share: "20.0%", note: "1 dodged" });
+    expect(l[1]).toMatchObject({ count: "12", share: "60.0%", range: "21-84", avg: "52.5" });
+    expect(l[3].note).toBe("2/3 landed, 1 crit");
+    expect(l[5]).toMatchObject({ count: "14", share: "", range: "0-150", avg: "48.1" });
+    // No cast row without casts.
+    expect(l.some((x) => x.label === "cast")).toBe(false);
+  });
+
+  it("shows the table under the run, and says when there is nothing yet", () => {
+    const { container, unmount } = render(StatsPanel, {
+      session,
+      character,
+      stats: { ...stats, combat },
+      attached: true,
+      onrefresh: () => {},
+    });
+    const section = container.querySelector(".combat")!;
+    expect(section.textContent).toContain("20 swings · 80.0% accuracy · 12.5% crits");
+    expect(section.querySelectorAll(".row:not(.head)")).toHaveLength(6);
+    expect(section.textContent).toContain("killed 5 · fled 1");
+    expect(section.textContent).toContain("lowest hp 41");
+    unmount();
+    const none = render(StatsPanel, { session, character, stats, attached: true, onrefresh: () => {} });
+    expect(none.container.textContent).toContain("No combat numbers since the last reset.");
   });
 });
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { count, sparkline, startedAt, type Stats } from "./lib/stats";
+  import { age, combatLines, count, perCent, sparkline, startedAt, type Stats } from "./lib/stats";
   import type { CharacterState, MonsterRuleKind, SessionInfo } from "./proto";
 
   interface Props {
@@ -11,7 +11,8 @@
     stats: Stats | undefined;
     attached: boolean | null;
     onrefresh: (session: string) => void;
-    /** End the current run and start a new one at zero (the old one stays in the history). */
+    /** Zero the combat numbers, and end the current run and start a new one at zero if one is
+     * going (the old one stays in the history). */
     onreset?: (session: string) => void;
     /** Set the player's monster rule for a pattern, or remove it (`null`). */
     onrule?: (session: string, pattern: string, rule: MonsterRuleKind | null) => void;
@@ -38,6 +39,8 @@
   }
 
   const run = $derived(character?.run);
+  const combat = $derived(stats?.combat);
+  const lines = $derived(combat ? combatLines(combat) : []);
   const spark = $derived(stats ? sparkline(stats.samples) : "");
   const BIG: { key: "exp_per_hour" | "kills" | "deaths" | "flees" | "rests" | "exp_gained"; label: string }[] = [
     { key: "exp_per_hour", label: "exp/hr" },
@@ -56,15 +59,15 @@
     <p class="dim">No brain attached: no statistics.</p>
   {:else}
     <section class="current" aria-label="Current run">
+      <div class="since">
+        {#if run}run since {startedAt(run.run_started_at)}{:else}no run{/if}
+        <button
+          class="reset"
+          title="Zero the combat numbers, and end this run and start a new one at zero. The old run stays in the list below."
+          onclick={() => onreset(session.id)}>reset</button
+        >
+      </div>
       {#if run}
-        <div class="since">
-          run since {startedAt(run.run_started_at)}
-          <button
-            class="reset"
-            title="End this run and start a new one at zero. The old run stays in the list below."
-            onclick={() => onreset(session.id)}>reset</button
-          >
-        </div>
         <div class="big">
           {#each BIG as b (b.key)}
             <div class="cell">
@@ -78,6 +81,33 @@
       {/if}
       {#if spark}
         <div class="spark" title="exp over the newest run, a bar a minute" aria-label="exp over time">{spark}</div>
+      {/if}
+    </section>
+    <section class="combat" aria-label="Combat">
+      {#if combat}
+        <div class="since" title="Kept until you press reset: across runs, stops and restarts">
+          combat since {startedAt(combat.since)} ({age(combat.since)})
+        </div>
+        <div class="summary">
+          {count(combat.swings)} swings · {perCent(combat.accuracy_per_mille)} accuracy · {perCent(combat.crit_rate_per_mille)} crits
+        </div>
+        <div class="table" role="table" aria-label="Combat numbers">
+          <div class="row head" role="row">
+            <span class="k"></span><span class="c-num">n</span><span class="c-num">%</span><span class="c-range">min-max</span><span class="c-num">avg</span>
+          </div>
+          {#each lines as l (l.label)}
+            <div class="row" role="row" data-kind={l.label}>
+              <span class="k">{l.label}</span><span class="c-num">{l.count}</span><span class="c-num">{l.share}</span><span class="c-range">{l.range}</span><span class="c-num">{l.avg}</span>{#if l.note}<span class="note">{l.note}</span>{/if}
+            </div>
+          {/each}
+        </div>
+        <div class="monsters">
+          killed {count(combat.kills)} · fled {count(combat.flees)}{#if combat.lowest_hp !== undefined}
+            · lowest hp {combat.lowest_hp}{/if}{#if combat.lowest_mana !== undefined}
+            · lowest mana {combat.lowest_mana}{/if}
+        </div>
+      {:else}
+        <div class="dim">No combat numbers since the last reset.</div>
       {/if}
     </section>
     <section class="rules" aria-label="Monster rules">
@@ -204,6 +234,29 @@
   .rules {
     border-bottom: 1px solid var(--frame);
     padding-bottom: 2px;
+  }
+  .combat {
+    padding: 2px 1ch 4px;
+    border-bottom: 1px solid var(--frame);
+  }
+  .combat .dim {
+    padding: 0;
+  }
+  .summary {
+    color: var(--vga-yellow);
+  }
+  .table .k {
+    width: 6ch;
+  }
+  .c-range {
+    width: 9ch;
+    text-align: right;
+  }
+  .note {
+    color: var(--dim);
+  }
+  .monsters {
+    color: var(--dim);
   }
   .rule {
     display: flex;

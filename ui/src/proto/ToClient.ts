@@ -3,6 +3,7 @@ import type { Blessings } from "./Blessings";
 import type { BotAction } from "./BotAction";
 import type { CharacterState } from "./CharacterState";
 import type { Chunk } from "./Chunk";
+import type { CombatStats } from "./CombatStats";
 import type { ExpSample } from "./ExpSample";
 import type { Found } from "./Found";
 import type { GeneratedLoop } from "./GeneratedLoop";
@@ -33,7 +34,11 @@ custom: Array<GeneratedLoop>,
 /**
  * How many loops matched the request before it was cut to its `limit`.
  */
-matches: number, } | { "type": "stats", session: string, runs: Array<RunSummary>, samples: Array<ExpSample>, } | { "type": "spell_plan", session: string, cash: number, items: Array<SpellPlanItem>, } | { "type": "settings", session: string, 
+matches: number, } | { "type": "stats", session: string, runs: Array<RunSummary>, samples: Array<ExpSample>, 
+/**
+ * The combat numbers since the last reset; absent when nothing has been counted.
+ */
+combat?: CombatStats, } | { "type": "spell_plan", session: string, cash: number, items: Array<SpellPlanItem>, } | { "type": "settings", session: string, 
 /**
  * The layer whose own values `own` shows.
  */

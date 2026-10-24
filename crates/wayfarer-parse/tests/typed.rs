@@ -399,19 +399,51 @@ fn the_characters_own_swings() {
         line("You punch fat giant rat for 2 damage!"),
         [GameEvent::YouHit {
             target: "fat giant rat".into(),
-            damage: 2
+            damage: 2,
+            crit: false,
+            backstab: false,
+        }]
+    );
+    // A critical hit and a backstab (`kasimir-early.txt`; the `surprise` form, `patterns.py`).
+    assert_eq!(
+        line("You critically beat filthbug for 34 damage!"),
+        [GameEvent::YouHit {
+            target: "filthbug".into(),
+            damage: 34,
+            crit: true,
+            backstab: false,
+        }]
+    );
+    assert_eq!(
+        line("You surprise smack kobold thief for 40 damage!"),
+        [GameEvent::YouHit {
+            target: "kobold thief".into(),
+            damage: 40,
+            crit: false,
+            backstab: true,
+        }]
+    );
+    assert_eq!(
+        line("You critically surprise smack kobold thief for 90 damage!"),
+        [GameEvent::YouHit {
+            target: "kobold thief".into(),
+            damage: 90,
+            crit: true,
+            backstab: true,
         }]
     );
     assert_eq!(
         line("You swing at carrion beast!"),
         [GameEvent::YouMiss {
-            target: "carrion beast".into()
+            target: "carrion beast".into(),
+            dodged: false,
         }]
     );
     assert_eq!(
         line("You swing at dark monk who dodges your attack!"),
         [GameEvent::YouMiss {
-            target: "dark monk".into()
+            target: "dark monk".into(),
+            dodged: true,
         }]
     );
     // The line of the M3 soak's stalemate, confirmed live 2026-10-20 (`kb/combat.md`).

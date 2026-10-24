@@ -240,6 +240,59 @@ pub struct ExpSample {
     pub hp: Option<i32>,
 }
 
+/// The character's combat numbers since the player last reset them (C-050), in a `stats`
+/// message. Rates are in thousandths (`714` is 71.4%), averages in tenths.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct CombatStats {
+    /// The last reset (RFC 3339).
+    pub since: String,
+    /// Every melee attempt: hits, crits, backstabs, glances and misses.
+    pub swings: u64,
+    /// Landed (hit, crit, backstab, glance) of the swings.
+    pub accuracy_per_mille: u32,
+    /// Critical blows (backstabs that crit among them) of those landed.
+    pub crit_rate_per_mille: u32,
+    /// `hit`, `crit`, `backstab` and `cast`, those with a count.
+    pub rows: Vec<DamageRow>,
+    pub misses: u64,
+    /// Misses the target dodged (counted in `misses`).
+    pub dodged: u64,
+    /// Blows that landed on armour and did nothing.
+    pub glances: u64,
+    /// `bs` / `backstab` commands sent, the bot's or typed.
+    pub backstab_tries: u64,
+    /// Backstabs that were also critical (counted in the `backstab` row).
+    pub backstab_crits: u64,
+    /// Attack casts that failed or were resisted, in a fight.
+    pub cast_misses: u64,
+    /// Damaging casts of all casts tried in a fight.
+    pub cast_accuracy_per_mille: u32,
+    /// The damage of a round, blows and spells: `kind` is `round`, `count` the rounds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub round: Option<DamageRow>,
+    pub kills: u64,
+    pub flees: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub lowest_hp: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub lowest_mana: Option<i64>,
+}
+
+/// One kind of damage in [`CombatStats`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct DamageRow {
+    pub kind: String,
+    pub count: u64,
+    /// Of all swings (0 for `round`).
+    pub per_mille: u32,
+    pub min: i64,
+    pub max: i64,
+    pub avg_tenths: i64,
+}
+
 /// Whether the bot is playing a character (`docs/plan/03-engine.md` section 5).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
@@ -1008,6 +1061,10 @@ pub enum ToClient {
         session: SessionId,
         runs: Vec<RunSummary>,
         samples: Vec<ExpSample>,
+        /// The combat numbers since the last reset; absent when nothing has been counted.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        combat: Option<CombatStats>,
     },
     /// Brain → UIs: the answer to a `spell_plan_request`: the spells the character's class could
     /// learn that it does not know, each at its best shop: those it can read now first (the
@@ -1512,6 +1569,10 @@ pub enum ToGateway {
         session: SessionId,
         runs: Vec<RunSummary>,
         samples: Vec<ExpSample>,
+        /// The combat numbers since the last reset; absent when nothing has been counted.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        combat: Option<CombatStats>,
     },
     /// Brain → UIs: the answer to a `spell_plan_request`: the spells the character's class could
     /// learn that it does not know, each at its best shop: those it can read now first (the
@@ -2073,10 +2134,12 @@ impl ToGateway {
                 session,
                 runs,
                 samples,
+                combat,
             } => ToClient::Stats {
                 session,
                 runs,
                 samples,
+                combat,
             },
             Self::SpellPlan {
                 session,

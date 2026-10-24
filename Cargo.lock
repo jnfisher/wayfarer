@@ -1694,6 +1694,7 @@ name = "wayfarer-brain"
 version = "0.1.0"
 dependencies = [
  "futures-util",
+ "serde",
  "serde_json",
  "sha2",
  "tempfile",

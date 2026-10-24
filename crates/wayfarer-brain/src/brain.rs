@@ -627,7 +627,7 @@ impl Brain {
                 Some(s) => s.spell_plan(out),
                 None => out.push(no_session("spell_plan_request", &session)),
             },
-            ToClient::StatsRequest { session } => match self.sessions.get(&session) {
+            ToClient::StatsRequest { session } => match self.sessions.get_mut(&session) {
                 Some(s) => s.stats_request(out),
                 None => out.push(no_session("stats_request", &session)),
             },

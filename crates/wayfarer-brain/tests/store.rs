@@ -11,7 +11,7 @@ use std::time::UNIX_EPOCH;
 use game::arena::*;
 use game::*;
 use wayfarer_brain::{Brain, InstantClock, SAMPLE_EVERY, Store};
-use wayfarer_proto::{BotAction, BotState, RunSummary};
+use wayfarer_proto::{BotAction, BotState, CombatStats, RunSummary};
 use wayfarer_store::{BotRecord, EventKind};
 
 fn brain_on(path: &Path) -> Brain {
@@ -52,6 +52,16 @@ fn assert_said(g: &Game, text: &str) {
 }
 
 impl Game {
+    async fn combat(&mut self) -> Option<CombatStats> {
+        self.send(ToClient::StatsRequest { session: ID.into() })
+            .await;
+        self.until(|m| match m {
+            ToGateway::Stats { combat, .. } => Some(combat.clone()),
+            _ => None,
+        })
+        .await
+    }
+
     async fn stats(&mut self) -> (Vec<RunSummary>, usize) {
         self.send(ToClient::StatsRequest { session: ID.into() })
             .await;
@@ -338,7 +348,7 @@ async fn a_reset_starts_a_new_run_at_zero_and_keeps_the_old_one() {
     g.narrated("Waiting here").await;
     g.idle(Duration::from_secs(120)).await;
     g.send(ToClient::StatsReset { session: ID.into() }).await;
-    g.narrated("Run reset: a new run starts now, the old one is kept in the history")
+    g.narrated("Reset: the combat numbers are at zero, and a new run starts now (the old one is kept in the history)")
         .await;
     let (runs, _) = g.stats().await;
     let (seen, _) = g.close(run).await;
@@ -351,11 +361,48 @@ async fn a_reset_starts_a_new_run_at_zero_and_keeps_the_old_one() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_reset_with_no_run_says_so() {
+async fn a_reset_with_no_run_zeroes_the_combat_numbers() {
     let (mut g, run) = Game::start_with(SessionState::Realm, arena(&[], 35)).await;
     g.idle(Duration::from_secs(20)).await;
+    // The player's own fight, the bot stopped: it counts.
+    g.output(&line(
+        "You critically smack large giant rat for 34 damage!",
+        35,
+    ))
+    .await;
+    g.output(&line("You swing at large giant rat!", 35)).await;
+    g.idle(Duration::from_secs(5)).await;
+    let c = g.combat().await.expect("combat numbers");
+    assert_eq!((c.swings, c.misses, c.accuracy_per_mille), (2, 1, 500));
+    assert_eq!(c.rows[0].kind, "crit");
     g.send(ToClient::StatsReset { session: ID.into() }).await;
-    g.narrated("No run to reset: Start the bot first").await;
+    g.narrated("Reset: the combat numbers are at zero").await;
+    assert_eq!(g.combat().await, None);
+    g.close(run).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_combat_numbers_survive_a_restart_of_the_brain() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let (mut g, run) = arena_brain(brain_on(&path), &[]).await;
+    g.output(&line("You smack large giant rat for 9 damage!", 35))
+        .await;
+    g.output(&line("You smack large giant rat for 4 damage!", 35))
+        .await;
+    // Saved within COMBAT_SAVE_EVERY (5 s).
+    g.idle(Duration::from_secs(10)).await;
+    g.close(run).await;
+    let (mut g, run) = arena_brain(brain_on(&path), &[]).await;
+    let c = g.combat().await.expect("combat numbers");
+    let hit = &c.rows[0];
+    assert_eq!(
+        (hit.kind.as_str(), hit.count, hit.min, hit.max),
+        ("hit", 2, 4, 9)
+    );
+    // The two blows came together: one round of 13.
+    let round = c.round.expect("a round");
+    assert_eq!((round.count, round.max), (1, 13));
     g.close(run).await;
 }
 

@@ -355,8 +355,18 @@ over the newest run, a bar a minute. Then the last ten runs as rows, newest firs
 started, its loop (`here` for "fight here"), minutes, exp per hour, kills, deaths and flees;
 the run still going is in cyan. The rows come from the brain's store (`stats_request`): asked
 for when the tab opens, when a run starts or ends, every minute while it is open, and on
-`refresh`. **Reset**, beside "run since", ends the current run and starts a new one at zero
-(`stats_reset`); the old run stays in the list. It has no effect while the bot is stopped.
+`refresh`. **Reset**, beside "run since" (or "no run"), zeroes the combat numbers and ends
+the current run and starts a new one at zero (`stats_reset`); the old run stays in the list.
+With the bot stopped it zeroes the combat numbers alone.
+
+Under the run, the **combat** numbers ([brain.md](brain.md) "Combat statistics"): since when
+(the last reset, and how long ago), then swings, accuracy and crit rate, then a table in the
+shape of MegaMud's Combat tab: `miss` (with the dodges), `hit`, `crit`, `bs` (with how many
+of the backstab tries landed and how many crit), `cast` (its accuracy, and the failed casts),
+`glance` and `round`, each with its count, its share of the swings, min-max and average
+damage. Rows with nothing counted are left out. Last, killed, fled, and the lowest HP and mana
+seen. They are kept across runs, stops and restarts until **Reset**: press it after changing
+weapons or settings, starting a loop or a level-up.
 
 Between the two, the **monster rules** the bot plays by ([brain.md](brain.md) "Monster
 rules"): each rule (*flee from*, *never fight*, *avoid*), its pattern and where it comes from

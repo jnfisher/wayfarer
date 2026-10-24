@@ -271,15 +271,19 @@ pub enum GameEvent {
     CombatEngaged,
     CombatOff,
     /// `you_hit`: the character's own blow did damage (`You smack giant rat for 4 damage!`).
-    /// `target` as shown, without an article.
+    /// `target` as shown, without an article. `crit`: `You critically smack …`; `backstab`:
+    /// `You surprise smack …`, a backstab that landed.
     YouHit {
         target: String,
         damage: i64,
+        crit: bool,
+        backstab: bool,
     },
     /// `you_miss` (`You swipe at thin carrion beast!`) or `you_dodged` (`You swing at orc who
-    /// dodges your attack!`): the character's own swing did nothing.
+    /// dodges your attack!`, `dodged`): the character's own swing did nothing.
     YouMiss {
         target: String,
+        dodged: bool,
     },
     /// `you_glance`: the character's own swing hit, but the target's armour took all the
     /// damage (`Your swing at gigantic black ooze hits, but glances off its armour.`).
@@ -422,6 +426,8 @@ pub enum GameEvent {
     NoMana,
     /// `already_this_round`: one general spell per round.
     AlreadyCast,
+    /// `cast_resisted`: `You attempt to cast mmis at orc, but the spell is resisted.`
+    CastResisted,
     /// `cast_fail`: `You attempt to cast vine strike, but fail.`
     CastFailed,
 
@@ -752,11 +758,14 @@ impl GameEvent {
                 Some(damage) => G::YouHit {
                     target: monster_name(ev, "target"),
                     damage,
+                    crit: !text(ev, "crit").is_empty(),
+                    backstab: !text(ev, "surprise").is_empty(),
                 },
                 None => G::Other(ev.clone()),
             },
             "you_miss" | "you_dodged" => G::YouMiss {
                 target: monster_name(ev, "target"),
+                dodged: ev.name == "you_dodged",
             },
             "you_glance" => G::SwingGlanced {
                 target: monster_name(ev, "target"),
@@ -883,6 +892,7 @@ impl GameEvent {
             "no_mana" => G::NoMana,
             "already_this_round" => G::AlreadyCast,
             "cast_fail" => G::CastFailed,
+            "cast_resisted" => G::CastResisted,
             "sneak_attempt" => G::SneakAttempt {
                 failed: ev
                     .text("rest")

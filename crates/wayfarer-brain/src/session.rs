@@ -680,6 +680,9 @@ impl Session {
             }
             let typed = GameEvent::from_event(ev);
             self.spell_event(&typed);
+            if !silent {
+                self.count_combat(&typed, now);
+            }
             if let Resync::Waiting {
                 step,
                 ref mut answered,
@@ -894,6 +897,20 @@ impl Session {
         }
         self.drive(now, out);
         self.flush_views(out);
+    }
+
+    /// What the combat numbers count (C-050): the character's own blows and casts, kills, and
+    /// its lowest HP and mana. A failed cast counts as an attack's miss only in a fight.
+    fn count_combat(&mut self, ev: &GameEvent, now: Instant) {
+        let fighting = !self.quiet(now) || self.character.state().in_combat == Some(true);
+        let c = self.character.state();
+        let (hp, mana) = (c.hp.map(i64::from), c.mana.map(i64::from));
+        let tally = self.ledger.combat(now);
+        tally.event(ev, fighting, now);
+        if matches!(ev, GameEvent::MonsterDeath { .. }) {
+            tally.kill();
+        }
+        tally.vitals(hp, mana);
     }
 
     /// What the run counts: kills (`dead`, with the exp that follows), deaths, rests, and a
@@ -1135,26 +1152,30 @@ impl Session {
     }
 
     /// `stats_request`.
-    pub fn stats_request(&self, out: &mut Vec<ToGateway>) {
+    pub fn stats_request(&mut self, out: &mut Vec<ToGateway>) {
         let (runs, samples) = self.ledger.summaries();
+        let combat = self.ledger.combat_wire(self.clock.instant());
         out.push(ToGateway::Stats {
             session: self.id.clone(),
             runs,
             samples,
+            combat,
         });
     }
 
-    /// `stats_reset`: a new run from now, its numbers at zero.
+    /// `stats_reset`: the combat numbers at zero, and a new run from now with its numbers at
+    /// zero if one is going.
     pub fn stats_reset(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
+        self.ledger.reset_combat();
         if self.ledger.reset(now) {
-            out.push(
-                self.notice("Run reset: a new run starts now, the old one is kept in the history"),
-            );
-            self.stats_request(out);
-            self.flush_views(out);
+            out.push(self.notice(
+                "Reset: the combat numbers are at zero, and a new run starts now (the old one is kept in the history)",
+            ));
         } else {
-            out.push(self.warning("No run to reset: Start the bot first"));
+            out.push(self.notice("Reset: the combat numbers are at zero"));
         }
+        self.stats_request(out);
+        self.flush_views(out);
     }
 
     /// The player a PvP line shows attacking the character: `X moves to attack you!` from a
@@ -1219,6 +1240,7 @@ impl Session {
             self.ledger
                 .event(EventKind::Flee, i64::from(hp), who.as_deref(), room);
             self.ledger.place(StoredPlace::Flee, who.as_deref(), room);
+            self.ledger.combat(now).flee();
             let says = self.bot.leave();
             self.say(says, out);
             self.flee_out = true;
@@ -1295,6 +1317,7 @@ impl Session {
             return;
         }
         self.parser.sent(text);
+        self.ledger.combat(now).sent(text);
         if let Some(atlas) = &self.atlas {
             self.position.sent(atlas, text);
         }
@@ -1461,6 +1484,7 @@ impl Session {
     /// Send one of the brain's own lines to the game.
     fn send_own(&mut self, cmd: &str, now: Instant, out: &mut Vec<ToGateway>) {
         self.parser.sent(cmd);
+        self.ledger.combat(now).sent(cmd);
         if let Some(atlas) = &self.atlas {
             self.position.sent(atlas, cmd);
         }
@@ -2746,6 +2770,7 @@ impl Session {
             self.ledger
                 .event(EventKind::Flee, i64::from(hp), who.as_deref(), room);
             self.ledger.place(StoredPlace::Flee, who.as_deref(), room);
+            self.ledger.combat(now).flee();
         }
         match act {
             Some(Do::Send(action)) => match self.executor.submit(action) {
@@ -2825,7 +2850,8 @@ impl Session {
         let casts = (self.spellbook.has_attack()
             && self.settings.choice("spells.attack") == "auto")
             || (self.spellbook.has_heal() && self.settings.choice("spells.heal") == "auto");
-        let uses_mana = mana.is_some() && casts;
+        // Mana counts in a rest only with a rest-for-mana line (0, the default, is none).
+        let uses_mana = mana.is_some() && casts && line("health.rest_mana_below") > 0;
         let regen = self.regen();
         Health {
             hp,
