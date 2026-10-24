@@ -270,6 +270,13 @@ impl Parties {
         &self.defs
     }
 
+    /// `session` follows a leader in one of the parties.
+    pub fn is_follower(&self, session: &str) -> bool {
+        self.defs
+            .iter()
+            .any(|d| d.followers.iter().any(|f| f == session))
+    }
+
     pub fn has_parties(&self) -> bool {
         !self.defs.is_empty()
     }

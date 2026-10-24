@@ -1089,9 +1089,11 @@ own, one at a time:
   before), after any join, drop or removal line, when a joined follower has been out of its
   room for 3 s, and every 30 s while the party has members; at most one every 5 s. A follower
   the leader's `par` does not list is not joined, whatever its own lines said.
-- **Followers don't walk.** A follower's own `run_loop`, `walk_loop`, `walk_to` and the errands
-  that walk (train, recover the pile, buy spells) are refused with a warning ("following Penny:
-  it goes where the party goes"); pick up all and equip all stay in the room and run; made a follower,
+- **Followers don't walk.** A follower's own `run_loop`, `walk_loop` and `walk_to` are refused
+  with a warning ("following Penny: it goes where the party goes"). Its errands run: pick up all
+  and equip all where it stands, in the party; one that walks (train, recover the pile, buy
+  spells) takes it out of the party first, as `party_leave` does ("Left the party for the
+  errand"). Made a follower,
   a bot running a loop stops the loop and fights where it is ("In Penny's party: the loop
   stops"). Its modes never walk it, Flee aside: Recover rests where it stands and does not
   walk home. Play and pause work as for any bot.

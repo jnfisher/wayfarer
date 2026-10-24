@@ -14,7 +14,7 @@
   import { FONT_FAMILY, FONT_NAME, VGA_THEME } from "./lib/theme";
   import type { SpellPlan } from "./lib/spells";
   import { planRow, planTotals } from "./lib/spells";
-  import { chipFor, chipMenu, followerErrands, followingName, type Names } from "./lib/parties";
+  import { chipFor, chipMenu, followerErrands, followingName, leavesFirst, type Names } from "./lib/parties";
   import type { CharacterState, PartyStatus, SessionInfo } from "./proto";
 
   interface Props {
@@ -403,8 +403,8 @@
         <p class="totals">{planTotals(plan)}</p>
         <button
           class="buy-btn"
-          disabled={!!following || errands[0]?.disabled !== false || !plan.items.some((i) => i.usable)}
-          title="Withdraw from the Bank of Godfrey if the cash falls short, walk to the shops, buy what the money covers (the cheapest first) and read the scrolls"
+          disabled={errands[0]?.disabled !== false || !plan.items.some((i) => i.usable)}
+          title="{following ? `${leavesFirst(following)}. ` : ''}Withdraw from the Bank of Godfrey if the cash falls short, walk to the shops, buy what the money covers (the cheapest first) and read the scrolls"
           onclick={() => client.botControl(info.id, "buy_spells")}>buy spells</button
         >
       {/if}
