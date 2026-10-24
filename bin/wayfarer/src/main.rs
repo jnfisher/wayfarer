@@ -42,6 +42,17 @@ struct GatewayArgs {
     /// Make a new token in `gateway-token`, print it once and exit.
     #[arg(long)]
     new_token: bool,
+    /// When a logon enters the realm: `with-brain` holds its last step (Enter the Realm) at the
+    /// game's menu until a brain is attached, where nothing can attack the character; `always`
+    /// goes straight in (playing by hand). `serve` with no world pack has no brain: always.
+    #[arg(long, value_enum, default_value_t = EnterRealm::WithBrain)]
+    enter_realm: EnterRealm,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum EnterRealm {
+    WithBrain,
+    Always,
 }
 
 #[derive(Args)]
@@ -347,7 +358,16 @@ fn run_gateway(
         .build()?
         .block_on(async {
             init_tracing();
-            let gateway = Gateway::start(&paths, Options::default())?;
+            // With no brain to come (`serve` without a world pack), nothing is held.
+            let wait_for_brain = args.enter_realm == EnterRealm::WithBrain
+                && world_path.as_ref().is_none_or(|p| p.is_file());
+            let gateway = Gateway::start(
+                &paths,
+                Options {
+                    wait_for_brain,
+                    ..Options::default()
+                },
+            )?;
             let listener = bind(args.bind).await?;
             tracing::info!("listening on {}", listener.local_addr()?);
             let options = ServerOptions {

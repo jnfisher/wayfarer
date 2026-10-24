@@ -89,6 +89,10 @@ enum Doing {
     /// `look` after a search that found nothing: is the exit showing after all?
     Recheck,
     Look,
+    /// `look` after a room command or a crossing's phrase (C-055): a teleport shows no room
+    /// ("You find yourself...elsewhere."), so where it went is looked at, and checked as a
+    /// move's room is.
+    Arrive,
     /// `buy <item>` in the shop the route passes, for an exit ahead that needs it.
     Buy,
 }
@@ -523,7 +527,11 @@ impl Walker {
         let mut advanced = false;
         let result = match (doing, outcome) {
             (_, Outcome::TimedOut) => Err(format!("no answer to `{}`", action.command)),
-            (Doing::Move, Outcome::Confirmed(Confirmed::Room)) => {
+            // The phrase went and its prompt came: look where it took the character.
+            (Doing::Move, Outcome::Confirmed(Confirmed::Prompt)) if step.exit_type.is_command() => {
+                Ok(Doing::Arrive)
+            }
+            (Doing::Move | Doing::Arrive, Outcome::Confirmed(Confirmed::Room)) => {
                 if seen.unwrap_or(&pos.belief).contains(step.to) {
                     // A one-charge item (a room ticket) stays in the exit's box.
                     if let Some(Gate::Item { item }) =
@@ -807,7 +815,12 @@ impl Walk {
             .copied()
             .unwrap_or_default();
         match doing {
+            // A room command or a crossing: its prompt, then a look (`Doing::Arrive`).
+            Doing::Move if step.exit_type.is_command() => {
+                Action::new(step.command.clone(), Expect::Prompt)
+            }
             Doing::Move => Action::new(step.command.clone(), Expect::RoomSeen),
+            Doing::Arrive => Action::new("look", Expect::RoomSeen),
             Doing::Open => Action::new(format!("open {dir}"), Expect::DoorOpened),
             Doing::UseKey => Action::new(
                 format!("use {}", self.key.clone().unwrap_or_default()),

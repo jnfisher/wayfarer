@@ -243,6 +243,17 @@ pub const CATALOGUE: &[Setting] = &[
         megamud: None,
     },
     Setting {
+        key: "bot.start_on_logon",
+        label: "Start the bot on entering the realm",
+        help: "When the character enters the realm (logged on, or back after a dropped connection), its bot starts where it stands: it fights back, heals, rests and flees at once instead of standing there. A brain restart puts each bot back as it was, so one you stopped stays stopped.",
+        kind: Kind::Bool,
+        default: Value::Bool(true),
+        unit: "",
+        tier: Tier::Essential,
+        group: Group::Bot,
+        megamud: None,
+    },
+    Setting {
         key: "bot.leg_tries",
         label: "Tries to reach a stop",
         help: "Walks to one loop stop that end somewhere else, with no fight between, before the stop is passed by for now.",

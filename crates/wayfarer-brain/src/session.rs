@@ -579,6 +579,20 @@ impl Session {
         if state == SessionState::Realm && !self.synced && self.resync == Resync::Off {
             self.request_resync();
         }
+        // Into the realm: the bot starts where the character stands, so it defends itself at
+        // once (C-054). A bot a brain before this one left is resumed instead (`resume`).
+        if was != SessionState::Realm
+            && state == SessionState::Realm
+            && self.settings.bool("bot.start_on_logon")
+            && self.atlas.is_some()
+            && self.restore.is_none()
+            && self.errand.is_none()
+            && !self.bot.running()
+        {
+            out.push(self.notice("Entered the realm: starting the bot"));
+            let now = self.clock.instant();
+            self.bot_control(BotAction::Start, now, out);
+        }
     }
 
     /// Start a re-sync from the first command (at the next idle prompt in the realm).

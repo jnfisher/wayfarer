@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::{FutureExt, Stream, StreamExt};
-use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use wayfarer_proto::{SessionInfo, SessionState, ToClient, ToGateway};
 use wayfarer_telnet::Capture;
 
@@ -33,6 +33,10 @@ pub struct Options {
     /// How long [`Gateway::shutdown`] waits for the log-offs before it closes what is left:
     /// the brain's 30 s to get ready, the realm step's 240 s of retries and the menus.
     pub logoff_patience: Duration,
+    /// Hold each logon's last step (`E`, Enter the Realm) until a brain is attached (C-054): at
+    /// the game's menu nothing can attack the character, and in the realm with no brain nothing
+    /// fights back. Off here (tests, the live check); `wayfarer gateway` turns it on.
+    pub wait_for_brain: bool,
 }
 
 impl Default for Options {
@@ -43,6 +47,7 @@ impl Default for Options {
             read_buffer: 4096,
             reconnect: true,
             logoff_patience: Duration::from_secs(360),
+            wait_for_brain: false,
         }
     }
 }
@@ -74,6 +79,9 @@ pub struct Gateway {
 struct Inner {
     /// In config order.
     slots: Vec<Arc<Slot>>,
+    /// Whether a brain is attached, for logons held at the realm's door
+    /// ([`Options::wait_for_brain`]).
+    brain: watch::Sender<bool>,
     states: broadcast::Sender<StateChange>,
     logs: PathBuf,
     logoff_patience: Duration,
@@ -122,6 +130,7 @@ impl Gateway {
         connector: Arc<dyn Connect>,
     ) -> Result<Self, GatewayError> {
         let states = broadcast::channel(256).0;
+        let brain = watch::channel(false).0;
         let mut slots = Vec::with_capacity(config.characters.len());
         for c in &config.characters {
             let server = config
@@ -150,11 +159,13 @@ impl Gateway {
                 connector: Arc::clone(&connector),
                 subscriber_capacity: options.subscriber_capacity,
                 states: states.clone(),
+                brain: options.wait_for_brain.then(|| brain.subscribe()),
             })));
         }
         Ok(Self {
             inner: Arc::new(Inner {
                 slots,
+                brain,
                 states,
                 logs: logs.to_path_buf(),
                 logoff_patience: options.logoff_patience,
@@ -361,8 +372,10 @@ impl Gateway {
         self.send(id, Command::Line(text.to_owned(), origin)).await
     }
 
-    /// Record in every session's `brain.log` that a brain attached, or went.
+    /// Record in every session's `brain.log` that a brain attached, or went; a logon held for a
+    /// brain goes on into the realm.
     pub fn note_brain(&self, attached: bool) {
+        self.inner.brain.send_replace(attached);
         for slot in &self.inner.slots {
             slot.brain_log.append(&BrainRecord {
                 seq: slot.log.last_seq(),

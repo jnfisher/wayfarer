@@ -102,6 +102,14 @@ on by hand (the gateway still follows the text once you do). If the script has s
 but the realm prompt never comes (a new account goes to character creation, say), it stops and
 the session is `connected`: carry on in the tile.
 
+**Entering the realm waits for a brain** (C-054). `wayfarer gateway` and `wayfarer serve` hold
+each logon's last step (`E`, Enter the Realm) at the MajorMUD menu until a brain is attached:
+at the menu nothing can attack the character, and in the realm with no brain nothing would
+fight back. The session stays in `logon` with the reason "waiting for a brain to enter the
+realm", and goes in the moment a brain attaches (at once for `serve`, whose brain is in the
+process). `--enter-realm always` goes straight in, for playing by hand; `serve` without a world
+pack has no brain and always does.
+
 When a logon fails:
 
 - **Wrong password** (`Invalid Credentials`): the session is `closed` with the reason "bad

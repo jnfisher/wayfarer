@@ -125,6 +125,8 @@ impl Gateway {
             .arg("gateway")
             .arg("--config")
             .arg(&config_path)
+            // The scenarios attach their brain when they choose (C-054 would hold the logon).
+            .args(["--enter-realm", "always"])
             .args(["--bind", "127.0.0.1:0", "--ui-dir"])
             .arg(dir.join("no-ui"))
             .env("NO_COLOR", "1")

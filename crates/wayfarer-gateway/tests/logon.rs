@@ -966,3 +966,65 @@ async fn only_sessions_in_the_realm_are_announced_and_a_ui_may_not_answer() {
     }
     s.server.await.unwrap().unwrap();
 }
+
+#[tokio::test(start_paused = true)]
+async fn with_wait_for_brain_the_realm_is_entered_once_a_brain_attaches() {
+    // C-054: everything up to the MajorMUD menu goes; `E` waits there, where nothing can
+    // attack the character, until a brain is attached.
+    let mut rig = rig(
+        &[ID],
+        true,
+        Options {
+            wait_for_brain: true,
+            ..Options::default()
+        },
+    );
+    rig.gw.open(ID).unwrap();
+    let mut game = rig.accept().await;
+    for (prompt, reply) in [
+        (
+            "\r\nEnter Username or enter \"NEW\" to create a new Account\r\nUsername: ",
+            USER,
+        ),
+        ("Aldric\r\nPassword: ", PASSWORD),
+        (
+            "*******\r\n\r\nMain Menu\r\nMake your selection (X to exit): ",
+            "M",
+        ),
+    ] {
+        game.say(prompt).await;
+        assert_eq!(game.line().await, reply);
+    }
+    game.say("M\r\n\r\n[E] . Enter the Realm\r\n\r\n[MAJORMUD]: ")
+        .await;
+    // Held, with no timeout running: a minute on, still at the menu.
+    tokio::time::sleep(Duration::from_secs(60)).await;
+    game.quiet().await;
+    assert_eq!(
+        rig.gw.reason(ID).unwrap().as_deref(),
+        Some("waiting for a brain to enter the realm")
+    );
+    rig.gw.note_brain(true);
+    assert_eq!(game.line().await, "E");
+    game.say("E\r\n\r\nNewhaven, Village Entrance\r\n[HP=35]:")
+        .await;
+    rig.states_until(ID, Realm).await;
+    assert_eq!(rig.gw.reason(ID).unwrap(), None);
+}
+
+#[tokio::test(start_paused = true)]
+async fn with_a_brain_attached_already_the_realm_is_entered_at_once() {
+    let mut rig = rig(
+        &[ID],
+        true,
+        Options {
+            wait_for_brain: true,
+            ..Options::default()
+        },
+    );
+    rig.gw.note_brain(true);
+    rig.gw.open(ID).unwrap();
+    let mut game = rig.accept().await;
+    game.log_on().await;
+    rig.states_until(ID, Realm).await;
+}

@@ -3,6 +3,7 @@
 
 mod game;
 
+use game::arena::prompt;
 use game::*;
 use wayfarer_proto::{Found, FoundKind};
 
@@ -159,12 +160,39 @@ async fn the_spectral_mage_is_found_and_walked_to_by_ringing_the_chime() {
 
     // `use chime` is the USE command, which never reaches the room's script.
     g.expect("w", room(SLUM_STREET));
+    // The teleport shows no room (as on John's rig, 2026-10-24): the walker looks (C-055).
     g.expect(
         "ring chime",
-        format!("You ring the chime...\r\n{}", room(MANSION_ENTRANCE)),
+        format!(
+            "You ring the chime...\r\nYou find yourself...elsewhere.\r\n{}",
+            prompt(35)
+        ),
     );
+    g.expect("look", room(MANSION_ENTRANCE));
     g.walk_to(MANSION_ENTRANCE).await;
     g.walk_narrated("Arrived: Strange Mansion, Entrance").await;
     let (_, played) = g.close(run).await;
-    assert_eq!(played, ["w", "ring chime"]);
+    assert_eq!(played, ["w", "ring chime", "look"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_phrase_that_is_only_speech_is_not_taken_for_the_move() {
+    // C-055: believed on Slum Street but in the Entrance already, the chime is speech there;
+    // the look shows where the character is, and it is where the walk was going.
+    let (mut g, run) = Game::start(SessionState::Realm, SLUM_INTERSECTION).await;
+    g.expect("w", room(SLUM_STREET));
+    g.expect(
+        "ring chime",
+        format!("You say \"ring chime\"\r\n{}", prompt(35)),
+    );
+    g.expect("look", room(SLUM_STREET));
+    g.expect(
+        "ring chime",
+        format!("You ring the chime...\r\n{}", prompt(35)),
+    );
+    g.expect("look", room(MANSION_ENTRANCE));
+    g.walk_to(MANSION_ENTRANCE).await;
+    g.walk_narrated("Arrived: Strange Mansion, Entrance").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["w", "ring chime", "look", "ring chime", "look"]);
 }

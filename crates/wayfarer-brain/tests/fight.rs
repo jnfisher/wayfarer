@@ -428,6 +428,27 @@ async fn walk_to_while_the_bots_look_is_in_flight_walks_once_it_is_answered() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn entering_the_realm_starts_the_bot_where_it_stands() {
+    // C-054 (`bot.start_on_logon`, on by default): logged on into the Arena, the bot starts
+    // at once, re-syncs and plays there; out of the realm again, it stops.
+    let clock = Arc::new(wayfarer_brain::FixedClock(
+        std::time::UNIX_EPOCH + Duration::from_secs(T0),
+    ));
+    let brain = wayfarer_brain::Brain::new(world(), clock, None);
+    let (mut g, run) = Game::start_brain(SessionState::Logon, arena(&[], 35), brain).await;
+    g.expect("st", status(35));
+    g.expect("look", arena(&[], 35));
+    g.set_state(SessionState::Realm).await;
+    g.narrated("Entered the realm: starting the bot").await;
+    g.narrated("Waiting here").await;
+    g.set_state(SessionState::Menu).await;
+    g.narrated("Stopped: the session left the realm").await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look"]);
+    assert_eq!(bot(&seen).state, BotState::Stopped);
+}
+
+#[tokio::test(start_paused = true)]
 async fn the_bot_needs_the_realm() {
     let (mut g, run) = Game::start_with(SessionState::Menu, arena(&[], 35)).await;
     g.bot(BotAction::Start).await;
