@@ -52,6 +52,20 @@
     works as an exit). The BBS-credit loan code is never called. `MAXIMUM_BANK_BALANCE` caps a book's
     balance when it is read from disk (0 = no limit). [C] `LJNCMDB.C:5011-5040`, `LJNBUFF.C:4038`
 
+## Coins from monsters
+- A monster's coins are rolled when it spawns: each coin type with a nonzero maximum in its
+  record gets `lngrnd(0, max+1)`, so about half the maximum on average. [C] `LJNMONST.C:697-714`
+- For money, rank areas by **average coins per monster hit point** (kill time scales with HP).
+  From the stock data [C data, I ranking]: the Silvermere slums average about 45 copper on
+  about 45 HP (≈1 copper/HP; half-ogre bodyguard 65c/60 HP but hits 36). The Darkwood keep's
+  bandits (9:749 Forest Keep, 9:776 Keep Wall Path, 9:807 Hallway; Chaotic Evil, AC 20, hit 12)
+  average about 110 copper on 55 HP (≈2 copper/HP) and give 125 exp, so a party of four L7s
+  makes about twice the slums' money and exp per kill-time there. 135 steps on foot from the
+  Town Gates; 9:725 Keep Wall and the cells/dungeon are dark (−100/−200).
+- The richest single monster at low level, the Graveyard gravedigger (up to 10 gold, 15 silver,
+  50 copper, about 6 gold average), is no money route: one alive at a time, back an hour after
+  its kill (`maxalive` 1, `regenhrs` 1), and Neutral. [C data]
+
 ## Prices
 - An item record has `cost` in the item's `currency` (offset 0x421: 0 copper, 1 silver, 2 gold,
   3 platinum, 4 runic). [C] `MAJORMUD.H:404-409`, `struct item`
