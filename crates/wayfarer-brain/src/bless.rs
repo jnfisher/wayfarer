@@ -1,7 +1,8 @@
 //! Blessings (C-047, docs/brain.md "Blessings"): the lasting spells the player ticked for the
-//! character (bless, barkskin, holy aura) are kept on. Between fights, with nothing attacking
-//! and with the mana to spare, Bless casts each one the bot does not believe is on, ahead of a
-//! rest (the party's too) unless the character is under its own rest line. One is on from a cast that did not fail for as long as it lasts at the
+//! character (bless, barkskin, holy aura) are kept on. With the mana to spare
+//! (`spells.bless_mana_above`), Bless casts each one the bot does not believe is on: between
+//! fights ahead of a rest (the party's too) unless the character is under its own rest line,
+//! and in a fight after a heal (`spells.bless_in_combat`, C-056). One is on from a cast that did not fail for as long as it lasts at the
 //! character's level (`BuffDef::rounds`), or until its wear-off line; off at a death. A cast
 //! that fails is tried again after a round; [`FAILS`] in a row hold that spell for [`HOLD`]
 //! (it may be on already and not renewable).
@@ -73,10 +74,10 @@ impl Bless {
     }
 
     /// The first spell to cast now, if any: off, not held, and paid for without taking the
-    /// mana under the rest line.
+    /// mana under the blessing's line (`spells.bless_mana_above`).
     fn due<'a>(&'a self, v: &View) -> Option<&'a Kept> {
         let (mana, max) = v.mana?;
-        let line = max * i64::from(v.rest_mana_below()) / 100;
+        let line = max * i64::from(v.bless_mana_above()) / 100;
         self.kept.iter().find(|k| {
             k.on_until.is_none_or(|t| v.now >= t)
                 && k.retry_at.is_none_or(|t| v.now >= t)
@@ -108,8 +109,11 @@ impl Bless {
 
 impl Mode for Bless {
     fn wants(&self, v: &View) -> Option<String> {
-        // Not in a fight; a rest, the party's too, gives way to it (`Recover::yields_to_bless`).
-        if v.engaged || !v.presence.attackers.is_empty() {
+        // In a fight only with `spells.bless_in_combat` (C-056, after a heal: `Fight::may_bless`);
+        // a rest, the party's too, gives way to it (`Recover::yields_to_bless`).
+        if (v.engaged || !v.presence.attackers.is_empty())
+            && !v.settings.bool("spells.bless_in_combat")
+        {
             return None;
         }
         self.due(v).map(|k| format!("{} is off", k.def.name))

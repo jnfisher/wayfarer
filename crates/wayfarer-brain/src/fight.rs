@@ -298,6 +298,27 @@ impl Fight {
         )
     }
 
+    /// Whether a blessing may be cast in this fight now (C-056): no heal is due, its own or a
+    /// party member's, and no spell of ours went this round (one general spell a round).
+    pub fn may_bless(&self, v: &View) -> bool {
+        if self.heal_ready.is_some_and(|t| v.now < t) {
+            return false;
+        }
+        let own =
+            v.hp.is_some_and(|hp| hp < v.heal_in_combat_below() && v.heal_spell().is_some());
+        let mates = v
+            .party_heal(v.member_heal_in_combat(), v.heal_in_combat_below())
+            .is_some();
+        !own && !mates
+    }
+
+    /// A blessing is cast in the fight: the `*Combat Off*` it causes is ours, as after a heal
+    /// (the same monster is attacked again at once), and no heal goes this round.
+    pub fn cast_mid_fight(&mut self, now: Instant) {
+        self.healed = true;
+        self.heal_ready = Some(now + HEAL_GAP);
+    }
+
     /// A heal for another member of the party in the room, or the party heal (C-043); the fight
     /// goes on at once after the cast, as after its own heal.
     fn heal_mates(&mut self, v: &View) -> Option<Step> {

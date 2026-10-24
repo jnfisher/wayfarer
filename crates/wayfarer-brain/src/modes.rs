@@ -461,6 +461,11 @@ impl View<'_> {
         self.setting("health.rest_mana_below", 0)
     }
 
+    /// The mana a blessing leaves at least (`spells.bless_mana_above`, per cent).
+    pub fn bless_mana_above(&self) -> i32 {
+        self.setting("spells.bless_mana_above", 20)
+    }
+
     /// The character rests for mana: it uses mana and has a rest-for-mana line (0 is none).
     pub fn rests_for_mana(&self) -> bool {
         self.uses_mana() && self.rest_mana_below() > 0
@@ -1248,6 +1253,7 @@ impl Bot {
         }
         // A mode that finishes in its step (safe, rested, back home) hands over at once: the
         // stack is asked again, once.
+        let fighting = v.engaged || !v.presence.attackers.is_empty();
         for _ in 0..2 {
             let (mut mode, reason) = if let Some(r) = self.flee.wants(v) {
                 (BotMode::Flee, r)
@@ -1256,12 +1262,18 @@ impl Bot {
                 return (None, says);
             } else if let Some(r) = self.loot.wants(v) {
                 (BotMode::Loot, r)
-            } else if let Some(r) = self
-                .bless
-                .wants(v)
-                .filter(|_| self.recover.yields_to_bless(v))
-            {
-                // A blessing that wore off goes ahead of a rest, the party's too.
+            } else if let Some(r) = self.bless.wants(v).filter(|_| {
+                if fighting {
+                    self.fight.may_bless(v)
+                } else {
+                    self.recover.yields_to_bless(v)
+                }
+            }) {
+                // A blessing that wore off goes ahead of a rest, the party's too; in a fight
+                // (C-056) after a heal, and the fight goes on after it.
+                if fighting {
+                    self.fight.cast_mid_fight(v.now);
+                }
                 (BotMode::Bless, r)
             } else if let Some(r) = self.recover.wants(v) {
                 (BotMode::Recover, r)
