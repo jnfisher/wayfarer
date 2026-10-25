@@ -192,3 +192,4 @@
 - **2026-10-24**: `classes/cleric.md`: the huge darkwood club bashes hardest for an L20 Dwarf cleric (34 a round against the black flail's 29); a Str shortfall costs a whole-round bash nothing [C formulas, I stats].
 - **2026-10-24**: `progression.md`: boss loot is balanced by rarity (respawn hours, 5% drops, limited 1) and gated access, not by difficulty; the guardian golem and Thrag worked through, with their keys [C data, I reading].
 - **2026-10-25**: `recovery.md`: whose light counts (user light is personal; a lit source and room light count for the room), starlight as the party's light, and the non-Magical light items for a Kang Witchunter (mining helm free at 6:1567) [C].
+- **2026-10-25**: `classes/witchunter.md` §5: the full armour progression to L45 with prices, the black chitin crafting costs and materials, and the Witchunter quest pieces [C data].
