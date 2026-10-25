@@ -722,7 +722,9 @@ fn the_spell_list_and_the_casting_refusals() {
     assert_eq!(example("spells_none"), GameEvent::SpellsNone);
     assert_eq!(example("no_mana"), GameEvent::NoMana);
     assert_eq!(example("already_this_round"), GameEvent::AlreadyCast);
-    assert_eq!(example("cast_fail"), GameEvent::CastFailed);
+    assert!(
+        matches!(example("cast_fail"), GameEvent::CastFailed { ref spell } if !spell.is_empty())
+    );
 }
 
 #[test]

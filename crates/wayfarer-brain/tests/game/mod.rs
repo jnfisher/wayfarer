@@ -33,9 +33,12 @@ pub use wayfarer_world::{Key, WorldPack};
 /// when asked, before C-054; a test of either default turns it back.
 pub fn test_settings(text: &str) -> wayfarer_settings::Settings {
     use wayfarer_settings::{Layer, Overrides, Settings};
-    let quiet =
-        Overrides::parse("[health]\nrest_quiet_room = true\n[bot]\nstart_on_logon = false\n")
-            .unwrap();
+    // The blessings' status-screen check is off: the scripts would have to answer its `st`.
+    let quiet = Overrides::parse(
+        "[health]\nrest_quiet_room = true\n[bot]\nstart_on_logon = false\n\
+         [spells]\nbless_check_seconds = 0\n",
+    )
+    .unwrap();
     let over = Overrides::parse(text).unwrap();
     Settings::resolve(&[(Layer::Mine, &quiet), (Layer::Character, &over)]).unwrap()
 }

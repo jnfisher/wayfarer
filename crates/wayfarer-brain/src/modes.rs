@@ -648,6 +648,11 @@ impl Bot {
         self.flee.set_below(percent);
     }
 
+    /// How often the blessings are looked for on the status screen (`spells.bless_check_seconds`).
+    pub fn set_bless_check(&mut self, every: std::time::Duration) {
+        self.bless.set_check(every);
+    }
+
     pub fn running(&self) -> bool {
         self.state == BotState::Running
     }
