@@ -456,10 +456,15 @@
   <div class="bar">
     <span class="title">wayfarer</span>
     <span class="right">
+      {#if devPrefs.open}
+        <!-- The drawer has no title row: these buttons are its tabs, and this is whose it is. -->
+        <span class="who">═ {sessions[focused]?.name ?? "no character"} ═</span>
+      {/if}
       {#each DRAWER_BUTTONS as b (b.panel)}
         <button
           class="devbtn"
           class:on={devPrefs.open && devPrefs.panel === b.panel}
+          aria-pressed={devPrefs.open && devPrefs.panel === b.panel}
           onclick={() => toggleDrawer(devPrefs, b.panel)}
           title={b.title}
         >
@@ -530,22 +535,6 @@
     {#if devPrefs.open}
       <!-- A drawer on the right of the tiles, a third of the width at most; the tiles refit. -->
       <aside class="drawer" aria-label="{devPrefs.panel} panel">
-        <div class="title">
-          <span class="tabs" role="tablist">
-            {#each DRAWER_BUTTONS as b (b.panel)}
-              <button
-                role="tab"
-                aria-selected={devPrefs.panel === b.panel}
-                class:on={devPrefs.panel === b.panel}
-                onclick={() => (devPrefs.panel = b.panel)}
-              >
-                {b.panel}
-              </button>
-            {/each}
-          </span>
-          <span>═ <span class="who">{sessions[focused]?.name ?? "no character"}</span> ═</span>
-          <button onclick={() => (devPrefs.open = false)} title="Close">x</button>
-        </div>
         {#if devPrefs.panel === "map"}
           <MapPanel
             session={sessions[focused]}
@@ -677,33 +666,9 @@
     line-height: 16px;
     font-size: 16px;
   }
-  .drawer .title {
-    display: flex;
-    justify-content: space-between;
-    gap: 1ch;
-    padding: 0 1ch 2px;
-    color: var(--frame);
+  .who {
     white-space: pre;
-    border-bottom: 1px solid var(--frame);
-  }
-  .drawer .tabs {
-    display: flex;
-    gap: 1ch;
-  }
-  .drawer .who {
-    color: var(--vga-yellow);
-  }
-  .drawer button {
-    font: inherit;
-    line-height: 16px;
-    padding: 0 1ch;
-    color: #000;
-    background: var(--vga-lightgray);
-    border: none;
-    cursor: pointer;
-  }
-  .drawer button.on {
-    background: var(--vga-lightcyan);
+    color: var(--vga-blue);
   }
   /* The tiles, and the dev panel to their right when it is open. */
   /* The bar of minimized characters, under the tiles. */

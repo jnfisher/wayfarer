@@ -149,9 +149,10 @@ is per browser until settings arrive (`docs/plan/04-settings.md`); it is not wri
 ## The drawer
 
 The map, the parties, the blessings, the stats, the settings and the dev panel share one
-drawer on the right, a third of the window at most; the tiles refit beside it. Its title has
-the six tabs, `map`, `parties`, `blessings`, `stats`, `settings` and `dev`, the
-focused character's name and a close button. `Alt+M` (on a Mac, `Option+M`) or the `map`
+drawer on the right, a third of the window at most; the tiles refit beside it. Its tabs are
+the six buttons on the bar at the top, `map`, `parties`, `blessings`, `stats`, `settings` and
+`dev`, the open one lit, with the focused character's name before them while it is open; it
+has no title row of its own. `Alt+M` (on a Mac, `Option+M`) or the `map`
 button opens it on the map, and again closes it; `Alt+S` or the `stats` button and `Alt+D` or
 the `dev` button do the same for the stats and the dev panel, and each key switches tabs when
 the drawer is open on another. It follows the focused tile.
