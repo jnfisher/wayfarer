@@ -1110,7 +1110,17 @@ scroll read since is found the next time.
   `kb/spells.md`: "The effects of bless wear off!"); the line its target sees ("You feel
   lucky!") turns it on too, whoever cast it; a death ends them all. A failed cast ("You
   attempt to cast bless, but fail.", or no mana) is tried again after a round; three in a row
-  hold the spell for five minutes, since one already on may not renew. The panel shows which
+  hold the spell for five minutes, since one already on may not renew. A cast is done at the
+  first prompt after it, and another player's line can bring one before the cast's own reply
+  (Manuel, 2026-10-25): a failure line naming the spell that comes within the round after a
+  cast taken as on still counts as its failure. Between fights, while a ticked spell is
+  believed on, the bot looks at the status screen every `spells.bless_check_seconds` (60; 0
+  never; any `st` screen, a re-sync's or the player's, counts), narrated "Blessing: looking at
+  the status screen". The screen shows, after its last row, the line its target sees for every
+  spell on the character, whoever cast it (`kb/screen-patterns.md` "Status screens"); one
+  believed on whose line is not there is off, and is cast again ("Blessing: bless is not on
+  the status screen; casting it"). A spell with no such line, or a sysop's debug list in place
+  of the lines, is left as believed. `st` ends no rest (`kb/recovery.md`). The panel shows which
   are on (`blessings`).
 - **Not done.** Buffs on other members, light, area spells, cures, spells
   that need a target the bot does not pick (a Thief's backstab is not a spell), and the

@@ -249,6 +249,11 @@ fn answers(step: usize, ev: &GameEvent) -> bool {
     }
 }
 
+/// How often the blessings are looked for on the status screen; zero: never.
+fn bless_check(settings: &Settings) -> Duration {
+    Duration::from_secs(u64::try_from(settings.int("spells.bless_check_seconds")).unwrap_or(0))
+}
+
 /// Whether `text` shows anything but escapes and white space.
 fn visible(text: &str) -> bool {
     let mut chars = text.chars();
@@ -417,6 +422,8 @@ impl Session {
     ) -> Self {
         let (resolved, settings_warning) = settings.resolve(&info.id, None);
         let flee_below = settings.flee_below(&resolved);
+        let mut bot = Bot::new(flee_below);
+        bot.set_bless_check(bless_check(&resolved));
         let ledger = Ledger::new(store, clock.clone(), &info.id);
         let restore = ledger
             .stored()
@@ -453,7 +460,7 @@ impl Session {
             map_center: None,
             map_dirty: false,
             owner: None,
-            bot: Bot::new(flee_below),
+            bot,
             presence: Presence::default(),
             party_game: Default::default(),
             party_role: PartyRole::None,
@@ -3171,6 +3178,7 @@ impl Session {
             u32::try_from(settings.int("movement.search_limit")).unwrap_or(MAX_SEARCHES),
         );
         self.bot.set_flee_below(flee);
+        self.bot.set_bless_check(bless_check(&settings));
         self.settings = settings;
     }
 

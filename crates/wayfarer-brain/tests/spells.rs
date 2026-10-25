@@ -382,6 +382,96 @@ async fn a_blessing_that_keeps_failing_is_held() {
     assert_eq!(played, ["st", "look", "spells", "bles", "bles", "bles"]);
 }
 
+/// A cast's failure that comes in a later chunk than another player's line and its prompt
+/// (Manuel, 2026-10-25: `valr`, then `Lauren is looking around the room.` with its prompt, then
+/// `You attempt to cast song of valour, but fail.`) is still a failure: tried again after a
+/// round, not believed on for the spell's length.
+#[tokio::test(start_paused = true)]
+async fn a_failure_after_another_players_prompt_is_tried_again() {
+    let (mut g, run) = in_arena(&[]).await;
+    g.send(ToClient::BlessingsSave {
+        session: ID.into(),
+        spells: vec!["bles".into()],
+    })
+    .await;
+    start_caster(&mut g, "Cleric", &BLESSER_SPELLS, &[], 35, 20).await;
+    g.expect("bles", line("Lauren is looking around the room.", 35));
+    g.narrated("Blessing: casting bless").await;
+    g.idle(Duration::from_millis(100)).await;
+    g.expect("bles", blessed(35));
+    g.output(&line("You attempt to cast bless, but fail.", 35))
+        .await;
+    g.idle(Duration::from_secs(20)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "spells", "bles", "bles"]);
+}
+
+/// The status screen with `felt` (the lines of the spells on) after its last row.
+fn status_with(felt: &[&str], hp: i32) -> String {
+    let screen = caster_status("Cleric", hp, 20);
+    let body = screen.strip_suffix(&prompt(hp)).unwrap();
+    let lines: String = felt.iter().map(|l| format!("{l}\r\n")).collect();
+    format!("{body}{lines}{}", prompt(hp))
+}
+
+/// A Cleric in the Arena with bless ticked and the status screen looked at every
+/// `seconds`, blessed.
+async fn blessed_and_checked(seconds: u32) -> (Game, Run) {
+    let text = format!("[spells]\nbless_check_seconds = {seconds}\n");
+    let (mut g, run) = in_arena_with(&[], &text).await;
+    g.send(ToClient::BlessingsSave {
+        session: ID.into(),
+        spells: vec!["bles".into()],
+    })
+    .await;
+    start_caster(&mut g, "Cleric", &BLESSER_SPELLS, &[], 35, 20).await;
+    g.expect("bles", blessed(35));
+    g.narrated("Blessing: casting bless").await;
+    (g, run)
+}
+
+/// A blessing believed on that the status screen does not show is off: cast again, saying
+/// why (Manuel, 2026-10-25: a failure the bot missed left valour off for six minutes).
+#[tokio::test(start_paused = true)]
+async fn a_blessing_the_status_screen_does_not_show_is_cast_again() {
+    let (mut g, run) = blessed_and_checked(60).await;
+    g.expect("st", status_with(&[], 35));
+    g.expect("bles", blessed(35));
+    g.narrated("Blessing: bless is not on the status screen; casting it")
+        .await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "spells", "bles", "st", "bles"]);
+}
+
+/// One the screen shows stays on, and the screen is looked at again a minute later; so does
+/// one a sysop's debug list stands in for; with the check at 0 it is never looked at.
+#[tokio::test(start_paused = true)]
+async fn a_blessing_the_status_screen_shows_is_left_on() {
+    for shown in [
+        &["You feel lucky!"][..],
+        &[
+            "You have the following spell cast upon you:",
+            "  bless (3,10).",
+        ],
+    ] {
+        let (mut g, run) = blessed_and_checked(60).await;
+        g.expect("st", status_with(shown, 35));
+        g.expect("st", status_with(shown, 35));
+        g.idle(Duration::from_secs(130)).await;
+        let (_, played) = g.close(run).await;
+        assert_eq!(
+            played,
+            ["st", "look", "spells", "bles", "st", "st"],
+            "{shown:?}"
+        );
+    }
+
+    let (mut g, run) = blessed_and_checked(0).await;
+    g.idle(Duration::from_secs(130)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "spells", "bles"]);
+}
+
 /// A Cleric with bless ticked, blessed and fighting the rat (C-056): the cast before the fight,
 /// then the attack.
 async fn blessed_and_fighting(text: &str) -> (Game, Run) {

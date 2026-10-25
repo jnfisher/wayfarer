@@ -228,7 +228,7 @@ impl Mode for Fight {
             }
             GameEvent::YouDoNotSee { .. } | GameEvent::NoEffect => self.refused(),
             // A cast at the target, hit or missed: counted for the limit.
-            GameEvent::SpellCast { .. } | GameEvent::CastFailed if self.spell_fight => {
+            GameEvent::SpellCast { .. } | GameEvent::CastFailed { .. } if self.spell_fight => {
                 self.casts += 1;
             }
             GameEvent::YouKilled => {

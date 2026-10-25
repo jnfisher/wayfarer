@@ -429,7 +429,9 @@ pub enum GameEvent {
     /// `cast_resisted`: `You attempt to cast mmis at orc, but the spell is resisted.`
     CastResisted,
     /// `cast_fail`: `You attempt to cast vine strike, but fail.`
-    CastFailed,
+    CastFailed {
+        spell: String,
+    },
 
     /// `sneak_attempt`: `Attempting to sneak...`, with `You don't think you're sneaking.` on
     /// the same line when the character's perception caught a failure (`failed`). A failure
@@ -891,7 +893,9 @@ impl GameEvent {
             },
             "no_mana" => G::NoMana,
             "already_this_round" => G::AlreadyCast,
-            "cast_fail" => G::CastFailed,
+            "cast_fail" => G::CastFailed {
+                spell: text(ev, "spell"),
+            },
             "cast_resisted" => G::CastResisted,
             "sneak_attempt" => G::SneakAttempt {
                 failed: ev

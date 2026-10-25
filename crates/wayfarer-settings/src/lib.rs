@@ -550,6 +550,17 @@ pub const CATALOGUE: &[Setting] = &[
         group: Group::Spells,
         megamud: Some("Mana Bless If Above"),
     },
+    Setting {
+        key: "spells.bless_check_seconds",
+        label: "Check blessings every",
+        help: "Between fights, while a ticked blessing is believed on, the status screen (st) is looked at this often; one it does not show is cast again. Looking ends no rest. 0: never.",
+        kind: Kind::Int { min: 0, max: 600 },
+        default: Value::Int(60),
+        unit: "seconds",
+        tier: Tier::Advanced,
+        group: Group::Spells,
+        megamud: None,
+    },
 ];
 
 /// The setting declared for `key`.
