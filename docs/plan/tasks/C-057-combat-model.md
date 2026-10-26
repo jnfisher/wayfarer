@@ -52,7 +52,9 @@ integer arithmetic (truncation toward zero); keep every intermediate as the C do
   (no weapon: speed 1200, energy 0). Then:
   1. Str short of the weapon's `strreq`: `cost = cost*((strreq-Str)*3 + 200)/200`, and the
      character is *too weak* (no fast-blow crit bonus).
-  2. Alter Energy Usage (ability 87) above 0: `cost = cost*pct/100`.
+  2. Alter Energy Usage (ability 87) above 0: `cost = cost*pct/100`. The percentage is not a
+     sum: each source is averaged with what earlier ones gave, `(old + value)/2`, in the order
+     spells (buffs), race, class, worn items, weapon (LJNABIL.C:1076-1082).
   3. Encumbrance: `cost = cost*(E/2 + 75)/100`.
   4. Fast blow: if `cost < 200`, `E <= 66` and not too weak:
      `n = min(20, 200 - cost + (Agi-50)/10)`; crit `+= n` when `E < 33`, `+= n/2` otherwise.
@@ -62,20 +64,24 @@ integer arithmetic (truncation toward zero); keep every intermediate as the C do
   between blows.)
 - **Damage range.** The weapon's `mindmg..maxdmg` (fists 1..4). `max += (Str-50)/10`;
   `min += (Str-100)/10*2` when that is above 0; then `min = min(min, max)`, both at least 0.
-  `max +=` Alter Damage (ability 4) from items and buffs.
+  `max +=` Alter Damage (ability 4) from the race, class, items and buffs.
 - **Attack value.** Accuracy = weapon + worn items' `accuracy`, 1 if that is 0; when `E < 33`
   add `15 - E/10`. `skill = (C-1)*2 + L/2 + acc/2`; `training = (C-1)*isqrt(L)`;
-  `AV = (skill + training)*2 + (Str-50)/3 + (Agi-50)/6`, plus the AV buffs (abilities 22,
-  105, 106 from buffs and items).
+  `AV = (skill + training)*2 + (Str-50)/3 + (Agi-50)/6`, plus the AV bonus: the *best* value
+  of abilities 22, 105 and 106 over the buffs, race, class and items, not their sum
+  (LJNABIL.C:1055-1059).
 - **Crit chance.** `mabase = clamp(L/10 + (Int-50)/10 + (Agi-50)/20 + (Cha-50)/30, 1, 75)`;
-  `crit = max(1, mabase + critbonus)`, where `critbonus` is Alter Critical (58) from items and
-  buffs; then the fast-blow bonus above.
+  `crit = max(1, mabase + critbonus)`, where `critbonus` is Alter Critical (58) from the race,
+  class, items and buffs; then the fast-blow bonus above.
 
 ### The monster (`move_monster_to_fighter`)
 
 `DV = ac + Alter Defence (2)`; `DR = dr*10 + Alter DR (7)` in tenths, a tenth of it taken off
-each blow; `dodge = Dodge (34)`; `defmod = Defence Modifier` (the ability that
-`calculate_attack` adds to the attacker's hit modifier); `maxhp`. The alignment defences are
+each blow; `dodge = Dodge (34)`; `defmod = Defence Modifier (104)` (the ability that
+`calculate_attack` adds to the attacker's hit modifier); `maxhp`. Each ability is the sum
+over the record's slots plus the monster's weapon and worn item (`get_monster_ability_value`,
+LJNABIL.C:681-810: eight stock monsters' bows add Dodge 5). A negative Dodge makes the blow
+land at 99 with chance `P(genrdn(0,100) > dodge+100)` (LJNCOMBT.C:1320). The alignment defences are
 left out (`defalign` 0): the planner does not know the character's alignment group.
 
 ### One blow (`calculate_attack`)
@@ -101,13 +107,13 @@ left out (`defalign` 0): the planner does not know the character's alignment gro
 
 Engaging sets the character's energy to 0; every round adds `maxenergy`; within a round blows
 are struck while the energy left is at least the blow's cost, at most **six** a round; what is
-left carries into the next round. So a bash costing 632 strikes 1, 2, 1, 2, … and one costing
-496 strikes 2, 2, 2, ….
+left carries into the next round. So a bash costing 632 strikes 1, 2, 1, 2, 1, 2, 2, 1 (the
+remainder drifts) and one costing 496 strikes 2, 2, 2, ….
 
 ### Smash knock-down
 
-A landed smash knocks the monster down when `Str + L > monster level + magicres + 30`; while
-it is down its DV is `max(0, DV - 35)`. Model it as down from the blow after the first landed
+A smash that does damage (not a miss, glance or dodge) knocks the monster down when
+`Str + L > monster level + magicres + 30`; while it is down its DV is `max(0, DV - 35)`. Model it as down from the blow after the first landed
 smash until the fight ends (a smash every round keeps it down, `combat.md` "SMASH knock-down").
 
 ### Buffs
@@ -161,7 +167,7 @@ Energy and blows (independent of the roll question):
   and 199 after it; +1 crit at L16, +9 at L17, +17 at L18, +20 from L19). Recompute from the
   formula in the test and assert the KB's numbers.
 - Witchunter (combat 7), Str 95, Agi 56, L15: Magebane sword (speed 1600, energy 0, Str 60)
-  at 55% load: attack cost 316, bash 632, bashes per round 1, 2, 1, 2, 1, 2, …;
+  at 55% load: attack cost 316, bash 632, bashes per round 1, 2, 1, 2, 1, 2, 2, 1;
   bone-handled headcutter (speed 2200, Str 80) at 51% load: attack 427, bash 854, bashes
   1, 1, 1, 1, 1, 2, …. At L20 (Str 97, Agi 62): Magebane at 54% load bash 496 (2 every
   round), headcutter at 50% load bash 672. (Worked with the card's formulas on 2026-10-26.)
