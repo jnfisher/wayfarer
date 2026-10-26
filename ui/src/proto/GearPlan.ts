@@ -20,4 +20,9 @@ missing?: Array<string>,
 /**
  * What else the player should know (names that match no monster, ...).
  */
-notes?: Array<string>, };
+notes?: Array<string>, 
+/**
+ * The names a `{area}` set may give, for the planner's suggestions: the names, up to a
+ * comma, of the rooms that spawn monsters, sorted.
+ */
+areas?: Array<string>, };

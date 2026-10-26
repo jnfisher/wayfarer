@@ -358,9 +358,27 @@ async fn without_the_status_screen_the_plan_says_what_is_missing() {
     let p = answer(&mut g, request(names(), Some(only_load))).await;
     assert_eq!(p.missing, Some(vec!["stats".to_owned()]));
     assert!(p.rows.is_empty());
-    // The buffs are offered all the same.
+    // The buffs are offered all the same, and the areas for the planner's suggestions.
     assert!(!p.buffs_offered.is_empty());
+    assert!(!p.areas.is_empty());
     g.close(run).await;
+}
+
+#[test]
+fn the_areas_offered_are_sorted_names_whose_rooms_spawn() {
+    let g = gear();
+    let p = g
+        .plan(&Subject::default(), &Ask::default(), &[], |_| None)
+        .unwrap();
+    assert!(p.areas.len() > 10, "{:?}", p.areas);
+    assert!(p.areas.windows(2).all(|w| w[0] < w[1]), "sorted, each once");
+    for area in &p.areas {
+        assert!(!area.contains(',') && area.trim() == area, "{area:?}");
+    }
+    // They name sets with monsters in them.
+    for area in [&p.areas[0], &p.areas[p.areas.len() / 2]] {
+        assert!(!g.area_monsters(area).unwrap().is_empty(), "{area:?}");
+    }
 }
 
 #[tokio::test(start_paused = true)]

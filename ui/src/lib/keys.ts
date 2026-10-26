@@ -68,6 +68,17 @@ export const KEY_ROWS: KeyRow[] = [
     does: "Open the drawer on the blessings: tick the lasting spells each character keeps on itself (bless, barkskin, holy aura); ● marks one that is on (on a Mac, Option)",
   },
   {
+    group: "Gear",
+    keys: "Alt+E, or the gear button",
+    does:
+      "Open the gear planner over the tiles for the focused character: every weapon it could use, scored by attack, bash and smash against its monsters; Alt+E again or Esc closes it (on a Mac, Option)",
+  },
+  {
+    group: "Gear",
+    keys: "Click a column's heading, or a row, in the gear planner",
+    does: "Sort by that column (again: the other way round); a row opens its detail under it: each monster's numbers for each move",
+  },
+  {
     group: "Bot",
     keys: "F10, or [■] in the tile's header",
     does: "Drop the focused character's loop or Go to: it plays on where it is (paused, it stays off); with neither, turn the bot off, or on",
@@ -123,6 +134,7 @@ export const BLESSINGS_PANEL_CODE = "KeyB";
 export const GO_CODE = "KeyG";
 export const STATS_PANEL_CODE = "KeyS";
 export const SETTINGS_PANEL_CODE = "KeyT";
+export const GEAR_CODE = "KeyE";
 export const ZOOM_IN_KEYS = ["+", "="];
 export const ZOOM_OUT_KEYS = ["-"];
 export const ZOOM_RESET_KEYS = ["0"];

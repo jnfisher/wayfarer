@@ -62,6 +62,8 @@ struct Records {
     classes: HashMap<i64, ClassRecord>,
     races: HashMap<i64, RaceRecord>,
     buffs: Vec<Offered>,
+    /// The areas a set may name (`GearPlan::areas`).
+    areas: Vec<String>,
 }
 
 /// A buff the plan offers.
@@ -113,6 +115,7 @@ pub struct Plan {
     pub rows: Vec<GearRow>,
     pub missing: Vec<String>,
     pub notes: Vec<String>,
+    pub areas: Vec<String>,
 }
 
 /// A detail's answer, the session aside.
@@ -266,6 +269,7 @@ impl Gear {
         let records = self.records()?;
         let mut plan = Plan {
             buffs_offered: records.buffs.iter().map(|b| b.wire.clone()).collect(),
+            areas: records.areas.clone(),
             ..Plan::default()
         };
         let values = match self.values(&records, who, ask, &mut plan.inputs, &mut plan.notes) {
@@ -708,8 +712,25 @@ impl Records {
             classes,
             races,
             buffs: offered_buffs(pack, &atlas.class_magery)?,
+            areas: spawn_areas(atlas),
         })
     }
+}
+
+/// The names, up to a comma, of the rooms that spawn monsters, sorted: what an `{area}` set
+/// may name. A name's rooms are looked at until one spawns.
+fn spawn_areas(atlas: &Atlas) -> Vec<String> {
+    let mut areas = std::collections::BTreeSet::new();
+    for node in atlas.graph.nodes() {
+        let area = node.room.name.split(',').next().unwrap_or("").trim();
+        if area.is_empty() || areas.contains(area) {
+            continue;
+        }
+        if !atlas.monsters.spawn_pool(&node.room).is_empty() {
+            areas.insert(area.to_owned());
+        }
+    }
+    areas.into_iter().collect()
 }
 
 /// Every lasting spell of a class's magery that is cast on a player or the party and raises

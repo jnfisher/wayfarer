@@ -1076,7 +1076,9 @@ nothing is bought or walked, and the brain sends a plan only when asked. Solo pl
 - **The monsters**: `{loop}` the stops of a loop (a MegaMud file, a generated or a saved loop's
   id), `{area}` the rooms of a name or of the name and a comma, `{names}` by name. Left out: the
   loop the bot runs, else the area around the believed room (its name up to a comma), else
-  `missing: ["monsters"]`. Names that match nothing are in `notes`.
+  `missing: ["monsters"]`. Names that match nothing are in `notes`. Every plan carries `areas`,
+  the names an `{area}` may give (those, up to a comma, of the rooms that spawn monsters, worked
+  out with the records), for the planner's suggestions (C-060).
 - **Buffs** are checkboxes (John, 2026-10-26): `buffs_offered` lists every lasting spell of a
   class's magery (level above 0), cast on the caster, a player or the party, that raises AV
   (abilities 22, 105, 106), Alter Damage (4), Alter Critical (58), Str (46) or Agi (48), or lowers

@@ -12,6 +12,8 @@ import type {
   BotAction,
   CharacterState,
   Chunk,
+  GearDetailRequest,
+  GearPlanRequest,
   MonsterRuleKind,
   PartyDef,
   PartyStatus,
@@ -28,6 +30,7 @@ import { clampRadius, LOOP_RADIUS, type Loops, type MapView } from "./map";
 import { MIN_QUERY, type FoundMessage } from "./goto";
 import type { SettingsMessage } from "./settings";
 import type { SpellPlan } from "./spells";
+import type { GearDetailMessage, GearPlanMessage } from "./gear";
 import type { Stats } from "./stats";
 
 /** The part of the browser's `WebSocket` the client uses. */
@@ -94,6 +97,10 @@ export interface GatewayEvents {
   stats?(stats: Stats): void;
   /** The spells a character lacks and where to buy them, for the tile's errand menu. */
   spellPlan?(plan: SpellPlan): void;
+  /** A character's weapons scored against a monster set, for the gear planner. */
+  gearPlan?(plan: GearPlanMessage): void;
+  /** One weapon against each monster of the set, for the gear planner's open row. */
+  gearDetail?(detail: GearDetailMessage): void;
   /** A character's settings, for the settings tab. */
   settings?(settings: SettingsMessage): void;
   /** What a `find` found, for the map panel's go box. */
@@ -263,6 +270,16 @@ export class GatewayClient {
   /** Ask for the spells the character lacks (a `spell_plan` answer); false when not connected. */
   requestSpellPlan(session: string): boolean {
     return this.send({ type: "spell_plan_request", session });
+  }
+
+  /** Ask for a gear plan (a `gear_plan` answer); false when not connected. */
+  requestGearPlan(req: GearPlanRequest): boolean {
+    return this.send({ type: "gear_plan_request", ...req });
+  }
+
+  /** Ask for one weapon's numbers per monster (a `gear_detail` answer); false when not connected. */
+  requestGearDetail(req: GearDetailRequest): boolean {
+    return this.send({ type: "gear_detail_request", ...req });
   }
 
   /** Ask for the character's last runs (a `stats` answer); false when not connected. */
@@ -485,6 +502,12 @@ export class GatewayClient {
         break;
       case "spell_plan":
         this.opts.events.spellPlan?.(message);
+        break;
+      case "gear_plan":
+        this.opts.events.gearPlan?.(message);
+        break;
+      case "gear_detail":
+        this.opts.events.gearDetail?.(message);
         break;
       case "settings":
         this.opts.events.settings?.(message);
