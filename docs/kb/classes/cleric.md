@@ -56,6 +56,17 @@ heal success + regen + MR. Melee details (BASH vs ATTACK, encumbrance): `notes/c
 | 20 | 340 | 108/80/80 | 109 | 86 | 10 | 197 | 98 |
 | 30 | 540 | 110/90/90 | 130 | 126 | 13 | 300 | 100 |
 
+**Attack or bash at L20** [C formulas from LJNCOMBT.C:338-943, 1226-1427; I: the class ladder's L20 stats, the damage roll taken as min..max, targets kobold warrior, bandit leader, guardian wolf, skeletal warrior, stone golem, slaver, barrow wight, guardian golem, minotaur champion]. Dwarf on the ladder above (Str 80, Wil 108, Agi 45), black flail,
+scalemail kit (47% load, AV 84): bash 29 a round against attack 23 on average, but attack wins
+from about AC 50 (slaver 20 against 17, barrow wight 13 against 7). Bash at AC 40 and under,
+attack above. The **huge darkwood club** (10-34 2H blunt, Str 100, limited 1, Thrag 1:1810)
+bashes hardest: 34 a round, ahead of the black flail on every target but the barrow wight. Being
+20 Str short costs it nothing, because its bash already takes the whole round (cost capped at
+1000), and its accuracy keeps the hit chance level with the flail's. It attacks badly (16), so
+keep the flail for `a` on AC 50+ and for a shield. Maul 17, three-headed flail 24. The full plate kit (corselet, leggings, greathelm, gauntlets, boots) is 74% load
+at Str 80 even with the Dwarf's +20%: every blow costs more (bash 25). Holy force (18-64 at
+L20, about 98% to cast, 8 mana) does about 40 a cast, more than either, but the mana is for heals.
+
 ## 4. Spell progression [C; cast% for the Dwarf build at learn level]
 | Role | Spell `cmd` | Lvl | Mana | Effect | Cast% | Source (list ×2 for mk 100) |
 |---|---|---|---|---|---|---|

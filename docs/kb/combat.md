@@ -133,7 +133,12 @@ LJNSPELL.C:48). Every timer runs 11 rounds.
   thresholds stay 32 and 29 for monster DR 0 to 3 (DR 5 moves the fresh one to 33). That is a
   proven value for this one character and weapon. The "about 0.45-0.6 × AV" rule for other
   levels and the DPR table in the notes are a model [I]: unproven, and the table's damage
-  roll runs one too high (the C rolls `min..max`, not `max+1`).
+  roll runs one too high if `genrdn` excludes its top value.
+- **Does `genrdn(lo, hi)` include `hi`?** Unproven either way [I]: the damage roll is
+  `genrdn(0, max-min+1) + min`, so it is `min..max+1` if the top is included and `min..max`
+  if not, and several KB lines read the other rolls as top-excluded. The gear planner models
+  every roll **with the top value included** (John, 2026-10-26); settle it by logging damage
+  rolls on silvermere or reading MBBSEmu's `genrdn`.
 - **Fast weapons crit more.** A blow whose energy cost comes out under 200 (after the
   encumbrance factor, before the floor of 200) adds `min(20, 200 - cost + (Agi-50)/10)` to the
   critical chance, halved from 33% encumbrance, nothing above 66% or with a Str shortfall

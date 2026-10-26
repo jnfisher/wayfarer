@@ -82,6 +82,13 @@ Melee: combat 5 with a 1H weapon. At L10 with a mace (3-12, speed 1350, Agi 55, 
 crits. That beats discord (~12/round) early, so the **L1-9 pattern is: melee, and open with discord
 or misfortune on tough targets**. From L19, shockwave out-damages melee on any multi-monster room.
 BASH (×3 damage after DR, 2× energy, −15 AV) only pays against low-AC targets with this AV [I combat.md §2].
+**Attack or bash at L20** [C formulas from LJNCOMBT.C:338-943, 1226-1427; I: the class ladder's L20 stats, the damage roll taken as min..max, targets kobold warrior, bandit leader, guardian wolf, skeletal warrior, stone golem, slaver, barrow wight, guardian golem, minotaur champion]. Half-Elf on the ladder above (Str 70, Cha 90, Agi 62), leather
+kit (27-31% load, AV 90-98). With a blow under 200 energy, attack wins everywhere: curved bone
+dagger 47 a round against bash 37 (crit 23), golden sickle 42 against 31. With an ordinary
+weapon bash wins on AC 40 and under and attack on high AC or DR: katana 35/37, jeweled
+longsword 33/41, emerald-hilted rapier 34/32. Keep the load under 33%: the fast-blow crit bonus
+halves above it. Shockwave (24-90, about 68% to cast) does about 39 to every monster in the
+fight, so it beats melee as soon as two are fighting you; pain (22-46, about 78%) does about 26.
 Backstab: sneak, then `bs` for the opener. With a dagger it adds 2×level + stealth/10 before
 the (100+level)% multiplier. Worth using on the first hit only.
 
