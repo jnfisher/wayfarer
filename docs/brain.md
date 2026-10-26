@@ -900,6 +900,23 @@ stopping the bot. With no run it zeroes the combat numbers alone, and the notice
 none), `only: "combat"` zeroes the combat numbers and lets the run go on: the stats tab's two
 **reset** buttons.
 
+### Where the time goes
+
+Each run also keeps where its time went, so the player can see how efficiently the bot plays.
+After every message and timer the session says what the character is doing, and the time
+since it last said goes to what it was doing then: **fighting** (Fight has control, or the
+character is in combat), **fleeing**, **resting** (resting, or Recover waiting to rest or
+healing), **walking** (the walker moving it: a loop's legs, a Go to, the walk to a rest and
+back), **upkeep** (looting, casting a blessing, sneaking), **waiting** (the bot running with
+nothing to do: no monster here, or holding for the party), **paused**, and **away** (out of
+the realm or the connection down while the run is open). A follower the game moves after its
+leader is waiting by this count: its own walker is not moving it. Time the brain was not
+running is counted nowhere, so the parts can add up to less than the run's wall time.
+
+It is kept with the run in the store (`run_time`, as JSON), saved every 30 s while it changes,
+when the run ends and when the session goes; a restarted brain goes on counting the open run.
+The run's reset (and Stop) starts a new count. `stats` carries it as `time`.
+
 ### Combat statistics
 
 C-050, in the shape of MegaMud's Combat tab. Every one of the character's own attack lines

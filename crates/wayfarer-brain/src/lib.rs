@@ -50,6 +50,7 @@ mod sneak;
 mod spellcraft;
 mod stats;
 mod task;
+mod time_stats;
 mod trip;
 mod walker;
 

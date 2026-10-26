@@ -13,9 +13,9 @@ use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
 use wayfarer_parse::{Event, Parser, Registry};
 use wayfarer_proto::{
-    BotAction, CharacterState, Chunk, Found, FoundKind, FoundRoom, GeneratedLoop, LoopStop,
-    MegaMudLoop, Place, RoomKey, SessionAction, SessionId, SessionInfo, SessionState, StatsPart,
-    ToGateway,
+    BotAction, BotMode, CharacterState, Chunk, Found, FoundKind, FoundRoom, GeneratedLoop,
+    LoopStop, MegaMudLoop, Place, RoomKey, SessionAction, SessionId, SessionInfo, SessionState,
+    StatsPart, ToGateway,
 };
 use wayfarer_settings::{Layer, Settings};
 use wayfarer_store::{BotRecord, BotState, CustomLoop, EventKind, PlaceKind as StoredPlace, Store};
@@ -42,6 +42,7 @@ use crate::session_settings::SettingsSource;
 use crate::spellcraft::{SpellRow, Spellbook};
 use crate::stats::{Ledger, rfc3339_at, unix};
 use crate::task::{Task, TaskLoop, why_unreachable};
+use crate::time_stats::Activity;
 use crate::walker::{MAX_SEARCHES, Next, Say, Walker};
 
 /// The rooms a `map_view` holds unless a `map_request` asks for another radius: those within
@@ -1079,8 +1080,35 @@ impl Session {
             let room = self.position.best();
             self.ledger.place(StoredPlace::Stopped, Some(&why), room);
         }
-        if self.ledger.save(record, self.clock.instant()) {
+        // The run's time: up to now as it was, then from now as it is (a run that just
+        // started counts from here).
+        let now = self.clock.instant();
+        let doing = self.activity(now);
+        self.ledger.account(doing, now);
+        if self.ledger.save(record, now) {
             self.publish_patch(out);
+        }
+        self.ledger.account(doing, now);
+    }
+
+    /// What the character is doing, for where the run's time goes.
+    fn activity(&self, now: Instant) -> Activity {
+        if self.state != SessionState::Realm || !self.live() {
+            return Activity::Away;
+        }
+        if !self.bot.running() {
+            return Activity::Paused;
+        }
+        let resting = self.character.state().resting == Some(true);
+        match self.bot.mode() {
+            BotMode::Flee => Activity::Flee,
+            BotMode::Fight => Activity::Fight,
+            _ if self.combat(now) == Some(true) => Activity::Fight,
+            _ if resting => Activity::Rest,
+            _ if self.walker.walking() => Activity::Walk,
+            BotMode::Recover => Activity::Rest,
+            BotMode::Loot | BotMode::Bless | BotMode::Sneak => Activity::Upkeep,
+            BotMode::Task | BotMode::Idle => Activity::Wait,
         }
     }
 
@@ -1183,12 +1211,15 @@ impl Session {
     /// `stats_request`.
     pub fn stats_request(&mut self, out: &mut Vec<ToGateway>) {
         let (runs, samples) = self.ledger.summaries();
-        let combat = self.ledger.combat_wire(self.clock.instant());
+        let now = self.clock.instant();
+        let combat = self.ledger.combat_wire(now);
+        let time = self.ledger.time_wire(now).map(Box::new);
         out.push(ToGateway::Stats {
             session: self.id.clone(),
             runs,
             samples,
             combat,
+            time,
         });
     }
 

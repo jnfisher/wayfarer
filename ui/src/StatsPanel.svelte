@@ -1,5 +1,17 @@
 <script lang="ts">
-  import { age, combatLines, count, perCent, sparkline, startedAt, type Stats } from "./lib/stats";
+  import {
+    age,
+    combatLines,
+    count,
+    duration,
+    efficiency,
+    perCent,
+    sparkline,
+    startedAt,
+    timeLines,
+    timeTitle,
+    type Stats,
+  } from "./lib/stats";
   import type { CharacterState, MonsterRuleKind, SessionInfo, StatsPart } from "./proto";
 
   interface Props {
@@ -42,6 +54,13 @@
   const combat = $derived(stats?.combat);
   const lines = $derived(combat ? combatLines(combat) : []);
   const spark = $derived(stats ? sparkline(stats.samples) : "");
+  const time = $derived(run ? stats?.time : undefined);
+  const times = $derived(time ? timeLines(time) : []);
+  const eff = $derived(
+    time && run
+      ? efficiency(time, run.kills, run.exp_gained, (Date.now() - Date.parse(run.run_started_at)) / 1000)
+      : undefined,
+  );
   const BIG: { key: "exp_per_hour" | "kills" | "deaths" | "flees" | "rests" | "exp_gained"; label: string }[] = [
     { key: "exp_per_hour", label: "exp/hr" },
     { key: "kills", label: "kills" },
@@ -60,7 +79,7 @@
   {:else}
     <section class="current" aria-label="Current run">
       <div class="since">
-        {#if run}run since {startedAt(run.run_started_at)}{:else}no run{/if}
+        {#if run}run since {startedAt(run.run_started_at)} ({age(run.run_started_at)}){:else}no run{/if}
         {#if run}
           <button
             class="reset"
@@ -86,6 +105,53 @@
         <div class="spark" title="exp over the newest run, a bar a minute" aria-label="exp over time">{spark}</div>
       {/if}
     </section>
+    {#if run}
+      <section class="time" aria-label="Time">
+        <div class="since" title="What the character did since the run started (or its reset), while the brain watched">
+          where the time went
+        </div>
+        {#if times.length > 0}
+          <div class="bar" aria-hidden="true">
+            {#each times as l (l.kind)}
+              <span class="seg {l.kind}" style:width="{l.share}%" title="{l.label} {l.pct}%"></span>
+            {/each}
+          </div>
+          <div class="times" role="table" aria-label="Time spent">
+            {#each times as l (l.kind)}
+              <div class="row" role="row" data-time={l.kind} title={timeTitle(l.kind)}>
+                <span class="swatch {l.kind}"></span><span class="t-label">{l.label}</span><span class="c-num"
+                  >{l.pct}%</span
+                ><span class="t-dur">{duration(l.secs)}</span>
+              </div>
+            {/each}
+          </div>
+          {#if eff}
+            <div class="eff" data-eff="rates">
+              {[
+                eff.killsPerHour && `${eff.killsPerHour} kills/hr playing`,
+                eff.expPerFightMinute && `${eff.expPerFightMinute} exp a minute fighting`,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </div>
+            {#if eff.perKill}
+              <div
+                class="eff"
+                data-eff="per-kill"
+                title="Between kills: walking and waiting for the next monster. Long waits mean too few monsters here; long rests mean the fights are too hard."
+              >
+                per kill: {eff.perKill.fight} fighting · {eff.perKill.rest} resting · {eff.perKill.between} between kills
+              </div>
+            {/if}
+            {#if eff.unseen}
+              <div class="dim-line" data-eff="unseen">{eff.unseen} of the run not seen (the brain was not running)</div>
+            {/if}
+          {/if}
+        {:else}
+          <div class="dim-line">Nothing counted yet.</div>
+        {/if}
+      </section>
+    {/if}
     <section class="combat" aria-label="Combat">
       {#if combat}
         <div class="since" title="Kept until you press reset: across runs, stops and restarts">
@@ -111,9 +177,14 @@
           {/each}
         </div>
         <div class="monsters">
-          killed {count(combat.kills)} · fled {count(combat.flees)}{#if combat.lowest_hp !== undefined}
-            · lowest hp {combat.lowest_hp}{/if}{#if combat.lowest_mana !== undefined}
-            · lowest mana {combat.lowest_mana}{/if}
+          {[
+            `killed ${count(combat.kills)}`,
+            `fled ${count(combat.flees)}`,
+            combat.lowest_hp !== undefined && `lowest hp ${combat.lowest_hp}`,
+            combat.lowest_mana !== undefined && `lowest mana ${combat.lowest_mana}`,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </div>
       {:else}
         <div class="dim">No combat numbers since the last reset.</div>
@@ -244,9 +315,68 @@
     border-bottom: 1px solid var(--frame);
     padding-bottom: 2px;
   }
-  .combat {
+  .combat,
+  .time {
     padding: 2px 1ch 4px;
     border-bottom: 1px solid var(--frame);
+  }
+  .time .bar {
+    display: flex;
+    height: 8px;
+    margin: 2px 0 4px;
+    background: var(--vga-black, #000);
+  }
+  .times {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 2ch;
+  }
+  .times .row {
+    gap: 1ch;
+  }
+  .swatch {
+    display: inline-block;
+    width: 1ch;
+    height: 1ch;
+    align-self: center;
+  }
+  .t-label {
+    flex: 1;
+  }
+  .t-dur {
+    width: 8ch;
+    text-align: right;
+    color: var(--dim);
+  }
+  .fight {
+    background: var(--vga-lightred);
+  }
+  .flee {
+    background: var(--vga-lightmagenta);
+  }
+  .rest {
+    background: var(--vga-lightblue);
+  }
+  .walk {
+    background: var(--vga-lightgreen);
+  }
+  .upkeep {
+    background: var(--vga-yellow);
+  }
+  .wait {
+    background: var(--vga-lightgray);
+  }
+  .paused {
+    background: var(--vga-darkgray);
+  }
+  .away {
+    background: var(--frame);
+  }
+  .eff {
+    color: var(--vga-yellow);
+  }
+  .dim-line {
+    color: var(--dim);
   }
   .combat .dim {
     padding: 0;

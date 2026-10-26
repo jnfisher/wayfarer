@@ -55,6 +55,7 @@ export type { SpellPlanItem } from "./SpellPlanItem";
 export type { Stats } from "./Stats";
 export type { StatsPart } from "./StatsPart";
 export type { Task } from "./Task";
+export type { TimeSpent } from "./TimeSpent";
 export type { ToClient } from "./ToClient";
 export type { ToGateway } from "./ToGateway";
 export type { Walking } from "./Walking";

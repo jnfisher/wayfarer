@@ -8,8 +8,8 @@ use wayfarer_proto::{
     MegaMudLoop, MemberState, MemberStatus, MonsterRuleEntry, MonsterRuleKind, PROTOCOL,
     ParseCounts, PartyDef, PartyStatus, Position, RoomKey, RoomKind, RuleSource, RunSummary,
     SessionAction, SessionInfo, SessionState, SettingChange, SettingKind, SettingRow, SettingValue,
-    SettingsFile, SpellPlanItem, Stats, StatsPart, ToClient, ToGateway, Walking, WorldPackInfo,
-    protocol_mismatch,
+    SettingsFile, SpellPlanItem, Stats, StatsPart, TimeSpent, ToClient, ToGateway, Walking,
+    WorldPackInfo, protocol_mismatch,
 };
 
 fn kasimir(state: SessionState, last_seq: u64) -> SessionInfo {
@@ -323,8 +323,18 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                     lowest_hp: Some(50),
                     lowest_mana: None,
                 }),
+                time: Some(Box::new(TimeSpent {
+                    fight_secs: 52,
+                    flee_secs: 0,
+                    rest_secs: 30,
+                    walk_secs: 25,
+                    upkeep_secs: 3,
+                    wait_secs: 10,
+                    paused_secs: 0,
+                    away_secs: 0,
+                })),
             },
-            r#"{"type":"stats","session":"kasimir","runs":[{"started_at":"2026-10-19T12:00:00Z","minutes":2,"exp_per_hour":540,"kills":2,"deaths":0,"flees":0,"rests":1,"exp_gained":18}],"samples":[{"at":"2026-10-19T12:01:00Z","exp":355,"hp":30}],"combat":{"since":"2026-10-24T12:00:00Z","swings":4,"accuracy_per_mille":750,"crit_rate_per_mille":333,"rows":[{"kind":"hit","count":2,"per_mille":500,"min":21,"max":84,"avg_tenths":525}],"misses":1,"dodged":0,"glances":0,"backstab_tries":0,"backstab_crits":0,"cast_misses":0,"cast_accuracy_per_mille":0,"kills":1,"flees":0,"lowest_hp":50}}"#,
+            r#"{"type":"stats","session":"kasimir","runs":[{"started_at":"2026-10-19T12:00:00Z","minutes":2,"exp_per_hour":540,"kills":2,"deaths":0,"flees":0,"rests":1,"exp_gained":18}],"samples":[{"at":"2026-10-19T12:01:00Z","exp":355,"hp":30}],"combat":{"since":"2026-10-24T12:00:00Z","swings":4,"accuracy_per_mille":750,"crit_rate_per_mille":333,"rows":[{"kind":"hit","count":2,"per_mille":500,"min":21,"max":84,"avg_tenths":525}],"misses":1,"dodged":0,"glances":0,"backstab_tries":0,"backstab_crits":0,"cast_misses":0,"cast_accuracy_per_mille":0,"kills":1,"flees":0,"lowest_hp":50},"time":{"fight_secs":52,"flee_secs":0,"rest_secs":30,"walk_secs":25,"upkeep_secs":3,"wait_secs":10,"paused_secs":0,"away_secs":0}}"#,
         ),
         (
             ToGateway::SpellPlan {

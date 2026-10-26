@@ -121,12 +121,18 @@ const MIGRATIONS: &[&str] = &[
          tally TEXT NOT NULL,
          updated_at INTEGER NOT NULL
      );",
+    // 9: where each run's time went (fighting, walking, resting, waiting...), as JSON.
+    "CREATE TABLE run_time (
+         run_id INTEGER PRIMARY KEY REFERENCES runs (id),
+         tally TEXT NOT NULL,
+         updated_at INTEGER NOT NULL
+     );",
 ];
 
 /// The schema version this build writes.
 pub const SCHEMA_VERSION: u32 = MIGRATIONS.len() as u32;
 
-const TABLES: [&str; 11] = [
+const TABLES: [&str; 12] = [
     "bot_state",
     "runs",
     "events",
@@ -138,6 +144,7 @@ const TABLES: [&str; 11] = [
     "parties",
     "blessings",
     "combat_stats",
+    "run_time",
 ];
 
 #[derive(Debug)]
@@ -729,6 +736,27 @@ impl Store {
             .query_row(
                 "SELECT tally FROM combat_stats WHERE session = ?1",
                 params![session],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    /// Keep where run `run`'s time went (the brain's JSON), replacing its last.
+    pub fn save_run_time(&self, run: i64, tally: &str, at: i64) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO run_time (run_id, tally, updated_at) VALUES (?1, ?2, ?3)",
+            params![run, tally, at],
+        )?;
+        Ok(())
+    }
+
+    /// Where run `run`'s time went, as last kept.
+    pub fn run_time(&self, run: i64) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT tally FROM run_time WHERE run_id = ?1",
+                params![run],
                 |r| r.get(0),
             )
             .optional()?)

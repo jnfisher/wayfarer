@@ -653,6 +653,11 @@ impl Bot {
         self.bless.set_check(every);
     }
 
+    /// The mode that had control at the last step.
+    pub fn mode(&self) -> BotMode {
+        self.mode
+    }
+
     pub fn running(&self) -> bool {
         self.state == BotState::Running
     }

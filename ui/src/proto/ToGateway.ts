@@ -21,6 +21,7 @@ import type { SettingRow } from "./SettingRow";
 import type { SettingsFile } from "./SettingsFile";
 import type { SpellPlanItem } from "./SpellPlanItem";
 import type { StatsPart } from "./StatsPart";
+import type { TimeSpent } from "./TimeSpent";
 import type { WorldPackInfo } from "./WorldPackInfo";
 
 /**
@@ -60,7 +61,11 @@ matches: number, } | { "type": "stats", session: string, runs: Array<RunSummary>
 /**
  * The combat numbers since the last reset; absent when nothing has been counted.
  */
-combat?: CombatStats, } | { "type": "spell_plan", session: string, cash: number, items: Array<SpellPlanItem>, } | { "type": "settings", session: string, 
+combat?: CombatStats, 
+/**
+ * Where the current run's time went; absent with no run.
+ */
+time?: TimeSpent, } | { "type": "spell_plan", session: string, cash: number, items: Array<SpellPlanItem>, } | { "type": "settings", session: string, 
 /**
  * The layer whose own values `own` shows.
  */

@@ -367,7 +367,17 @@ the run still going is in cyan. The rows come from the brain's store (`stats_req
 for when the tab opens, when a run starts or ends, every minute while it is open, and on
 `refresh`. **Reset**, beside "run since", ends the current run and starts a new one at zero
 (`stats_reset` with `only: "run"`); the old run stays in the list and the combat numbers are
-kept. It shows only while there is a run.
+kept. It shows only while there is a run. "run since" says how long ago, too: the time since
+the run started or was reset.
+
+Under the run, **where the time went** ([brain.md](brain.md) "Where the time goes"): a bar
+and a line for each kind, biggest first, with its share and its time: fighting, resting,
+walking, waiting (for a monster, or the party), upkeep (looting, blessings, sneaking), fleeing,
+paused and away. Then how efficient the run is: kills an hour of the bot playing (paused and
+away left out), exp a minute of fighting, and per kill the time fighting, resting and between
+kills (walking and waiting). A long time between kills says there are too few monsters where
+it hunts; long rests say the fights cost too much. When the brain was not running for part of
+the run, a line says how much of it was not seen.
 
 Under the run, the **combat** numbers ([brain.md](brain.md) "Combat statistics"): since when
 (the last reset, and how long ago), then swings, accuracy and crit rate, then a table in the

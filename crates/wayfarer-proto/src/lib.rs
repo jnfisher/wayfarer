@@ -240,6 +240,27 @@ pub struct ExpSample {
     pub hp: Option<i32>,
 }
 
+/// Where the current run's time went, in whole seconds, in a `stats` message: what the
+/// character was doing while the brain watched it. Time the brain was not running is in none
+/// of them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct TimeSpent {
+    /// Fighting (Fight, or in combat).
+    pub fight_secs: u64,
+    pub flee_secs: u64,
+    /// Resting, or Recover waiting to rest or healing.
+    pub rest_secs: u64,
+    /// Walking: loop legs, Go to, the walk to a rest and home.
+    pub walk_secs: u64,
+    /// Looting, casting blessings, sneaking.
+    pub upkeep_secs: u64,
+    /// The bot running with nothing to do: waiting for a monster or the party.
+    pub wait_secs: u64,
+    pub paused_secs: u64,
+    /// Out of the realm, or the connection down, during the run.
+    pub away_secs: u64,
+}
+
 /// The character's combat numbers since the player last reset them (C-050), in a `stats`
 /// message. Rates are in thousandths (`714` is 71.4%), averages in tenths.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -1079,6 +1100,10 @@ pub enum ToClient {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         combat: Option<CombatStats>,
+        /// Where the current run's time went; absent with no run.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        time: Option<Box<TimeSpent>>,
     },
     /// Brain → UIs: the answer to a `spell_plan_request`: the spells the character's class could
     /// learn that it does not know, each at its best shop: those it can read now first (the
@@ -1625,6 +1650,10 @@ pub enum ToGateway {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         combat: Option<CombatStats>,
+        /// Where the current run's time went; absent with no run.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        time: Option<Box<TimeSpent>>,
     },
     /// Brain → UIs: the answer to a `spell_plan_request`: the spells the character's class could
     /// learn that it does not know, each at its best shop: those it can read now first (the
@@ -2203,11 +2232,13 @@ impl ToGateway {
                 runs,
                 samples,
                 combat,
+                time,
             } => ToClient::Stats {
                 session,
                 runs,
                 samples,
                 combat,
+                time,
             },
             Self::SpellPlan {
                 session,

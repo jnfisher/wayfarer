@@ -2,8 +2,20 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import StatsPanel from "../src/StatsPanel.svelte";
-import { age, combatLines, count, perCent, sparkline, startedAt, tenths, type Stats } from "../src/lib/stats";
-import type { CharacterState } from "../src/proto";
+import {
+  age,
+  combatLines,
+  count,
+  duration,
+  efficiency,
+  perCent,
+  sparkline,
+  startedAt,
+  tenths,
+  timeLines,
+  type Stats,
+} from "../src/lib/stats";
+import type { CharacterState, TimeSpent } from "../src/proto";
 
 const session = { id: "a", name: "Aria", server: "silvermere", state: "realm", last_seq: 0 } as never;
 
@@ -198,6 +210,87 @@ describe("the combat numbers", () => {
     expect(screen.getAllByRole("button", { name: "reset" })).toHaveLength(2);
     await fireEvent.click(container.querySelector('.combat [data-reset="combat"]')!);
     expect(onreset).toHaveBeenCalledExactlyOnceWith("a", "combat");
+  });
+});
+
+describe("where the time went", () => {
+  afterEach(cleanup);
+
+  const time: TimeSpent = {
+    fight_secs: 1200,
+    flee_secs: 0,
+    rest_secs: 600,
+    walk_secs: 420,
+    upkeep_secs: 60,
+    wait_secs: 300,
+    paused_secs: 120,
+    away_secs: 0,
+  };
+
+  it("formats durations", () => {
+    expect(duration(45)).toBe("45s");
+    expect(duration(725)).toBe("12m 5s");
+    expect(duration(4680)).toBe("1h 18m");
+    expect(duration(1200)).toBe("20m");
+  });
+
+  it("lists the kinds biggest first, leaving out those with none", () => {
+    const l = timeLines(time);
+    expect(l.map((x) => x.kind)).toEqual(["fight", "rest", "walk", "wait", "paused", "upkeep"]);
+    expect(l[0]).toMatchObject({ label: "fighting", pct: 44, secs: 1200 });
+    expect(l.reduce((s, x) => s + x.share, 0)).toBeCloseTo(100);
+    expect(timeLines({ ...time, fight_secs: 0, rest_secs: 0, walk_secs: 0, upkeep_secs: 0, wait_secs: 0, paused_secs: 0 })).toEqual([]);
+  });
+
+  it("works out kills an hour, exp a minute fighting and the time per kill", () => {
+    // 2,580 s playing (paused left out), 12 kills, 3,000 exp.
+    const e = efficiency(time, 12, 3000, 2700 + 600);
+    expect(e.killsPerHour).toBe("17");
+    expect(e.expPerFightMinute).toBe("150");
+    expect(e.perKill).toEqual({ fight: "1m 40s", rest: "50s", between: "1m" });
+    expect(e.unseen).toBe("10m");
+    const none = efficiency(time, 0, 0, 2700);
+    expect(none.perKill).toBeUndefined();
+    expect(none.unseen).toBeUndefined();
+  });
+
+  it("shows the run's age, the breakdown and the efficiency under the run", () => {
+    const { container } = render(StatsPanel, {
+      session,
+      character,
+      stats: { ...stats, time },
+      attached: true,
+      onrefresh: () => {},
+    });
+    expect(container.querySelector(".current .since")!.textContent).toMatch(/run since .+ \(\d/);
+    const section = container.querySelector(".time")!;
+    expect(section.querySelectorAll(".bar .seg")).toHaveLength(6);
+    expect(section.querySelector('[data-time="fight"]')!.textContent).toBe("fighting44%20m");
+    expect(section.querySelector('[data-eff="rates"]')!.textContent!.trim()).toBe(
+      "10 kills/hr playing · 16 exp a minute fighting",
+    );
+    expect(section.querySelector('[data-eff="per-kill"]')!.textContent).toContain("per kill:");
+    expect(section.querySelector('[data-eff="rates"]')!.textContent).toContain("kills/hr playing");
+  });
+
+  it("has no time section without a run, and says when nothing is counted yet", () => {
+    const { container, unmount } = render(StatsPanel, {
+      session,
+      character: {},
+      stats: { ...stats, time },
+      attached: true,
+      onrefresh: () => {},
+    });
+    expect(container.querySelector(".time")).toBeNull();
+    unmount();
+    const zero = render(StatsPanel, {
+      session,
+      character,
+      stats: { ...stats, time: { ...time, fight_secs: 0, rest_secs: 0, walk_secs: 0, upkeep_secs: 0, wait_secs: 0, paused_secs: 0 } },
+      attached: true,
+      onrefresh: () => {},
+    });
+    expect(zero.container.querySelector(".time")!.textContent).toContain("Nothing counted yet.");
   });
 });
 

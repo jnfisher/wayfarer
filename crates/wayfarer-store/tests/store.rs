@@ -430,6 +430,26 @@ fn blessings_round_trip_per_session() {
 }
 
 #[test]
+fn run_time_round_trips_per_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let (store, _) = Store::open(&path).unwrap();
+    let run = store.start_run("penny", T0, None).unwrap();
+    assert_eq!(store.run_time(run.id).unwrap(), None);
+    store.save_run_time(run.id, r#"{"fight":1}"#, T0).unwrap();
+    store
+        .save_run_time(run.id, r#"{"fight":2}"#, T0 + 1)
+        .unwrap();
+    drop(store);
+    let (store, _) = Store::open(&path).unwrap();
+    assert_eq!(
+        store.run_time(run.id).unwrap().as_deref(),
+        Some(r#"{"fight":2}"#)
+    );
+    assert_eq!(store.run_time(run.id + 1).unwrap(), None);
+}
+
+#[test]
 fn combat_stats_round_trip_per_session() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
