@@ -684,6 +684,40 @@ async fn a_hidden_exit_a_phrase_opens_is_opened_with_it_not_searched_for() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_hidden_exit_opened_shows_by_its_own_name_and_is_walked() {
+    // Like the Crypt's knight statue: `push eye` at the Mossy Cave's Rocky Outcropping (3:36)
+    // opens east, and the exits line names it by `exitpar4`'s "wide stone passage %s". Beyond is
+    // the Witch's Cave, a boss lair: the walk goes all the way in.
+    let (outcrop, beyond) = ((3, 36), (3, 37));
+    let open = room(outcrop).replace(
+        "Obvious exits: ",
+        "Obvious exits: wide stone passage east, ",
+    );
+    let (mut g, run) = Game::start(SessionState::Realm, outcrop).await;
+    g.expect("push eye", says("A section of the rock wall slides aside!"));
+    g.expect("look", open);
+    g.expect("e", room(beyond));
+    g.walk_to_short(beyond, Some(false)).await;
+    // Until it arrives or gives up: a walk that took the open exit for shut turns away.
+    let mut said = Vec::new();
+    let end = loop {
+        let n = g.walk_narration().await;
+        said.push(n.clone());
+        if n.starts_with("Arrived") || n.starts_with("Stopped") || n.starts_with("Not ") {
+            break n;
+        }
+    };
+    assert_eq!(end, "Arrived: Witch's Cave", "{said:?}");
+    assert!(
+        said.iter()
+            .any(|s| s == "Opening the hidden exit east: push eye"),
+        "{said:?}"
+    );
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["push eye", "look", "e"]);
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_hidden_exit_its_phrase_did_not_open_is_walked_round() {
     // Someone else's puzzle half done, or the pack wrong: the look shows no exit west, and
     // the walk goes the long way round (south first) without typing the phrase again.

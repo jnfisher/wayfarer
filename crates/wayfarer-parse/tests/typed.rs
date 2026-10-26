@@ -1015,6 +1015,21 @@ fn the_characters_own_cast_is_no_blow() {
 }
 
 #[test]
+fn an_attack_spell_landing_is_the_characters_cast() {
+    // Message 18 ("You cast %s on %s for %d damage!") is a monster's hit message too, and wins
+    // over `you_cast_generic`: the line is still the character's cast, and counts as one (faye's
+    // stonestrike, 2026-10-26).
+    assert_eq!(
+        line("You cast stonestrike on giant bat for 22 damage!"),
+        [GameEvent::SpellCast {
+            spell: "stonestrike".into(),
+            target: Some("giant bat".into()),
+            damage: 22
+        }]
+    );
+}
+
+#[test]
 fn sneak_lines() {
     assert_eq!(
         line("Attempting to sneak..."),
