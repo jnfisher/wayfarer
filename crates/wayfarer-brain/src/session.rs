@@ -3357,15 +3357,27 @@ impl Session {
                     {
                         self.bot.walk_failed();
                     }
-                    // A leg of Task's stops where Fight would take the character.
+                    // A leg of Task's, or the walk home after a rest, stops where Fight would
+                    // take the character.
                     if self.bot_walk
-                        && self.bot.task_walking()
+                        && self.bot.walk_stops_for_fight()
                         && self.walker.walking()
                         && self
                             .bot
                             .would_fight(&atlas, self.rules.rules(), &self.presence)
                     {
+                        let here = self
+                            .position
+                            .best()
+                            .filter(|_| self.position.belief.certain());
                         self.stop_walk("a monster to fight", out);
+                        // A move sent ahead has gone: the character ends a room on, and the
+                        // loop comes back for it.
+                        if self.walker.walking()
+                            && let Some(k) = here
+                        {
+                            self.bot.monster_behind(k);
+                        }
                     }
                     self.bot.sneak_arrived(self.position.best());
                     if self.bot_walk

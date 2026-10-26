@@ -658,8 +658,13 @@ stop it is at or walking to, and the stops it passes by.
   the one expected, a refusal, a door) the second has gone already: its confirmation is void,
   and once its answer is in the walker plans again from wherever the belief puts the character
   ("Replanned (a move went ahead of a wrong step): one step"). `*Combat Engaged*` drops a move
-  ahead that has not gone yet, and stops the leg after those in flight. Only Task's legs
-  pipeline; a `walk_to`, `walk_loop` or Recover's walks go one move at a time.
+  ahead that has not gone yet, and stops the leg after those in flight. A room on the way
+  with a monster Fight would attack stops the leg too; when the move ahead has gone already,
+  the character ends a room on, and the loop's next leg goes back to the monster's room first
+  ("Loop Bandit Keep: back to Inner Keep Entrance (a monster there)"), once. Only Task's legs
+  pipeline; a `walk_to`, `walk_loop` or Recover's walks go one move at a time. Recover's walk
+  home after a rest stops for a monster on the way as a leg does, and once rested, a monster
+  in the room comes before the walk home.
 - **Ticks**: `run_loop` again for the loop the bot runs changes only the stops it passes by
   ("Loop Newhaven: passing by Small Cavern"); a leg to a stop just unticked stops after the
   move in flight. An unticked stop is not avoided as a room on the way to another (a loop's

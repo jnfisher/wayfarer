@@ -162,6 +162,34 @@ async fn low_hp_rests_in_a_quiet_room_then_walks_back() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn rested_a_monster_in_the_room_is_fought_before_the_walk_home() {
+    // Faye on the live rig (2026-10-26): rested, Recover walked her home past bandits her
+    // party stopped to fight; the walker stopped for them and Recover walked on at once. The
+    // rest is over: a monster it would attack comes before the walk back.
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 20).await;
+    g.expect("u", at_hp(&room(NARROW_ROAD), 20));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
+        .await;
+    for hp in [24, 28] {
+        g.output(&resting(hp)).await;
+        g.idle(Duration::from_secs(20)).await;
+    }
+    // Rested, with a rat in the room that has not attacked.
+    g.expect("a rat", line(ENGAGED, 31));
+    g.output(&format!(
+        "\x1b[79D\x1b[KA thin giant rat creeps into the room from nowhere.\r\n{}",
+        resting(31)
+    ))
+    .await;
+    g.narrated("Fight: thin giant rat").await;
+    g.round("The thin giant rat lunges at you!", 31).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u", "rest", "a rat"]);
+}
+
+#[tokio::test(start_paused = true)]
 async fn started_where_the_position_is_unknown_home_is_where_the_resync_finds_it() {
     // Seen on the rig: a brain just attached, its history showing no room. Start re-syncs
     // and its `look` shows the Arena; home is the Arena, so after the rest up the stairs the
