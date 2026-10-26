@@ -164,6 +164,10 @@ progress (after the move in flight).
   (`distances_any`) instead of "no route". A route through known exits is never given up for one
   through an unknown hidden exit, and a loop's legs and the loop list keep to the exits its path
   knows.
+- **Passable hidden exits**: most Hidden exits (993 of 1,383, nearly all in the wilderness
+  of maps 17 and 7) are marked passable: the game never lists them but lets anyone walk
+  through without a search. A route takes them as it takes any exit, at no extra cost, and the
+  walker moves through without searching. What follows is about the others.
 - **Hidden exits**: a route takes a Hidden exit the character knows of: one it found this
   session (a `search` of its own or the player's), one an exits line showed (`secret passage
   south`: found lately by anyone), one a loop's path names, or, when the character is shut

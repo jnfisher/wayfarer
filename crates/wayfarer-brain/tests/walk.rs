@@ -638,6 +638,19 @@ async fn an_empty_search_for_an_exit_already_showing_moves_on_after_a_look() {
     assert_eq!(played, ["search n", "look", "n"]);
 }
 
+#[tokio::test(start_paused = true)]
+async fn a_passable_hidden_exit_is_walked_without_a_search() {
+    // The Dirt Road (7:1137) north to the Black Weed Fields: never listed, but `EXF_PASSABLE`.
+    let (road, fields) = ((7, 1137), (7, 1142));
+    let (mut g, run) = Game::start(SessionState::Realm, road).await;
+    g.expect("n", room(fields));
+    g.walk_to(fields).await;
+    let said = g.walk_narrated("Arrived: Black Weed Fields").await;
+    assert!(!said.iter().any(|s| s.contains("Searching")), "{said:?}");
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["n"]);
+}
+
 /// The Slimy Tunnel in the sewers: west, a Hidden exit `push switch` opens (a search never
 /// finds it), to the Narrow Stone Tunnel.
 const SLIMY_TUNNEL: Key = (1, 619);

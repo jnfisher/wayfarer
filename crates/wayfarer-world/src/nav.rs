@@ -252,6 +252,12 @@ impl Edge {
         self.kind == ExitType::Hidden
     }
 
+    /// A Hidden exit marked `EXF_PASSABLE`: never listed, but walked without a search
+    /// (`kb/navigation.md` "Hidden"); most of the wilderness's unlisted ways are.
+    pub fn passable(&self) -> bool {
+        self.hidden() && self.params[0] & EXF_PASSABLE != 0 && self.params[0] & EXF_NEEDSEARCH == 0
+    }
+
     /// Whether typing `command` takes this exit: its direction (any spelling) for an exit
     /// walked by direction, or one of its phrases (whole line, any case) for a Text exit, a
     /// room command or a crossing.
@@ -270,7 +276,9 @@ impl Edge {
 /// The first `dir` of the ways through that are not exits ([`ExitType::is_command`]).
 pub const COMMAND_DIRS: u8 = 10;
 
-/// A Hidden exit's flags (`exitpar1`, `EXF_`): found by searching.
+/// A Hidden exit's flags (`exitpar1`, `EXF_`): walked without being found.
+const EXF_PASSABLE: i64 = 0x0001;
+/// Found by searching.
 const EXF_NEEDSEARCH: i64 = 0x0002;
 /// Its first block, `EXF_BLOCKED1`; blocks 2 to 10 are the bits above it.
 const EXF_BLOCKED1: i64 = 0x0010;
