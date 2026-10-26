@@ -622,32 +622,32 @@ struct Record {
 }
 
 /// Every room, with its placed items and command text, in table order (by key, the index's
-/// order, would read the table a row at a time).
+/// order, would read the table a row at a time). Only the fields the spawn pass and the shops
+/// read are filled in: the name, light, `regendelay`, flags and MegaMud id are left empty.
 fn read_rooms(conn: &Connection) -> Result<Vec<(Room, Vec<i64>, i64)>, Error> {
     let mut st = conn.prepare(
-        "SELECT map, room, name, light, type, shop_num, min_level, max_level, gen_monster, \
-         max_monsters, mon_group, regen_delay, spec_mon, flags, mm_id, \
-         CAST(substr(CAST(raw AS BLOB), ?1) AS TEXT) FROM rooms",
+        "SELECT map, room, type, shop_num, min_level, max_level, gen_monster, max_monsters, \
+         mon_group, spec_mon, CAST(substr(CAST(raw AS BLOB), ?1) AS TEXT) FROM rooms",
     )?;
     let rows = st.query_map([-ROOM_TAIL], |r| {
         let room = Room {
             map: r.get(0)?,
             room: r.get(1)?,
-            name: r.get(2)?,
-            light: r.get(3)?,
-            room_type: r.get(4)?,
-            shop_num: r.get(5)?,
-            min_level: r.get(6)?,
-            max_level: r.get(7)?,
-            gen_monster: r.get(8)?,
-            max_monsters: r.get(9)?,
-            mon_group: r.get(10)?,
-            regen_delay: r.get(11)?,
-            spec_mon: r.get(12)?,
-            flags: r.get(13)?,
-            mm_id: r.get(14)?,
+            name: String::new(),
+            light: 0,
+            room_type: r.get(2)?,
+            shop_num: r.get(3)?,
+            min_level: r.get(4)?,
+            max_level: r.get(5)?,
+            gen_monster: r.get(6)?,
+            max_monsters: r.get(7)?,
+            mon_group: r.get(8)?,
+            regen_delay: 0,
+            spec_mon: r.get(9)?,
+            flags: 0,
+            mm_id: 0,
         };
-        Ok((room, tail_fields(r.get_ref(15)?.as_bytes()?)))
+        Ok((room, tail_fields(r.get_ref(10)?.as_bytes()?)))
     })?;
     let mut whole = conn.prepare("SELECT raw FROM rooms WHERE map = ?1 AND room = ?2")?;
     let mut rooms = Vec::new();
