@@ -204,6 +204,8 @@ pub struct Step {
     /// A door on the way, with its lock state as the traveller knows it (the game's this
     /// session, else the pack's): `open`, then `bash` if locked.
     pub door: Option<LockState>,
+    /// A blocked Hidden exit: the phrases that open it, typed in its room ([`Edge::unblock`]).
+    pub unblock: Vec<String>,
 }
 
 pub type Route = Vec<Step>;
@@ -310,6 +312,7 @@ fn route_core(
             dir: e.dir,
             exit_type: e.kind,
             door: t.lock_state(e),
+            unblock: e.unblock.clone(),
         });
         at = graph
             .ix(e.from)

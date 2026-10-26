@@ -638,6 +638,66 @@ async fn an_empty_search_for_an_exit_already_showing_moves_on_after_a_look() {
     assert_eq!(played, ["search n", "look", "n"]);
 }
 
+/// The Slimy Tunnel in the sewers: west, a Hidden exit `push switch` opens (a search never
+/// finds it), to the Narrow Stone Tunnel.
+const SLIMY_TUNNEL: Key = (1, 619);
+const NARROW_TUNNEL: Key = (1, 2320);
+
+/// The Slimy Tunnel with its stone door open.
+fn tunnel_with_west_open() -> String {
+    room(SLIMY_TUNNEL).replace("Obvious exits: ", "Obvious exits: secret passage west, ")
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_hidden_exit_a_phrase_opens_is_opened_with_it_not_searched_for() {
+    let (mut g, run) = Game::start(SessionState::Realm, SLIMY_TUNNEL).await;
+    g.expect(
+        "push switch",
+        says("You push the switch, and you hear a loud grinding noise!\r\nA small stone door pops open!"),
+    );
+    g.expect("look", tunnel_with_west_open());
+    g.expect("w", room(NARROW_TUNNEL));
+    g.walk_to(NARROW_TUNNEL).await;
+    let said = g.walk_narration().await;
+    assert!(said.starts_with("Walking to "), "{said}");
+    assert_eq!(
+        g.walk_narration().await,
+        "Opening the hidden exit west: push switch"
+    );
+    let arrived = g.walk_narration().await;
+    assert!(arrived.starts_with("Arrived: "), "{arrived}");
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["push switch", "look", "w"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_hidden_exit_its_phrase_did_not_open_is_walked_round() {
+    // Someone else's puzzle half done, or the pack wrong: the look shows no exit west, and
+    // the walk goes the long way round (south first) without typing the phrase again.
+    let (mut g, run) = Game::start(SessionState::Realm, SLIMY_TUNNEL).await;
+    g.expect(
+        "push switch",
+        says("You push the switch, and you hear a loud grinding noise!"),
+    );
+    g.expect("look", room(SLIMY_TUNNEL));
+    g.expect("s", room((1, 618)));
+    g.walk_to(NARROW_TUNNEL).await;
+    let replan = loop {
+        let n = g.walk_narration().await;
+        if n.starts_with("Replanned") {
+            break n;
+        }
+    };
+    assert!(
+        replan.starts_with("Replanned (the hidden exit west did not open): "),
+        "{replan}"
+    );
+    g.send(ToClient::WalkStop { session: ID.into() }).await;
+    g.narrated("Stopped walking: asked to stop").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["push switch", "look", "s"]);
+}
+
 #[tokio::test(start_paused = true)]
 async fn a_hidden_exit_the_exits_line_shows_is_routed_through_without_a_search() {
     // Found by someone else: the brain never searched, but the room lists it.
