@@ -84,6 +84,38 @@ impl Game {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_ui_asking_for_the_state_during_the_catch_up_does_not_stop_the_resume() {
+    // Seen live (2026-10-26): with the web UI open, a restarted brain got its `state_request`
+    // while catching up. The session was published early, the catch-up never counted as the
+    // first, the bot was never resumed, and from then on nothing was saved: Start ran the bot
+    // with no run, and the old run stayed open with its numbers frozen.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let (mut g, run) = arena_brain(brain_on(&path), &[]).await;
+    start(&mut g, &[], 35).await;
+    g.narrated("Waiting here").await;
+    g.close(run).await;
+    let (mut g, run) = Game::start_brain_with(
+        SessionState::Realm,
+        arena(&[], 35),
+        brain_on(&path),
+        Some(ToClient::StateRequest { session: None }),
+    )
+    .await;
+    g.until(|m| matches!(m, ToGateway::MapView { .. }).then_some(()))
+        .await;
+    g.idle(Duration::from_secs(20)).await;
+    assert_said(&g, "Resumed: fighting in Newhaven, Arena (brain restarted)");
+    let (seen, _) = g.close(run).await;
+    let ui = as_ui_sees(&seen);
+    assert_eq!(bot(&seen).state, BotState::Running);
+    assert_eq!(
+        ui.run.expect("the run goes on").run_started_at,
+        "2026-10-19T12:00:20Z"
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_restarted_brain_resumes_the_bot_paused_with_its_home_and_stop_clears_it() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");

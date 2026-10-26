@@ -311,6 +311,8 @@ pub(crate) struct Session {
     silent_until: u64,
     /// A `history_request` is out; live output waits here meanwhile.
     fetching: bool,
+    /// The first catch-up is done (the bot a brain before this one left is then resumed).
+    caught_up: bool,
     buffer: Vec<Chunk>,
     /// The last chunk ended in a prompt.
     at_prompt: bool,
@@ -489,6 +491,7 @@ impl Session {
             fed: 0,
             silent_until: info.last_seq,
             fetching: false,
+            caught_up: false,
             buffer: Vec::new(),
             at_prompt: false,
             last_sent: now,
@@ -646,8 +649,8 @@ impl Session {
         }
     }
 
-    /// The answer to a `history_request`. Whether the catch-up finished (the caller then sends
-    /// the whole snapshot).
+    /// The answer to a `history_request`. Whether the first catch-up finished (the caller then
+    /// resumes the stored bot and sends the whole snapshot).
     pub fn history(&mut self, chunks: Vec<Chunk>, out: &mut Vec<ToGateway>) -> bool {
         let full = chunks.len() >= HISTORY_CHUNKS as usize;
         if let Some(first) = chunks.first()
@@ -686,7 +689,10 @@ impl Session {
         }
         let was_fetching = self.fetching;
         self.fetching = false;
-        was_fetching && self.published.is_none()
+        // The first catch-up, whether or not a UI's `state_request` published the session
+        // while it went on: that once kept the stored bot from ever being resumed, and the
+        // session from saving anything after.
+        was_fetching && !std::mem::replace(&mut self.caught_up, true)
     }
 
     fn feed(&mut self, chunk: Chunk, out: &mut Vec<ToGateway>) {
