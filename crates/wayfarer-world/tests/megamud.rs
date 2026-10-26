@@ -50,10 +50,11 @@ fn find<'a>(m: &'a Mm, file: &str) -> &'a MmLoop {
 }
 
 #[test]
-fn the_fixtures_have_fourteen_paths_and_no_waypoints() {
+fn the_fixtures_have_fifteen_paths_and_no_waypoints() {
     let m = mm();
-    // Eleven in `tests/fixtures/megamud`, three in `tests/fixtures/megamud-crossings`.
-    assert_eq!(m.pack.paths().unwrap().len(), 14);
+    // Eleven in `tests/fixtures/megamud`, three in `tests/fixtures/megamud-crossings`, one in
+    // `tests/fixtures/megamud-windows`.
+    assert_eq!(m.pack.paths().unwrap().len(), 15);
     assert!(m.pack.waypoints().unwrap().is_empty());
     // The eight loops all verify; Ftrehkep.mp, Hkepleoq.mp and Leoqhkep.mp go from one place
     // to another.
@@ -156,7 +157,7 @@ fn the_way_into_the_keep_searches_north_and_climbs_a_tree() {
     let m = mm();
     let k = PathKnowledge::load(&m.pack, &m.graph).unwrap();
     // Every path whose walk reached its end.
-    assert_eq!(k.len(), 14);
+    assert_eq!(k.len(), 15);
     assert_eq!(
         k.hidden_exits("Ftrehkep.mp"),
         BTreeSet::from([(HIDDEN_KEEP, NORTH)])

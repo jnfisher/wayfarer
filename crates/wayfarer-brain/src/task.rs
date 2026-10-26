@@ -113,6 +113,8 @@ pub(crate) fn why_unreachable(
         format!("the {door} {dir} of {at} would not open")
     } else if t.blocked.contains(&(e.from, e.dir)) {
         format!("the exit {dir} of {at} was refused")
+    } else if e.sealed() {
+        format!("the hidden exit {dir} of {at} is opened from elsewhere")
     } else if e.hidden() {
         format!("the hidden exit {dir} of {at} is not known")
     } else if let Some(need) = gate_need(&e, keys) {

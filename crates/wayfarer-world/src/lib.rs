@@ -33,7 +33,7 @@ pub use belief::Belief;
 pub use build::{BuildReport, MegaMudReport, build};
 pub use exit_items::ExitItem;
 pub use find::{Finder, Found, FoundKind, FoundRoom, PlaceKind, Reach};
-pub use knowledge::{PathExit, PathKnowledge};
+pub use knowledge::{PathExit, PathKnowledge, Window};
 pub use layout::{Layout, Placed, Segment, SegmentKind, layout};
 pub use loops::{Area, HuntRoom, Loop, MmLoop, generate, hunt_rooms, megamud_loops};
 pub use monsters::{DEFAULT_RULES, MonsterRule, MonsterRules, Monsters, huntable};
