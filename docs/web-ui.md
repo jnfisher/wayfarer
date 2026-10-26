@@ -215,8 +215,14 @@ and works nothing out itself.
   there as a click on the map does. A **boss lair**'s row (a room whose monster spawns one
   at a time, such as the Chieftain's) has a ticked **stop short** box: the walk stops in the
   room before the lair so you can look before going in, and the walk bar says `one room
-  short of Large Wooden Room (boss: minotaur chieftain)`. Untick it to walk in. `Esc`
-  clears the box; `Esc` again closes it.
+  short of Large Wooden Room (boss: minotaur chieftain)`. Untick it to walk in. `Esc` clears
+  the box; `Esc` again closes it.
+- **Fight on the way**: the tick beside `go` on the tools line (ticked to start; the browser
+  keeps it) is for every Go to, a click on the map and the go box alike, and every character.
+  Unticked, the bot fights nothing until it arrives, not even what attacks it (it still flees
+  under its flee line), and the walk bar says `not fighting on the way`. Changing it changes
+  the Go tos already under way too (`journey_fight`): untick it mid-fight and the character
+  walks on. Once there, the bot plays and fights as usual ([brain.md](brain.md) "Go to").
 - **Connecting and logging off**: the tile's header has **[log off]** while the character is
   connected (logon, menu or realm) and **[connect]** when it is `closed` or `lost`. **log off**
   logs the character off cleanly, as the gateway does when it stops (the brain is told and stops
@@ -314,7 +320,10 @@ its name; ticking it moves it. Changing a box shows `save` and `undo`; `delete` 
 (`really delete?`) before the party goes and its followers leave it in the game. `+ New
 party` opens an empty box led by the first character in no party. The panel only edits the
 parties: the brain forms them in the game when a leader and a follower with its bot running
-are in one room.
+are in one room. When one gets stuck (a follower shown joined that is not, or separated for
+no reason), **re-sync** in its box, or **re-sync all** at the top, has every member check its
+party with `par` at once and the invites and follows go again without waiting
+(`party_resync`, [brain.md](brain.md) "Parties").
 
 Under each follower is its state: `joined`, `not joined yet: forming up` (in the leader's
 room) or `: in another room`, `away: its bot is not running` (or not in the realm),
@@ -356,9 +365,19 @@ over the newest run, a bar a minute. Then the last ten runs as rows, newest firs
 started, its loop (`here` for "fight here"), minutes, exp per hour, kills, deaths and flees;
 the run still going is in cyan. The rows come from the brain's store (`stats_request`): asked
 for when the tab opens, when a run starts or ends, every minute while it is open, and on
-`refresh`. **Reset**, beside "run since" (or "no run"), zeroes the combat numbers and ends
-the current run and starts a new one at zero (`stats_reset`); the old run stays in the list.
-With the bot stopped it zeroes the combat numbers alone.
+`refresh`. **Reset**, beside "run since", ends the current run and starts a new one at zero
+(`stats_reset` with `only: "run"`); the old run stays in the list and the combat numbers are
+kept. It shows only while there is a run. "run since" says how long ago, too: the time since
+the run started or was reset.
+
+Under the run, **where the time went** ([brain.md](brain.md) "Where the time goes"): a bar
+and a line for each kind, biggest first, with its share and its time: fighting, resting,
+walking, waiting (for a monster, or the party), upkeep (looting, blessings, sneaking), fleeing,
+paused and away. Then how efficient the run is: kills an hour of the bot playing (paused and
+away left out), exp a minute of fighting, and per kill the time fighting, resting and between
+kills (walking and waiting). A long time between kills says there are too few monsters where
+it hunts; long rests say the fights cost too much. When the brain was not running for part of
+the run, a line says how much of it was not seen.
 
 Under the run, the **combat** numbers ([brain.md](brain.md) "Combat statistics"): since when
 (the last reset, and how long ago), then swings, accuracy and crit rate, then a table in the
@@ -366,8 +385,9 @@ shape of MegaMud's Combat tab: `miss` (with the dodges), `hit`, `crit`, `bs` (wi
 of the backstab tries landed and how many crit), `cast` (its accuracy, and the failed casts),
 `glance` and `round`, each with its count, its share of the swings, min-max and average
 damage. Rows with nothing counted are left out. Last, killed, fled, and the lowest HP and mana
-seen. They are kept across runs, stops and restarts until **Reset**: press it after changing
-weapons or settings, starting a loop or a level-up.
+seen. They are kept across runs, stops and restarts until their own **Reset**, beside "combat
+since" (`only: "combat"`; the run goes on): press it after changing weapons or settings,
+starting a loop or a level-up.
 
 Between the two, the **monster rules** the bot plays by ([brain.md](brain.md) "Monster
 rules"): each rule (*flee from*, *never fight*, *avoid*), its pattern and where it comes from

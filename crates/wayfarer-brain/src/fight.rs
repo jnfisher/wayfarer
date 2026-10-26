@@ -95,6 +95,8 @@ pub(crate) struct Fight {
     backstab: bool,
     /// Believed sneaking: the backstab goes before an attack spell.
     sneaking: bool,
+    /// On a passive Go to: nothing is fought, not even what attacks the character.
+    passive: bool,
 }
 
 /// A name as the game shows it (`lauren` is Lauren).
@@ -123,6 +125,9 @@ pub(crate) fn cast_step(cast: &PartyCast, mode: &str) -> Step {
 
 impl Mode for Fight {
     fn wants(&self, v: &View) -> Option<String> {
+        if self.passive {
+            return None;
+        }
         if v.engaged {
             return Some("in combat".to_owned());
         }
@@ -394,6 +399,11 @@ impl Fight {
     /// attack, or anything attacking.
     pub fn would_fight(&self, atlas: &Atlas, rules: &MonsterRules, presence: &Presence) -> bool {
         !presence.attackers.is_empty() || self.pick(atlas, rules, presence).is_some()
+    }
+
+    /// On a passive Go to (`true`): fight nothing, not even what attacks the character.
+    pub fn set_passive(&mut self, passive: bool) {
+        self.passive = passive;
     }
 
     /// The monster it fights or last went for.

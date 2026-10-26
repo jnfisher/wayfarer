@@ -125,6 +125,12 @@ impl GameParty {
         }
     }
 
+    /// What it knows may be out of date (a `party_resync`): stale, as after a join or a drop,
+    /// until the next whole `par` screen.
+    pub fn doubt(&mut self, now: Instant) {
+        self.changed(now);
+    }
+
     fn changed(&mut self, now: Instant) {
         self.stale = true;
         self.changed = Some(now);

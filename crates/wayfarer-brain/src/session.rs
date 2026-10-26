@@ -13,8 +13,9 @@ use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
 use wayfarer_parse::{Event, Parser, Registry};
 use wayfarer_proto::{
-    BotAction, CharacterState, Chunk, Found, FoundKind, FoundRoom, GeneratedLoop, LoopStop,
-    MegaMudLoop, Place, RoomKey, SessionAction, SessionId, SessionInfo, SessionState, ToGateway,
+    BotAction, BotMode, CharacterState, Chunk, Found, FoundKind, FoundRoom, GeneratedLoop,
+    LoopStop, MegaMudLoop, Place, RoomKey, SessionAction, SessionId, SessionInfo, SessionState,
+    StatsPart, ToGateway,
 };
 use wayfarer_settings::{Layer, Settings};
 use wayfarer_store::{BotRecord, BotState, CustomLoop, EventKind, PlaceKind as StoredPlace, Store};
@@ -41,6 +42,7 @@ use crate::session_settings::SettingsSource;
 use crate::spellcraft::{SpellRow, Spellbook};
 use crate::stats::{Ledger, rfc3339_at, unix};
 use crate::task::{Task, TaskLoop, why_unreachable};
+use crate::time_stats::Activity;
 use crate::walker::{MAX_SEARCHES, Next, Say, Walker};
 
 /// The rooms a `map_view` holds unless a `map_request` asks for another radius: those within
@@ -1078,8 +1080,35 @@ impl Session {
             let room = self.position.best();
             self.ledger.place(StoredPlace::Stopped, Some(&why), room);
         }
-        if self.ledger.save(record, self.clock.instant()) {
+        // The run's time: up to now as it was, then from now as it is (a run that just
+        // started counts from here).
+        let now = self.clock.instant();
+        let doing = self.activity(now);
+        self.ledger.account(doing, now);
+        if self.ledger.save(record, now) {
             self.publish_patch(out);
+        }
+        self.ledger.account(doing, now);
+    }
+
+    /// What the character is doing, for where the run's time goes.
+    fn activity(&self, now: Instant) -> Activity {
+        if self.state != SessionState::Realm || !self.live() {
+            return Activity::Away;
+        }
+        if !self.bot.running() {
+            return Activity::Paused;
+        }
+        let resting = self.character.state().resting == Some(true);
+        match self.bot.mode() {
+            BotMode::Flee => Activity::Flee,
+            BotMode::Fight => Activity::Fight,
+            _ if self.combat(now) == Some(true) => Activity::Fight,
+            _ if resting => Activity::Rest,
+            _ if self.walker.walking() => Activity::Walk,
+            BotMode::Recover => Activity::Rest,
+            BotMode::Loot | BotMode::Bless | BotMode::Sneak => Activity::Upkeep,
+            BotMode::Task | BotMode::Idle => Activity::Wait,
         }
     }
 
@@ -1182,26 +1211,38 @@ impl Session {
     /// `stats_request`.
     pub fn stats_request(&mut self, out: &mut Vec<ToGateway>) {
         let (runs, samples) = self.ledger.summaries();
-        let combat = self.ledger.combat_wire(self.clock.instant());
+        let now = self.clock.instant();
+        let combat = self.ledger.combat_wire(now);
+        let time = self.ledger.time_wire(now).map(Box::new);
         out.push(ToGateway::Stats {
             session: self.id.clone(),
             runs,
             samples,
             combat,
+            time,
         });
     }
 
     /// `stats_reset`: the combat numbers at zero, and a new run from now with its numbers at
-    /// zero if one is going.
-    pub fn stats_reset(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
-        self.ledger.reset_combat();
-        if self.ledger.reset(now) {
-            out.push(self.notice(
-                "Reset: the combat numbers are at zero, and a new run starts now (the old one is kept in the history)",
-            ));
-        } else {
-            out.push(self.notice("Reset: the combat numbers are at zero"));
+    /// zero if one is going; `only` one of the two.
+    pub fn stats_reset(&mut self, only: Option<StatsPart>, now: Instant, out: &mut Vec<ToGateway>) {
+        let combat = only != Some(StatsPart::Run);
+        if combat {
+            self.ledger.reset_combat();
         }
+        let run = only != Some(StatsPart::Combat) && self.ledger.reset(now);
+        let text = match (only, run) {
+            (None, true) => {
+                "Reset: the combat numbers are at zero, and a new run starts now (the old one is kept in the history)"
+            }
+            (None, false) => "Reset: the combat numbers are at zero",
+            (Some(StatsPart::Combat), _) => "Reset: the combat numbers are at zero",
+            (Some(StatsPart::Run), true) => {
+                "Reset: a new run starts now (the old one is kept in the history)"
+            }
+            (Some(StatsPart::Run), false) => "Reset: no run to reset",
+        };
+        out.push(self.notice(text));
         self.stats_request(out);
         self.flush_views(out);
     }
@@ -1556,11 +1597,13 @@ impl Session {
     }
 
     /// `walk_to`: plan a route from the believed room and start on it. `stop_short` (on when
-    /// left out): stop one room short of a boss lair.
+    /// left out): stop one room short of a boss lair. `fight` (on when left out): fight on the
+    /// way; off, nothing is fought until it arrives, not even what attacks the character.
     pub fn walk_to(
         &mut self,
         to: Key,
         stop_short: Option<bool>,
+        fight: Option<bool>,
         now: Instant,
         out: &mut Vec<ToGateway>,
     ) {
@@ -1590,7 +1633,8 @@ impl Session {
             .map_or_else(|| format!("{}/{}", to.0, to.1), |r| r.name.clone());
         let short =
             stop_short.unwrap_or(true) && atlas.finder.boss_lair(to, &atlas.monsters).is_some();
-        self.go(Journey::go_to(to, name, short), now, out);
+        let journey = Journey::go_to(to, name, short).passive(fight == Some(false));
+        self.go(journey, now, out);
     }
 
     /// Start the player's walk (or loop walk) to `to`: after the walker's move in flight, or
@@ -2306,6 +2350,18 @@ impl Session {
 
     /// `walk_stop`: the map's `stop`, as ■ when the bot has a loop or journey: it is dropped,
     /// and a running bot plays on where it is. Any other walk just ends.
+    /// `journey_fight`: whether the Go to under way fights on the way, from now; the bot
+    /// decides again at once (a fight it was in is left for the walk).
+    pub fn journey_fight(&mut self, fight: bool, now: Instant, out: &mut Vec<ToGateway>) {
+        let says = self.bot.journey_fight(fight);
+        if says.is_empty() {
+            return;
+        }
+        self.say(says, out);
+        self.drive(now, out);
+        self.flush_views(out);
+    }
+
     pub fn walk_stop(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
         if self.bot.has_route() {
             self.bot_control(BotAction::Stop, now, out);
@@ -2957,6 +3013,13 @@ impl Session {
             }
             Err(_) => false,
         }
+    }
+
+    /// `party_resync`: what the character knows of its party may be out of date, and a walk
+    /// back to the leader that found no way is tried again.
+    pub(crate) fn party_resync(&mut self) {
+        self.party_game.doubt(self.clock.instant());
+        self.party_stuck = None;
     }
 
     /// The coordinator's role for this session. Made a follower, it stops the loop it ran:

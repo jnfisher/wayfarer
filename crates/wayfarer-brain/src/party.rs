@@ -270,6 +270,8 @@ pub(crate) struct Parties {
     fled_for: BTreeSet<String>,
     /// The last statuses sent, to send again only on a change.
     sent: Option<Vec<PartyStatus>>,
+    /// Members a `party_resync` asked to check their party with `par`, until it goes.
+    resync: BTreeSet<String>,
 }
 
 /// The first word of a name: what the game's party lines and commands use.
@@ -476,6 +478,35 @@ impl Parties {
         self.sent = None;
     }
 
+    /// `party_resync`: form party `id` (`None`: every party) up again now. Each member owes
+    /// a `par` at once, the `invite`s and `follow`s go without waiting out [`ASK_EVERY`], and
+    /// the leader's waits start afresh. Returns the members, for their sessions to doubt
+    /// what they know of their party; `None` when there is no party `id`.
+    pub fn resync(&mut self, id: Option<&str>) -> Option<Vec<String>> {
+        let members: Vec<String> = self
+            .defs
+            .iter()
+            .filter(|d| id.is_none_or(|id| d.id == id))
+            .flat_map(|d| std::iter::once(d.leader.clone()).chain(d.followers.iter().cloned()))
+            .collect();
+        if members.is_empty() && id.is_some() {
+            return None;
+        }
+        for s in &members {
+            self.followed.remove(s);
+            self.par_at.remove(s);
+            self.apart.remove(s);
+            self.out_since.remove(s);
+            self.gave_up.remove(s);
+            self.resync.insert(s.clone());
+        }
+        // Invites are kept by the invitee's first name, which the coordinator does not know
+        // here: they all go again.
+        self.invited.clear();
+        self.sent = None;
+        Some(members)
+    }
+
     /// A planned line went out through the session's executor.
     pub fn sent(&mut self, session: &str, line: &str, now: Instant) {
         match line.split_whitespace().next() {
@@ -489,6 +520,7 @@ impl Parties {
             }
             Some("par") => {
                 self.par_at.insert(session.to_owned(), now);
+                self.resync.remove(session);
             }
             Some("leave") => {
                 self.leaving.remove(session);
@@ -819,6 +851,19 @@ impl Parties {
                 party: def.clone(),
                 members,
             });
+        }
+        // A `party_resync`: each member in the realm checks its party, once.
+        let defs = &self.defs;
+        self.resync.retain(|s| {
+            m.get(s).is_some_and(|i| i.realm)
+                && defs
+                    .iter()
+                    .any(|d| d.leader == *s || d.followers.contains(s))
+        });
+        for s in &self.resync {
+            if !plan.lines.iter().any(|(id, l)| id == s && l == "par") {
+                plan.lines.push((s.clone(), "par".to_owned()));
+            }
         }
         if self.sent.as_ref() != Some(&statuses) {
             self.sent = Some(statuses.clone());
@@ -1251,6 +1296,58 @@ mod tests {
         let mut m = two(now, &["Lauren Phillips"]);
         m.get_mut("lauren").unwrap().game.following = Some("Penny".into());
         m
+    }
+
+    #[tokio::test]
+    async fn a_resync_checks_every_member_and_asks_again_at_once() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        p.save(def("penny", &["lauren"]), &known()).unwrap();
+        let m = two(now, &[]);
+        let plan = p.plan(&m, now);
+        assert_eq!(lines(&plan), [("lauren", "follow penny")]);
+        p.sent("lauren", "follow penny", now);
+        // The follow did nothing: the next waits out ASK_EVERY.
+        let later = now + Duration::from_secs(1);
+        assert!(lines(&p.plan(&m, later)).is_empty());
+        // Re-synced: every member owes a `par`, and the follow goes again at once.
+        assert_eq!(p.resync(Some("party-9")), None);
+        assert_eq!(p.resync(None).unwrap(), ["penny", "lauren"]);
+        let plan = p.plan(&m, later);
+        assert_eq!(
+            lines(&plan),
+            [
+                ("lauren", "follow penny"),
+                ("lauren", "par"),
+                ("penny", "par")
+            ]
+        );
+        assert!(plan.statuses.is_some(), "the panel hears of it");
+        // Once each `par` has gone, no more.
+        p.sent("penny", "par", later);
+        p.sent("lauren", "par", later);
+        p.sent("lauren", "follow penny", later);
+        assert!(lines(&p.plan(&m, later)).is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_resync_starts_the_wait_for_a_separated_member_afresh() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        let mut m = formed(&mut p, now);
+        p.plan(&m, now);
+        // Dropped and elsewhere: the leader waits, then gives up.
+        let l = m.get_mut("lauren").unwrap();
+        l.game.following = None;
+        l.room = Some((1, 7));
+        p.plan(&m, now);
+        let late = now + Duration::from_secs(301);
+        assert_eq!(p.plan(&m, late).give_up.len(), 1);
+        assert!(p.plan(&m, late).give_up.is_empty(), "once");
+        p.resync(None);
+        assert!(p.plan(&m, late).give_up.is_empty(), "the wait starts again");
+        let later = late + Duration::from_secs(301);
+        assert_eq!(p.plan(&m, later).give_up.len(), 1);
     }
 
     fn hurt(i: &mut MemberInfo, hp: i32, low: bool, flee: bool) {

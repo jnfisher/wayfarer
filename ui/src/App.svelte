@@ -541,7 +541,10 @@
             view={focusedId ? mapViews[focusedId] : undefined}
             character={focusedId ? brain.characters[focusedId] : undefined}
             attached={brain.attached}
-            onwalk={(id, map, room, stopShort) => client.walkTo(id, map, room, stopShort)}
+            onwalk={(id, map, room, stopShort, fight) => client.walkTo(id, map, room, stopShort, fight)}
+            onfightchange={(fight) => {
+              for (const s of sessions) if (brain.characters[s.id]?.bot?.journey) client.journeyFight(s.id, fight);
+            }}
             found={focusedId ? foundBySession[focusedId] : undefined}
             onfind={(id, query) => client.find(id, query)}
             {goAsked}
@@ -562,6 +565,7 @@
             characters={brain.characters}
             onsave={(party) => client.saveParty(party)}
             ondelete={(id) => client.deleteParty(id)}
+            onresync={(id) => client.resyncParties(id)}
           />
         {:else if devPrefs.panel === "blessings"}
           <BlessingsPanel
@@ -585,7 +589,7 @@
             stats={focusedId ? statsBySession[focusedId] : undefined}
             attached={brain.attached}
             onrefresh={(id) => client.requestStats(id)}
-            onreset={(id) => client.resetStats(id)}
+            onreset={(id, only) => client.resetStats(id, only)}
             onrule={(id, pattern, rule) => client.setMonsterRule(id, pattern, rule)}
           />
         {:else}

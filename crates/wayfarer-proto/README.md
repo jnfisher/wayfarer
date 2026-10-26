@@ -64,6 +64,7 @@ Client → gateway:
 {"type":"state_request","session":"kasimir"}
 {"type":"walk_to","session":"kasimir","map":1,"room":2150}
 {"type":"walk_stop","session":"kasimir"}
+{"type":"journey_fight","session":"kasimir","fight":false}
 {"type":"map_request","session":"kasimir","radius":15}
 {"type":"bot_control","session":"kasimir","action":"start"}
 {"type":"loops_request","session":"kasimir","radius":8}
@@ -84,6 +85,7 @@ Client → gateway:
 {"type":"party_delete","id":"party-1"}
 {"type":"party_leave","session":"isolde"}
 {"type":"party_join","session":"isolde","party":"party-1"}
+{"type":"party_resync"}
 {"type":"blessings_request"}
 {"type":"blessings_save","session":"isolde","spells":["bles","aura"]}
 ```
@@ -99,7 +101,7 @@ Brain → gateway → UIs (the same JSON both ways):
 {"type":"warning","text":"world pack not found; walking blind"}
 {"type":"map_view","session":"kasimir","center":{"map":1,"room":2140},"level":0,"rooms":[{"map":1,"room":2140,"name":"Newhaven, Village Entrance","x":0,"y":0,"level":0,"spawns":false,"visited":true,"candidate":true,"collides":false},{"map":1,"room":2141,"name":"Newhaven, Weapons Shop","x":0,"y":-1,"level":0,"spawns":false,"kind":"shop","visited":false,"candidate":false,"collides":false}],"exits":[{"from":{"map":1,"room":2140},"to":{"map":1,"room":2141},"dir":"n","kind":"plain","one_way":false}],"route":[{"map":1,"room":2140},{"map":1,"room":2141}]}
 {"type":"loops","session":"kasimir","anchor":{"map":1,"room":2140},"radius":8,"doors":true,"generated":[{"id":"1:2140:8:doors:0","name":"Newhaven","stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0,"bosses":[]},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1,"bosses":[]}],"path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"doors":1,"distance":1}],"megamud":[{"file":"NARNLOO2.mp","description":"Newhaven Arena","author":"Spork ZSpoon","path":[{"map":1,"room":2150},{"map":1,"room":2152},{"map":1,"room":2150}],"steps":2,"exact":2,"stops":[{"map":1,"room":2150,"name":"Newhaven, Arena","monsters":["giant rat"],"arena":true,"lair":false,"regen":0,"bosses":[]},{"map":1,"room":2152,"name":"Dungeon, Entrance","monsters":["giant rat"],"arena":false,"lair":true,"regen":1,"bosses":[]}],"runnable":true,"distance":1}],"custom":[],"matches":2}
-{"type":"stats","session":"kasimir","runs":[{"started_at":"2026-10-19T12:00:00Z","minutes":2,"exp_per_hour":540,"kills":2,"deaths":0,"flees":0,"rests":1,"exp_gained":18}],"samples":[{"at":"2026-10-19T12:01:00Z","exp":355,"hp":30}],"combat":{"since":"2026-10-24T12:00:00Z","swings":4,"accuracy_per_mille":750,"crit_rate_per_mille":333,"rows":[{"kind":"hit","count":2,"per_mille":500,"min":21,"max":84,"avg_tenths":525}],"misses":1,"dodged":0,"glances":0,"backstab_tries":0,"backstab_crits":0,"cast_misses":0,"cast_accuracy_per_mille":0,"kills":1,"flees":0,"lowest_hp":50}}
+{"type":"stats","session":"kasimir","runs":[{"started_at":"2026-10-19T12:00:00Z","minutes":2,"exp_per_hour":540,"kills":2,"deaths":0,"flees":0,"rests":1,"exp_gained":18}],"samples":[{"at":"2026-10-19T12:01:00Z","exp":355,"hp":30}],"combat":{"since":"2026-10-24T12:00:00Z","swings":4,"accuracy_per_mille":750,"crit_rate_per_mille":333,"rows":[{"kind":"hit","count":2,"per_mille":500,"min":21,"max":84,"avg_tenths":525}],"misses":1,"dodged":0,"glances":0,"backstab_tries":0,"backstab_crits":0,"cast_misses":0,"cast_accuracy_per_mille":0,"kills":1,"flees":0,"lowest_hp":50},"time":{"fight_secs":52,"flee_secs":0,"rest_secs":30,"walk_secs":25,"upkeep_secs":3,"wait_secs":10,"paused_secs":0,"away_secs":0}}
 {"type":"spell_plan","session":"kasimir","cash":520,"items":[{"spell":"mend","spell_level":3,"scroll":"scroll of mend","shop":"Newhaven Spell Shop","map":1,"room":2144,"price":800,"steps":12,"usable":true,"affordable":false}]}
 {"type":"settings","session":"kasimir","layer":"character","files":[{"layer":"mine","path":"/data/settings.toml","exists":false},{"layer":"character","path":"/data/characters/kasimir.toml","exists":true}],"rows":[{"key":"health.flee_below_hp","label":"Flee below","help":"Leave the fight and run when HP falls below this.","group":"health","tier":"essential","kind":{"kind":"int","min":0,"max":90},"unit":"%","default":25,"value":35,"source":"character","own":35,"megamud":"HP Run If Below"}]}
 {"type":"found","session":"kasimir","query":"chief","results":[{"kind":"monster","name":"minotaur chieftain","rooms":[{"map":1,"room":1865,"name":"Large Wooden Room","steps":46,"boss":true}],"count":1,"monsters":["minotaur chieftain"]}]}

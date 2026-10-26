@@ -653,6 +653,11 @@ impl Bot {
         self.bless.set_check(every);
     }
 
+    /// The mode that had control at the last step.
+    pub fn mode(&self) -> BotMode {
+        self.mode
+    }
+
     pub fn running(&self) -> bool {
         self.state == BotState::Running
     }
@@ -731,12 +736,16 @@ impl Bot {
         says
     }
 
-    /// `walk_to` or `walk_loop`: go on `journey`, fighting on the way, from any state (it
-    /// replaces a loop). A bot that was not running starts afresh and the session re-syncs
-    /// first (`resync`).
+    /// `walk_to` or `walk_loop`: go on `journey`, fighting on the way (a passive one: nothing),
+    /// from any state (it replaces a loop). A bot that was not running starts
+    /// afresh and the session re-syncs first (`resync`).
     pub fn go(&mut self, journey: Journey, resync: bool) -> Vec<Say> {
         let mut says = Vec::new();
-        let name = journey.name().to_owned();
+        let name = if journey.is_passive() {
+            format!("{}, fighting nothing on the way", journey.name())
+        } else {
+            journey.name().to_owned()
+        };
         if resync {
             self.state = BotState::Running;
             self.mode = BotMode::Idle;
@@ -917,7 +926,35 @@ impl Bot {
     /// Whether Fight would take the character here: a monster it would attack, or one
     /// attacking.
     pub fn would_fight(&self, atlas: &Atlas, rules: &MonsterRules, presence: &Presence) -> bool {
-        self.fight.would_fight(atlas, rules, presence)
+        !self.passive() && self.fight.would_fight(atlas, rules, presence)
+    }
+
+    /// On a Go to that fights nothing on the way.
+    fn passive(&self) -> bool {
+        self.journey.as_ref().is_some_and(Journey::is_passive)
+    }
+
+    /// `journey_fight`: whether the Go to under way fights on the way, from now. Nothing
+    /// without a Go to (a loop walked once always fights) or when nothing changes.
+    pub fn journey_fight(&mut self, fight: bool) -> Vec<Say> {
+        let mut says = Vec::new();
+        let Some(j) = self
+            .journey
+            .as_mut()
+            .filter(|j| j.is_go_to() && j.is_passive() == fight)
+        else {
+            return says;
+        };
+        j.set_passive(!fight);
+        let name = j.name().to_owned();
+        self.fight.set_passive(!fight);
+        let text = if fight {
+            format!("Going to {name}: fighting on the way")
+        } else {
+            format!("Going to {name}: fighting nothing on the way")
+        };
+        self.narrate(text, &mut says);
+        says
     }
 
     /// A monster to flee from is in the room (or a stalemate wants out), and Flee would take
@@ -1264,6 +1301,7 @@ impl Bot {
                 None => self.recover.set_home(to),
             }
         }
+        self.fight.set_passive(self.passive());
         if !self.leaving
             && let Some(home) = self.recover.find_home(v)
         {

@@ -67,6 +67,29 @@ describe("PartiesPanel", () => {
     expect(screen.getByText("· healing Penny · 100%", { exact: false })).toBeTruthy();
   });
 
+  it("re-syncs one party, or all of them", async () => {
+    const onresync = vi.fn();
+    const parties: PartyStatus[] = [
+      {
+        party: { id: "party-1", leader: "penny", followers: ["lauren"] },
+        members: [
+          { session: "penny", state: "joined" },
+          { session: "lauren", state: "separated" },
+        ],
+      },
+    ];
+    render(PartiesPanel, { sessions, parties, attached: true, onsave: vi.fn(), ondelete: vi.fn(), onresync });
+    await fireEvent.click(screen.getByText("re-sync"));
+    expect(onresync).toHaveBeenLastCalledWith("party-1");
+    await fireEvent.click(screen.getByText("re-sync all"));
+    expect(onresync).toHaveBeenLastCalledWith();
+  });
+
+  it("has nothing to re-sync with no parties", () => {
+    render(PartiesPanel, { sessions, parties: [], attached: true, onsave: vi.fn(), ondelete: vi.fn() });
+    expect(screen.queryByText("re-sync all")).toBeNull();
+  });
+
   it("says so with no brain", () => {
     render(PartiesPanel, { sessions, parties: undefined, attached: false, onsave: vi.fn(), ondelete: vi.fn() });
     expect(screen.getByText("No brain attached: parties are the brain's.")).toBeTruthy();

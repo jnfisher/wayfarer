@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import MapPanel from "../src/MapPanel.svelte";
-import type { FoundMessage } from "../src/lib/goto";
+import { GO_FIGHT_KEY, type FoundMessage } from "../src/lib/goto";
 import type { Loops, MapView } from "../src/lib/map";
 import type { CharacterState } from "../src/proto";
 
@@ -401,7 +401,7 @@ describe("the go box", () => {
     ]);
     await fireEvent.click(rows[1]);
     await fireEvent.click(within(screen.getByRole("list", { name: "Recent places" })).getByRole("button", { name: "go" }));
-    expect(onwalk).toHaveBeenCalledWith("aria", 1, 1217);
+    expect(onwalk).toHaveBeenCalledWith("aria", 1, 1217, undefined, undefined);
     // Typing puts them away.
     await typeIn("ch");
     expect(screen.queryByRole("list", { name: "Recent places" })).toBeNull();
@@ -436,19 +436,57 @@ describe("the go box", () => {
     const short = screen.getByRole("checkbox", { name: "stop short" }) as HTMLInputElement;
     expect(short.checked).toBe(true);
     await fireEvent.keyDown(input, { key: "Enter" });
-    expect(onwalk).toHaveBeenLastCalledWith("aria", 1, 11, true);
+    expect(onwalk).toHaveBeenLastCalledWith("aria", 1, 11, true, undefined);
     // Unticked for this walk: it walks in.
     await fireEvent.click(short);
     await fireEvent.keyDown(input, { key: "Enter" });
-    expect(onwalk).toHaveBeenLastCalledWith("aria", 1, 11, false);
+    expect(onwalk).toHaveBeenLastCalledWith("aria", 1, 11, false, undefined);
     // Down to the room names: not a boss lair, so the brain's default.
     await fireEvent.keyDown(input, { key: "ArrowDown" });
     await fireEvent.keyDown(input, { key: "Enter" });
-    expect(onwalk).toHaveBeenLastCalledWith("aria", 1, 20, undefined);
+    expect(onwalk).toHaveBeenLastCalledWith("aria", 1, 20, undefined, undefined);
+  });
+
+  it("walks past monsters with 'fight on the way' unticked, says so at once, and remembers it", async () => {
+    try {
+      const onfightchange = vi.fn();
+      // On the tools line, with the go box shut: it is for every Go to.
+      mount({ character: here, onfightchange });
+      const tick = screen.getByRole("checkbox", { name: "fight on the way" }) as HTMLInputElement;
+      expect(tick.checked).toBe(true);
+      cleanup();
+      const { onwalk } = mount({ character: here, found: chiefFound, goAsked: 2, onfightchange });
+      const input = await typeIn("chief");
+      const fight = screen.getByRole("checkbox", { name: "fight on the way" }) as HTMLInputElement;
+      await fireEvent.click(fight);
+      expect(onfightchange).toHaveBeenCalledExactlyOnceWith(false);
+      await fireEvent.keyDown(input, { key: "Enter" });
+      expect(onwalk).toHaveBeenLastCalledWith("aria", 1, 11, true, false);
+      expect(localStorage.getItem(GO_FIGHT_KEY)).toBe("off");
+      cleanup();
+      // Kept in the browser: a new panel starts unticked.
+      mount({ character: here, found: chiefFound, goAsked: 3 });
+      expect((screen.getByRole("checkbox", { name: "fight on the way" }) as HTMLInputElement).checked).toBe(false);
+    } finally {
+      localStorage.removeItem(GO_FIGHT_KEY);
+    }
+  });
+
+  it("says on the walk bar when the Go to does not fight on the way", () => {
+    const walking = { to: { map: 1, room: 11 }, name: "Large Wooden Room", steps_left: 1, step: 1, commands: ["e"] };
+    const bot = {
+      state: "running",
+      mode: "task",
+      narration: "",
+      journey: { name: "Large Wooden Room", to: { map: 1, room: 11 }, passive: true },
+      monster_rules: [],
+    };
+    mount({ character: { ...here, walking, bot } as never });
+    expect(screen.getByLabelText("Walk").textContent).toContain("not fighting on the way");
   });
 
   it("opens a result onto its rooms; one with no route cannot be walked to", async () => {
-    const { onwalk } = mount({ character: here, found: chiefFound, goAsked: 2 });
+    const { onwalk } = mount({ character: here, found: chiefFound, goAsked: 4 });
     const input = await typeIn("chief");
     await fireEvent.click(screen.getByRole("button", { name: "Open the rooms" }));
     await fireEvent.click(screen.getByText("Chief's Hall 1:21, no route"));
@@ -457,11 +495,11 @@ describe("the go box", () => {
     await fireEvent.click(screen.getByText("Chief's Hall 1:20, 5 steps"));
     const go = screen.getAllByRole("button", { name: "go" });
     await fireEvent.click(go[go.length - 1]);
-    expect(onwalk).toHaveBeenCalledExactlyOnceWith("aria", 1, 20, undefined);
+    expect(onwalk).toHaveBeenCalledExactlyOnceWith("aria", 1, 20, undefined, undefined);
   });
 
   it("Esc clears it, and again closes it", async () => {
-    mount({ character: here, found: chiefFound, goAsked: 3 });
+    mount({ character: here, found: chiefFound, goAsked: 5 });
     const input = await typeIn("chief");
     await fireEvent.keyDown(input, { key: "Escape" });
     expect(input.value).toBe("");

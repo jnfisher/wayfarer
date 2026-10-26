@@ -220,6 +220,7 @@ impl Gateway {
             map,
             room,
             stop_short: None,
+            fight: None,
         })
         .await
     }
