@@ -79,10 +79,42 @@ Dwarf −9% (its +20% encumbrance isn't modelled). Half-Ogre also brings MR 15.
 
 ## 4. Attack style [C combat.md §2]
 - **BASH** every round with the heaviest-damage 2H weapon; Smash at L20 if obtainable. ATTACK vs AC ≳ 0.5-0.6×AV.
+- **Worked at L20** [C formulas from `move_player_to_fighter`/`calculate_attack`, LJNCOMBT.C:338-943,
+  1226-1427; I: the basher-ladder stats Str 97 Agi 62 Int 30, the damage roll taken as min..max,
+  rank and spells left out]. In the scalemail kit (about 48% load, AV 109-115, crit 1) BASH beats
+  ATTACK on every L15-20 target tried, AC 20 to AC 60 (barrow wight) and DR 0 to 12, by 25-45% a
+  round: the ×1.1 then ×3 outweighs half the blows and −15 AV, because the crit chance is 1%.
+  Damage a round averaged over kobold warrior, bandit leader, guardian wolf, skeletal warrior,
+  stone golem, slaver, barrow wight, guardian golem and minotaur champion (attack / bash):
+  Magebane sword 48/68, etched adamant greatsword 46/67, katana 43/62, bone-handled headcutter
+  42/61, mithril cutlass 41/59, three-headed flail 41/57.
+- **ATTACK wins only with a fast blow.** Under 200 energy a blow gets up to +20 crit (halved
+  from 33% load). In the leather kit (about 22% load) the katana costs 177 and gets crit 21:
+  attack 88 against bash 76 a round. Magebane in leather costs 209, just over the line, and
+  bashes (85 against 58).
+- **SMASH** (one blow a round, −25 AV, ×1.2 then ×5, and the monster down with −35 AV and DV
+  while it is smashed every round) averages, on the same targets once the monster is down:
+  etched adamant greatsword 119, headcutter 98, three-headed flail 83, Magebane 80, cutlass 66.
+  The slow heavy weapons gain most. **How to get it** [C text blocks 2940-2942, 9034]: hand
+  **50 orc-heads** (item 1101: 3% from orc captains and orc lieutenants, the 180 HP kind; 1%
+  from black orcs and other orcs) to Aldreth (1:2305, Darkwood Tree, Small House) for a quest
+  token, then at level 20 or more Aldreth gives a Witchunter Smash (Warrior and Ranger at 22,
+  Paladin 25, Cleric and Warlock 27).
 - Rest to ~80% between pulls (regen `max(1,(L+20)·Hea/750)`/tick). No potions, no heals: area choice is the defence.
 
 ## 5. Gear by level band → `corpus/gear.md` [C]
 Model pick (kb/stat-builds.md): greataxe/halberd/maul at L5-10 (Str req irrelevant under the bash cap; weight decides), three-headed flail L15-30, etched adamant greatsword bashes hardest at L30. Summary: greataxe 6-22 10g (1:307) / maul 8-25 20g (1:354) → **mithril cutlass** 8-18 (L10 quest, 1H, MR+5, WH-only; pair with curved heater ac4 24g) or keep bashing a maul → three-headed flail 9-23 4p (L15) / **Magebane** 9-22 (L15 quest) → etched adamant greatsword 10-34 (L20). Armour: chain → **scalemail tunic ac20 dr6 50g**, scalemail leggings 16g, pot-helm 16g, scale gauntlets 8g, chainmail boots 10g (1:305/306) → fine/dwarven chainmail (6:1337), adamantite scalemail L30. Every item with Magical (28) is unusable: check before buying.
+Armour progression in full [C item, shop and text-block data; prices at Charm 75]: the Silvermere
+scalemail set (about 100 gold) is the best value to L30. Optional at L10: the **black chitin**
+set from a crafter (text blocks 405-414, 4336; where it is run was not traced): armour AC 22/7,
+leggings 9/1, helm 7.5/1.5, gauntlets 6/1, shield 5.5/1, for 8,200 gold, 17 pieces of black
+chitin (10% from mermex) and 16 spider silks (4% from bola spiders) in all. L30, Dwarven
+Armoury 6:1337: adamantite scalemail tunic 24/7 (22,800 g), leggings 9/1.5 (7,600), scale
+gauntlets 7.5/0.8 (950), enforced boots 7/1 (6,650). L40: crimson helm 10/1 (2,850 at Skali's
+1:305), crimson scalemail leggings 10/1.5 (10,688) and tunic 28/9.5 (32,063, Jorah 1:3302);
+L45: stormmetal scalemail tunic 30/10, cheaper (14,250, Lost City 16:317). Quest pieces: medal
+of flame (worn, AC 1, MR 10, Witchunter quest), inquisitor's cloak (L40, AC 5/1, MR 15,
+Witchunter quest, Good only).
 
 ## 6. Grinding → `corpus/leveling.md` "Recommended Kang Witchunter path" [C/F]
 | Levels | Area | Anchor |

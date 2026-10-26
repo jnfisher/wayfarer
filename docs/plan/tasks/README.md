@@ -75,6 +75,7 @@ Cards don't repeat these:
 | 6 | M7: party play, brought forward (`../10-party-play.md`) | 2026-10-22, after John approved the design |
 | 7 | Party upkeep: shorter rests, member activity, blessings, sneaking | 2026-10-23, at John's request after wave 6 |
 | 8 | Combat statistics; no resting for mana by default | 2026-10-24, at John's request (the milestones after M3 were retired the same day) |
+| 9 | The gear planner: a combat model, the gear catalogue, the plan and its full-screen view | 2026-10-26, at John's request |
 
 ## Index (wave 1, M0)
 
@@ -178,6 +179,22 @@ C-049 came after it, at John's request, in its own.
 
 C-051 and C-050 are independent; they run one after the other in one session. C-052 and C-053 came after
 them, at John's request, each in its own; C-054 and C-055 together in one; C-056 on its own.
+
+## Index (wave 9, the gear planner)
+
+| Id | Title | Tier | Size | Depends | Review |
+|---|---|---|---|---|---|
+| [C-057](C-057-combat-model.md) | The combat model: a character's blows against a monster, per round, from the game's formulas | B | M | — | review |
+| [C-058](C-058-gear-catalogue.md) | The gear catalogue: every weapon and armour piece a character could ever use, why not now, and where it comes from | B | M | — | |
+| [C-059](C-059-gear-plan.md) | The gear plan: the brain scores every weapon by attack, bash and smash against a monster set | B | M | C-057, C-058 | |
+| [C-060](C-060-gear-planner-ui.md) | The gear planner: a full-screen view from the top bar, scored rows, green, amber and grey | B | M | C-059 | |
+
+Wave 9: C-057 and C-058 together (both new files in `wayfarer-world`, touching only
+`lib.rs` in common); then C-059; then C-060. **Wave 9 is done** when John opens the planner
+for Faye and for his Witchunter on his rig, sees the maul's best move is bash and the
+darkwood staff beats it, sees the Magebane and the headcutter change places between level 15
+and 20 by a what-if, and ticks a buff and sees the rows change. (Asked for on 2026-10-26:
+solo play only; the damage roll includes its top value; buffs as checkboxes.)
 
 Tier: B Opus, C Sonnet. Size: S under half a day of agent time, M about a day, L two to three
 days.
