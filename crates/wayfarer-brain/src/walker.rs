@@ -802,7 +802,11 @@ impl Walk {
             return Doing::Buy;
         }
         let s = &self.route[self.next];
-        if s.exit_type != ExitType::Hidden || self.searched || pos.showing(s.from, s.dir) {
+        if s.exit_type != ExitType::Hidden
+            || s.passable
+            || self.searched
+            || pos.showing(s.from, s.dir)
+        {
             return Doing::Move;
         }
         // Blocked, not hidden: no search finds it, its room's phrases open it.

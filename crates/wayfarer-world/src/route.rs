@@ -181,7 +181,8 @@ impl Traveller {
                 ExitType::RemoteAction => false,
                 ExitType::Hidden => {
                     let at = (e.from, e.dir);
-                    self.allows(Category::Hidden)
+                    e.passable()
+                        || self.allows(Category::Hidden)
                         || self.found.contains(&at)
                         || self.searchable.contains(&at)
                 }
@@ -206,6 +207,8 @@ pub struct Step {
     pub door: Option<LockState>,
     /// A blocked Hidden exit: the phrases that open it, typed in its room ([`Edge::unblock`]).
     pub unblock: Vec<String>,
+    /// A Hidden exit walked without a search (`Edge::passable`).
+    pub passable: bool,
 }
 
 pub type Route = Vec<Step>;
@@ -288,7 +291,7 @@ fn route_core(
             if e.door.is_some() {
                 c += t.costs.door_cost(t.door_odds(e));
             }
-            if e.kind == ExitType::Hidden && !t.found.contains(&(e.from, e.dir)) {
+            if e.kind == ExitType::Hidden && !e.passable() && !t.found.contains(&(e.from, e.dir)) {
                 c += t.costs.hidden;
             }
             if best.get(&e.to_ix).is_none_or(|&b| c < b) {
@@ -313,6 +316,7 @@ fn route_core(
             exit_type: e.kind,
             door: t.lock_state(e),
             unblock: e.unblock.clone(),
+            passable: e.passable(),
         });
         at = graph
             .ix(e.from)
