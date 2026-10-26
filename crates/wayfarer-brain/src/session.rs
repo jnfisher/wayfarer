@@ -311,7 +311,8 @@ pub(crate) struct Session {
     silent_until: u64,
     /// A `history_request` is out; live output waits here meanwhile.
     fetching: bool,
-    /// The first catch-up is done (the bot a brain before this one left is then resumed).
+    /// The catch-up since the last attach is done: the whole snapshot then goes out (and, the
+    /// first time, the bot a brain before this one left is resumed).
     caught_up: bool,
     buffer: Vec<Chunk>,
     /// The last chunk ended in a prompt.
@@ -505,6 +506,7 @@ impl Session {
     /// whole snapshot. `info` is the gateway's view of the session now.
     pub fn attach(&mut self, info: &SessionInfo, now: Instant, out: &mut Vec<ToGateway>) {
         self.published = None;
+        self.caught_up = false;
         self.map_center = None;
         self.own.clear();
         self.last_sent = now;
@@ -649,8 +651,8 @@ impl Session {
         }
     }
 
-    /// The answer to a `history_request`. Whether the first catch-up finished (the caller then
-    /// resumes the stored bot and sends the whole snapshot).
+    /// The answer to a `history_request`. Whether the catch-up since the last attach finished
+    /// (the caller then resumes the stored bot, the first time, and sends the whole snapshot).
     pub fn history(&mut self, chunks: Vec<Chunk>, out: &mut Vec<ToGateway>) -> bool {
         let full = chunks.len() >= HISTORY_CHUNKS as usize;
         if let Some(first) = chunks.first()
@@ -689,9 +691,9 @@ impl Session {
         }
         let was_fetching = self.fetching;
         self.fetching = false;
-        // The first catch-up, whether or not a UI's `state_request` published the session
-        // while it went on: that once kept the stored bot from ever being resumed, and the
-        // session from saving anything after.
+        // The first catch-up since the attach, whether or not a UI's `state_request`
+        // published the session while it went on: that once kept the stored bot from ever
+        // being resumed, and the session from saving anything after.
         was_fetching && !std::mem::replace(&mut self.caught_up, true)
     }
 
