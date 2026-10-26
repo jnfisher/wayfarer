@@ -197,8 +197,20 @@ progress (after the move in flight).
   `press a`, `press t`, `press h`, typed in that order. Arriving at one that is not showing,
   the walker types its phrases ("Opening the hidden exit west: push switch"), then `look`s: it
   moves if the exit shows (`secret passage west`), else marks the exit refused for the session
-  and plans again ("the hidden exit west did not open"). A blocked exit whose phrases are typed
-  in another room, or that asks for an item, is still searched for as before.
+  and plans again ("the hidden exit west did not open").
+- **Sealed hidden exits and path windows**: a blocked exit whose phrases are typed in other
+  rooms (or that asks for an item) is *sealed* (`Edge::sealed`): it is never searched for,
+  whatever the character knows, and a route takes it only while an exits line shows it (opened
+  by someone else; it counts as found until a line of its room no longer shows it). Where a
+  verified MegaMud path opens one, the stretch of the path from the first phrase that opens it
+  to the exit is a **path window** (`PathKnowledge::windows`, `RoomGraph::learn_windows`): one
+  way through from the room of that first phrase to the room past the exit, costing its steps.
+  A route through it has the path's steps in place; the walker types each phrase ("Typing `pull
+  lever` to open the way ahead"), waits for its prompt, and walks the sealed exit without a
+  search. The Crypt's Stone Hallway (1/1056) north is one: `Cry1cry2.mp` pulls the levers at
+  1/1044 and 1/1038, then walks 13 rooms to it. The stock path set has 20 windows. Doors and
+  gates a path opens with a lever, and phrases the pack knows nothing about, are not windows
+  yet.
 - **Refusals** (level, alignment, class or race, not permitted, a spell or item needed, a toll
   not covered, a timed exit): the exit is marked refused for the session and the route planned
   again, at most five times a walk.
@@ -329,7 +341,8 @@ walk to at all is left out.
   the actions written before it (`n[search n]`), or a phrase that takes a Text exit (`climb
   tree`). The Hidden exits of every verified path become ones the character knows are there
   when a MegaMud loop is walked or run (`Traveller::searchable`, `all_hidden_exits`): routes may
-  take them, and the walker searches before each ("Walking"). A way into an area is usually
+  take them, and the walker searches before each ("Walking"). Not the sealed ones: no search
+  finds them, and a path window goes through them instead. A way into an area is usually
   another path's: the Bandit Keep's (`Ftrehkep.mp`: search north at the Hidden Keep, `climb
   tree` on the Keep Wall) is not `HKEPLOOP.mp`'s own, and `HKEPLOOP.mp` run from the Hidden
   Keep searches north first. A Text exit whose message has no text takes the phrase a path

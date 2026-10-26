@@ -12,6 +12,10 @@
 //! up at once, with no `bash`. A route through a Hidden exit not showing in the room's exits
 //! line searches for it first (`search <dir>`) until it is found, up to [`MAX_SEARCHES`] times.
 //!
+//! A route through a path window (a stretch of a MegaMud path that opens a sealed Hidden exit
+//! from elsewhere, `wayfarer_world::Window`) has its steps in place: a phrase on the way (`pull
+//! lever`) is typed and its prompt awaited, and the sealed exit is walked without a search.
+//!
 //! A route through an Item or Key exit whose item a shop sells goes by the shop when that is the
 //! only or the shorter way ([`route_buying`]): there the walker sends `buy <item>` and goes on. A
 //! one-charge item (a room ticket) is used up by its exit, so it is no longer counted as carried.
@@ -544,6 +548,15 @@ impl Walker {
             (Doing::Move, Outcome::Confirmed(Confirmed::Prompt)) if step.exit_type.is_command() => {
                 Ok(Doing::Arrive)
             }
+            // A path window's phrase on the way (`pull lever`): typed, its prompt came, and the
+            // character stays where it is.
+            (Doing::Move, Outcome::Confirmed(Confirmed::Prompt))
+                if step.exit_type == ExitType::RemoteAction =>
+            {
+                w.advance();
+                advanced = true;
+                Ok(Doing::Move)
+            }
             (Doing::Move | Doing::Arrive, Outcome::Confirmed(Confirmed::Room)) => {
                 if seen.unwrap_or(&pos.belief).contains(step.to) {
                     // A one-charge item (a room ticket) stays in the exit's box.
@@ -554,13 +567,7 @@ impl Walker {
                         pos.traveller.items.remove(&item);
                         pos.traveller.keys.remove(&item);
                     }
-                    w.next += 1;
-                    w.confirmed += 1;
-                    w.bashes = 0;
-                    w.key_tries = 0;
-                    w.searches = 0;
-                    w.searched = false;
-                    w.typed = 0;
+                    w.advance();
                     advanced = true;
                     if w.next == w.route.len() {
                         let (arrival, to) = (w.arrival(), w.to);
@@ -787,6 +794,17 @@ impl Walker {
 }
 
 impl Walk {
+    /// The step in progress is done: on to the next.
+    fn advance(&mut self) {
+        self.next += 1;
+        self.confirmed += 1;
+        self.bashes = 0;
+        self.key_tries = 0;
+        self.searches = 0;
+        self.searched = false;
+        self.typed = 0;
+    }
+
     /// What the walk says when it ends in its destination.
     fn arrival(&self) -> String {
         match &self.short_of {
@@ -802,6 +820,10 @@ impl Walk {
             return Doing::Buy;
         }
         let s = &self.route[self.next];
+        if s.exit_type == ExitType::RemoteAction {
+            next.notice(format!("Typing `{}` to open the way ahead", s.command));
+            return Doing::Move;
+        }
         if s.exit_type != ExitType::Hidden
             || s.passable
             || self.searched
@@ -870,6 +892,10 @@ impl Walk {
             .copied()
             .unwrap_or_default();
         match doing {
+            // A path window's phrase on the way: its prompt; the character stays.
+            Doing::Move if step.exit_type == ExitType::RemoteAction => {
+                Action::new(step.command.clone(), Expect::Prompt)
+            }
             // A room command or a crossing: its prompt, then a look (`Doing::Arrive`).
             Doing::Move if step.exit_type.is_command() => {
                 Action::new(step.command.clone(), Expect::Prompt)

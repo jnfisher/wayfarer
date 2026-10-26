@@ -179,6 +179,9 @@ impl Traveller {
         gate_ok
             && match e.kind {
                 ExitType::RemoteAction => false,
+                // A sealed exit is never searched for: taken while it shows (opened from
+                // elsewhere), or by a path window.
+                ExitType::Hidden if e.sealed() => self.found.contains(&(e.from, e.dir)),
                 ExitType::Hidden => {
                     let at = (e.from, e.dir);
                     e.passable()
@@ -189,6 +192,12 @@ impl Traveller {
                 ExitType::Text | ExitType::RoomCommand | ExitType::PathCommand => {
                     !e.command.is_empty()
                 }
+                // Its phrases are typed and its sealed exit opened on the way; every other step
+                // the traveller must be able to take.
+                ExitType::PathWindow => e
+                    .window
+                    .iter()
+                    .all(|s| s.kind == ExitType::RemoteAction || s.sealed() || self.can_take(s)),
                 _ => true,
             }
     }
@@ -207,13 +216,31 @@ pub struct Step {
     pub door: Option<LockState>,
     /// A blocked Hidden exit: the phrases that open it, typed in its room ([`Edge::unblock`]).
     pub unblock: Vec<String>,
-    /// A Hidden exit walked without a search (`Edge::passable`).
+    /// A Hidden exit walked without a search: `Edge::passable`, or a sealed exit a path
+    /// window has opened.
     pub passable: bool,
+}
+
+impl Step {
+    /// The step through `e` (not a path window) for `t`.
+    fn through(e: &Edge, t: &Traveller) -> Step {
+        Step {
+            command: e.command.clone(),
+            from: e.from,
+            to: e.to,
+            dir: e.dir,
+            exit_type: e.kind,
+            door: t.lock_state(e),
+            unblock: e.unblock.clone(),
+            passable: e.passable() || e.sealed(),
+        }
+    }
 }
 
 pub type Route = Vec<Step>;
 
-/// The cheapest route from `from` to `to` (Dijkstra): 1 per step, plus `costs.spawn` for
+/// The cheapest route from `from` to `to` (Dijkstra): 1 per step (a path window its steps, and
+/// the route has them in its place), plus `costs.spawn` for
 /// entering a room that spawns monsters and `costs.avoid` for one the traveller avoids (the
 /// destination exempt from both), [`Costs::door_cost`] per door and `costs.hidden` per Hidden
 /// exit to search for. Doors the traveller cannot open are left out ([`Traveller::can_take`]).
@@ -281,7 +308,7 @@ fn route_core(
             if !t.can_take(e) || (e.to_ix != dst && !within(e.to)) {
                 continue;
             }
-            let mut c = cost + 1;
+            let mut c = cost + u32::try_from(e.window.len().max(1)).unwrap_or(u32::MAX);
             if e.to_ix != dst && graph.node_at(e.to_ix).spawns {
                 c += t.costs.spawn;
             }
@@ -308,16 +335,11 @@ fn route_core(
     let mut at = dst;
     while at != src {
         let e = prev[&at];
-        steps.push(Step {
-            command: e.command.clone(),
-            from: e.from,
-            to: e.to,
-            dir: e.dir,
-            exit_type: e.kind,
-            door: t.lock_state(e),
-            unblock: e.unblock.clone(),
-            passable: e.passable(),
-        });
+        if e.kind == ExitType::PathWindow {
+            steps.extend(e.window.iter().rev().map(|s| Step::through(s, t)));
+        } else {
+            steps.push(Step::through(e, t));
+        }
         at = graph
             .ix(e.from)
             .expect("an edge leaves a room of the graph");
@@ -509,7 +531,7 @@ pub fn pocket_exits(
     }
     for &ix in &seen {
         for e in graph.edges_at(ix) {
-            if e.hidden() && !seen.contains(&e.to_ix) {
+            if e.hidden() && !e.sealed() && !seen.contains(&e.to_ix) {
                 out.insert((graph.key_at(ix), e.dir));
             }
         }
