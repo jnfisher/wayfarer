@@ -2954,14 +2954,19 @@ impl Session {
         // Mana counts in a rest only with a rest-for-mana line (0, the default, is none).
         let uses_mana = mana.is_some() && casts && line("health.rest_mana_below") > 0;
         let regen = self.regen();
+        let rested = hp.is_none_or(|h| h >= line("health.rest_until_hp"))
+            && (!uses_mana || mana.is_none_or(|m| m >= line("health.rest_mana_until")));
         Health {
             hp,
             missing: c.hp.zip(c.hp_max).map(|(h, m)| i64::from(m - h)),
             low: hp.is_some_and(|h| h < line("health.rest_below_hp"))
                 || (uses_mana && mana.is_some_and(|m| m < line("health.rest_mana_below"))),
-            rested: hp.is_none_or(|h| h >= line("health.rest_until_hp"))
-                && (!uses_mana || mana.is_none_or(|m| m >= line("health.rest_mana_until"))),
+            rested,
             flee: hp.is_some_and(|h| h < self.bot.flee_below()),
+            // Its own rest, the bot's or the player's: the healers with it heal it up to its
+            // rest-until line, as in a party rest.
+            resting: !rested
+                && (c.resting == Some(true) || (self.bot.running() && self.bot.recovering())),
             until: line("health.rest_until_hp"),
             short: c.hp.zip(c.hp_max).map(|(h, m)| {
                 (i64::from(m) * i64::from(line("health.rest_until_hp")) / 100 - i64::from(h)).max(0)

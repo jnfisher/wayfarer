@@ -440,7 +440,7 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
   | Mode | Wants control when | Does |
   |---|---|---|
   | Flee | HP below 25% (`health.flee_below_hp`) while running, whether or not engaged, with something to run from (a fight, an attacker, or a room that spawns); a monster to *flee from* in the room, whatever the HP; a stalemate; until it is done | Leaves by a confirmed exit toward a room that spawns nothing, keeps running if followed, then hands over to Recover ("Flee", below) |
-  | Recover | HP below 60% (`health.rest_below_hp`) (or poisoned) and not fighting; or a rest it began is not finished. A rest starts only when the fight is over: not while a monster Fight would attack is in the room (one the party still fights, say), nor before the `look` after a kill; a rest under way is woken only by an attack, and under the flee line Flee goes first | Rests where it stands (a lair or an arena too: spawns are slow enough, John, 2026-10-24). With `health.rest_quiet_room` on: in this room if nothing spawns here; else walks (through the walker, each step confirmed) to the nearest room within 5 steps where nothing spawns, never a player's house (a room the pack has no name for), and rests there; else rests here anyway. `rest` again when the next prompt lacks `(Resting)` (three times, then a 30 s wait; `You are too sick to rest!` waits 30 s too). Rested at 95%, it walks back home. Each walk is tried twice (a fight can stop one): after two walks out that were stopped it rests where it is, against the quiet-room rule, and says so with a warning ("Recover: resting in Newhaven, Arena though it spawns: 2 walks to a quiet room were stopped"); after two walks home that were stopped it waits where it rested: "Rested; could not walk home, waiting here" |
+  | Recover | HP below 60% (`health.rest_below_hp`) (or poisoned) and not fighting; or a rest it began is not finished. A rest starts only when the fight is over: not while a monster Fight would attack is in the room (one the party still fights, say), nor before the `look` after a kill, nor again after the walk to a quiet room, a flee, a cast or anything else ended it with such a monster here (a rest Recover took on but the prompt does not show as `(Resting)` waits for the fight like a new one: Faye kept typing `rest` beside a bandit her party fought, 2026-10-26); a rest under way (`(Resting)`) is woken only by an attack, and under the flee line Flee goes first | Rests where it stands (a lair or an arena too: spawns are slow enough, John, 2026-10-24). With `health.rest_quiet_room` on: in this room if nothing spawns here; else walks (through the walker, each step confirmed) to the nearest room within 5 steps where nothing spawns, never a player's house (a room the pack has no name for), and rests there; else rests here anyway. `rest` again when the next prompt lacks `(Resting)` (three times, then a 30 s wait; `You are too sick to rest!` waits 30 s too). Rested at 95%, it walks back home. Each walk is tried twice (a fight can stop one): after two walks out that were stopped it rests where it is, against the quiet-room rule, and says so with a warning ("Recover: resting in Newhaven, Arena though it spawns: 2 walks to a quiet room were stopped"); after two walks home that were stopped it waits where it rested: "Rested; could not walk home, waiting here" |
   | Fight | Engaged; or a monster worth fighting is here | Picks one that is attacking the character first, else the first listed, by the monster rules ("Monster rules", below: never one to *never fight* unless it attacks, never one to *flee from*); sends `a <its last word>` once and lets auto-combat run. After `*Combat Off*` or a kill it looks (`look`) and picks the next. A target the game refuses (`You do not see rat here!`, `Your weapon has no effect`) is left alone for the rest of the session. Four rounds of the character's swings with no damage dealt, one of them glancing off the target's armour at least, are a stalemate: it gives the target up and the bot leaves ("Monster rules"). Never leaves the room itself |
   | Idle | Otherwise | Sends nothing: "Waiting here" |
 
@@ -1312,7 +1312,7 @@ own, one at a time:
   A party heal is found by its record, never by its word: `rain` is also the Druid's acid
   rain. In a fight the healer goes back to its target after the cast, as after its own heal.
   A Witchunter is healed like anyone, though its anti-magic may resist the cast. There is no
-  mana kept back for heals.
+  mana kept back for heals below these lines.
 - **Heals in a party rest** (C-045). While the party rests, a healer heals each member up to
   that member's own rest-until line (`health.rest_until_hp`), itself included, instead of
   only below the heal-a-member line, and says so ("Recover: casting minor healing on lauren
@@ -1325,6 +1325,21 @@ own, one at a time:
   stat by magery); gear that alters them is not counted. Until a member's stats are known the
   cast goes only if it leaves the healer above its rest mana line. A heal-a-member line of 0
   turns these heals off too.
+- **Heals for a member resting on its own** (2026-10-26). Out of a party rest, a member with
+  the healer that rests on its own (its Recover has a rest under way: after a flee, say, or the
+  player typed `rest`; each session tells the coordinator so) is healed up to its own
+  rest-until line too, as in a party rest, since the party waits for it all the same ("Recover:
+  casting minor healing on penny (resting)"); one standing is healed only below the
+  heal-a-member line. The heals are Recover's, between fights: in a fight the healer heals a
+  member below the in-combat line only, and tops up a resting one once the fight is over. Not
+  while the healer rests itself (the cast would end its rest), one per round (5 s), and only
+  when the healer's mana keeps up: the healer is not resting, so its mana counts whatever its
+  rest-for-mana line, and a cast goes when the time until the members resting are rested and
+  the healer's mana is back at its rest-until mana line (`health.rest_mana_until`, 90%) is no
+  longer after it than before. A healer spends the mana it has above that line on any
+  resting member under its rest-until line; below it, only on a rest long enough for the mana
+  to come back, so a member a few points short is left to its rest. Until the rates are known
+  only the mana above the rest-until mana line is spent. A heal-a-member line of 0 turns these heals off too.
 - **The UIs** get `parties` when one changes or a member's state does: `joined`,
   `not_joined` ("forming up", "in another room"), `away` (with why), `separated`, `walking`,
   `unreachable` or `resting` (with its HP).

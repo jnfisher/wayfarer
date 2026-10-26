@@ -265,6 +265,34 @@ async fn a_monster_that_attacks_while_resting_wakes_fight() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_rest_that_ended_beside_a_monster_is_not_taken_up_again_before_the_fight() {
+    // John on the live rig (2026-10-26): Faye, resting, typed `rest` again and again beside a
+    // warlock bandit her party was fighting ("Faye stops to rest."), her rest ending each time.
+    // A rest under way goes on when a monster walks in; once it ends with the monster still
+    // here, a new one waits for the fight, as any rest does.
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 20).await;
+    g.expect("u", at_hp(&room(NARROW_ROAD), 20));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
+        .await;
+    g.output(&format!(
+        "\x1b[79D\x1b[KA thin giant rat creeps into the room from nowhere.\r\n{}",
+        resting(22)
+    ))
+    .await;
+    g.idle(Duration::from_secs(5)).await;
+    // The rest ends (the prompt lacks `(Resting)`), at 23 of 35, 65%: over the rest line,
+    // under the rest-until line.
+    g.expect("a rat", line(ENGAGED, 23));
+    g.output(&prompt(23)).await;
+    g.narrated("Fight: thin giant rat").await;
+    g.round("The thin giant rat lunges at you!", 23).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u", "rest", "a rat"]);
+}
+
+#[tokio::test(start_paused = true)]
 async fn pause_with_nothing_to_go_on_with_turns_the_bot_off_and_start_resyncs() {
     let (mut g, run) = in_arena(&["large giant rat"]).await;
     start(&mut g, &["large giant rat"], 35).await;

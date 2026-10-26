@@ -388,7 +388,7 @@ pub const CATALOGUE: &[Setting] = &[
     Setting {
         key: "party.heal_member_resting_below_hp",
         label: "Heal a party member while resting below",
-        help: "Out of a fight, heal a party member in the room below this per cent of their HP, between rests: it shortens a party rest. 0 turns it off.",
+        help: "Out of a fight, heal a party member in the room below this per cent of their HP, between rests: it shortens a party rest. A member resting (the party's rest or its own) is healed up to its own Rest until line while the mana keeps up. 0 turns these heals off.",
         kind: Kind::Int { min: 0, max: 99 },
         default: Value::Int(60),
         unit: "%",

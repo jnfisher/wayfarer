@@ -84,10 +84,14 @@ pub(crate) struct Mate {
     pub missing: i64,
     /// Below its own flee line.
     pub flee: bool,
-    /// Its rest-until HP line, per cent: what a healer heals it up to in a party rest (C-045).
+    /// Its rest-until HP line, per cent: what a healer heals it up to in a party rest (C-045),
+    /// or while it rests.
     pub until: i32,
     /// The HP it is short of that line.
     pub short: i64,
+    /// Resting, or its Recover has a rest under way, and not rested: a healer with it heals it
+    /// up to `until` as in a party rest.
+    pub resting: bool,
     /// HP per hour it gets back resting, when its stats are known.
     pub hp_rate: Option<i64>,
     /// Seconds until its mana is back at its rest-until mana line (0 for one that does not
@@ -177,6 +181,9 @@ pub(crate) struct Health {
     pub rested: bool,
     /// Below its flee line.
     pub flee: bool,
+    /// Resting (the prompt says so) or its bot's Recover has a rest under way, and below its
+    /// rest-until lines.
+    pub resting: bool,
     /// Its rest-until HP line, and the HP it is short of it.
     pub until: i32,
     pub short: Option<i64>,
@@ -969,6 +976,7 @@ impl Parties {
                             flee: i.health.flee,
                             until: i.health.until,
                             short: i.health.short.unwrap_or(0),
+                            resting: i.health.resting,
                             hp_rate: i.health.hp_rate,
                             mana_wait: i.health.mana_wait,
                         })
@@ -1102,6 +1110,7 @@ mod tests {
                 low: false,
                 rested: true,
                 flee: false,
+                resting: false,
                 until: 85,
                 short: Some(0),
                 hp_rate: Some(600),
@@ -1696,6 +1705,7 @@ mod tests {
             low,
             rested: false,
             flee,
+            resting: false,
             until: 85,
             short: Some(i64::from((85 - hp).max(0))),
             hp_rate: Some(600),
@@ -1847,6 +1857,7 @@ mod tests {
                 flee: false,
                 until: 85,
                 short: 45,
+                resting: false,
                 hp_rate: Some(600),
                 mana_wait: Some(0),
             }]
@@ -1855,6 +1866,21 @@ mod tests {
         // Out of the room: no mates.
         m.get_mut("lauren").unwrap().room = Some((1, 9));
         assert!(p.plan(&m, now).roles["penny"].mates().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_healer_knows_a_member_resting_on_its_own() {
+        // Penny resting to 85% on her own, over her rest line: no party rest, and her healer
+        // knows she rests, to heal her up to her rest-until line.
+        let now = Instant::now();
+        let mut p = Parties::default();
+        let mut m = formed(&mut p, now);
+        hurt(m.get_mut("penny").unwrap(), 79, false, false);
+        m.get_mut("penny").unwrap().health.resting = true;
+        let plan = p.plan(&m, now);
+        assert_eq!(plan.roles["lauren"].party_rest(), None);
+        let penny = &plan.roles["lauren"].mates()[0];
+        assert!(penny.resting && penny.until == 85 && penny.short == 6);
     }
 
     #[test]
