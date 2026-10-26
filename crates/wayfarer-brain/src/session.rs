@@ -1372,6 +1372,7 @@ impl Session {
                     rows: plan.rows,
                     missing: (!plan.missing.is_empty()).then_some(plan.missing),
                     notes,
+                    areas: plan.areas,
                 }));
             }
             Err(why) => out.push(self.warning(&why)),

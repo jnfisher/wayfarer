@@ -286,6 +286,35 @@ describe("handshake", () => {
     expect(seen).toEqual([parties]);
   });
 
+  it("asks for a gear plan and a detail and hands the answers to their handlers", () => {
+    const seen: unknown[] = [];
+    const sockets: FakeSocket[] = [];
+    const client = new GatewayClient({
+      url: "ws://gateway.test/ws",
+      socket: (url) => {
+        const s = new FakeSocket(url);
+        sockets.push(s);
+        return s;
+      },
+      events: { gearPlan: (p) => seen.push(p), gearDetail: (d) => seen.push(d) },
+    });
+    client.connect();
+    sockets[0].open();
+    sockets[0].receive(welcome(session("kasimir", 0)));
+    expect(client.requestGearPlan({ session: "kasimir", what_if: { level: 20 }, smash: true })).toBe(true);
+    expect(client.requestGearDetail({ session: "kasimir", item: 646, monsters: { area: "Dwarven Mines" } })).toBe(true);
+    expect(sockets[0].sent.slice(-2)).toEqual([
+      { type: "gear_plan_request", session: "kasimir", what_if: { level: 20 }, smash: true },
+      { type: "gear_detail_request", session: "kasimir", item: 646, monsters: { area: "Dwarven Mines" } },
+    ]);
+    const inputs = { what_if: [], buffs: [], smash: false };
+    const plan: ToClient = { type: "gear_plan", session: "kasimir", inputs, monsters: [], buffs_offered: [], rows: [] };
+    const detail: ToClient = { type: "gear_detail", session: "kasimir", item: 646, name: "Magebane sword", inputs, monsters: [], moves: [] };
+    sockets[0].receive(plan);
+    sockets[0].receive(detail);
+    expect(seen).toEqual([plan, detail]);
+  });
+
   it("hands a found to its handler", () => {
     const seen: unknown[] = [];
     const sockets: FakeSocket[] = [];

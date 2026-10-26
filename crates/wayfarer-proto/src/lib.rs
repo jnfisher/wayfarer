@@ -1299,6 +1299,10 @@ pub struct GearPlan {
     /// What else the player should know (names that match no monster, ...).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<String>,
+    /// The names a `{area}` set may give, for the planner's suggestions: the names, up to a
+    /// comma, of the rooms that spawn monsters, sorted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub areas: Vec<String>,
 }
 
 /// One monster's numbers for a move in a `gear_detail`: rates in thousandths, damage in tenths,

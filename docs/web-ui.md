@@ -116,6 +116,8 @@ but no pause sign, so pause is `[║]`.
 | `Alt+P`, or the `parties` button | Open the drawer on the parties: pick a leader, tick its followers, save; each member's state under it (on a Mac, `Option`) |
 | The party chip in the tile's header | `★ Leading`, `Following` or `Separated`; click it to leave the party, or to join one |
 | `Alt+B`, or the `blessings` button | Open the drawer on the blessings: tick the lasting spells each character keeps on itself (bless, barkskin, holy aura); ● marks one that is on (on a Mac, `Option`) |
+| `Alt+E`, or the `gear` button | Open the gear planner over the tiles for the focused character: every weapon it could use, scored by attack, bash and smash against its monsters; `Alt+E` again or `Esc` closes it (on a Mac, `Option`) |
+| Click a column's heading, or a row, in the gear planner | Sort by that column (again: the other way round); a row opens its detail under it: each monster's numbers for each move |
 | `F10`, or `[■]` in the tile's header | Drop the focused character's loop or Go to: it plays on where it is (paused, it stays off); with neither, turn the bot off, or on |
 | `F9`, or `[║]` and `[►]` in the tile's header | Pause the focused character's loop or Go to and go on with it; with neither, turn the bot off and on where it stands (fight what comes, rest when low) |
 | `Alt+S`, or the `stats` button | Open the drawer on the stats of the focused character's runs: exp per hour, kills, deaths and flees, now and for the last runs; or close it (on a Mac, `Option`) |
@@ -421,6 +423,58 @@ settings show with `all`.
   below shows through (the default, a preset, or another file).
 - A change made to the file by hand shows up too: the brain sends the form again when it
   reloads a file.
+
+## The gear planner
+
+The `gear` button on the bar at the top, beside the drawer's tabs, or `Alt+E` (on a Mac,
+`Option+E`) opens the gear planner over the tiles and the drawer, which stay as they are
+underneath; `Alt+E` again, `Esc` or `[x] Esc` closes it. It opens on the focused character, and
+the picker in its header switches to another. It is a view of the brain's gear plan
+([brain.md](brain.md) "Gear plan"): every weapon the character's class and race could ever use,
+and the rest greyed, each scored for a plain attack, a bash and a smash against a monster set.
+Solo play only. It asks (`gear_plan_request`) when it opens and a fifth of a second after each
+change of an input. Only weapons for now; the header's `weapons` tab leaves room for armour.
+
+**The header**:
+
+- **Monsters**: `its loop` (the loop the bot runs, else the area around the character), `an
+  area` (a field suggesting the names of the areas whose rooms spawn monsters) or `names`
+  (monster names, separated by commas). The set is listed under the header: each monster's HP,
+  AC, DR, dodge and how many of the set's rooms spawn it, its weight in the averages.
+- **What if**: the level, the six stats and the load %, filled in with the character's own;
+  a value changed is yellow and sent as a what-if, the others are not. `live` puts them back.
+  The character's load is shown beside them.
+- **Buffs**: a box for each lasting spell that would change the scores, labelled with what it
+  does ("song of valour: +5 AV"); the ticks are kept per character in the browser's
+  `localStorage` under `wayfarer.gear.buffs`. For the classes that may keep smash (Warrior,
+  Witchunter, Paladin, Cleric, Warlock, Ranger), **score smash (as if it had it)** adds the
+  smash columns: the planner cannot see whether the character has it yet.
+- **Show**: `usable now`, `now or later` or `everything`; `has a source` hides what nothing
+  sells, drops or gives; `max price` (in gold) hides what the cheapest shop sells for more,
+  keeping what no shop sells. These filter the rows in the page, without asking again.
+
+**The table** has a row per weapon: its name, damage, speed, the Str it needs (red, with the
+shortfall, when short), the level it may be used from, one- or two-handed, whether it may be
+used (`now`, or why not: `level 15`, `class`, `alignment evil`) and where it comes from (the
+cheapest shop and its price, else the best drop, "25% minotaur champion, boss, first kill",
+else `quest` or `placed`; `‡` marks a limited item and `†` one deleted at cleanup; hover for
+every source). Rows the character can use now are green, later yellow, never grey and not
+scored. Then, for each move, `k1` and `k2`, the chances of a kill in round 1 and by round 2,
+`rds`, the rounds expected to the kill (`20+` when a fight may run longer), and `dmg1`, the
+damage expected in round 1, each averaged over the set. A row's best move (the fewest rounds)
+is in cyan, and the best row of all is pinned on top with a `★`. Click a heading to sort by it
+(again for the other way round); rows with nothing in that column go last.
+
+**The detail**: click a row to open it under itself (`gear_detail_request`), again to close
+it: for each move, the blows struck in rounds 1 to 8 ("1 2 1 2 1 2 2 1") and the energy a blow
+costs, and for each monster the hit, crit and dodge chances, the damage of a landed blow and
+of a crit, the damage expected from a blow and in round 1, the chances of a kill by rounds 1,
+2 and 3 (hover for all eight) and the rounds expected.
+
+When there is nothing to score the view says why: no stats yet ("type `st` in the tile"), no
+inventory yet for the load (type `i`, or set a load % under What if), no loop running and no
+position for the default set (pick an area or names), the brain not attached, or the brain's
+own reason (no world pack).
 
 ## The dev panel
 
