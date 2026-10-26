@@ -48,7 +48,12 @@ Buy Int and Wil in parallel (each point = +0.33 SC, +0.5 regen-stat); Wil first 
 
 **Attack or bash at L20** [C formulas from LJNCOMBT.C:338-943, 1226-1427; I: the class ladder's L20 stats, the damage roll taken as min..max, targets kobold warrior, bandit leader, guardian wolf, skeletal warrior, stone golem, slaver, barrow wight, guardian golem, minotaur champion]. Gnome on the ladder above (Str 35, Int 85, Wil 95): carrying
 capacity is 1,680, so the leather kit puts it at 61% load and AV 57. Melee with the darkwood
-staff is about 9 a round by attack and 4 by bash (16 and 13 with no armour at all). Never bash.
+staff is about 9 a round by attack and 4 by bash (16 and 13 with no armour at all). **But with a
+weapon so slow that even an attack takes the whole round** (the maul, 8-25, Str 90: attack and
+bash both one blow a round) **bash wins**: at L10 and Str 35 the maul does 4.1 bashing against
+2.4 attacking, and 13.4 against 8.7 at Str 80. The druid's AV is low enough that against AC 30
+or more both moves sit on the 10% hit floor, where the bigger blow wins; attack wins only on
+soft targets (AC 20) with a faster weapon. Either way melee is a few points a round.
 Acid jet (24-68 at L20, about 98% to cast, 8 mana) does about 45 a cast; blaze (38-80, about
 75%, 12 mana) about 44. A Gnome druid is a caster: melee only to save mana, with `a`.
 

@@ -194,3 +194,4 @@
 - **2026-10-25**: `recovery.md`: whose light counts (user light is personal; a lit source and room light count for the room), starlight as the party's light, and the non-Magical light items for a Kang Witchunter (mining helm free at 6:1567) [C].
 - **2026-10-25**: `classes/witchunter.md` §5: the full armour progression to L45 with prices, the black chitin crafting costs and materials, and the Witchunter quest pieces [C data].
 - **2026-10-26**: `economy.md` "Shops": a shop buys only what is on its list of wares, a full shelf still pays, markup does not count [C].
+- **2026-10-26**: `classes/druid.md`: corrected "never bash": with a whole-round weapon (the maul) and an AV on the 10% hit floor, bash beats attack for a Gnome druid [C formulas, I stats].
