@@ -103,6 +103,9 @@
   copy" case, which would also take one copy off the slot, cannot happen in the original,
   because `remove_logical_from_room` always returns 1, LJNUSE.C:788-845), 2 "You cannot afford X.", 4-7 the gang house deed
   rules (4 is unreachable: a deed owner gets 5). [C] `LJNUTIL.C:5783-5787`, `:6114-6139`
+- **A shop buys only items on its own list of wares** (any slot, `maxqty` 0 included); anything
+  else gets "You cannot sell <item> here." A full shelf still pays: the copy is simply not put
+  back on sale. The price ignores the shop's markup. [C] `LJNUTIL.C:6290-6372`
 - SELL puts the copy back on the shelf only while `qty < maxqty` (so a `maxqty` 0 slot never
   takes it); the money is always copper, then changed up into the fewest coins. Gang shops buy
   nothing; a worn cursed item sells only when a second copy is carried. [C]
