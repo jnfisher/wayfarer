@@ -291,12 +291,18 @@ impl View<'_> {
     /// The attack spell for the next fight, if the mana allows one.
     pub fn attack_spell(&self) -> Option<&SpellDef> {
         let (mana, _) = self.mana?;
-        if !self.casts_attacks()
-            || self.mana_percent()? <= self.setting("spells.attack_mana_above", 15)
-        {
+        self.mana_percent()?;
+        if !self.casts_attacks() || self.attack_mana_short() {
             return None;
         }
         self.book.attack(self.level, mana)
+    }
+
+    /// Mana at or below `spells.attack_mana_above` per cent: no attack spell, the weapon
+    /// fights (a fight under way changes to it).
+    pub fn attack_mana_short(&self) -> bool {
+        self.mana_percent()
+            .is_some_and(|m| m <= self.setting("spells.attack_mana_above", 15))
     }
 
     /// The heal for the HP that are missing, if there is a spell and the mana for one.
