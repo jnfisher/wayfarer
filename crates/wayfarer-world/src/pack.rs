@@ -266,6 +266,12 @@ impl WorldPack {
         Ok(pack)
     }
 
+    /// The connection, for a module that filters raw records in SQL before reading them
+    /// (`gear`: the rooms with items placed or a command text, out of 26,720).
+    pub(crate) fn conn(&self) -> &Connection {
+        &self.conn
+    }
+
     /// A `pack_meta` value: `schema_version`, `builder`, `source.<TABLE>.file_sha256`, ...
     pub fn meta(&self, key: &str) -> Result<Option<String>, Error> {
         Ok(self

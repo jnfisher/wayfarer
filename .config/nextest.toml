@@ -5,3 +5,14 @@ slow-timeout = { period = "1s" }
 [profile.ci]
 fail-fast = false
 slow-timeout = { period = "1s" }
+
+# The gear catalogue (C-058): a build reads the rooms on a second thread, so each of its tests
+# takes two; the timing test runs with nothing beside it, since other tests only slow it down.
+# The ci profile inherits these.
+[[profile.default.overrides]]
+filter = 'package(wayfarer-world) & binary(gear) & test(=a_whole_catalogue_builds_in_time)'
+threads-required = "num-cpus"
+
+[[profile.default.overrides]]
+filter = 'package(wayfarer-world) & binary(gear)'
+threads-required = 2
