@@ -747,9 +747,19 @@ impl GameEvent {
                 name: monster_name(ev, "who"),
             },
             // A spellcasting monster's attack slot names a spell message (17 for the dark
-            // priest), whose first text is the caster's own line: "You cast bless on Aldric!"
-            // is the character's cast, not a blow.
-            "mon_hits_you" if ev.line.trim_start().starts_with("You cast ") => G::Other(ev.clone()),
+            // priest, 18 for an attack spell), whose first text is the caster's own line: "You
+            // cast bless on Aldric!" is the character's cast, not a blow, and "You cast
+            // stonestrike on giant bat for 22 damage!" its attack spell landing.
+            "mon_hits_you" if ev.line.trim_start().starts_with("You cast ") => {
+                match int(ev, "dmg") {
+                    Some(damage) => G::SpellCast {
+                        spell: text(ev, "mon"),
+                        target: ev.text("s2").map(str::to_owned).filter(|t| !t.is_empty()),
+                        damage,
+                    },
+                    None => G::Other(ev.clone()),
+                }
+            }
             "mon_hits_you"
             | "mon_hits_you_generic"
             | "mon_miss_you"
