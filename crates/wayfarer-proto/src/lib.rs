@@ -979,6 +979,384 @@ pub struct SpellPlanItem {
     pub affordable: bool,
 }
 
+/// The monsters a gear plan measures weapons against (`gear_plan_request`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum GearMonsters {
+    /// The spawn pools of a loop's stops: a MegaMud loop's file, or a generated or saved
+    /// loop's id.
+    Loop(String),
+    /// The spawn pools of the rooms of a name, or the name and a comma (`Slum Street` takes
+    /// `Slum Street, Bend`).
+    Area(String),
+    /// Monsters by name.
+    Names(Vec<String>),
+}
+
+/// Values a gear plan uses instead of the character's own (`gear_plan_request`'s `what_if`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(optional_fields)]
+pub struct GearWhatIf {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub level: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub str: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub int: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wil: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agi: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hea: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cha: Option<i64>,
+    /// The load, per cent of what the character can carry: the weapon is not swapped in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load_percent: Option<i64>,
+}
+
+/// Which weapons a gear plan lists.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum GearFilter {
+    /// Those usable at the level.
+    Now,
+    /// Those only a level or an alignment holds back.
+    Later,
+    /// Every weapon; the never-usable ones with their reasons, not scored.
+    #[default]
+    All,
+}
+
+/// UI → brain: a character's gear plan (answered with a `gear_plan`). Left out: `monsters` is
+/// the loop the bot runs, else the area around the believed room; `what_if` the character's
+/// own values; `buffs` none; `smash` false; `filter` all.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct GearPlanRequest {
+    pub session: SessionId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub monsters: Option<GearMonsters>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub what_if: Option<GearWhatIf>,
+    /// The `name`s of the offered buffs ticked (`buffs_offered`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub buffs: Option<Vec<String>>,
+    /// Score a smash as though the character had it (only for a class that may keep it, from
+    /// the level it may).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub smash: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub filter: Option<GearFilter>,
+}
+
+/// UI → brain: one weapon against each monster of the set (answered with a `gear_detail`);
+/// the other fields as in a `gear_plan_request`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct GearDetailRequest {
+    pub session: SessionId,
+    /// The weapon's item number.
+    pub item: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub monsters: Option<GearMonsters>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub what_if: Option<GearWhatIf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub buffs: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub smash: Option<bool>,
+}
+
+/// The values a gear plan used: the character's own or the what-if's.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(optional_fields)]
+pub struct GearInputs {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub race: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub level: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub str: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub int: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wil: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agi: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hea: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cha: Option<i64>,
+    /// The load, per cent, before any weapon is swapped in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load_percent: Option<i64>,
+    /// The readied weapon, whose weight each row's weapon takes the place of.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readied: Option<String>,
+    /// The values that came from the what-if (`level`, `str`, ..., `load_percent`).
+    #[serde(default)]
+    pub what_if: Vec<String>,
+    /// The buffs counted.
+    #[serde(default)]
+    pub buffs: Vec<String>,
+    /// Smash is scored.
+    #[serde(default)]
+    pub smash: bool,
+}
+
+/// A monster of a gear plan's set.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct GearMonster {
+    pub number: i64,
+    pub name: String,
+    pub hp: i64,
+    /// AC with what its abilities, weapon and worn item add (its DV).
+    pub ac: i64,
+    /// DR likewise, in tenths (`dr` 5 is 50): a tenth of it comes off every blow.
+    pub dr: i64,
+    pub dodge: i64,
+    /// How many of the set's rooms spawn it (0 for a set of names): its weight in the averages.
+    pub rooms: u32,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub boss: bool,
+}
+
+/// A lasting spell a gear plan can count as cast on the character.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct GearBuff {
+    /// What a `gear_plan_request` names it by: the spell's name, with the class when two
+    /// spells of that name do different things.
+    pub name: String,
+    /// The classes that cast it.
+    pub classes: Vec<String>,
+    /// What it does: `song of valour: +5 AV`.
+    pub effect: String,
+}
+
+/// Whether a character may use an item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum GearStatus {
+    Now,
+    Later,
+    Never,
+}
+
+/// One way to come by an item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum GearSourceKind {
+    /// A shop sells it.
+    Shop,
+    /// A monster carries it.
+    Drop,
+    /// A quest gives it.
+    Quest,
+    /// It is placed in a room.
+    Placed,
+}
+
+/// Where a weapon comes from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct GearSource {
+    pub kind: GearSourceKind,
+    /// The shop, the monster, or who or where gives the quest; empty for a placed item.
+    pub name: String,
+    /// A shop's price for the character's Charm, in copper.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub price: Option<u64>,
+    /// The chance a monster drops it, per cent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub percent: Option<i64>,
+    /// The shop's room nearest the character, the room it is placed in, or the quest's room.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub room: Option<RoomKey>,
+    /// Steps to a shop; absent when there is no way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub steps: Option<u32>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub boss: bool,
+    /// A limited monster that has never died: the first kill drops it.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub first_kill: bool,
+}
+
+/// An attack move a gear plan scores.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum GearMove {
+    Attack,
+    Bash,
+    Smash,
+}
+
+/// One move of one weapon against a gear plan's set: rates in thousandths (`714` is 71.4%),
+/// damage in tenths, rounds in hundredths, each averaged over the set's monsters weighted by
+/// their rooms.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct GearMoveScore {
+    #[serde(rename = "move")]
+    pub mv: GearMove,
+    /// The energy one blow costs.
+    pub energy: i64,
+    /// The blows struck in rounds 1, 2 and 3.
+    pub blows: Vec<u32>,
+    /// The chance a blow lands, and that it crits.
+    pub hit: u32,
+    pub crit: u32,
+    /// The damage expected in round 1.
+    pub damage_round1: u32,
+    /// The chance the monster is dead after round 1, and after round 2.
+    pub kill_round1: u32,
+    pub kill_round2: u32,
+    /// The rounds expected to the kill, counting at most 20.
+    pub rounds: u32,
+    /// A fight against some monster of the set may well last past 20 rounds.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub rounds_capped: bool,
+}
+
+/// One weapon of a gear plan.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct GearRow {
+    pub item: i64,
+    pub name: String,
+    pub min_damage: i64,
+    pub max_damage: i64,
+    pub speed: i64,
+    pub str_req: i64,
+    /// How far the Str falls short of `str_req`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub str_short: Option<i64>,
+    /// The level the weapon may be used from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub min_level: Option<i64>,
+    pub two_handed: bool,
+    pub status: GearStatus,
+    /// Why it is not usable now: `class`, `race`, `weapon type`, `magical`, `level 15`,
+    /// `max level 12`, `alignment good`, ...
+    #[serde(default)]
+    pub reasons: Vec<String>,
+    #[serde(default)]
+    pub sources: Vec<GearSource>,
+    /// At most this many copies in play.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub limited: Option<i64>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub deleted_at_cleanup: bool,
+    /// The load the row was scored at (the readied weapon's weight swapped for this one's).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub load_percent: Option<i64>,
+    /// The moves scored; none for a never-usable weapon.
+    #[serde(default)]
+    pub moves: Vec<GearMoveScore>,
+    /// The move with the fewest expected rounds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub best_move: Option<GearMove>,
+    /// The best row of the plan.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub best: bool,
+    /// A caveat on the scores (the Anti-Magic character resists the buffs some of the time).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub note: Option<String>,
+}
+
+/// Brain → UIs: the answer to a `gear_plan_request`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct GearPlan {
+    pub session: SessionId,
+    pub inputs: GearInputs,
+    pub monsters: Vec<GearMonster>,
+    pub buffs_offered: Vec<GearBuff>,
+    /// Usable now first, then later, then never; by name within each.
+    pub rows: Vec<GearRow>,
+    /// What the plan lacks to score anything: `class`, `race`, `level`, `stats`, `load`,
+    /// `monsters`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub missing: Option<Vec<String>>,
+    /// What else the player should know (names that match no monster, ...).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
+}
+
+/// One monster's numbers for a move in a `gear_detail`: rates in thousandths, damage in tenths,
+/// rounds in hundredths.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct GearMonsterScore {
+    pub monster: i64,
+    pub hit: u32,
+    pub crit: u32,
+    pub dodge: u32,
+    /// The damage a normal landed blow does, and a crit (absent when it cannot crit).
+    pub damage: Vec<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub crit_damage: Option<Vec<i64>>,
+    pub damage_per_blow: u32,
+    pub damage_round1: u32,
+    pub damage_round2: u32,
+    /// The chance it is dead after each of rounds 1 to 8.
+    pub kill_by_round: Vec<u32>,
+    pub rounds: u32,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub rounds_capped: bool,
+    /// A smash knocks it down.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub knocks_down: bool,
+}
+
+/// One move of a `gear_detail`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct GearDetailMove {
+    #[serde(rename = "move")]
+    pub mv: GearMove,
+    pub energy: i64,
+    /// The blows struck in rounds 1 to 8.
+    pub blows_per_round: Vec<u32>,
+    pub monsters: Vec<GearMonsterScore>,
+}
+
+/// Brain → UIs: the answer to a `gear_detail_request`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct GearDetail {
+    pub session: SessionId,
+    pub item: i64,
+    pub name: String,
+    pub inputs: GearInputs,
+    pub monsters: Vec<GearMonster>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub load_percent: Option<i64>,
+    pub moves: Vec<GearDetailMove>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub missing: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
+}
+
 /// What a `session_control` asks of a session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
@@ -1126,6 +1504,12 @@ pub enum ToClient {
         cash: u64,
         items: Vec<SpellPlanItem>,
     },
+    /// Brain → UIs: the answer to a `gear_plan_request`: every weapon, those the character may
+    /// use scored for an attack, a bash and a smash against a monster set (docs/brain.md "Gear
+    /// plan").
+    GearPlan(GearPlan),
+    /// Brain → UIs: the answer to a `gear_detail_request`: one weapon against each monster.
+    GearDetail(GearDetail),
     /// Brain → UIs: the character's settings, answering `settings_request` and `settings_save`
     /// (and sent again when the files change): every setting with its effective value, where
     /// the value comes from, and the value the `layer` file itself holds.
@@ -1222,6 +1606,10 @@ pub enum ToClient {
     SpellPlanRequest {
         session: SessionId,
     },
+    /// UI → brain: a character's gear plan (a `gear_plan`).
+    GearPlanRequest(GearPlanRequest),
+    /// UI → brain: one weapon against each monster of the set (a `gear_detail`).
+    GearDetailRequest(GearDetailRequest),
     StatsReset {
         session: SessionId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1474,6 +1862,10 @@ pub enum ToGateway {
     SpellPlanRequest {
         session: SessionId,
     },
+    /// UI → brain: a character's gear plan (a `gear_plan`).
+    GearPlanRequest(GearPlanRequest),
+    /// UI → brain: one weapon against each monster of the set (a `gear_detail`).
+    GearDetailRequest(GearDetailRequest),
     /// UI → brain: zero the character's numbers. `only: "run"` ends the current run and starts
     /// a new one now, with its numbers at zero (exp/hr, kills, deaths, flees, rests); the ended
     /// run stays in the history. `only: "combat"` zeroes the combat numbers. Left out, both. A
@@ -1676,6 +2068,12 @@ pub enum ToGateway {
         cash: u64,
         items: Vec<SpellPlanItem>,
     },
+    /// Brain → UIs: the answer to a `gear_plan_request`: every weapon, those the character may
+    /// use scored for an attack, a bash and a smash against a monster set (docs/brain.md "Gear
+    /// plan").
+    GearPlan(GearPlan),
+    /// Brain → UIs: the answer to a `gear_detail_request`: one weapon against each monster.
+    GearDetail(GearDetail),
     /// Brain → UIs: the character's settings, answering `settings_request` and `settings_save`
     /// (and sent again when the files change): every setting with its effective value, where
     /// the value comes from, and the value the `layer` file itself holds.
@@ -1757,6 +2155,8 @@ impl ToClient {
         "loops",
         "stats",
         "spell_plan",
+        "gear_plan",
+        "gear_detail",
         "settings",
         "found",
         "parties",
@@ -1773,6 +2173,8 @@ impl ToClient {
         "run_loop",
         "stats_request",
         "spell_plan_request",
+        "gear_plan_request",
+        "gear_detail_request",
         "stats_reset",
         "settings_request",
         "settings_save",
@@ -1817,6 +2219,8 @@ impl ToClient {
             Self::Loops { .. } => "loops",
             Self::Stats { .. } => "stats",
             Self::SpellPlan { .. } => "spell_plan",
+            Self::GearPlan(_) => "gear_plan",
+            Self::GearDetail(_) => "gear_detail",
             Self::Settings { .. } => "settings",
             Self::Found { .. } => "found",
             Self::Parties { .. } => "parties",
@@ -1833,6 +2237,8 @@ impl ToClient {
             Self::RunLoop { .. } => "run_loop",
             Self::StatsRequest { .. } => "stats_request",
             Self::SpellPlanRequest { .. } => "spell_plan_request",
+            Self::GearPlanRequest(_) => "gear_plan_request",
+            Self::GearDetailRequest(_) => "gear_detail_request",
             Self::StatsReset { .. } => "stats_reset",
             Self::SettingsRequest { .. } => "settings_request",
             Self::SettingsSave { .. } => "settings_save",
@@ -1898,6 +2304,10 @@ impl ToClient {
             | Self::LoggingOff { session }
             | Self::UserInput { session, .. }
             | Self::KeysSent { session } => Some(session),
+            Self::GearPlan(GearPlan { session, .. })
+            | Self::GearDetail(GearDetail { session, .. })
+            | Self::GearPlanRequest(GearPlanRequest { session, .. })
+            | Self::GearDetailRequest(GearDetailRequest { session, .. }) => Some(session),
             Self::Notice { session, .. }
             | Self::Warning { session, .. }
             | Self::StateRequest { session } => session.as_deref(),
@@ -1948,6 +2358,8 @@ impl ToGateway {
         "run_loop",
         "stats_request",
         "spell_plan_request",
+        "gear_plan_request",
+        "gear_detail_request",
         "stats_reset",
         "settings_request",
         "settings_save",
@@ -1973,6 +2385,8 @@ impl ToGateway {
         "loops",
         "stats",
         "spell_plan",
+        "gear_plan",
+        "gear_detail",
         "settings",
         "found",
         "parties",
@@ -2002,6 +2416,8 @@ impl ToGateway {
             Self::RunLoop { .. } => "run_loop",
             Self::StatsRequest { .. } => "stats_request",
             Self::SpellPlanRequest { .. } => "spell_plan_request",
+            Self::GearPlanRequest(_) => "gear_plan_request",
+            Self::GearDetailRequest(_) => "gear_detail_request",
             Self::StatsReset { .. } => "stats_reset",
             Self::SettingsRequest { .. } => "settings_request",
             Self::SettingsSave { .. } => "settings_save",
@@ -2027,6 +2443,8 @@ impl ToGateway {
             Self::Loops { .. } => "loops",
             Self::Stats { .. } => "stats",
             Self::SpellPlan { .. } => "spell_plan",
+            Self::GearPlan(_) => "gear_plan",
+            Self::GearDetail(_) => "gear_detail",
             Self::Settings { .. } => "settings",
             Self::Found { .. } => "found",
             Self::Parties { .. } => "parties",
@@ -2057,6 +2475,8 @@ impl ToGateway {
             | Self::RunLoop { .. }
             | Self::StatsRequest { .. }
             | Self::SpellPlanRequest { .. }
+            | Self::GearPlanRequest(_)
+            | Self::GearDetailRequest(_)
             | Self::StatsReset { .. }
             | Self::SettingsRequest { .. }
             | Self::SettingsSave { .. }
@@ -2082,6 +2502,8 @@ impl ToGateway {
             | Self::Loops { .. }
             | Self::Stats { .. }
             | Self::SpellPlan { .. }
+            | Self::GearPlan(_)
+            | Self::GearDetail(_)
             | Self::Settings { .. }
             | Self::Found { .. }
             | Self::Parties { .. }
@@ -2133,6 +2555,8 @@ impl ToGateway {
             Self::RunLoop { session, id, skip } => ToClient::RunLoop { session, id, skip },
             Self::StatsRequest { session } => ToClient::StatsRequest { session },
             Self::SpellPlanRequest { session } => ToClient::SpellPlanRequest { session },
+            Self::GearPlanRequest(r) => ToClient::GearPlanRequest(r),
+            Self::GearDetailRequest(r) => ToClient::GearDetailRequest(r),
             Self::StatsReset { session, only } => ToClient::StatsReset { session, only },
             Self::SettingsRequest { session, layer } => {
                 ToClient::SettingsRequest { session, layer }
@@ -2262,6 +2686,8 @@ impl ToGateway {
                 cash,
                 items,
             },
+            Self::GearPlan(p) => ToClient::GearPlan(p),
+            Self::GearDetail(d) => ToClient::GearDetail(d),
             Self::Settings {
                 session,
                 layer,

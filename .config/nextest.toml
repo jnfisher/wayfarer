@@ -16,3 +16,9 @@ threads-required = "num-cpus"
 [[profile.default.overrides]]
 filter = 'package(wayfarer-world) & binary(gear)'
 threads-required = 2
+
+# The gear plan (C-059): a plan scores its weapons on a thread per core, and its timing test
+# runs with nothing beside it, as the catalogue's does.
+[[profile.default.overrides]]
+filter = 'package(wayfarer-brain) & binary(gear_plan) & test(=a_whole_witchunter_plan_answers_in_time)'
+threads-required = "num-cpus"

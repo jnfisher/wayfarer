@@ -1041,6 +1041,57 @@ the bot stopped or paused like the other errands ("Errands"), and `cancel_errand
    mend (8 gold)". Something attacking, or the bot starting, ends it ("Spells stopped: something is
    attacking"), keeping what was bought.
 
+## Gear plan
+
+`gear_plan_request` is answered with a `gear_plan` (card C-059; the planner panel is C-060): every
+weapon the character's class and race could ever use, and the rest greyed with their reasons,
+each scored for a plain attack, a bash and a smash against a set of monsters. It only reads:
+nothing is bought or walked, and the brain sends a plan only when asked. Solo play only.
+
+- **The numbers** are the combat model's (`wayfarer_world::combat`, `crates/wayfarer-world`
+  README "The combat model"): per weapon, move and monster a `Fight`, then averaged over the set
+  with each monster weighted by how many of the set's rooms spawn it (a set of names weighs each
+  1). A row's `moves` carry, for each move, a blow's energy, the blows in rounds 1 to 3, the hit and
+  crit chances, the damage expected in round 1, the chance of a kill by round 1 and by round 2,
+  and the expected rounds to the kill (at most 20 counted; `rounds_capped` when a fight may well
+  run longer). The best move of a row has the fewest expected rounds (ties to the higher round-1
+  kill chance), and the row whose best move is best of all is marked `best`. `gear_detail_request`
+  gives one weapon's numbers per monster, with the blows of 8 rounds.
+- **The weapons** are the gear catalogue's (`wayfarer_world::gear`): who may use each (now, later
+  for a level or an alignment, never and why) and where it comes from (shops with the price for
+  the character's Charm and the steps from the believed room, monsters that drop it, quests,
+  rooms it is placed in). The catalogue is built once per class and race (about 0.1 s) and kept
+  for the brain's life; the records, the class and race and the buffs offered are read from the
+  pack the first time a plan is asked for. `filter` keeps the rows usable `now`, `later`, or
+  `all` (the default); never-usable rows are listed but not scored.
+- **The character**: class, race, level and stats from the status screen; with none of it yet,
+  `missing: ["stats"]` and nothing is scored. A `what_if` (`level`, `str`, `int`, `wil`, `agi`,
+  `hea`, `cha`, `load_percent`) replaces any of them, and `inputs` says which values were used
+  and where from. The worn items (from the inventory) count, as the game counts them, for
+  accuracy and their abilities.
+- **The load**: a what-if `load_percent` as it is; else the inventory's encumbrance with the
+  readied weapon's weight swapped for each row's weapon, or as it is when no weapon is readied
+  or it is not known (`missing: ["load"]` before the first `i`). An off-hand item is not added:
+  a what-if load says "with a shield".
+- **The monsters**: `{loop}` the stops of a loop (a MegaMud file, a generated or a saved loop's
+  id), `{area}` the rooms of a name or of the name and a comma, `{names}` by name. Left out: the
+  loop the bot runs, else the area around the believed room (its name up to a comma), else
+  `missing: ["monsters"]`. Names that match nothing are in `notes`.
+- **Buffs** are checkboxes (John, 2026-10-26): `buffs_offered` lists every lasting spell of a
+  class's magery (level above 0), cast on the caster, a player or the party, that raises AV
+  (abilities 22, 105, 106), Alter Damage (4), Alter Critical (58), Str (46) or Agi (48), or lowers
+  Alter Energy Usage (87), with the classes that cast it and what it does ("song of valour: +5
+  AV"). A slot whose value is 0 takes the spell's strength at the level it is learned (the middle
+  of `minval`..`maxval`, `kb/spells.md`). Two spells of one name that do different things are told
+  apart by their classes ("frenzy (Mage)"). The ticked ones count as cast; an Anti-Magic
+  character's rows carry a note that it resists them some of the time (the roll is not modelled).
+- **Smash** is scored only with `smash` set, and only for the classes that may keep it, from the
+  level they may (`kb/combat.md`: Warrior 22, Witchunter 20, Paladin 25, Cleric 27, Warlock 27,
+  Ranger 22): the planner cannot see whether the character has it.
+- **Speed**: a plan for about 180 weapons × 3 moves × 10 monsters takes 40 to 50 ms on 4 cores
+  in a test build, the fights shared among a thread per core (the card's limit is 100 ms);
+  nothing but the catalogue is cached.
+
 ## Sneaking
 
 With *Sneak* on (`movement.sneak`, Movement, off by default; C-048) the bot keeps the

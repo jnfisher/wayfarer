@@ -6,6 +6,10 @@ import type { ClientKind } from "./ClientKind";
 import type { CombatStats } from "./CombatStats";
 import type { ExpSample } from "./ExpSample";
 import type { Found } from "./Found";
+import type { GearDetail } from "./GearDetail";
+import type { GearDetailRequest } from "./GearDetailRequest";
+import type { GearPlan } from "./GearPlan";
+import type { GearPlanRequest } from "./GearPlanRequest";
 import type { GeneratedLoop } from "./GeneratedLoop";
 import type { MapExit } from "./MapExit";
 import type { MapRoom } from "./MapRoom";
@@ -36,7 +40,7 @@ query?: string,
 /**
  * The most loops to send, the nearest first (12 if left out, 50 at most).
  */
-limit?: number, } | { "type": "walk_loop", session: string, id: string, } | { "type": "run_loop", session: string, id: string, skip?: Array<RoomKey>, } | { "type": "stats_request", session: string, } | { "type": "spell_plan_request", session: string, } | { "type": "stats_reset", session: string, only?: StatsPart, } | { "type": "settings_request", session: string, 
+limit?: number, } | { "type": "walk_loop", session: string, id: string, } | { "type": "run_loop", session: string, id: string, skip?: Array<RoomKey>, } | { "type": "stats_request", session: string, } | { "type": "spell_plan_request", session: string, } | { "type": "gear_plan_request" } & GearPlanRequest | { "type": "gear_detail_request" } & GearDetailRequest | { "type": "stats_reset", session: string, only?: StatsPart, } | { "type": "settings_request", session: string, 
 /**
  * The layer to show the player's own values of: `mine`, `server` or `character`
  * (left out: `character`).
@@ -65,7 +69,7 @@ combat?: CombatStats,
 /**
  * Where the current run's time went; absent with no run.
  */
-time?: TimeSpent, } | { "type": "spell_plan", session: string, cash: number, items: Array<SpellPlanItem>, } | { "type": "settings", session: string, 
+time?: TimeSpent, } | { "type": "spell_plan", session: string, cash: number, items: Array<SpellPlanItem>, } | { "type": "gear_plan" } & GearPlan | { "type": "gear_detail" } & GearDetail | { "type": "settings", session: string, 
 /**
  * The layer whose own values `own` shows.
  */

@@ -211,6 +211,8 @@ pub struct World {
     pub info: Option<WorldPackInfo>,
     pub pack: Option<Arc<Mutex<WorldPack>>>,
     pub atlas: Option<Arc<Atlas>>,
+    /// The gear planner's data (`gear_plan_request`), with a pack.
+    pub gear: Option<Arc<crate::gear_plan::Gear>>,
 }
 
 impl World {
@@ -238,12 +240,17 @@ impl World {
     /// An open pack: its game texts and its atlas (no `info`).
     pub fn from_pack(pack: WorldPack) -> Result<Self, wayfarer_world::Error> {
         let texts = pack.game_texts()?;
-        let atlas = Atlas::load(&pack)?;
+        let atlas = Arc::new(Atlas::load(&pack)?);
+        let pack = Arc::new(Mutex::new(pack));
         Ok(Self {
             registry: Arc::new(Registry::new(&texts)),
             info: None,
-            pack: Some(Arc::new(Mutex::new(pack))),
-            atlas: Some(Arc::new(atlas)),
+            gear: Some(Arc::new(crate::gear_plan::Gear::new(
+                pack.clone(),
+                atlas.clone(),
+            ))),
+            pack: Some(pack),
+            atlas: Some(atlas),
         })
     }
 
@@ -259,6 +266,7 @@ impl World {
             info: None,
             pack: None,
             atlas: None,
+            gear: None,
         }
     }
 }
@@ -644,6 +652,14 @@ impl Brain {
             ToClient::SpellPlanRequest { session } => match self.sessions.get_mut(&session) {
                 Some(s) => s.spell_plan(out),
                 None => out.push(no_session("spell_plan_request", &session)),
+            },
+            ToClient::GearPlanRequest(req) => match self.sessions.get_mut(&req.session) {
+                Some(s) => s.gear_plan(&req, self.world.gear.as_deref(), out),
+                None => out.push(no_session("gear_plan_request", &req.session)),
+            },
+            ToClient::GearDetailRequest(req) => match self.sessions.get_mut(&req.session) {
+                Some(s) => s.gear_detail(&req, self.world.gear.as_deref(), out),
+                None => out.push(no_session("gear_detail_request", &req.session)),
             },
             ToClient::StatsRequest { session } => match self.sessions.get_mut(&session) {
                 Some(s) => s.stats_request(out),
