@@ -166,15 +166,14 @@ impl Mode for Recover {
     }
 
     fn step(&mut self, v: &View) -> Step {
-        // Between rests, a heal for a hurt member of the party: it shortens a party rest.
+        // Between rests, a heal for a hurt member of the party: it shortens a party rest, or
+        // a member's own.
         if self.heal_due(v)
-            && let Some(cast) = v.rest_party_heal()
+            && let Some((cast, why)) = v.rest_party_heal()
         {
             self.heal_ready = Some(v.now + HEAL_GAP);
             let mut step = crate::fight::cast_step(&cast, "Recover");
-            if v.party.party_rest().is_some() {
-                step.narration.push_str(" (party rest)");
-            }
+            step.narration.push_str(why);
             return step;
         }
         if self.walks_back > 0 && !Self::rested(v) {

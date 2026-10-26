@@ -324,12 +324,17 @@ impl View<'_> {
         self.heal_for(|_| member_line, own_line)
     }
 
-    /// The party heal between fights (Recover). In a party rest (C-045) each member is healed
-    /// up to its own rest-until line, the caster too, and only when the cast does not make the
-    /// rest longer ([`View::heal_pays`]); out of one, below the heal-a-member line (C-043).
-    pub fn rest_party_heal(&self) -> Option<PartyCast<'_>> {
+    /// The party heal between fights (Recover), and why it goes beyond the heal-a-member line,
+    /// for the narration. In a party rest (C-045) each member is healed up to its own
+    /// rest-until line, the caster too, and only when the cast does not make the rest longer
+    /// ([`View::heal_pays`]); out of one, below the heal-a-member line (C-043), and a member
+    /// resting on its own up to its rest-until line ([`View::resting_member_heal`]).
+    pub fn rest_party_heal(&self) -> Option<(PartyCast<'_>, &'static str)> {
         if self.party.party_rest().is_none() {
-            return self.party_heal(self.member_heal_resting(), self.rest_heal_below());
+            return self
+                .party_heal(self.member_heal_resting(), self.rest_heal_below())
+                .map(|c| (c, ""))
+                .or_else(|| self.resting_member_heal().map(|c| (c, " (resting)")));
         }
         if self.member_heal_resting() == 0 {
             return None;
@@ -339,7 +344,70 @@ impl View<'_> {
             PartyCast::On(s, name) => (s, Healed::Mate(name)),
             PartyCast::Party(s) => (s, Healed::All),
         };
-        self.heal_pays(who.0, who.1).then_some(cast)
+        self.heal_pays(who.0, who.1)
+            .then_some((cast, " (party rest)"))
+    }
+
+    /// Out of a party rest, a member with the caster that rests on its own (its Recover's
+    /// rest, or the player's `rest`) is healed up to its rest-until line, as in a party rest:
+    /// the party waits for it all the same. Not while the caster rests itself (the cast would
+    /// end its rest), and only when the caster's mana is back at its rest-until mana line no
+    /// later than the members resting are rested ([`View::top_up_pays`]). A heal-a-member line
+    /// of 0 turns it off.
+    fn resting_member_heal(&self) -> Option<PartyCast<'_>> {
+        let line = self.member_heal_resting();
+        if line == 0 || self.resting || !self.party.mates().iter().any(|m| m.resting) {
+            return None;
+        }
+        let cast = self.heal_for(
+            |m| if m.resting { m.until.max(line) } else { line },
+            self.rest_heal_below(),
+        )?;
+        let (spell, who) = match &cast {
+            PartyCast::On(s, name) => (*s, Healed::Mate(name)),
+            PartyCast::Party(s) => (*s, Healed::All),
+        };
+        self.top_up_pays(spell, who).then_some(cast)
+    }
+
+    /// Whether a heal for members resting on their own leaves the caster no worse off for
+    /// mana: the caster is not resting, so its mana counts whatever its rest-for-mana line.
+    /// The cast goes when the time until those members are rested and the caster's mana is
+    /// back at its rest-until mana line (`health.rest_mana_until`) is no longer after it than
+    /// before. With a rate not known, only mana above that line is spent.
+    fn top_up_pays(&self, spell: &SpellDef, who: Healed) -> bool {
+        let Some((mana, max)) = self.mana else {
+            return false;
+        };
+        let after = mana - spell.mana;
+        let line = max * i64::from(self.setting("health.rest_mana_until", 90)) / 100;
+        let fallback = || after >= line;
+        let Some(rate) = self.regen.mana else {
+            return fallback();
+        };
+        let me = crate::regen::Waiting {
+            // Not resting: its HP is nobody's wait.
+            hp_short: 0,
+            hp_rate: Some(0),
+            mana_before: crate::regen::wait_secs(line - mana, rate),
+            mana_after: crate::regen::wait_secs(line - after, rate),
+            healed: false,
+        };
+        let mate = |m: &crate::party::Mate| crate::regen::Waiting {
+            hp_short: m.short,
+            hp_rate: m.hp_rate,
+            mana_before: m.mana_wait,
+            mana_after: m.mana_wait,
+            healed: match who {
+                Healed::All => true,
+                Healed::Me => false,
+                Healed::Mate(n) => n == m.name,
+            },
+        };
+        let resting = self.party.mates().iter().filter(|m| m.resting);
+        let waiting: Vec<_> = std::iter::once(me).chain(resting.map(mate)).collect();
+        let heal = spell.average(self.level) as i64;
+        crate::regen::shortens(&waiting, heal).unwrap_or_else(fallback)
     }
 
     /// The HP line below which Recover heals the character itself: its rest-until line in a
@@ -879,6 +947,11 @@ impl Bot {
             .flatten()
     }
 
+    /// Recover has the character: a rest, or the walk to or from one, not finished.
+    pub fn recovering(&self) -> bool {
+        self.recover.busy()
+    }
+
     /// Its flee line, per cent of the maximum HP.
     pub fn flee_below(&self) -> i32 {
         self.flee.below()
@@ -1343,8 +1416,11 @@ impl Bot {
                 // A rest starts when the fight is over: not while a monster it would attack is
                 // here, or before the look after a kill. One under way goes on (a monster that
                 // walks in wakes it only by attacking); under the flee line Flee goes first.
+                // Under way is the game's word, the prompt's `(Resting)`: a rest Recover
+                // took on and has not begun, or one a cast or an attack ended, waits for the
+                // fight like a new one (after a flee, say, beside a monster the party fights).
                 // Rested, the walk home waits for the fight too.
-                .filter(|_| self.recover.resting(v) || self.fight.wants(v).is_none())
+                .filter(|_| (v.resting && self.recover.resting(v)) || self.fight.wants(v).is_none())
             {
                 (BotMode::Recover, r)
             } else if let Some(r) = self.sneak.wants(v) {

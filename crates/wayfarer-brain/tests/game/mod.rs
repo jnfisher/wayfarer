@@ -221,10 +221,17 @@ impl Game {
 
     /// `brain` attached to a session whose history is `history`, once the catch-up's whole
     /// snapshot is out.
-    pub async fn start_brain(
+    pub async fn start_brain(state: SessionState, history: String, brain: Brain) -> (Game, Run) {
+        Game::start_brain_with(state, history, brain, None).await
+    }
+
+    /// The same, with `early` sent right after the welcome: before the catch-up is answered,
+    /// as a UI's `state_request` can be.
+    pub async fn start_brain_with(
         state: SessionState,
         history: String,
         mut brain: Brain,
+        early: Option<ToClient>,
     ) -> (Game, Run) {
         let (to_gateway, rx) = mpsc::channel(4096);
         let (tx, from_gateway) = mpsc::channel(4096);
@@ -260,6 +267,9 @@ impl Game {
             sessions: vec![info(state, 1)],
         })
         .await;
+        if let Some(msg) = early {
+            g.send(msg).await;
+        }
         // The catch-up's whole snapshot.
         g.until(|m| matches!(m, ToGateway::Character { .. }).then_some(()))
             .await;

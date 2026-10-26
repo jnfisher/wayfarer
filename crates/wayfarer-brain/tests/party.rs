@@ -4,7 +4,7 @@
 
 mod game;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use game::*;
 use tokio::sync::mpsc;
@@ -42,12 +42,36 @@ struct World {
     locked: bool,
     /// Each one's rank, `Midrank` when not here; inviting puts the leader in front.
     ranks: BTreeMap<String, &'static str>,
+    /// The status screens are whole (stats, HP and mana), and the follower is a Cleric with
+    /// minor healing (2 mana, 20 of it).
+    cleric: bool,
+    /// Those whose prompts say `(Resting)`.
+    resting: BTreeSet<String>,
 }
 
 impl World {
     fn rank(&self, session: &str) -> &'static str {
         self.ranks.get(session).copied().unwrap_or("Midrank")
     }
+}
+
+/// The `fight-arena` capture's whole status screen (level 1, Health 50, Willpower 40) for
+/// `session`: a Cleric with 20 mana for the follower, a Warrior for the leader.
+fn whole_status(session: &str) -> String {
+    let screen =
+        game::arena::status(35).replace("Aldric Stonebrook", &format!("{:<17}", name(session)));
+    if session != FOLLOWER {
+        return screen;
+    }
+    let hits = "Thievery:    \x1b[36m    0\r\n";
+    screen.replace("Warrior    ", "Cleric     ").replacen(
+        hits,
+        &format!(
+            "{hits}\x1b[32mMana: \x1b[36m * 20/20    \x1b[32mSpellcasting: \x1b[36m  40     \
+             \x1b[32mTraps:       \x1b[36m    0\r\n"
+        ),
+        1,
+    )
 }
 
 /// A room as `look` shows it; the Arena with nothing in it, so nobody stops to fight.
@@ -138,15 +162,58 @@ impl Gateway {
         .await;
     }
 
+    /// Game output for `session`, its prompts showing its HP and whether it rests.
+    async fn tell(&mut self, session: &str, text: &str) {
+        let t = match self.world.hp.get(session) {
+            Some(hp) => text.replace("[HP=35", &format!("[HP={hp}")),
+            None => text.to_owned(),
+        };
+        let t = if self.world.resting.contains(session) {
+            t.replace("\x1b[0;37m]:", "\x1b[0;37m (Resting) ]:")
+        } else {
+            t
+        };
+        self.output(session, t).await;
+    }
+
+    /// Act on the brain's messages for `secs` seconds of game time.
+    async fn play(&mut self, secs: u64) {
+        let wait = async {
+            loop {
+                self.next().await;
+            }
+        };
+        let _ = tokio::time::timeout(Duration::from_secs(secs), wait).await;
+    }
+
     /// The game's answer to `text` from `session`, and what the other one sees.
     fn answer(&mut self, session: &str, text: &str) -> Vec<(String, String)> {
         let other = if session == LEADER { FOLLOWER } else { LEADER };
         let me = |t: String| vec![(session.to_owned(), t)];
         match text {
+            "st" if self.world.cleric => me(whole_status(session)),
             "st" => me(format!(
                 "\x1b[0;32mName: \x1b[36m{:<25}\x1b[32mLives/CP:\x1b[36m     9/0\r\n{PROMPT}",
                 name(session)
             )),
+            "spells" if self.world.cleric && session == FOLLOWER => me(format!(
+                "You have the following spells:\r\nLevel Mana Short Spell Name\r\n  \
+                 1   2    mihe  minor healing\r\n{PROMPT}"
+            )),
+            t if t.starts_with("mihe ") => {
+                let healed = *self.world.hp.get(other).unwrap_or(&35);
+                self.world.hp.insert(other.to_owned(), (healed + 5).min(35));
+                vec![
+                    (
+                        session.to_owned(),
+                        said(&format!("You cast minor healing on {}!", first(other))),
+                    ),
+                    (
+                        other.to_owned(),
+                        said(&format!("{} casts minor healing on you!", first(session))),
+                    ),
+                ]
+            }
             "look" => me(shown(self.world.rooms[session])),
             "n" if self.world.locked && self.world.rooms[session] == ARENA => {
                 me(said("The door is closed!"))
@@ -321,11 +388,7 @@ impl Gateway {
                 let answers = self.answer(session, text);
                 for (i, (s, t)) in answers.into_iter().enumerate() {
                     let t = if i == 0 { format!("{text}\r\n{t}") } else { t };
-                    let t = match self.world.hp.get(&s) {
-                        Some(hp) => t.replace("[HP=35", &format!("[HP={hp}")),
-                        None => t,
-                    };
-                    self.output(&s, t).await;
+                    self.tell(&s, &t).await;
                 }
             }
             _ => {}
@@ -846,4 +909,49 @@ async fn a_follower_does_not_bash_with_help_off() {
     let bashes: Vec<_> = g.lines.iter().filter(|(_, t)| t == "bash n").collect();
     assert!(bashes.iter().all(|(s, _)| s == LEADER), "{:?}", g.lines);
     assert_eq!(bashes.len(), 3);
+}
+
+/// The follower's casts of minor healing on the leader so far.
+fn heals(g: &Gateway) -> usize {
+    g.lines
+        .iter()
+        .filter(|(s, t)| s == FOLLOWER && t == "mihe penny")
+        .count()
+}
+
+/// John on the live rig (2026-10-26): Faye, the leader, rested to 80% on her own (no party
+/// rest: she was over her rest line), and Lauren, a Cleric with her, never healed her: out of
+/// a party rest a member was healed only below the heal-a-member line (60%). A member resting
+/// on its own is healed up to its rest-until line, as in a party rest; one standing is not.
+#[tokio::test(start_paused = true)]
+async fn a_healer_heals_a_member_resting_on_its_own_up_to_its_rest_until_line() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    g.world.cleric = true;
+    formed(&mut g).await;
+    // 25 of 35 is 71%: over the leader's rest line (60) and the heal-a-member line (60), under
+    // her rest-until line (85). Standing, she is not healed.
+    g.world.hp.insert(LEADER.to_owned(), 25);
+    g.tell(LEADER, &said("Health:    25/35    [71%]")).await;
+    g.play(30).await;
+    assert_eq!(heals(&g), 0, "{:?}", g.lines);
+    // Resting: the Cleric heals her, once (5 of minor healing takes her to 30, 85%).
+    g.world.resting.insert(LEADER.to_owned());
+    g.tell(LEADER, &said("You are now resting.")).await;
+    g.until(|m| match m {
+        ToGateway::InputLine { session, text } if session == FOLLOWER && text == "mihe penny" => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+    g.play(30).await;
+    assert_eq!(heals(&g), 1, "{:?}", g.lines);
+    assert!(
+        g.seen
+            .iter()
+            .any(|m| matches!(m, ToGateway::Notice { session: Some(s), text }
+            if s == FOLLOWER && text == "Recover: casting minor healing on penny (resting)")),
+        "{:?}",
+        g.seen
+    );
 }

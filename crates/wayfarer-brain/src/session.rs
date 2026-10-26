@@ -311,6 +311,9 @@ pub(crate) struct Session {
     silent_until: u64,
     /// A `history_request` is out; live output waits here meanwhile.
     fetching: bool,
+    /// The catch-up since the last attach is done: the whole snapshot then goes out (and, the
+    /// first time, the bot a brain before this one left is resumed).
+    caught_up: bool,
     buffer: Vec<Chunk>,
     /// The last chunk ended in a prompt.
     at_prompt: bool,
@@ -489,6 +492,7 @@ impl Session {
             fed: 0,
             silent_until: info.last_seq,
             fetching: false,
+            caught_up: false,
             buffer: Vec::new(),
             at_prompt: false,
             last_sent: now,
@@ -502,6 +506,7 @@ impl Session {
     /// whole snapshot. `info` is the gateway's view of the session now.
     pub fn attach(&mut self, info: &SessionInfo, now: Instant, out: &mut Vec<ToGateway>) {
         self.published = None;
+        self.caught_up = false;
         self.map_center = None;
         self.own.clear();
         self.last_sent = now;
@@ -646,8 +651,8 @@ impl Session {
         }
     }
 
-    /// The answer to a `history_request`. Whether the catch-up finished (the caller then sends
-    /// the whole snapshot).
+    /// The answer to a `history_request`. Whether the catch-up since the last attach finished
+    /// (the caller then resumes the stored bot, the first time, and sends the whole snapshot).
     pub fn history(&mut self, chunks: Vec<Chunk>, out: &mut Vec<ToGateway>) -> bool {
         let full = chunks.len() >= HISTORY_CHUNKS as usize;
         if let Some(first) = chunks.first()
@@ -686,7 +691,10 @@ impl Session {
         }
         let was_fetching = self.fetching;
         self.fetching = false;
-        was_fetching && self.published.is_none()
+        // The first catch-up since the attach, whether or not a UI's `state_request`
+        // published the session while it went on: that once kept the stored bot from ever
+        // being resumed, and the session from saving anything after.
+        was_fetching && !std::mem::replace(&mut self.caught_up, true)
     }
 
     fn feed(&mut self, chunk: Chunk, out: &mut Vec<ToGateway>) {
@@ -2944,14 +2952,19 @@ impl Session {
         // Mana counts in a rest only with a rest-for-mana line (0, the default, is none).
         let uses_mana = mana.is_some() && casts && line("health.rest_mana_below") > 0;
         let regen = self.regen();
+        let rested = hp.is_none_or(|h| h >= line("health.rest_until_hp"))
+            && (!uses_mana || mana.is_none_or(|m| m >= line("health.rest_mana_until")));
         Health {
             hp,
             missing: c.hp.zip(c.hp_max).map(|(h, m)| i64::from(m - h)),
             low: hp.is_some_and(|h| h < line("health.rest_below_hp"))
                 || (uses_mana && mana.is_some_and(|m| m < line("health.rest_mana_below"))),
-            rested: hp.is_none_or(|h| h >= line("health.rest_until_hp"))
-                && (!uses_mana || mana.is_none_or(|m| m >= line("health.rest_mana_until"))),
+            rested,
             flee: hp.is_some_and(|h| h < self.bot.flee_below()),
+            // Its own rest, the bot's or the player's: the healers with it heal it up to its
+            // rest-until line, as in a party rest.
+            resting: !rested
+                && (c.resting == Some(true) || (self.bot.running() && self.bot.recovering())),
             until: line("health.rest_until_hp"),
             short: c.hp.zip(c.hp_max).map(|(h, m)| {
                 (i64::from(m) * i64::from(line("health.rest_until_hp")) / 100 - i64::from(h)).max(0)
