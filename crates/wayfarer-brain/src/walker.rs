@@ -720,6 +720,12 @@ impl Walker {
                 self.end(&mut next, Say::Warning(format!("Stopped walking: {why}")));
                 self.then_start(pos, atlas, next)
             }
+            // A phrase that went: where it took the character is looked at before the walk
+            // stops, or the position is lost (a teleport shows no room).
+            Ok(Doing::Arrive) if w.stopping.is_some() => {
+                next.action = Some(w.send(Doing::Arrive));
+                next
+            }
             Ok(_) if w.stopping.is_some() => {
                 let why = w.stopping.take().expect("stopping");
                 self.end(&mut next, Say::Notice(format!("Stopped walking: {why}")));

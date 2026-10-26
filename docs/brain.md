@@ -330,6 +330,11 @@ walk to at all is left out.
   then sends `look` (C-055): a teleport prints no room ("You find yourself...elsewhere."), and a
   phrase where the room has no such script is only speech (`You say "ring chime"`). The room
   the look shows is checked as a move's: the one it was going to, or a drift and a new plan.
+  A stop that comes while the phrase is in flight (a party leader's hold for a follower the
+  teleport left behind, a fight, the player) still waits for that look: without it the
+  character's room is unknown, and the followers have nowhere to walk back to. A teleport
+  ends the party (`kb/grouping.md` §2), so the followers walk back by the same phrase, and
+  the leader invites them again.
 - Made once per anchor, radius, level, strength, picklocks and doors for the session, so asking
   again is cheap.
 - **Boss status.** A stop that is a boss's lair (a unique monster, `maxalive` 1, back `regenhrs`
