@@ -13,6 +13,7 @@ pub mod build;
 pub mod cp437;
 pub mod exit_items;
 pub mod find;
+pub mod gear;
 pub mod knowledge;
 pub mod layout;
 pub mod loops;

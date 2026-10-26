@@ -215,6 +215,25 @@ From the silvermere T-030 port of the item code (LJNUTIL, LJNCMDB, LJNSUPP, LJNF
   Inclusion. A "Limited" weapon class may use only items 100 (quarterstaff) and 68 (the third
   exempt number is 0, which names no item). [C]
   `LJNUTIL.C:9418-9740`, `LJNGAME.C:1030-1032`
+  - The numbers: Magical is item ability 28, Anti Magic 51 (on the class *or* the race), Good 97,
+    Evil 98, Not Good 110, Not Evil 111, Neutral 112, Minimum Level 135 and Maximum Level 136
+    (the level is the ability's value). The class record's `weapon` is its weapon kind against
+    the item's `wpntype` (0 one-handed blunt, 1 two-handed blunt, 2 one-handed sharp, 3
+    two-handed sharp): kinds 0-3 that type only, 4 any one-handed, 5 any two-handed, 6 any
+    sharp, 7 any blunt, 8 all, 9 Limited; its `armour` is the heaviest `armtype` allowed. The
+    one-handed kinds (0, 2, 4) may not use `worn` 12, the off-hand slot. Item type 11 is only
+    for classes 1-4 and 9. A weapon above the character's Str is still usable. [C]
+    `LJNUTIL.C:9418-9740`
+  - In the stock data, 900 weapons and armour pieces: 542 have a Minimum Level, 419 are
+    Magical, 123 need an alignment (57 Evil, 44 Good, 20 Neutral), one has a Maximum Level.
+    Examples: the mithril cutlass names the Witchunter, so a Kang Witchunter may use it; the
+    jeweled main-gauche is off-hand but names the Bard; the golden broadsword is Magical and so
+    never for a Witchunter. [C data] (wayfarer C-058, `crates/wayfarer-world/src/gear.rs`)
+  - A quest item can hang from a monster's talk block: the Magebane sword (item 646, Minimum
+    Level 15) is `giveitem 646` in block 399, the link of block 398, which is the `sword`
+    answer of the huge dwarven witchunter's talk block 393 (`failability 50`, `class 2`,
+    `minlevel 15` first). 292 stock text blocks have `giveitem` lines; those of a `random`
+    table (`NN:` first: chests, gambling) give an item only by chance. [C data]
 - Only one light may be lit ("You already have something lit!"); `i` shows it as
   `torch (Readied/<uses/10>)`. A burnt-out light needs recharging before it can be lit again.
   [C] `LJNCMDB.C:4010-4013`, `:4042-4047`, `LJNDISP.C:3978`
