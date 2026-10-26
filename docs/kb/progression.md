@@ -163,6 +163,17 @@ then CP), and choose again. Quests are occasional big boosts. [F, John]
   `lngrnd(0, regen/4) - regen/8` minutes (4 h: 210-269 min). Any limited monster
   (`maxalive` > 0) that has never been killed carries all its items, unique or not. [C]
   `LJNMONST.C:644-657, :741-742`
+- **Boss loot is balanced by rarity, not by difficulty** [C data, I reading]. The guardian
+  golem (1:1797: 320 HP, AC 35, DR 10, hits 12-25 twice a round or 24-50) carries five
+  limited-1 items at 5% each and comes back after 100 h; Thrag (1:1810: 400 HP, AC 45, hits up
+  to 50) carries the huge darkwood club at 5% and the golden belt at 10%, back after 48 h. After
+  the first kill a given golem item takes about 20 kills, some 2,000 h of camping (any one of the
+  five: about 1 in 4.4 kills, 440 h); the club about 960 h. Limited 1 means one copy in the whole
+  world. The way in is gated: a 5-copper toll at the Inner Bailey (1:1381), the green metal key
+  (slave-master, 250 HP, hit 50) and the large iron key (werewolf, 260 HP, hit 40), Huge Cave
+  monsters that hit 45-66 (ogre, bugbears), a hidden exit down from Thrag's cavern, and −175
+  light. So the first kill on a server whose bosses have never died is a one-off jackpot: every
+  item at once.
 - **The respawn clock** is a minute-of-the-day stamp (`lastkill`), plus 1440 once midnight has
   passed since start-up, cleared for every room at a cold start. Early in the start-up day a
   delay longer than the minutes so far never blocks (the unsigned subtraction wraps). [C]

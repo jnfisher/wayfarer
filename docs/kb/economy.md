@@ -103,6 +103,9 @@
   copy" case, which would also take one copy off the slot, cannot happen in the original,
   because `remove_logical_from_room` always returns 1, LJNUSE.C:788-845), 2 "You cannot afford X.", 4-7 the gang house deed
   rules (4 is unreachable: a deed owner gets 5). [C] `LJNUTIL.C:5783-5787`, `:6114-6139`
+- **A shop buys only items on its own list of wares** (any slot, `maxqty` 0 included); anything
+  else gets "You cannot sell <item> here." A full shelf still pays: the copy is simply not put
+  back on sale. The price ignores the shop's markup. [C] `LJNUTIL.C:6290-6372`
 - SELL puts the copy back on the shelf only while `qty < maxqty` (so a `maxqty` 0 slot never
   takes it); the money is always copper, then changed up into the fewest coins. Gang shops buy
   nothing; a worn cursed item sells only when a second copy is carried. [C]
@@ -159,6 +162,24 @@ Shop type 11 inside a gang house room; the house is the room's `ganghouse` numbe
   items with the Magical ability (28). Skip missile weapons, which need ammunition. Respect
   `classes` restrictions (item offset 0x324). [C]
 - Afterwards, sell replaced gear if it's worth 50 copper or more; otherwise drop it. [C, John]
+- **A party buys through its highest-Charm member** and hands the gear over: `GIVE <item> TO
+  <player>` moves an item (unreadied first; not a no-drop item or a worn cursed one) into the
+  receiver's pack, or back to the giver when the receiver has no room. [C] `LJNCMDB.C:4300-4335`
+  `cmd_give` At Charm 75 the buy price is 95% (110 − 75/5), against 100% at Charm 50 and 102%
+  at 40, and old gear sells for 62% of cost against 50%. [C] (formula above)
+- **Silvermere's armour shops**, all at 100% markup [C data]: Skali's Fine Armour (head, hands
+  and feet 1:305; torso and legs 1:306; shields in the back room 1:2153), Sentara's Clothing
+  (leather torso, legs, hands and belts 1:310; leather helms and boots 1:2154), the Cloakroom
+  1:312. They are 11-14 steps from the Town Gates. Newhaven's shops are out of reach after level 3
+  (the docks crossing takes levels 0-3). The best value sets, at Charm 50 [C data, I ranking by
+  AC + 3 × DR per gold, a knapsack over the shops' stock]:
+  - Classes limited to Studded Rigid Leather (armour type 6: Bard, Druid and others): rigid
+    leather tunic (AC 13, DR 1.3), rigid leather pants, hard leather helm, hard leather
+    gauntlets, hardened leather boots and a leather belt. AC 25.5, DR 2.3, about 30 gold.
+  - Scalemail or better (Witchunter, Cleric, Warrior): scalemail tunic (AC 20, DR 6),
+    scalemail leggings, pot-helm, scale gauntlets, chainmail boots and a belt. AC 44.5,
+    DR 8.7, about 100 gold. Plate costs two to five times as much per point (light plate
+    corselet AC 21, DR 9, about 300 gold).
 
 ## Encumbrance
 - Capacity y = Str × 48, plus 36 per point over 100 (Str 79 → 3,792), times (100 + Alter

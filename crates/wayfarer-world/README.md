@@ -248,3 +248,36 @@ let items = cat.for_level(who, |rooms| nearest(rooms)); // Vec<GearItem>
 
 A build reads the 26,720 rooms once, on a second read-only connection beside the monsters and
 text blocks, and only the end of each room's record (where `cmdtext` and `placed` are).
+
+## The combat model (`combat.rs`)
+
+One character, one weapon and one monster: what each blow costs, how often it lands, crits or
+is dodged, how much it does, how many blows land in each round, and the chance the monster is
+dead after round 1, 2, ... for an attack, a bash and a smash. Solo play: no party damage, no
+monster turns. It is the gear planner's engine; nothing in the brain uses it yet.
+
+```rust
+let fighter = Fighter::new(&Character { class: &witchunter, race: &human, level: 15,
+    stats: Stats { str: 95, int: 50, agi: 56, cha: 50 }, weapon: Some(&magebane),
+    worn: vec![], encumbrance: 55, max_energy: 1000, buffs: vec![] });
+let monk = Defender::new(&dark_monk, &[]);           // + its weapon and worn item, if any
+let fight = Fight::new(&fighter, &monk, Move::Bash);  // cost 632, blows 1, 2, 1, 2, 1, 2, 2, 1
+fight.p_kill_by_round[1];                             // dead after round 2
+```
+
+- The formulas are the recovered source's, in C integer arithmetic: `move_player_to_fighter`,
+  `move_monster_to_fighter`, `calculate_attack` and the auto-combat blow loop (LJNCOMBT.C),
+  with the bonus totals of `update_dynamic_stats` (LJNABIL.C: the best Alter AV, the averaged
+  Alter Energy Usage). `kb/combat.md` has them in words.
+- Every roll includes its top value (`ROLL_TOP_INCLUDED`, John, 2026-10-26): a hit chance of
+  34 lands 33 times in 100, the damage roll runs `min..=max+1`.
+- The kill chances are exact: the damage dealt so far is a distribution over `0..maxhp`, and
+  each blow (a miss, glance or dodge, a normal range and a crit range, ×3 or ×5) is folded
+  in with a sliding window. A smash that does damage knocks the monster down (if
+  `Str + level > its level + magicres + 30`) and the later smashes use its DV less 35.
+- `expected_rounds` counts at most 20 rounds; `rounds_capped` says the fight may well run
+  longer. A planner request (150 weapons × 3 moves × 10 monsters of 300 HP) takes about 0.2 s.
+- Records come from the pack's `raw` JSON: `ItemRecord`, `MonsterRecord`, `ClassRecord`,
+  `RaceRecord` (`from_raw`). Left out: casting, backstab, martial arts, Protective Shield,
+  light and blindness, Quickness and Slowness, rank, the alignment defences.
+

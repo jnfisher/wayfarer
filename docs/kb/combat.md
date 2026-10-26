@@ -133,7 +133,12 @@ LJNSPELL.C:48). Every timer runs 11 rounds.
   thresholds stay 32 and 29 for monster DR 0 to 3 (DR 5 moves the fresh one to 33). That is a
   proven value for this one character and weapon. The "about 0.45-0.6 × AV" rule for other
   levels and the DPR table in the notes are a model [I]: unproven, and the table's damage
-  roll runs one too high (the C rolls `min..max`, not `max+1`).
+  roll runs one too high if `genrdn` excludes its top value.
+- **Does `genrdn(lo, hi)` include `hi`?** Unproven either way [I]: the damage roll is
+  `genrdn(0, max-min+1) + min`, so it is `min..max+1` if the top is included and `min..max`
+  if not, and several KB lines read the other rolls as top-excluded. The gear planner models
+  every roll **with the top value included** (John, 2026-10-26); settle it by logging damage
+  rolls on silvermere or reading MBBSEmu's `genrdn`.
 - **Fast weapons crit more.** A blow whose energy cost comes out under 200 (after the
   encumbrance factor, before the floor of 200) adds `min(20, 200 - cost + (Agi-50)/10)` to the
   critical chance, halved from 33% encumbrance, nothing above 66% or with a Str shortfall
@@ -141,9 +146,13 @@ LJNSPELL.C:48). Every timer runs 11 rounds.
   before the load factor and 199 after it: +1 at level 16, +9 at 17, +17 at 18, the full +20
   from 19 (recomputed from `compute_energy_used`, LJNCOMBT.C:221-250, with the fixture's
   quarterstaff, speed 1200, energy 0). [C]
-- **Monster dodge and crits.** A monster dodges only through a Dodge ability (34) on its record
-  (the sum over its ability slots) and never lands a critical (LJNCOMBT.C:1148-1149). 167 of the
-  1,101 stock monsters have the ability (decoded from the WCCKNMSR fixture: giant bat 20, dark
+- **Monster dodge and crits.** A monster dodges only through a Dodge ability (34) and never
+  lands a critical (LJNCOMBT.C:1148-1149). The Dodge is the sum over its record's ability slots
+  plus its weapon, its worn item and the items it carries (`get_monster_ability_value`,
+  LJNABIL.C:681-810; the same for its Alter Defence, Alter DR and Defence Modifier): in the
+  stock data the bows of the gnoll scout, hill centaur, pixie, dark cupid, both dark goblin
+  archers and the bone warrior add Dodge 5, and Lord Feyr's weapon Dodge -10 [C, WCCKNMSR and
+  WCCITEMS fixtures]. 167 of the 1,101 stock monsters have the ability on their record (decoded from the WCCKNMSR fixture: giant bat 20, dark
   monk 15 and 25, wererat 50, quickling 65, pixie and leprechaun 68, Aldreth 100; the giant rat,
   kobold thief and acid slime have none). The dodge is rolled only after the blow has hit and
   its damage is rolled: it happens on `dodge*10/(AV/8)` percent of those blows (AV the
@@ -171,6 +180,12 @@ LJNSPELL.C:48). Every timer runs 11 rounds.
   hit (`drbonus`, :1070-1072). Abilities add up over own slots, spells, race, class, worn items, the weapon and
   non-wearable pack items; a spare weapon or an unworn ring in the pack gives nothing
   (LJNABIL.C:321-514). [C] `notes/combat.md §4`
+- **Not every bonus adds up.** The three Alter AV abilities (22 Bless, 105 Curse, 106 third)
+  share one total and only the best value of all sources counts; Alter Energy Usage (87) is
+  averaged with what earlier sources gave (`(old + value) / 2`), in the order own slots,
+  spells, race, class, worn items, weapon, pack items; Alter Defence, Damage, Critical, DR and
+  Defence Modifier (104) are summed (`update_dynamic_with_ability`, LJNABIL.C:1046-1090,
+  `update_dynamic_stats` :1240-1385). [C]
 
 ## How a fight runs [C LJNBKGND.C:340-424, LJNACMB.C, LJNCOMBT.C:2340-2830]
 - **The round.** Every 5 s (`secenergy`, LJNGLOBL.C:194) each player gets `maxenergy` added to what
@@ -222,7 +237,10 @@ LJNSPELL.C:48). Every timer runs 11 rounds.
   start of each of its own attack rounds against a player (:3473-3500) and when it tries to walk
   (LJNMONST.C:1242). It is up after about 15 s idle and sooner in a fight, with `Slightly dazed
   the <monster> rises from the floor.`; every new knock-down resets the counter to 15 (:3071). So
-  a monster smashed every round (5 s) never gets up. [C]
+  a monster smashed every round (5 s) never gets up. Only a smash that does damage knocks down
+  (not a miss, glance or dodge), and the -35 is applied once, before the round's first blow;
+  the fighters are set up afresh for each later blow without it (LJNCOMBT.C:2676-2703, :3053-3080,
+  :3134-3140), which a smash, costing the whole round, never meets. [C]
 - **Who sees the misses.** The room sees a plain miss, a dodge or a glance only if its message
   level is high (`TRN_HIGH`); hits go to everyone. A glance (armour took all the damage) and a
   miss both use the *first-person* miss verb in both views (`Your swipe at X hits, but glances
