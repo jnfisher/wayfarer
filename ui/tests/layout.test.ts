@@ -26,9 +26,10 @@ describe("tileGrid", () => {
     expect(tileGrid(4, ...tall)).toEqual({ rows: 2, cols: 2 });
   });
 
-  it("chooses 1x2 or 2x1 by screen shape", () => {
+  it("puts two tiles side by side, whatever the screen shape", () => {
     expect(tileGrid(2, ...wide)).toEqual({ rows: 1, cols: 2 });
-    expect(tileGrid(2, ...tall)).toEqual({ rows: 2, cols: 1 });
+    expect(tileGrid(2, ...tall)).toEqual({ rows: 1, cols: 2 });
+    expect(tileGrid(2, 1600, 900)).toEqual({ rows: 1, cols: 2 });
   });
 
   it("chooses 2x3 or 3x2 by screen shape", () => {
