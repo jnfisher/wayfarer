@@ -1,8 +1,10 @@
 //! Journey (docs/brain.md "The bot's states"): a walk the player asked for, run by the bot. A Go
 //! to (`walk_to`) has one stop; a loop walked once (`walk_loop`) has the loop's stops from the
 //! one nearest the character round to it again. Like Task, it sits below Flee, Recover and
-//! Fight: the bot fights on the way and walks on from wherever the fight left it. At the last
-//! stop the journey is over and the bot plays there, with that room as its home.
+//! Fight: the bot fights on the way and walks on from wherever the fight left it. A *passive*
+//! one (a Go to with `fight` off) attacks nothing on the way: Fight takes only what attacks
+//! the character. At the last stop the journey is over and the bot plays there, with that room
+//! as its home.
 //!
 //! A walk the session stopped (a fight, a sneak to make again) is begun again from wherever
 //! the character is, [`LEG_TRIES`] times with no fight between; one the walker could not start
@@ -34,6 +36,8 @@ pub(crate) struct Journey {
     /// Over: arrived, or it could not get there (why).
     done: Option<Option<String>>,
     notes: Vec<String>,
+    /// Attack nothing on the way: fight only what attacks the character.
+    passive: bool,
 }
 
 impl Journey {
@@ -49,6 +53,7 @@ impl Journey {
             walked: false,
             done: None,
             notes: Vec::new(),
+            passive: false,
         }
     }
 
@@ -64,7 +69,19 @@ impl Journey {
             walked: false,
             done: None,
             notes: Vec::new(),
+            passive: false,
         }
+    }
+
+    /// The same journey, attacking nothing on the way when `passive`.
+    pub fn passive(mut self, passive: bool) -> Journey {
+        self.passive = passive;
+        self
+    }
+
+    /// It attacks nothing on the way.
+    pub fn is_passive(&self) -> bool {
+        self.passive
     }
 
     pub fn name(&self) -> &str {
@@ -85,6 +102,7 @@ impl Journey {
                 map: to.0,
                 room: to.1,
             },
+            passive: self.passive,
         }
     }
 

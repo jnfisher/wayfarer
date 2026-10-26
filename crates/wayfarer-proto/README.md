@@ -84,6 +84,7 @@ Client → gateway:
 {"type":"party_delete","id":"party-1"}
 {"type":"party_leave","session":"isolde"}
 {"type":"party_join","session":"isolde","party":"party-1"}
+{"type":"party_resync"}
 {"type":"blessings_request"}
 {"type":"blessings_save","session":"isolde","spells":["bles","aura"]}
 ```

@@ -545,8 +545,9 @@ impl Brain {
                 map,
                 room,
                 stop_short,
+                fight,
             } => match self.sessions.get_mut(&session) {
-                Some(s) => s.walk_to((map, room), stop_short, now, out),
+                Some(s) => s.walk_to((map, room), stop_short, fight, now, out),
                 None => out.push(no_session("walk_to", &session)),
             },
             ToClient::Find { session, query } => match self.sessions.get(&session) {
@@ -654,8 +655,8 @@ impl Brain {
                 Some(s) => s.settings_save(&layer, &changes, now, out),
                 None => out.push(no_session("settings_save", &session)),
             },
-            ToClient::StatsReset { session } => match self.sessions.get_mut(&session) {
-                Some(s) => s.stats_reset(now, out),
+            ToClient::StatsReset { session, only } => match self.sessions.get_mut(&session) {
+                Some(s) => s.stats_reset(only, now, out),
                 None => out.push(no_session("stats_reset", &session)),
             },
             ToClient::Resync { session } => match self.sessions.get_mut(&session) {
@@ -711,6 +712,30 @@ impl Brain {
                 match self.parties.join(&session, &party, &known) {
                     Ok((changed, emptied)) => self.store_parties(&changed, &emptied),
                     Err(why) => out.push(party_warning(&format!("party_join: {why}"))),
+                }
+                self.parties_tick(out);
+            }
+            ToClient::PartyResync { party } => {
+                match self.parties.resync(party.as_deref()) {
+                    Some(members) => {
+                        for id in members {
+                            if let Some(s) = self.sessions.get_mut(&id) {
+                                s.party_resync();
+                            }
+                        }
+                        let what = party.map_or_else(
+                            || "the parties are".to_owned(),
+                            |id| format!("party {id} is"),
+                        );
+                        out.push(ToGateway::Notice {
+                            session: None,
+                            text: format!("Re-sync: {what} forming up again"),
+                        });
+                    }
+                    None => out.push(party_warning(&format!(
+                        "party_resync: no party {:?}",
+                        party.unwrap_or_default()
+                    ))),
                 }
                 self.parties_tick(out);
             }

@@ -731,12 +731,16 @@ impl Bot {
         says
     }
 
-    /// `walk_to` or `walk_loop`: go on `journey`, fighting on the way, from any state (it
-    /// replaces a loop). A bot that was not running starts afresh and the session re-syncs
-    /// first (`resync`).
+    /// `walk_to` or `walk_loop`: go on `journey`, fighting on the way (a passive one: only
+    /// what attacks), from any state (it replaces a loop). A bot that was not running starts
+    /// afresh and the session re-syncs first (`resync`).
     pub fn go(&mut self, journey: Journey, resync: bool) -> Vec<Say> {
         let mut says = Vec::new();
-        let name = journey.name().to_owned();
+        let name = if journey.is_passive() {
+            format!("{}, fighting only what attacks", journey.name())
+        } else {
+            journey.name().to_owned()
+        };
         if resync {
             self.state = BotState::Running;
             self.mode = BotMode::Idle;
@@ -917,7 +921,13 @@ impl Bot {
     /// Whether Fight would take the character here: a monster it would attack, or one
     /// attacking.
     pub fn would_fight(&self, atlas: &Atlas, rules: &MonsterRules, presence: &Presence) -> bool {
-        self.fight.would_fight(atlas, rules, presence)
+        self.fight
+            .would_fight(atlas, rules, presence, self.passive())
+    }
+
+    /// On a Go to that attacks nothing on the way.
+    fn passive(&self) -> bool {
+        self.journey.as_ref().is_some_and(Journey::is_passive)
     }
 
     /// A monster to flee from is in the room (or a stalemate wants out), and Flee would take
@@ -1264,6 +1274,7 @@ impl Bot {
                 None => self.recover.set_home(to),
             }
         }
+        self.fight.set_passive(self.passive());
         if !self.leaving
             && let Some(home) = self.recover.find_home(v)
         {

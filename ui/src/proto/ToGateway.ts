@@ -20,12 +20,13 @@ import type { SettingChange } from "./SettingChange";
 import type { SettingRow } from "./SettingRow";
 import type { SettingsFile } from "./SettingsFile";
 import type { SpellPlanItem } from "./SpellPlanItem";
+import type { StatsPart } from "./StatsPart";
 import type { WorldPackInfo } from "./WorldPackInfo";
 
 /**
  * Client → gateway.
  */
-export type ToGateway = { "type": "hello", protocol: number, client: ClientKind, token?: string, } | { "type": "input_line", session: string, text: string, } | { "type": "input_keys", session: string, bytes: Array<number>, } | { "type": "history_request", session: string, after_seq?: number, before_seq?: number, max_chunks: number, } | { "type": "subscribe", sessions?: Array<string>, } | { "type": "session_control", session: string, action: SessionAction, } | { "type": "resync", session: string, } | { "type": "state_request", session?: string, } | { "type": "walk_to", session: string, map: number, room: number, stop_short?: boolean, } | { "type": "walk_stop", session: string, } | { "type": "map_request", session: string, radius?: number, } | { "type": "bot_control", session: string, action: BotAction, } | { "type": "loops_request", session: string, anchor?: RoomKey, radius: number, doors?: boolean, 
+export type ToGateway = { "type": "hello", protocol: number, client: ClientKind, token?: string, } | { "type": "input_line", session: string, text: string, } | { "type": "input_keys", session: string, bytes: Array<number>, } | { "type": "history_request", session: string, after_seq?: number, before_seq?: number, max_chunks: number, } | { "type": "subscribe", sessions?: Array<string>, } | { "type": "session_control", session: string, action: SessionAction, } | { "type": "resync", session: string, } | { "type": "state_request", session?: string, } | { "type": "walk_to", session: string, map: number, room: number, stop_short?: boolean, fight?: boolean, } | { "type": "walk_stop", session: string, } | { "type": "map_request", session: string, radius?: number, } | { "type": "bot_control", session: string, action: BotAction, } | { "type": "loops_request", session: string, anchor?: RoomKey, radius: number, doors?: boolean, 
 /**
  * Only the loops whose name, file, description, author or a stop's room name holds
  * every word of this (any case), from anywhere in the world.
@@ -34,7 +35,7 @@ query?: string,
 /**
  * The most loops to send, the nearest first (12 if left out, 50 at most).
  */
-limit?: number, } | { "type": "walk_loop", session: string, id: string, } | { "type": "run_loop", session: string, id: string, skip?: Array<RoomKey>, } | { "type": "stats_request", session: string, } | { "type": "spell_plan_request", session: string, } | { "type": "stats_reset", session: string, } | { "type": "settings_request", session: string, 
+limit?: number, } | { "type": "walk_loop", session: string, id: string, } | { "type": "run_loop", session: string, id: string, skip?: Array<RoomKey>, } | { "type": "stats_request", session: string, } | { "type": "spell_plan_request", session: string, } | { "type": "stats_reset", session: string, only?: StatsPart, } | { "type": "settings_request", session: string, 
 /**
  * The layer to show the player's own values of: `mine`, `server` or `character`
  * (left out: `character`).
@@ -43,7 +44,7 @@ layer?: string, } | { "type": "settings_save", session: string,
 /**
  * The layer to write: `mine`, `server` or `character`.
  */
-layer: string, changes: Array<SettingChange>, } | { "type": "save_loop", session: string, name: string, base?: string, stops: Array<RoomKey>, } | { "type": "delete_loop", session: string, id: string, } | { "type": "find", session: string, query: string, } | { "type": "set_monster_rule", session: string, pattern: string, rule: MonsterRuleKind | null, } | { "type": "parties_request" } | { "type": "party_save", party: PartyDef, } | { "type": "party_delete", id: string, } | { "type": "party_leave", session: string, } | { "type": "party_join", session: string, party: string, } | { "type": "blessings_request" } | { "type": "blessings_save", session: string, spells: Array<string>, } | { "type": "event", session: string, seq: number, line_no: number, name: string, cat: string, fields: Record<string, unknown>, line: string, } | { "type": "character", session: string, state: CharacterState, } | { "type": "character_patch", session: string, patch: unknown, } | { "type": "brain_info", build: string, started_at: string, world_pack?: WorldPackInfo, } | { "type": "notice", session?: string, text: string, } | { "type": "warning", session?: string, text: string, } | { "type": "map_view", session: string, center: RoomKey, 
+layer: string, changes: Array<SettingChange>, } | { "type": "save_loop", session: string, name: string, base?: string, stops: Array<RoomKey>, } | { "type": "delete_loop", session: string, id: string, } | { "type": "find", session: string, query: string, } | { "type": "set_monster_rule", session: string, pattern: string, rule: MonsterRuleKind | null, } | { "type": "parties_request" } | { "type": "party_save", party: PartyDef, } | { "type": "party_delete", id: string, } | { "type": "party_leave", session: string, } | { "type": "party_join", session: string, party: string, } | { "type": "party_resync", party?: string, } | { "type": "blessings_request" } | { "type": "blessings_save", session: string, spells: Array<string>, } | { "type": "event", session: string, seq: number, line_no: number, name: string, cat: string, fields: Record<string, unknown>, line: string, } | { "type": "character", session: string, state: CharacterState, } | { "type": "character_patch", session: string, patch: unknown, } | { "type": "brain_info", build: string, started_at: string, world_pack?: WorldPackInfo, } | { "type": "notice", session?: string, text: string, } | { "type": "warning", session?: string, text: string, } | { "type": "map_view", session: string, center: RoomKey, 
 /**
  * The center's level: the floor the panel shows first.
  */

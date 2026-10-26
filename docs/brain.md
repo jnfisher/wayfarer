@@ -261,6 +261,12 @@ for the map panel's go box (`docs/web-ui.md`, "The map").
   walk the walker cannot start (no route) or gives up by itself (lost, a door that will not
   open) ends the journey: "Not going to Burning Valley: the walk stopped; playing here". The
   snapshot's `bot.journey` says where it goes (`{name, to}`). See "The bot's states".
+- **Passing monsters by.** `walk_to` with `fight: false` (the go box's *fight on the way*
+  unticked) makes the journey *passive*: on the way the bot attacks nothing, and Fight takes
+  only a monster that attacks the character (as *never fight* does), after which it walks on.
+  Flee and Recover work as ever; the walk does not stop for a monster it would not attack.
+  Narrated "Going to Newhaven, Arena, fighting only what attacks"; `bot.journey.passive` is
+  set. Once it arrives the journey is over and the bot plays there as after any Go to.
 
 **The guard** lives in the executor every action goes through, so nothing the bot ever does can
 break it: never `train stats` (`docs/plan/01-goals.md` "Rules").
@@ -887,6 +893,9 @@ shows them ([web-ui.md](web-ui.md) "The stats"). `stats_reset` zeroes the combat
 (below), and ends the current run and starts another at once with its numbers at zero (the old
 run stays in the list, its loop carried over): the way to measure a stretch of play without
 stopping the bot. With no run it zeroes the combat numbers alone, and the notice says so.
+`only: "run"` resets the run and keeps the combat numbers ("Reset: no run to reset" with
+none), `only: "combat"` zeroes the combat numbers and lets the run go on: the stats tab's two
+**reset** buttons.
 
 ### Combat statistics
 
@@ -907,7 +916,7 @@ are counted too.
 The numbers are kept per session in the store (`combat_stats`, as JSON), saved within 5 s of
 a change and when the session goes, so a brain restart loses a few seconds at most (and a
 round still going). Stop, Start, a death, a level-up and restarts leave them; only
-`stats_reset` zeroes them. `stats` carries them as `combat`.
+`stats_reset` zeroes them (not with `only: "run"`). `stats` carries them as `combat`.
 
 ## Errands
 
@@ -1193,6 +1202,14 @@ own, one at a time:
   a bot running a loop stops the loop and fights where it is ("In Penny's party: the loop
   stops"). Its modes never walk it, Flee aside: Recover rests where it stands and does not
   walk home. Play and pause work as for any bot.
+- **Re-sync.** `party_resync` (the panel's **re-sync**, one party or all) is for a party that
+  is stuck: the game broke it without a word and the next routine `par` is half a minute off,
+  or a follower gave up on a walk back. Every member in the realm sends `par` at once (a
+  follower's tells it whom it follows), what each knows of its party counts as out of date
+  until those screens come, and the `invite`s and `follow`s they call for go without their
+  10-s wait. A follower's walk back that found no way is tried again, and the leader's wait for
+  a separated member starts afresh (a loop it stopped stays stopped). A notice says "Re-sync:
+  the parties are forming up again".
 - **Leaving.** `party_leave` takes a follower out (a party with no followers left is deleted;
   the leader's, the whole party): it sends `leave` while the game has it following, and plays
   on its own. A follower dropped from a party by `party_save` or `party_delete` does the same.

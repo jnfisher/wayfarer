@@ -79,7 +79,7 @@ describe("the stats tab", () => {
     expect(onrefresh).toHaveBeenCalledWith("a");
   });
 
-  it("resets from one button, whether or not a run is going", async () => {
+  it("resets the run from its own button, shown only while there is one", async () => {
     const onreset = vi.fn();
     const { container, unmount } = render(StatsPanel, {
       session,
@@ -89,8 +89,10 @@ describe("the stats tab", () => {
       onrefresh: () => {},
       onreset,
     });
-    await fireEvent.click(screen.getByRole("button", { name: "reset" }));
-    expect(onreset).toHaveBeenCalledWith("a");
+    // No combat numbers yet: the run's is the only reset.
+    expect(screen.getAllByRole("button", { name: "reset" })).toHaveLength(1);
+    await fireEvent.click(container.querySelector('[data-reset="run"]')!);
+    expect(onreset).toHaveBeenCalledWith("a", "run");
     unmount();
     const none = render(StatsPanel, {
       session,
@@ -100,9 +102,7 @@ describe("the stats tab", () => {
       onrefresh: () => {},
       onreset,
     });
-    await fireEvent.click(none.getByRole("button", { name: "reset" }));
-    expect(onreset).toHaveBeenCalledTimes(2);
-    void container;
+    expect(none.queryAllByRole("button", { name: "reset" })).toHaveLength(0);
   });
 
   it("says when there is no run, no rows or no brain", () => {
@@ -183,6 +183,21 @@ describe("the combat numbers", () => {
     unmount();
     const none = render(StatsPanel, { session, character, stats, attached: true, onrefresh: () => {} });
     expect(none.container.textContent).toContain("No combat numbers since the last reset.");
+  });
+
+  it("resets the combat numbers apart from the run", async () => {
+    const onreset = vi.fn();
+    const { container } = render(StatsPanel, {
+      session,
+      character,
+      stats: { ...stats, combat },
+      attached: true,
+      onrefresh: () => {},
+      onreset,
+    });
+    expect(screen.getAllByRole("button", { name: "reset" })).toHaveLength(2);
+    await fireEvent.click(container.querySelector('.combat [data-reset="combat"]')!);
+    expect(onreset).toHaveBeenCalledExactlyOnceWith("a", "combat");
   });
 });
 

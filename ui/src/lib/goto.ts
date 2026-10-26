@@ -2,6 +2,7 @@
 // list out. No Svelte here, so the tests drive it directly.
 
 import type { Found, FoundRoom, RoomKey, ToClient } from "../proto";
+import type { LayoutStorage } from "./layout";
 import { metrics, type MapView } from "./map";
 
 export type FoundMessage = Extract<ToClient, { type: "found" }>;
@@ -99,6 +100,26 @@ export function centreOn(view: MapView | undefined, zoom: number, room: RoomKey 
   if (!r) return null;
   const m = metrics(zoom);
   return { panX: -r.x * m.pitchX, panY: -r.y * m.pitchY, level: r.level };
+}
+
+export const GO_FIGHT_KEY = "wayfarer.goFight";
+
+/** Whether a Go to from the box attacks monsters on the way: on unless the player unticked it
+ * (kept in the browser). */
+export function loadGoFight(storage: LayoutStorage | undefined): boolean {
+  try {
+    return storage?.getItem(GO_FIGHT_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+export function saveGoFight(storage: LayoutStorage | undefined, fight: boolean): void {
+  try {
+    storage?.setItem(GO_FIGHT_KEY, fight ? "on" : "off");
+  } catch {
+    // quota, private mode, blocked site data
+  }
 }
 
 /** The row `step` rows on from `at` (-1: none chosen), staying in the list. */

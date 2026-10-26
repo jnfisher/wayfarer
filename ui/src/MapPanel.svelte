@@ -28,7 +28,18 @@
     type StagedStop,
     type ViewState,
   } from "./lib/map";
-  import { centreOn, FIND_DEBOUNCE_MS, goRows, MIN_QUERY, moveChoice, type FoundMessage, type GoRow } from "./lib/goto";
+  import {
+    centreOn,
+    FIND_DEBOUNCE_MS,
+    goRows,
+    loadGoFight,
+    MIN_QUERY,
+    moveChoice,
+    saveGoFight,
+    type FoundMessage,
+    type GoRow,
+  } from "./lib/goto";
+  import type { LayoutStorage } from "./lib/layout";
   import { FONT_FAMILY } from "./lib/theme";
   import { lockedTitle } from "./lib/parties";
   import type { CharacterState, GeneratedLoop, LoopStop, MapRoom, MegaMudLoop, Place, RoomKey, SessionInfo } from "./proto";
@@ -40,8 +51,9 @@
     view: MapView | undefined;
     character: CharacterState | undefined;
     attached: boolean | null;
-    /** Walk there; `stopShort` false walks into a boss lair (left out: the brain's default). */
-    onwalk: (session: string, map: number, room: number, stopShort?: boolean) => void;
+    /** Walk there; `stopShort` false walks into a boss lair, `fight` false attacks nothing on
+     * the way (left out: the brain's defaults). */
+    onwalk: (session: string, map: number, room: number, stopShort?: boolean, fight?: boolean) => void;
     onstop: (session: string) => void;
     /** The brain's last `loops` for it. */
     loops?: Loops;
@@ -94,6 +106,24 @@
   let walkIn = $state.raw<Set<string>>(new Set());
   let goInput = $state<HTMLInputElement>();
   let findTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function storage(): LayoutStorage | undefined {
+    try {
+      return window.localStorage;
+    } catch {
+      return undefined;
+    }
+  }
+  /** The box's "fight on the way": a Go to from it attacks monsters on the way (kept in the
+   * browser). A click on the map always does. */
+  let goFight = $state(loadGoFight(storage()));
+  /** `walk_to`'s `fight`: left out while ticked. */
+  const fightArg = $derived(goFight ? undefined : false);
+
+  function toggleFight() {
+    goFight = !goFight;
+    saveGoFight(storage(), goFight);
+  }
 
   const results = $derived(
     query.trim().length >= MIN_QUERY && found && found.session === session?.id ? found.results : [],
@@ -148,7 +178,7 @@
   function go(row: GoRow | undefined) {
     const r = row?.room;
     if (!r || !session || locked) return;
-    onwalk(session.id, r.map, r.room, r.boss ? !walkIn.has(row.id) : undefined);
+    onwalk(session.id, r.map, r.room, r.boss ? !walkIn.has(row.id) : undefined, fightArg);
   }
 
   function toggleOpen(i: number) {
@@ -204,7 +234,7 @@
     return `${what} ${agoText(p.at)}: ${p.name || "?"} ${p.map}:${p.room}${more}`;
   }
   function goPlace(p: Place) {
-    if (session && !locked) onwalk(session.id, p.map, p.room);
+    if (session && !locked) onwalk(session.id, p.map, p.room, undefined, fightArg);
   }
   const known = $derived(position?.room !== undefined);
   const walking = $derived(character?.walking);
@@ -575,6 +605,12 @@
           spellcheck="false"
           autocomplete="off"
         />
+        <label
+          class="fight"
+          title="Untick to walk past monsters: until it arrives, the bot fights only one that attacks the character"
+        >
+          <input type="checkbox" checked={goFight} onchange={toggleFight} /> fight on the way
+        </label>
         {#if query.trim().length === 0 && places.length > 0}
           <!-- Nothing typed: where the character died, fled and stopped, newest first. -->
           <ul aria-label="Recent places">
@@ -784,6 +820,9 @@
               : ""}</span
           >
         {/if}
+        {#if character?.bot?.journey?.passive}
+          <span class="short">fighting only what attacks</span>
+        {/if}
         <span class="dim">step {walking.step}, {walking.steps_left} left</span>
         <button class="stop" onclick={() => onstop(session.id)}>stop</button>
         <div class="route">{route || "…"}</div>
@@ -869,6 +908,10 @@
   }
   .go .walk {
     background: var(--vga-lightgreen);
+  }
+  .go .fight {
+    display: block;
+    color: var(--dim);
   }
   .loops {
     padding: 2px 1ch;

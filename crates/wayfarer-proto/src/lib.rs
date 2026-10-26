@@ -410,6 +410,20 @@ pub struct Journey {
     pub name: String,
     /// Where it is walking to now.
     pub to: RoomKey,
+    /// A Go to asked with `fight` off: on the way it fights only what attacks it.
+    #[serde(default, skip_serializing_if = "is_false")]
+    #[ts(as = "Option<bool>", optional)]
+    pub passive: bool,
+}
+
+/// Which numbers a `stats_reset` zeroes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum StatsPart {
+    /// The run: exp/hr, kills, deaths, flees and rests.
+    Run,
+    /// The combat numbers.
+    Combat,
 }
 
 /// A `bot_control` request.
@@ -1112,6 +1126,9 @@ pub enum ToClient {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         stop_short: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        fight: Option<bool>,
     },
     WalkStop {
         session: SessionId,
@@ -1165,6 +1182,9 @@ pub enum ToClient {
     },
     StatsReset {
         session: SessionId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        only: Option<StatsPart>,
     },
     SettingsRequest {
         session: SessionId,
@@ -1214,6 +1234,11 @@ pub enum ToClient {
     PartyJoin {
         session: SessionId,
         party: String,
+    },
+    PartyResync {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        party: Option<String>,
     },
     BlessingsRequest,
     BlessingsSave {
@@ -1324,7 +1349,8 @@ pub enum ToGateway {
     },
     /// UI → brain: walk the character to this room, confirming each step; replaces a walk in
     /// progress. `stop_short`: stop in the room before it when it is a boss lair; left out,
-    /// on for a boss lair (it changes nothing for another room).
+    /// on for a boss lair (it changes nothing for another room). `fight`: attack monsters on
+    /// the way; off, the bot fights only what attacks it until it arrives (left out: on).
     WalkTo {
         session: SessionId,
         map: i64,
@@ -1332,6 +1358,9 @@ pub enum ToGateway {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         stop_short: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        fight: Option<bool>,
     },
     /// UI → brain: stop walking after the move in flight.
     WalkStop {
@@ -1397,12 +1426,16 @@ pub enum ToGateway {
     SpellPlanRequest {
         session: SessionId,
     },
-    /// UI → brain: end the character's current run and start a new one now, with its numbers
-    /// at zero (exp/hr, kills, deaths, flees, rests). The ended run stays in the history. A
-    /// notice says so, and a `stats` message follows. Nothing happens without a run (the bot
-    /// stopped): a warning says so.
+    /// UI → brain: zero the character's numbers. `only: "run"` ends the current run and starts
+    /// a new one now, with its numbers at zero (exp/hr, kills, deaths, flees, rests); the ended
+    /// run stays in the history. `only: "combat"` zeroes the combat numbers. Left out, both. A
+    /// notice says what was reset (with no run, that there was none), and a `stats` message
+    /// follows.
     StatsReset {
         session: SessionId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        only: Option<StatsPart>,
     },
     /// UI → brain: send a `settings` message for the character, with the values of `layer`
     /// (`mine`, `server` or `character`; left out: `character`) as that layer's file holds them.
@@ -1476,6 +1509,15 @@ pub enum ToGateway {
     PartyJoin {
         session: SessionId,
         party: String,
+    },
+    /// UI → brain: form the party `party` (left out: every party) up again now, for one that
+    /// is stuck: every member checks its party with `par` at once, and the invites and follows
+    /// the screens call for go without their usual wait; a walk back that found no way is
+    /// tried again and a leader's give-up timers start afresh.
+    PartyResync {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        party: Option<String>,
     },
     /// UI → brain: ask for every character's blessings; the brain answers with `blessings`.
     BlessingsRequest,
@@ -1690,6 +1732,7 @@ impl ToClient {
         "party_delete",
         "party_leave",
         "party_join",
+        "party_resync",
         "blessings_request",
         "blessings_save",
         "sent",
@@ -1748,6 +1791,7 @@ impl ToClient {
             Self::PartyDelete { .. } => "party_delete",
             Self::PartyLeave { .. } => "party_leave",
             Self::PartyJoin { .. } => "party_join",
+            Self::PartyResync { .. } => "party_resync",
             Self::BlessingsRequest => "blessings_request",
             Self::BlessingsSave { .. } => "blessings_save",
             Self::Sent { .. } => "sent",
@@ -1790,7 +1834,7 @@ impl ToClient {
             | Self::RunLoop { session, .. }
             | Self::StatsRequest { session }
             | Self::SpellPlanRequest { session }
-            | Self::StatsReset { session }
+            | Self::StatsReset { session, .. }
             | Self::SettingsRequest { session, .. }
             | Self::SettingsSave { session, .. }
             | Self::SaveLoop { session, .. }
@@ -1813,6 +1857,7 @@ impl ToClient {
             | Self::Blessings { .. }
             | Self::PartiesRequest
             | Self::BlessingsRequest
+            | Self::PartyResync { .. }
             | Self::PartySave { .. }
             | Self::PartyDelete { .. } => None,
         }
@@ -1859,6 +1904,7 @@ impl ToGateway {
         "party_delete",
         "party_leave",
         "party_join",
+        "party_resync",
         "blessings_request",
         "blessings_save",
         "event",
@@ -1911,6 +1957,7 @@ impl ToGateway {
             Self::PartyDelete { .. } => "party_delete",
             Self::PartyLeave { .. } => "party_leave",
             Self::PartyJoin { .. } => "party_join",
+            Self::PartyResync { .. } => "party_resync",
             Self::BlessingsRequest => "blessings_request",
             Self::BlessingsSave { .. } => "blessings_save",
             Self::Event { .. } => "event",
@@ -1964,6 +2011,7 @@ impl ToGateway {
             | Self::PartyDelete { .. }
             | Self::PartyLeave { .. }
             | Self::PartyJoin { .. }
+            | Self::PartyResync { .. }
             | Self::BlessingsRequest
             | Self::BlessingsSave { .. } => Family::Control,
             Self::Event { .. }
@@ -1996,11 +2044,13 @@ impl ToGateway {
                 map,
                 room,
                 stop_short,
+                fight,
             } => ToClient::WalkTo {
                 session,
                 map,
                 room,
                 stop_short,
+                fight,
             },
             Self::WalkStop { session } => ToClient::WalkStop { session },
             Self::MapRequest { session, radius } => ToClient::MapRequest { session, radius },
@@ -2024,7 +2074,7 @@ impl ToGateway {
             Self::RunLoop { session, id, skip } => ToClient::RunLoop { session, id, skip },
             Self::StatsRequest { session } => ToClient::StatsRequest { session },
             Self::SpellPlanRequest { session } => ToClient::SpellPlanRequest { session },
-            Self::StatsReset { session } => ToClient::StatsReset { session },
+            Self::StatsReset { session, only } => ToClient::StatsReset { session, only },
             Self::SettingsRequest { session, layer } => {
                 ToClient::SettingsRequest { session, layer }
             }
@@ -2064,6 +2114,7 @@ impl ToGateway {
             Self::PartyDelete { id } => ToClient::PartyDelete { id },
             Self::PartyLeave { session } => ToClient::PartyLeave { session },
             Self::PartyJoin { session, party } => ToClient::PartyJoin { session, party },
+            Self::PartyResync { party } => ToClient::PartyResync { party },
             Self::BlessingsRequest => ToClient::BlessingsRequest,
             Self::BlessingsSave { session, spells } => ToClient::BlessingsSave { session, spells },
             Self::Event {

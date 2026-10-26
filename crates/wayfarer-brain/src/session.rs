@@ -14,7 +14,8 @@ use wayfarer_parse::typed::GameEvent;
 use wayfarer_parse::{Event, Parser, Registry};
 use wayfarer_proto::{
     BotAction, CharacterState, Chunk, Found, FoundKind, FoundRoom, GeneratedLoop, LoopStop,
-    MegaMudLoop, Place, RoomKey, SessionAction, SessionId, SessionInfo, SessionState, ToGateway,
+    MegaMudLoop, Place, RoomKey, SessionAction, SessionId, SessionInfo, SessionState, StatsPart,
+    ToGateway,
 };
 use wayfarer_settings::{Layer, Settings};
 use wayfarer_store::{BotRecord, BotState, CustomLoop, EventKind, PlaceKind as StoredPlace, Store};
@@ -1192,16 +1193,25 @@ impl Session {
     }
 
     /// `stats_reset`: the combat numbers at zero, and a new run from now with its numbers at
-    /// zero if one is going.
-    pub fn stats_reset(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
-        self.ledger.reset_combat();
-        if self.ledger.reset(now) {
-            out.push(self.notice(
-                "Reset: the combat numbers are at zero, and a new run starts now (the old one is kept in the history)",
-            ));
-        } else {
-            out.push(self.notice("Reset: the combat numbers are at zero"));
+    /// zero if one is going; `only` one of the two.
+    pub fn stats_reset(&mut self, only: Option<StatsPart>, now: Instant, out: &mut Vec<ToGateway>) {
+        let combat = only != Some(StatsPart::Run);
+        if combat {
+            self.ledger.reset_combat();
         }
+        let run = only != Some(StatsPart::Combat) && self.ledger.reset(now);
+        let text = match (only, run) {
+            (None, true) => {
+                "Reset: the combat numbers are at zero, and a new run starts now (the old one is kept in the history)"
+            }
+            (None, false) => "Reset: the combat numbers are at zero",
+            (Some(StatsPart::Combat), _) => "Reset: the combat numbers are at zero",
+            (Some(StatsPart::Run), true) => {
+                "Reset: a new run starts now (the old one is kept in the history)"
+            }
+            (Some(StatsPart::Run), false) => "Reset: no run to reset",
+        };
+        out.push(self.notice(text));
         self.stats_request(out);
         self.flush_views(out);
     }
@@ -1556,11 +1566,13 @@ impl Session {
     }
 
     /// `walk_to`: plan a route from the believed room and start on it. `stop_short` (on when
-    /// left out): stop one room short of a boss lair.
+    /// left out): stop one room short of a boss lair. `fight` (on when left out): attack
+    /// monsters on the way; off, only what attacks the character is fought.
     pub fn walk_to(
         &mut self,
         to: Key,
         stop_short: Option<bool>,
+        fight: Option<bool>,
         now: Instant,
         out: &mut Vec<ToGateway>,
     ) {
@@ -1590,7 +1602,8 @@ impl Session {
             .map_or_else(|| format!("{}/{}", to.0, to.1), |r| r.name.clone());
         let short =
             stop_short.unwrap_or(true) && atlas.finder.boss_lair(to, &atlas.monsters).is_some();
-        self.go(Journey::go_to(to, name, short), now, out);
+        let journey = Journey::go_to(to, name, short).passive(fight == Some(false));
+        self.go(journey, now, out);
     }
 
     /// Start the player's walk (or loop walk) to `to`: after the walker's move in flight, or
@@ -2957,6 +2970,13 @@ impl Session {
             }
             Err(_) => false,
         }
+    }
+
+    /// `party_resync`: what the character knows of its party may be out of date, and a walk
+    /// back to the leader that found no way is tried again.
+    pub(crate) fn party_resync(&mut self) {
+        self.party_game.doubt(self.clock.instant());
+        self.party_stuck = None;
     }
 
     /// The coordinator's role for this session. Made a follower, it stops the loop it ran:

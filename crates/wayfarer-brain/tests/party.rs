@@ -554,6 +554,43 @@ async fn a_follower_the_game_dropped_walks_back_and_joins_again() {
     assert_eq!(back[back.len() - 2..], [up.as_str(), "follow penny"]);
 }
 
+#[tokio::test(start_paused = true)]
+async fn a_resync_checks_at_once_and_forms_a_party_the_game_broke() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    formed(&mut g).await;
+    // The game dropped Lauren without a word, in the same room: the next routine `par` is
+    // up to half a minute off.
+    g.world.following = false;
+    let before = g.lines.len();
+    let at = tokio::time::Instant::now();
+    g.send(ToClient::PartyResync { party: None }).await;
+    g.until(|m| {
+        matches!(m, ToGateway::Notice { session: None, text } if text == "Re-sync: the parties are forming up again")
+            .then_some(())
+    })
+    .await;
+    g.member(FOLLOWER, MemberState::NotJoined).await;
+    g.member(FOLLOWER, MemberState::Joined).await;
+    assert!(at.elapsed() < Duration::from_secs(5), "{:?}", at.elapsed());
+    let after: Vec<_> = g.lines[before..]
+        .iter()
+        .map(|(s, l)| (s.as_str(), l.as_str()))
+        .collect();
+    assert!(after.contains(&(LEADER, "par")), "{after:?}");
+    assert!(after.contains(&(FOLLOWER, "par")), "{after:?}");
+    assert!(after.contains(&(FOLLOWER, "follow penny")), "{after:?}");
+    // A party that is not there.
+    g.send(ToClient::PartyResync {
+        party: Some("party-9".into()),
+    })
+    .await;
+    g.until(|m| {
+        matches!(m, ToGateway::Warning { text, .. } if text.contains("no party \"party-9\""))
+            .then_some(())
+    })
+    .await;
+}
+
 /// A party rest has every member below its rest-until line rest (C-045): the follower at 71%
 /// (rest below 60, until 85) rests for the leader at 40%.
 #[tokio::test(start_paused = true)]
@@ -617,6 +654,7 @@ async fn a_follower_helps_the_leader_bash_a_door() {
         map: BEYOND_ARENA.0,
         room: BEYOND_ARENA.1,
         stop_short: None,
+        fight: None,
     })
     .await;
     // The leader's first `n` finds the door locked; its second goes through.
@@ -661,6 +699,7 @@ async fn a_follower_does_not_bash_with_help_off() {
         map: BEYOND_ARENA.0,
         room: BEYOND_ARENA.1,
         stop_short: None,
+        fight: None,
     })
     .await;
     g.until(|m| match m {

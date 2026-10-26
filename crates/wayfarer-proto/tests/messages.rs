@@ -8,7 +8,7 @@ use wayfarer_proto::{
     MegaMudLoop, MemberState, MemberStatus, MonsterRuleEntry, MonsterRuleKind, PROTOCOL,
     ParseCounts, PartyDef, PartyStatus, Position, RoomKey, RoomKind, RuleSource, RunSummary,
     SessionAction, SessionInfo, SessionState, SettingChange, SettingKind, SettingRow, SettingValue,
-    SettingsFile, SpellPlanItem, Stats, ToClient, ToGateway, Walking, WorldPackInfo,
+    SettingsFile, SpellPlanItem, Stats, StatsPart, ToClient, ToGateway, Walking, WorldPackInfo,
     protocol_mismatch,
 };
 
@@ -103,6 +103,7 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                         journey: Some(Journey {
                             name: "Newhaven, Arena".into(),
                             to: RoomKey { map: 1, room: 2150 },
+                            passive: false,
                         }),
                         monster_rules: vec![MonsterRuleEntry {
                             pattern: "gigantic black ooze".into(),
@@ -475,6 +476,7 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
                 map: 1,
                 room: 2150,
                 stop_short: None,
+                fight: None,
             },
             r#"{"type":"walk_to","session":"kasimir","map":1,"room":2150}"#,
         ),
@@ -539,6 +541,7 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
         (
             ToGateway::StatsReset {
                 session: "kasimir".into(),
+                only: None,
             },
             r#"{"type":"stats_reset","session":"kasimir"}"#,
         ),
@@ -626,6 +629,10 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
                 party: "party-1".into(),
             },
             r#"{"type":"party_join","session":"isolde","party":"party-1"}"#,
+        ),
+        (
+            ToGateway::PartyResync { party: None },
+            r#"{"type":"party_resync"}"#,
         ),
         (
             ToGateway::BlessingsRequest,
@@ -835,8 +842,57 @@ fn walk_to_may_say_whether_to_stop_short() {
         map: 1,
         room: 1865,
         stop_short: Some(false),
+        fight: None,
     };
     let json = r#"{"type":"walk_to","session":"kasimir","map":1,"room":1865,"stop_short":false}"#;
+    assert_eq!(msg.to_json(), json);
+    assert_eq!(ToGateway::from_json(json).unwrap(), msg);
+    assert!(include_str!("../../../docs/protocol.md").contains(json));
+}
+
+#[test]
+fn walk_to_may_say_not_to_fight_on_the_way() {
+    let msg = ToGateway::WalkTo {
+        session: "kasimir".into(),
+        map: 1,
+        room: 2150,
+        stop_short: None,
+        fight: Some(false),
+    };
+    let json = r#"{"type":"walk_to","session":"kasimir","map":1,"room":2150,"fight":false}"#;
+    assert_eq!(msg.to_json(), json);
+    assert_eq!(ToGateway::from_json(json).unwrap(), msg);
+    assert!(include_str!("../../../docs/protocol.md").contains(json));
+}
+
+#[test]
+fn stats_reset_may_zero_only_the_run_or_the_combat_numbers() {
+    for (only, json) in [
+        (
+            StatsPart::Run,
+            r#"{"type":"stats_reset","session":"kasimir","only":"run"}"#,
+        ),
+        (
+            StatsPart::Combat,
+            r#"{"type":"stats_reset","session":"kasimir","only":"combat"}"#,
+        ),
+    ] {
+        let msg = ToGateway::StatsReset {
+            session: "kasimir".into(),
+            only: Some(only),
+        };
+        assert_eq!(msg.to_json(), json);
+        assert_eq!(ToGateway::from_json(json).unwrap(), msg);
+        assert!(include_str!("../../../docs/protocol.md").contains(json));
+    }
+}
+
+#[test]
+fn party_resync_may_name_one_party() {
+    let msg = ToGateway::PartyResync {
+        party: Some("party-1".into()),
+    };
+    let json = r#"{"type":"party_resync","party":"party-1"}"#;
     assert_eq!(msg.to_json(), json);
     assert_eq!(ToGateway::from_json(json).unwrap(), msg);
     assert!(include_str!("../../../docs/protocol.md").contains(json));
@@ -1041,7 +1097,7 @@ fn families_say_who_may_send_what() {
             | "bot_control" | "loops_request" | "walk_loop" | "run_loop" | "stats_request"
             | "spell_plan_request" | "stats_reset" | "settings_request" | "settings_save"
             | "save_loop" | "delete_loop" | "find" | "set_monster_rule" | "parties_request"
-            | "party_save" | "party_delete" | "party_leave" | "party_join"
+            | "party_save" | "party_delete" | "party_leave" | "party_join" | "party_resync"
             | "blessings_request" | "blessings_save" => Family::Control,
             "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
             | "map_view" | "loops" | "stats" | "spell_plan" | "settings" | "found" | "parties"

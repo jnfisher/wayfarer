@@ -1,6 +1,6 @@
 <script lang="ts">
   import { age, combatLines, count, perCent, sparkline, startedAt, type Stats } from "./lib/stats";
-  import type { CharacterState, MonsterRuleKind, SessionInfo } from "./proto";
+  import type { CharacterState, MonsterRuleKind, SessionInfo, StatsPart } from "./proto";
 
   interface Props {
     /** The focused tile's session, which the panel follows. */
@@ -11,9 +11,9 @@
     stats: Stats | undefined;
     attached: boolean | null;
     onrefresh: (session: string) => void;
-    /** Zero the combat numbers, and end the current run and start a new one at zero if one is
-     * going (the old one stays in the history). */
-    onreset?: (session: string) => void;
+    /** `run`: end the current run and start a new one at zero (the old one stays in the
+     * history). `combat`: zero the combat numbers. Each section has its own reset. */
+    onreset?: (session: string, only: StatsPart) => void;
     /** Set the player's monster rule for a pattern, or remove it (`null`). */
     onrule?: (session: string, pattern: string, rule: MonsterRuleKind | null) => void;
   }
@@ -61,11 +61,14 @@
     <section class="current" aria-label="Current run">
       <div class="since">
         {#if run}run since {startedAt(run.run_started_at)}{:else}no run{/if}
-        <button
-          class="reset"
-          title="Zero the combat numbers, and end this run and start a new one at zero. The old run stays in the list below."
-          onclick={() => onreset(session.id)}>reset</button
-        >
+        {#if run}
+          <button
+            class="reset"
+            data-reset="run"
+            title="End this run and start a new one at zero. The old run stays in the list below; the combat numbers are kept."
+            onclick={() => onreset(session.id, "run")}>reset</button
+          >
+        {/if}
       </div>
       {#if run}
         <div class="big">
@@ -87,6 +90,12 @@
       {#if combat}
         <div class="since" title="Kept until you press reset: across runs, stops and restarts">
           combat since {startedAt(combat.since)} ({age(combat.since)})
+          <button
+            class="reset"
+            data-reset="combat"
+            title="Zero the combat numbers. The run goes on."
+            onclick={() => onreset(session.id, "combat")}>reset</button
+          >
         </div>
         <div class="summary">
           {count(combat.swings)} swings · {perCent(combat.accuracy_per_mille)} accuracy · {perCent(combat.crit_rate_per_mille)} crits

@@ -451,6 +451,44 @@ async fn a_go_to_keeps_the_bot_on_and_it_plays_where_it_arrives() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_go_to_without_fighting_walks_past_a_monster() {
+    let (mut g, run) = in_arena(&["large giant rat"]).await;
+    g.expect("st", status(35));
+    g.expect("look", arena(&["large giant rat"], 35));
+    g.expect("u", room(NARROW_ROAD));
+    g.walk_to_with(NARROW_ROAD, None, Some(false)).await;
+    g.narrated("Going to Newhaven, Narrow Road, fighting only what attacks: re-syncing")
+        .await;
+    g.narrated("Arrived: Newhaven, Narrow Road").await;
+    g.idle(Duration::from_secs(30)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u"]);
+    let b = bot(&seen);
+    assert_eq!((b.state, b.journey), (BotState::Running, None));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_go_to_without_fighting_fights_what_attacks_and_walks_on() {
+    let (mut g, run) = in_arena(&["large giant rat"]).await;
+    g.expect("st", status(35));
+    g.expect(
+        "look",
+        arena(&["large giant rat"], 35) + &line("The large giant rat lunges at you!", 33),
+    );
+    g.expect("a rat", line(ENGAGED, 33));
+    g.walk_to_with(NARROW_ROAD, None, Some(false)).await;
+    g.narrated("Fight: large giant rat").await;
+    let b = bot(&g.seen);
+    assert!(b.journey.as_ref().is_some_and(|j| j.passive), "{b:?}");
+    g.expect("look", arena(&[], 33));
+    g.expect("u", room(NARROW_ROAD));
+    g.output(&kill(33)).await;
+    g.narrated("Arrived: Newhaven, Narrow Road").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "look", "u"]);
+}
+
+#[tokio::test(start_paused = true)]
 async fn walk_to_while_the_bots_look_is_in_flight_walks_once_it_is_answered() {
     // Seen live: the player asked for a walk while the bot's `look` after a kill was out. The
     // walk's first step waits for that answer (one action at a time), then goes.
@@ -465,6 +503,7 @@ async fn walk_to_while_the_bots_look_is_in_flight_walks_once_it_is_answered() {
             map: NARROW_ROAD.0,
             room: NARROW_ROAD.1,
             stop_short: None,
+            fight: None,
         },
     ));
     g.expect("look", arena(&[], 35));

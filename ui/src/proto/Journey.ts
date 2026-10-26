@@ -13,4 +13,8 @@ name: string,
 /**
  * Where it is walking to now.
  */
-to: RoomKey, };
+to: RoomKey, 
+/**
+ * A Go to asked with `fight` off: on the way it fights only what attacks it.
+ */
+passive?: boolean, };

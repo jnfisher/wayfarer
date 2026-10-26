@@ -95,6 +95,8 @@ pub(crate) struct Fight {
     backstab: bool,
     /// Believed sneaking: the backstab goes before an attack spell.
     sneaking: bool,
+    /// On a passive Go to: only what attacks the character is fought.
+    passive: bool,
 }
 
 /// A name as the game shows it (`lauren` is Lauren).
@@ -371,19 +373,21 @@ impl Fight {
         {
             return Some(name);
         }
-        self.pick(v.atlas, v.rules, v.presence)
+        self.pick(v.atlas, v.rules, v.presence, self.passive)
     }
 
+    /// What to attack; `passive`: only a monster attacking the character.
     fn pick<'a>(
         &self,
         atlas: &Atlas,
         rules: &MonsterRules,
         presence: &'a Presence,
+        passive: bool,
     ) -> Option<&'a str> {
         target(
             &atlas.monsters,
             rules,
-            &presence.here,
+            if passive { &[] } else { &presence.here },
             &presence.attackers,
             &self.skip,
             self.cornered,
@@ -391,9 +395,20 @@ impl Fight {
     }
 
     /// Whether it would take the character with `presence` in the room: a monster it would
-    /// attack, or anything attacking.
-    pub fn would_fight(&self, atlas: &Atlas, rules: &MonsterRules, presence: &Presence) -> bool {
-        !presence.attackers.is_empty() || self.pick(atlas, rules, presence).is_some()
+    /// attack (`passive`: none but an attacker), or anything attacking.
+    pub fn would_fight(
+        &self,
+        atlas: &Atlas,
+        rules: &MonsterRules,
+        presence: &Presence,
+        passive: bool,
+    ) -> bool {
+        !presence.attackers.is_empty() || self.pick(atlas, rules, presence, passive).is_some()
+    }
+
+    /// On a passive Go to (`true`): attack only what attacks the character.
+    pub fn set_passive(&mut self, passive: bool) {
+        self.passive = passive;
     }
 
     /// The monster it fights or last went for.
