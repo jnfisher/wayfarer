@@ -277,6 +277,73 @@ async fn after_the_most_casts_the_attack_command_takes_over_in_the_fight() {
     );
 }
 
+const DRUID_SPELLS: [(i32, i32, &str, &str); 1] = [(8, 5, "strk", "stonestrike")];
+
+#[tokio::test(start_paused = true)]
+async fn a_spell_that_lands_on_its_target_counts_toward_the_most_casts() {
+    // Stonestrike's line is "cast ... on ...", the text of a monster's hit message too: it is
+    // still a cast, so one cast is the limit and the weapon follows (faye, 2026-10-26).
+    let (mut g, run) = in_arena_with(
+        &["large giant rat"],
+        "[spells]\nmax_casts_per_monster = 1\n",
+    )
+    .await;
+    start_caster(&mut g, "Druid", &DRUID_SPELLS, &["large giant rat"], 35, 20).await;
+    g.expect("strk rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat with stonestrike").await;
+    g.expect("a rat", format!("{}{}", line(ENGAGED, 35), kill(35)));
+    g.expect("look", arena(&[], 35));
+    g.round("You cast stonestrike on large giant rat for 22 damage!", 35)
+        .await;
+    g.idle(Duration::from_secs(1)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(
+        played,
+        ["st", "look", "spells", "strk rat", "a rat", "look"]
+    );
+    let said = notices(&seen);
+    assert!(
+        said.iter()
+            .any(|n| n == "Fight: 1 casts at large giant rat, now the weapon"),
+        "{said:?}"
+    );
+}
+
+/// A round's line, then the prompt with mana (`[HP=35/MA=7]:`), as a caster's prompt reads.
+fn with_mana(text: &str, hp: i32, mana: i32) -> String {
+    format!("\x1b[79D\x1b[K\x1b[1;31m{text}\r\n\x1b[79D\x1b[K\x1b[0;37m[HP={hp}/MA={mana}]:")
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_weapon_takes_over_when_the_mana_comes_down_to_the_line_mid_fight() {
+    // The game casts the spell every round on its own: the mana line is checked each round,
+    // not only when the fight opens. 40% of 20 is 8.
+    let (mut g, run) =
+        in_arena_with(&["large giant rat"], "[spells]\nattack_mana_above = 40\n").await;
+    start_caster(&mut g, "Mage", &MAGE_SPELLS, &["large giant rat"], 35, 20).await;
+    g.expect("mmis rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat with magic missile")
+        .await;
+    for mana in [16, 12, 9] {
+        g.output(&with_mana(CAST, 35, mana)).await;
+        g.idle(Duration::from_secs(4)).await;
+    }
+    g.expect("a rat", format!("{}{}", line(ENGAGED, 35), kill(35)));
+    g.expect("look", arena(&[], 35));
+    g.output(&with_mana(CAST, 35, 8)).await;
+    g.idle(Duration::from_secs(1)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(
+        played,
+        ["st", "look", "spells", "mmis rat", "a rat", "look"]
+    );
+    let said = notices(&seen);
+    assert!(
+        said.iter().any(|n| n == "Fight: mana 40%, now the weapon"),
+        "{said:?}"
+    );
+}
+
 #[tokio::test(start_paused = true)]
 async fn with_no_limit_the_spell_goes_on() {
     let (mut g, run) = in_arena(&["large giant rat"]).await;

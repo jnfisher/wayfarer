@@ -333,7 +333,7 @@ pub const CATALOGUE: &[Setting] = &[
     Setting {
         key: "spells.attack_mana_above",
         label: "Cast attack spells while mana is above",
-        help: "Below this per cent of the maximum mana a fight is fought with weapons, keeping what is left for healing.",
+        help: "At or below this per cent of the maximum mana a fight is fought with weapons, keeping what is left for healing; a fight cast in changes to the weapon when the mana comes down to it.",
         kind: Kind::Int { min: 0, max: 90 },
         default: Value::Int(15),
         unit: "%",

@@ -2822,10 +2822,6 @@ impl Session {
             hp: hp_percent(c.hp, c.hp_max),
             engaged: in_combat != Some(false),
             resting: c.resting == Some(true),
-            poisoned: c
-                .statuses
-                .as_ref()
-                .is_some_and(|s| s.iter().any(|s| s == "poisoned")),
             room: self.position.best(),
             certain: self.position.belief.certain(),
             traveller: &self.position.traveller,

@@ -126,6 +126,35 @@ async fn by_default_low_hp_rests_where_it_stands_even_in_a_room_that_spawns() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn poisoned_at_full_hp_it_fights_on_instead_of_resting() {
+    // Penny on the live rig (2026-10-26): a forest spider's poison held her resting at full HP
+    // for good. Poison lasts until a cure; only HP sends it to rest.
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 35).await;
+    g.narrated("Waiting here").await;
+    g.output(&line(
+        "Poison burns through your veins!\r\nYou feel ill.",
+        34,
+    ))
+    .await;
+    g.idle(Duration::from_secs(5)).await;
+    g.expect("a rat", line(ENGAGED, 34));
+    g.output(&line(
+        "A large giant rat creeps into the room from nowhere.",
+        34,
+    ))
+    .await;
+    g.narrated("Fight: large giant rat").await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat"]);
+    assert!(
+        !notices(&seen).iter().any(|n| n.starts_with("Recover")),
+        "{:?}",
+        notices(&seen)
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn low_hp_rests_in_a_quiet_room_then_walks_back() {
     let (mut g, run) = in_arena(&[]).await;
     // 20 of 35 is 57%: below 80. The Arena spawns; the Narrow Road, up the stairs, doesn't.
