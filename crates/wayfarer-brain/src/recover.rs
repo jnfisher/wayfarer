@@ -121,6 +121,11 @@ impl Recover {
     pub fn yields_to_bless(&self, v: &View) -> bool {
         !self.heal_due(v) && !Self::low(v)
     }
+
+    /// Took control and has not finished: a rest, or the walk to or from one, under way.
+    pub fn started(&self) -> bool {
+        self.active
+    }
 }
 
 impl Mode for Recover {

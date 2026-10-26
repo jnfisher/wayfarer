@@ -1280,7 +1280,14 @@ impl Bot {
                     self.fight.cast_mid_fight(v.now);
                 }
                 (BotMode::Bless, r)
-            } else if let Some(r) = self.recover.wants(v) {
+            } else if let Some(r) = self
+                .recover
+                .wants(v)
+                // A rest starts when the fight is over: not while a monster it would attack is
+                // here, or before the look after a kill. One under way goes on (a monster that
+                // walks in wakes it only by attacking); under the flee line Flee goes first.
+                .filter(|_| self.recover.started() || self.fight.wants(v).is_none())
+            {
                 (BotMode::Recover, r)
             } else if let Some(r) = self.sneak.wants(v) {
                 (BotMode::Sneak, r)
