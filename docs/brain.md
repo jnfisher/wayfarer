@@ -186,6 +186,15 @@ progress (after the move in flight).
   fast ticks, `kb/navigation.md` "Hidden"), so the brain forgets it showing then and searches
   again next time. A search costs two extra steps in the route. Moves are not pipelined through
   a hidden exit.
+- **Blocked hidden exits**: some Hidden exits are not searched for but blocked, and no search
+  ever finds them; a phrase typed in the room takes the blocks off (a Remote Action exit of
+  the room, `kb/navigation.md` "Hidden"). The pack says which: the Slimy Tunnel's stone door
+  west in the sewers opens at `push switch`, the Dark Sanctum's at `press d`, `press e`,
+  `press a`, `press t`, `press h`, typed in that order. Arriving at one that is not showing,
+  the walker types its phrases ("Opening the hidden exit west: push switch"), then `look`s: it
+  moves if the exit shows (`secret passage west`), else marks the exit refused for the session
+  and plans again ("the hidden exit west did not open"). A blocked exit whose phrases are typed
+  in another room, or that asks for an item, is still searched for as before.
 - **Refusals** (level, alignment, class or race, not permitted, a spell or item needed, a toll
   not covered, a timed exit): the exit is marked refused for the session and the route planned
   again, at most five times a walk.
