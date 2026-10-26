@@ -35,6 +35,7 @@ export type { MonsterRuleEntry } from "./MonsterRuleEntry";
 export type { MonsterRuleKind } from "./MonsterRuleKind";
 export type { ParseCounts } from "./ParseCounts";
 export type { PartyDef } from "./PartyDef";
+export type { PartyRank } from "./PartyRank";
 export type { PartyStatus } from "./PartyStatus";
 export type { Place } from "./Place";
 export type { Position } from "./Position";

@@ -476,6 +476,17 @@ pub enum GameEvent {
     },
     /// `invite_needed`: `You must be invited first!`
     PartyMustBeInvited,
+    /// `rank_moved`, the character's own: `You have moved to the front ranks of your group.`
+    RankMoved {
+        rank: Rank,
+    },
+    /// `rank_moved`, another member's: `Lauren just moved to the back rank in your group.`
+    PartyMemberRanked {
+        name: String,
+    },
+    /// `rank_refused`: `You are the only one in the front rank.  You may not leave.`, `You may
+    /// not enter the backrank of your own party.` (the leader), or not enough left in front.
+    RankRefused,
     /// `follow_leader`: ` -- Following your Party leader north --`: the game moved a follower.
     PartyMoved {
         dir: String,
@@ -945,6 +956,19 @@ impl GameEvent {
                 name: text(ev, "who"),
             },
             "invite_needed" => G::PartyMustBeInvited,
+            "rank_moved" => match ev.text("rank") {
+                Some(r) => G::RankMoved {
+                    rank: match r {
+                        "front" => Rank::Front,
+                        "back" => Rank::Back,
+                        _ => Rank::Mid,
+                    },
+                },
+                None => G::PartyMemberRanked {
+                    name: text(ev, "who"),
+                },
+            },
+            "rank_refused" => G::RankRefused,
             "follow_leader" => G::PartyMoved {
                 dir: text(ev, "dir").to_ascii_lowercase(),
             },

@@ -109,6 +109,18 @@ export function followerErrands<T extends { action: string; disabled: boolean; t
 
 /** A member's line in the Parties panel. */
 export function memberLine(m: MemberStatus, leader: string): string {
+  const line = stateLine(m, leader);
+  return m.rank ? `${line}, ${RANK_WORD[m.rank]}` : line;
+}
+
+/** A rank as a member's line says it (`joined, back rank`). */
+const RANK_WORD: Record<NonNullable<MemberStatus["rank"]>, string> = {
+  front: "front rank",
+  mid: "middle rank",
+  back: "back rank",
+};
+
+function stateLine(m: MemberStatus, leader: string): string {
   const detail = m.detail ? `: ${m.detail}` : "";
   switch (m.state) {
     case "joined":

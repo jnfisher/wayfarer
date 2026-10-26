@@ -2,7 +2,8 @@
 //! parties the player defined, kept in the store, and above the sessions what each member
 //! should do about them. Every tick it reads each session's state and its party as the game
 //! last showed it ([`GameParty`]) and plans the lines that form a party up (`invite`,
-//! `follow`), keep it checked (`par`) and take a member out (`leave`), and each session's
+//! `follow`), keep it checked (`par`), put each member in its rank (`frontrank`, `midrank`,
+//! `backrank`) and take a member out (`leave`), and each session's
 //! [`PartyRole`], which its modes read. It sends nothing itself: the brain puts each line
 //! through that session's executor and says which went.
 
@@ -10,7 +11,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::Duration;
 
 use tokio::time::Instant;
-use wayfarer_proto::{MemberState, MemberStatus, PartyDef, PartyStatus};
+use wayfarer_parse::typed::Rank;
+use wayfarer_proto::{MemberState, MemberStatus, PartyDef, PartyRank, PartyStatus};
 use wayfarer_store::PartyRecord;
 use wayfarer_world::Key;
 
@@ -28,6 +30,8 @@ const PAR_GAP: Duration = Duration::from_secs(5);
 /// `par`: the game moves followers in its fast cycle, well within this, and a follower an exit
 /// refused drops without a word (`kb/grouping.md` §2a).
 const APART: Duration = Duration::from_secs(3);
+/// How long a rank command waits for a `par` that shows it before another goes.
+const RANK_EVERY: Duration = Duration::from_secs(10);
 
 /// What a session is in a party, for its modes.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -228,6 +232,10 @@ pub(crate) struct MemberInfo {
     pub target: Option<String>,
     /// The locked door its walk is bashing: the room and direction.
     pub bashing: Option<(Key, u8)>,
+    /// The rank it should have in its party (`party.rank`).
+    pub rank: Option<Rank>,
+    /// Resting or fighting: a rank command would end the rest, so it waits.
+    pub busy: bool,
 }
 
 /// One tick's plan: the lines to send, each session's role, and the parties for the UIs when
@@ -241,6 +249,8 @@ pub(crate) struct Plan {
     pub give_up: Vec<(String, String)>,
     /// Leaders to flee now, for a member under its flee line, and why.
     pub flee: Vec<(String, String)>,
+    /// A word for a member's tile: a rank it cannot have.
+    pub notes: Vec<(String, String)>,
 }
 
 #[derive(Debug, Default)]
@@ -270,8 +280,180 @@ pub(crate) struct Parties {
     fled_for: BTreeSet<String>,
     /// The last statuses sent, to send again only on a change.
     sent: Option<Vec<PartyStatus>>,
+    ranks: Ranks,
     /// Members a `party_resync` asked to check their party with `par`, until it goes.
     resync: BTreeSet<String>,
+}
+
+/// The rank commands sent and the ranks refused (`party.rank`).
+#[derive(Debug, Default)]
+struct Ranks {
+    /// When each member's last rank command went.
+    sent: HashMap<String, Instant>,
+    /// The rank each member was refused, or cannot have, until it wants another (or a re-sync).
+    refused: HashMap<String, Rank>,
+}
+
+fn rank_command(r: Rank) -> &'static str {
+    match r {
+        Rank::Front => "frontrank",
+        Rank::Mid => "midrank",
+        Rank::Back => "backrank",
+    }
+}
+
+fn rank_word(r: Rank) -> &'static str {
+    match r {
+        Rank::Front => "front",
+        Rank::Mid => "middle",
+        Rank::Back => "back",
+    }
+}
+
+fn wire_rank(r: Rank) -> PartyRank {
+    match r {
+        Rank::Front => PartyRank::Front,
+        Rank::Mid => PartyRank::Mid,
+        Rank::Back => PartyRank::Back,
+    }
+}
+
+impl Ranks {
+    fn forget(&mut self, session: &str) {
+        self.sent.remove(session);
+        self.refused.remove(session);
+    }
+
+    /// The members of `def` in the party in the game: each one's rank as the leader's screen
+    /// shows it, into its status; and when the screen is current (`ready`), the commands that
+    /// bring them to their `party.rank` in an order the game allows (`kb/grouping.md`): the
+    /// leader never goes back, someone stays in front, and the back never outnumbers the front.
+    /// Everyone for the front moves at once (more in front blocks nobody), then one at a time
+    /// to the middle and then the back, each after a screen that shows the last. A move the
+    /// game would refuse is not sent: the member's tile is told once.
+    fn plan(
+        &mut self,
+        def: &PartyDef,
+        m: &BTreeMap<String, MemberInfo>,
+        ready: bool,
+        now: Instant,
+        plan: &mut Plan,
+        members: &mut [MemberStatus],
+    ) {
+        let blank = MemberInfo::default();
+        let l = m.get(&def.leader).unwrap_or(&blank);
+        let ranked: Vec<(String, Rank)> = members
+            .iter()
+            .filter(|ms| matches!(ms.state, MemberState::Joined | MemberState::Resting))
+            .filter_map(|ms| {
+                let n = m.get(&ms.session)?.name.as_deref()?;
+                Some((ms.session.clone(), l.game.rank_of(n).filter(|_| l.realm)?))
+            })
+            .collect();
+        // A leader alone is in no party yet: ranks start once a follower has joined.
+        if !ranked.iter().any(|(s, _)| *s != def.leader) {
+            return;
+        }
+        for ms in members.iter_mut() {
+            ms.rank = ranked
+                .iter()
+                .find(|(s, _)| *s == ms.session)
+                .map(|(_, r)| wire_rank(*r));
+        }
+        if !ready {
+            return;
+        }
+        let name = |s: &str| {
+            m.get(s)
+                .and_then(|i| i.name.as_deref())
+                .map_or_else(|| s.to_owned(), |n| first(n).to_owned())
+        };
+        // The game's answer to the last command.
+        for (s, _) in &ranked {
+            let Some(i) = m.get(s) else { continue };
+            if self.refused.get(s).is_some_and(|r| Some(*r) != i.rank) {
+                self.refused.remove(s);
+            }
+            if let (Some(t), Some(want)) = (self.sent.get(s).copied(), i.rank)
+                && i.game.rank_refused.is_some_and(|r| r >= t)
+            {
+                self.sent.remove(s);
+                self.refused.insert(s.clone(), want);
+                plan.notes.push((
+                    s.clone(),
+                    format!(
+                        "{} stays where it is: the game would not move it to the {} rank",
+                        name(s),
+                        rank_word(want)
+                    ),
+                ));
+            }
+        }
+        // A move not shown on a screen yet: wait for it.
+        let shown = |t: &Instant| l.game.as_of.is_some_and(|a| a > *t);
+        if ranked.iter().any(|(s, _)| {
+            self.sent
+                .get(s)
+                .is_some_and(|t| now < *t + RANK_EVERY && !shown(t))
+        }) {
+            return;
+        }
+        let front = ranked.iter().filter(|(_, r)| *r == Rank::Front).count();
+        let back = ranked.iter().filter(|(_, r)| *r == Rank::Back).count();
+        let wants: Vec<(String, Rank, Rank)> = ranked
+            .iter()
+            .filter_map(|(s, now_at)| {
+                let i = m.get(s)?;
+                let want = i.rank?;
+                (want != *now_at
+                    && i.realm
+                    && i.running
+                    && !i.busy
+                    && self.refused.get(s) != Some(&want))
+                .then(|| (s.clone(), *now_at, want))
+            })
+            .collect();
+        let to_front: Vec<&String> = wants
+            .iter()
+            .filter(|w| w.2 == Rank::Front)
+            .map(|w| &w.0)
+            .collect();
+        if !to_front.is_empty() {
+            for s in to_front {
+                plan.lines
+                    .push((s.clone(), rank_command(Rank::Front).to_owned()));
+            }
+            return;
+        }
+        for target in [Rank::Mid, Rank::Back] {
+            for (s, at, want) in wants.iter().filter(|w| w.2 == target) {
+                let front_others = front - usize::from(*at == Rank::Front);
+                let back_others = back - usize::from(*at == Rank::Back);
+                let why = if *want == Rank::Back && *s == def.leader {
+                    Some("a party's leader cannot go to the back rank")
+                } else if *at == Rank::Front && front_others == 0 {
+                    Some("someone must stay in the front rank")
+                } else if *want == Rank::Back && front_others < back_others {
+                    Some("the back rank may not outnumber the front")
+                } else {
+                    None
+                };
+                match why {
+                    Some(why) => {
+                        self.refused.insert(s.clone(), *want);
+                        plan.notes.push((
+                            s.clone(),
+                            format!("{} stays in the {} rank: {why}", name(s), rank_word(*at)),
+                        ));
+                    }
+                    None => {
+                        plan.lines.push((s.clone(), rank_command(*want).to_owned()));
+                        return;
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// The first word of a name: what the game's party lines and commands use.
@@ -451,6 +633,7 @@ impl Parties {
 
     /// What the coordinator remembers of a follower taken out of its party.
     fn forget(&mut self, session: &str) {
+        self.ranks.forget(session);
         self.was_joined.remove(session);
         self.walk_in.remove(session);
         self.out_since.remove(session);
@@ -493,6 +676,7 @@ impl Parties {
             return None;
         }
         for s in &members {
+            self.ranks.forget(s);
             self.followed.remove(s);
             self.par_at.remove(s);
             self.apart.remove(s);
@@ -524,6 +708,9 @@ impl Parties {
             }
             Some("leave") => {
                 self.leaving.remove(session);
+            }
+            Some("frontrank" | "midrank" | "backrank") => {
+                self.ranks.sent.insert(session.to_owned(), now);
             }
             _ => {}
         }
@@ -571,6 +758,7 @@ impl Parties {
                     MemberState::Away
                 },
                 detail: None,
+                rank: None,
             }];
             // A whole `par` screen since every member's last join or drop.
             let fresh = |f: &MemberInfo| {
@@ -727,6 +915,7 @@ impl Parties {
                     session: f.clone(),
                     state,
                     detail,
+                    rank: None,
                 });
             }
             if l.realm && counted > 0 && l.game.as_of.is_none_or(|t| now >= t + PAR_EVERY) {
@@ -847,6 +1036,9 @@ impl Parties {
                     ));
                 }
             }
+            // Ranks, once the leader's screen shows the party as it is.
+            let ready = l.realm && l.game.as_of.is_some() && !l.game.stale && !owe_par;
+            self.ranks.plan(def, m, ready, now, &mut plan, &mut members);
             statuses.push(PartyStatus {
                 party: def.clone(),
                 members,
@@ -917,6 +1109,8 @@ mod tests {
             },
             target: None,
             bashing: None,
+            rank: None,
+            busy: false,
         }
     }
 
@@ -1348,6 +1542,151 @@ mod tests {
         assert!(p.plan(&m, late).give_up.is_empty(), "the wait starts again");
         let later = late + Duration::from_secs(301);
         assert_eq!(p.plan(&m, later).give_up.len(), 1);
+    }
+
+    /// Penny leading Lauren and Faye, all joined in one room, Penny's `par` at `now` showing
+    /// each one's rank; each one's `party.rank` is `want`.
+    fn three(
+        p: &mut Parties,
+        now: Instant,
+        at: [Rank; 3],
+        want: [Rank; 3],
+    ) -> BTreeMap<String, MemberInfo> {
+        p.save(def("penny", &["lauren", "faye"]), &known()).unwrap();
+        let mut m = two(now, &["Lauren Phillips", "Faye Reagan"]);
+        m.insert("faye".into(), member("Faye Reagan", (1, 1)));
+        for f in ["lauren", "faye"] {
+            m.get_mut(f).unwrap().game.following = Some("Penny".into());
+        }
+        show(&mut m, now, at);
+        for (s, w) in ["penny", "lauren", "faye"].into_iter().zip(want) {
+            m.get_mut(s).unwrap().rank = Some(w);
+        }
+        m
+    }
+
+    /// Penny's `par` at `now` shows Penny, Lauren and Faye at `at`.
+    fn show(m: &mut BTreeMap<String, MemberInfo>, now: Instant, at: [Rank; 3]) {
+        let penny = m.get_mut("penny").unwrap();
+        penny.game.as_of = Some(now);
+        for (row, rank) in penny.game.members.iter_mut().zip([at[1], at[2], at[0]]) {
+            row.rank = Some(rank);
+        }
+    }
+
+    fn rank_lines(plan: &Plan) -> Vec<(&str, &str)> {
+        lines(plan)
+            .into_iter()
+            .filter(|(_, l)| l.ends_with("rank"))
+            .collect()
+    }
+
+    use Rank::{Back, Front, Mid};
+
+    #[tokio::test]
+    async fn members_go_to_their_rank_the_front_first_then_one_at_a_time() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        // Lauren (a caster) wants the back, Faye the front; both joined at Midrank.
+        let mut m = three(&mut p, now, [Front, Mid, Mid], [Front, Back, Front]);
+        let plan = p.plan(&m, now);
+        assert_eq!(rank_lines(&plan), [("faye", "frontrank")]);
+        let statuses = plan.statuses.unwrap();
+        let ranks: Vec<_> = statuses[0].members.iter().map(|ms| ms.rank).collect();
+        assert_eq!(
+            ranks,
+            [
+                Some(PartyRank::Front),
+                Some(PartyRank::Mid),
+                Some(PartyRank::Mid)
+            ]
+        );
+        p.sent("faye", "frontrank", now);
+        // Nothing more until a screen shows it.
+        let later = now + Duration::from_secs(2);
+        assert!(rank_lines(&p.plan(&m, later)).is_empty());
+        show(&mut m, later, [Front, Mid, Front]);
+        let plan = p.plan(&m, later);
+        assert_eq!(rank_lines(&plan), [("lauren", "backrank")]);
+        p.sent("lauren", "backrank", later);
+        let after = later + Duration::from_secs(2);
+        show(&mut m, after, [Front, Back, Front]);
+        let plan = p.plan(&m, after);
+        assert!(rank_lines(&plan).is_empty());
+        assert!(plan.notes.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_rank_the_game_forbids_is_not_asked_for_and_the_tile_is_told_once() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        // The leader cannot go back: it stays in front, and its tile is told; Lauren may go
+        // back behind it (one in front, none in back).
+        let m = three(&mut p, now, [Front, Mid, Mid], [Back, Back, Mid]);
+        let plan = p.plan(&m, now);
+        assert_eq!(rank_lines(&plan), [("lauren", "backrank")]);
+        assert_eq!(
+            plan.notes,
+            [(
+                "penny".to_owned(),
+                "Penny stays in the front rank: a party's leader cannot go to the back rank"
+                    .to_owned()
+            )]
+        );
+        let again = p.plan(&m, now);
+        assert!(again.notes.is_empty(), "once");
+        // The last one in front may not leave it.
+        let mut p = Parties::default();
+        let m = three(&mut p, now, [Front, Mid, Mid], [Mid, Mid, Mid]);
+        let plan = p.plan(&m, now);
+        assert!(rank_lines(&plan).is_empty());
+        assert!(
+            plan.notes[0]
+                .1
+                .contains("someone must stay in the front rank")
+        );
+        // The back may not outnumber the front: front 1, back 2 already.
+        let mut p = Parties::default();
+        let m = three(&mut p, now, [Front, Back, Mid], [Front, Back, Back]);
+        let plan = p.plan(&m, now);
+        assert_eq!(
+            rank_lines(&plan),
+            [("faye", "backrank")],
+            "1 front, 1 back: allowed"
+        );
+        let mut p = Parties::default();
+        let mut m = three(&mut p, now, [Front, Back, Back], [Front, Back, Back]);
+        m.get_mut("lauren").unwrap().rank = Some(Back);
+        assert!(rank_lines(&p.plan(&m, now)).is_empty(), "already there");
+    }
+
+    #[tokio::test]
+    async fn a_refused_rank_stops_until_a_resync_and_a_rest_is_not_broken() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        let mut m = three(&mut p, now, [Front, Mid, Front], [Front, Back, Front]);
+        assert_eq!(rank_lines(&p.plan(&m, now)), [("lauren", "backrank")]);
+        p.sent("lauren", "backrank", now);
+        let later = now + Duration::from_secs(1);
+        m.get_mut("lauren").unwrap().game.rank_refused = Some(later);
+        show(&mut m, later + Duration::from_secs(1), [Front, Mid, Front]);
+        let plan = p.plan(&m, later + Duration::from_secs(1));
+        assert!(rank_lines(&plan).is_empty());
+        assert!(
+            plan.notes[0]
+                .1
+                .contains("the game would not move it to the back rank")
+        );
+        let quiet = p.plan(&m, later + Duration::from_secs(30));
+        assert!(rank_lines(&quiet).is_empty() && quiet.notes.is_empty());
+        // Re-synced: asked again, unless it is resting.
+        p.resync(None);
+        m.get_mut("lauren").unwrap().busy = true;
+        let t = later + Duration::from_secs(31);
+        show(&mut m, t, [Front, Mid, Front]);
+        assert!(rank_lines(&p.plan(&m, t)).is_empty(), "resting");
+        m.get_mut("lauren").unwrap().busy = false;
+        assert_eq!(rank_lines(&p.plan(&m, t)), [("lauren", "backrank")]);
     }
 
     fn hurt(i: &mut MemberInfo, hp: i32, low: bool, flee: bool) {

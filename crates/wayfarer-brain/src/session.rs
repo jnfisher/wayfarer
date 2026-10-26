@@ -10,7 +10,7 @@ use std::time::Duration;
 use std::sync::Mutex;
 use tokio::time::Instant;
 
-use wayfarer_parse::typed::GameEvent;
+use wayfarer_parse::typed::{GameEvent, Rank};
 use wayfarer_parse::{Event, Parser, Registry};
 use wayfarer_proto::{
     BotAction, BotMode, CharacterState, Chunk, Found, FoundKind, FoundRoom, GeneratedLoop,
@@ -2919,6 +2919,15 @@ impl Session {
             health: self.party_health(),
             target: self.bot.fight_target().map(str::to_owned),
             bashing: self.walker.bashing(),
+            rank: Some(match self.settings.choice("party.rank") {
+                "back" => Rank::Back,
+                "mid" => Rank::Mid,
+                _ => Rank::Front,
+            }),
+            busy: self.character.state().resting == Some(true)
+                || self.combat(self.clock.instant()) == Some(true)
+                || (self.bot.running()
+                    && matches!(self.bot.mode(), BotMode::Fight | BotMode::Flee)),
         }
     }
 
@@ -2983,6 +2992,11 @@ impl Session {
                 .map(|h| crate::regen::hp_per_hour(level, i64::from(h))),
             mana,
         }
+    }
+
+    /// A word from the party coordinator for this character's tile (a rank it cannot have).
+    pub(crate) fn party_note(&self, note: &str) -> ToGateway {
+        self.warning(note)
     }
 
     /// The party's leader runs now, for a member under its flee line.

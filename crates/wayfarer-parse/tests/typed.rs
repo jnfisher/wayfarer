@@ -956,6 +956,39 @@ fn party_followers() {
 }
 
 #[test]
+fn rank_moves_and_refusals() {
+    for (text, rank) in [
+        (
+            "You have moved to the front ranks of your group.",
+            Rank::Front,
+        ),
+        (
+            "You have moved to the middle ranks of your group.",
+            Rank::Mid,
+        ),
+        (
+            "You have moved to the back ranks of your group.",
+            Rank::Back,
+        ),
+    ] {
+        assert_eq!(line(text), [GameEvent::RankMoved { rank }], "{text}");
+    }
+    assert_eq!(
+        line("Lauren just moved to the back rank in your group."),
+        [GameEvent::PartyMemberRanked {
+            name: "Lauren".into()
+        }]
+    );
+    for text in [
+        "You are the only one in the front rank.  You may not leave.",
+        "You may not enter the backrank of your own party.",
+        "There would not be enough people left in the frontrank if you did that.",
+    ] {
+        assert_eq!(line(text), [GameEvent::RankRefused], "{text}");
+    }
+}
+
+#[test]
 fn par_row_at_minus_100() {
     // `par` prints `%3.3s` of the percentage: -100% and below are `-10` (`kb/grouping.md` §2a).
     let evs = line(

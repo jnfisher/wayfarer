@@ -1228,8 +1228,26 @@ own, one at a time:
   follower's tells it whom it follows), what each knows of its party counts as out of date
   until those screens come, and the `invite`s and `follow`s they call for go without their
   10-s wait. A follower's walk back that found no way is tried again, and the leader's wait for
-  a separated member starts afresh (a loop it stopped stays stopped). A notice says "Re-sync:
+  a separated member starts afresh (a loop it stopped stays stopped). Ranks are checked
+  again too: the screens show where each member stands, ranks the game refused are asked for
+  again, and the members are put in their ranks in the order below. A notice says "Re-sync:
   the parties are forming up again".
+- **Ranks.** Each character's *Party rank* (`party.rank`, Party: front, mid or back; front by
+  default, set per character) is where it stands in the party's battle line. Rank does not
+  change whom monsters attack; in this game Front gives +5 to attack and to defence (a
+  missing `break` in the source makes it take Back's bonus as well), Mid nothing, and Back
+  -10 attack for +15 defence, which suits a caster or healer that seldom swings
+  (`kb/grouping.md`). MegaMud's default is Mid; wayfarer's is Front, since it beats Mid. Once a
+  follower has joined, and whenever the leader's `par` shows a member in another rank than its
+  own setting, that member sends `frontrank`, `midrank` or `backrank`, never while it rests
+  (a rank command ends a rest) or fights. The game's rules decide the order: everyone going to
+  the front moves first, together; then one member at a time to the middle and then to the
+  back, each after a `par` that shows the last. A rank the game forbids is not asked for (the
+  leader never goes back, someone stays in front, the back never outnumbers the front), and a
+  refusal from the game stops the asking too: either way the member's tile says so once
+  ("Penny stays in the front rank: a party's leader cannot go to the back rank"), until its
+  setting changes or the party is re-synced. The `parties` message gives each member's rank as
+  the leader's `par` last showed it.
 - **Leaving.** `party_leave` takes a follower out (a party with no followers left is deleted;
   the leader's, the whole party): it sends `leave` while the game has it following, and plays
   on its own. A follower dropped from a party by `party_save` or `party_delete` does the same.

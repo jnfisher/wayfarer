@@ -63,6 +63,10 @@ describe("the party chip", () => {
 describe("the panel's lines", () => {
   it("says each state in words", () => {
     expect(memberLine({ session: "x", state: "joined" }, "Penny")).toBe("joined");
+    expect(memberLine({ session: "x", state: "joined", rank: "back" }, "Penny")).toBe("joined, back rank");
+    expect(memberLine({ session: "x", state: "resting", detail: "62%", rank: "front" }, "Penny")).toBe(
+      "resting 62%, front rank",
+    );
     expect(memberLine({ session: "x", state: "not_joined", detail: "in another room" }, "Penny")).toBe(
       "not joined yet: in another room",
     );

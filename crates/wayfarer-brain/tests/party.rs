@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use game::*;
 use tokio::sync::mpsc;
 use wayfarer_brain::{Brain, ChannelLink, FixedClock, Store};
-use wayfarer_proto::{BotAction, MemberState, PartyDef, PartyStatus};
+use wayfarer_proto::{BotAction, MemberState, PartyDef, PartyRank, PartyStatus};
 
 const LEADER: &str = "penny";
 const FOLLOWER: &str = "lauren";
@@ -40,6 +40,14 @@ struct World {
     hp: BTreeMap<String, i32>,
     /// The Arena's north door is locked: the leader's bashes fail, the follower's gives way.
     locked: bool,
+    /// Each one's rank, `Midrank` when not here; inviting puts the leader in front.
+    ranks: BTreeMap<String, &'static str>,
+}
+
+impl World {
+    fn rank(&self, session: &str) -> &'static str {
+        self.ranks.get(session).copied().unwrap_or("Midrank")
+    }
 }
 
 /// A room as `look` shows it; the Arena with nothing in it, so nobody stops to fight.
@@ -179,8 +187,9 @@ impl Gateway {
             "par" => {
                 let row = |s: &str| {
                     format!(
-                        "  {:<30} (Witchunter)          [H:100%]   - Midrank\r\n",
-                        name(s)
+                        "  {:<30} (Witchunter)          [H:100%]   - {}\r\n",
+                        name(s),
+                        self.world.rank(s)
                     )
                 };
                 let screen = if self.world.following {
@@ -199,6 +208,7 @@ impl Gateway {
             }
             t if t.starts_with("invite ") => {
                 self.world.invited = true;
+                self.world.ranks.insert(session.to_owned(), "Frontrank");
                 vec![
                     (
                         session.to_owned(),
@@ -226,6 +236,42 @@ impl Gateway {
                     (
                         other.to_owned(),
                         said(&format!("{} started to follow you.", first(session))),
+                    ),
+                ]
+            }
+            "frontrank" | "midrank" | "backrank" => {
+                // The game's rules for two (`kb/grouping.md`): the leader never goes back, and
+                // someone stays in front.
+                let (rank, word, others) = match text {
+                    "frontrank" => ("Frontrank", "front", "front rank"),
+                    "midrank" => ("Midrank", "middle", "middle"),
+                    _ => ("Backrank", "back", "back rank"),
+                };
+                if rank == "Backrank" && session == LEADER {
+                    return me(said("You may not enter the backrank of your own party."));
+                }
+                if self.world.rank(session) == "Frontrank"
+                    && rank != "Frontrank"
+                    && self.world.rank(other) != "Frontrank"
+                {
+                    return me(said(
+                        "You are the only one in the front rank.  You may not leave.",
+                    ));
+                }
+                self.world.ranks.insert(session.to_owned(), rank);
+                vec![
+                    (
+                        session.to_owned(),
+                        said(&format!(
+                            "You have moved to the {word} ranks of your group."
+                        )),
+                    ),
+                    (
+                        other.to_owned(),
+                        said(&format!(
+                            "{} just moved to the {others} in your group.",
+                            first(session)
+                        )),
                     ),
                 ]
             }
@@ -558,9 +604,11 @@ async fn a_follower_the_game_dropped_walks_back_and_joins_again() {
 async fn a_resync_checks_at_once_and_forms_a_party_the_game_broke() {
     let (mut g, _run) = Gateway::start(brain(None)).await;
     formed(&mut g).await;
+    ranked(&mut g, FOLLOWER, PartyRank::Front).await;
     // The game dropped Lauren without a word, in the same room: the next routine `par` is
-    // up to half a minute off.
+    // up to half a minute off. Out of the party, she is back at Midrank.
     g.world.following = false;
+    g.world.ranks.remove(FOLLOWER);
     let before = g.lines.len();
     let at = tokio::time::Instant::now();
     g.send(ToClient::PartyResync { party: None }).await;
@@ -579,6 +627,14 @@ async fn a_resync_checks_at_once_and_forms_a_party_the_game_broke() {
     assert!(after.contains(&(LEADER, "par")), "{after:?}");
     assert!(after.contains(&(FOLLOWER, "par")), "{after:?}");
     assert!(after.contains(&(FOLLOWER, "follow penny")), "{after:?}");
+    // And put back in her rank.
+    ranked(&mut g, FOLLOWER, PartyRank::Front).await;
+    let after: Vec<_> = g.lines[before..]
+        .iter()
+        .map(|(s, l)| (s.as_str(), l.as_str()))
+        .collect();
+    assert!(after.contains(&(FOLLOWER, "frontrank")), "{after:?}");
+    assert!(at.elapsed() < Duration::from_secs(15), "{:?}", at.elapsed());
     // A party that is not there.
     g.send(ToClient::PartyResync {
         party: Some("party-9".into()),
@@ -589,6 +645,82 @@ async fn a_resync_checks_at_once_and_forms_a_party_the_game_broke() {
             .then_some(())
     })
     .await;
+}
+
+/// Until a `parties` message where `session` has `rank`.
+async fn ranked(g: &mut Gateway, session: &str, rank: PartyRank) {
+    g.until(|m| match m {
+        ToGateway::Parties { parties }
+            if parties.iter().any(|p| {
+                p.members
+                    .iter()
+                    .any(|ms| ms.session == session && ms.rank == Some(rank))
+            }) =>
+        {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn each_member_takes_its_party_rank_front_by_default() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = brain(None).with_settings_dir(wayfarer_settings::SettingsDir::new(dir.path()));
+    let (mut g, _run) = Gateway::start(b).await;
+    formed(&mut g).await;
+    // Joined at Midrank, the follower moves to the front, beside the leader the invite put
+    // there.
+    ranked(&mut g, FOLLOWER, PartyRank::Front).await;
+    let leader = g.seen.iter().rev().find_map(|m| match m {
+        ToGateway::Parties { parties } => parties[0]
+            .members
+            .iter()
+            .find(|ms| ms.session == LEADER)
+            .map(|ms| ms.rank),
+        _ => None,
+    });
+    assert_eq!(leader, Some(Some(PartyRank::Front)));
+    // Set to the back on its character: it moves there.
+    g.send(ToClient::SettingsSave {
+        session: FOLLOWER.into(),
+        layer: "character".into(),
+        changes: vec![wayfarer_proto::SettingChange {
+            key: "party.rank".into(),
+            value: Some(wayfarer_proto::SettingValue::Text("back".into())),
+        }],
+    })
+    .await;
+    ranked(&mut g, FOLLOWER, PartyRank::Back).await;
+    let sent: Vec<_> = g
+        .lines
+        .iter()
+        .filter(|(_, l)| l.ends_with("rank"))
+        .map(|(s, l)| (s.as_str(), l.as_str()))
+        .collect();
+    assert_eq!(sent, [(FOLLOWER, "frontrank"), (FOLLOWER, "backrank")]);
+    // The leader set to the back: it stays in front, and its tile says why, once.
+    g.send(ToClient::SettingsSave {
+        session: LEADER.into(),
+        layer: "character".into(),
+        changes: vec![wayfarer_proto::SettingChange {
+            key: "party.rank".into(),
+            value: Some(wayfarer_proto::SettingValue::Text("back".into())),
+        }],
+    })
+    .await;
+    g.until(|m| {
+        matches!(m, ToGateway::Warning { session: Some(s), text } if s == LEADER
+            && text == "Penny stays in the front rank: a party's leader cannot go to the back rank")
+        .then_some(())
+    })
+    .await;
+    assert!(
+        !g.lines
+            .iter()
+            .any(|(s, l)| s == LEADER && l.ends_with("rank"))
+    );
 }
 
 /// A party rest has every member below its rest-until line rest (C-045): the follower at 71%
