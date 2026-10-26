@@ -69,6 +69,28 @@ async fn two_and_an_arrival() -> (Vec<String>, Vec<String>) {
 }
 
 #[tokio::test(start_paused = true)]
+async fn below_the_rest_line_a_monster_still_in_the_room_is_fought_before_a_rest() {
+    // Faye on the live rig (2026-10-26): her bandit died with her at 75%, under her rest
+    // line, and she rested beside the short bandit her party went on fighting. The fight is
+    // not over while a monster it would attack is here: the look after the kill goes, and the
+    // next is attacked; the rest comes when the room is clear.
+    let (mut g, run) = in_arena(&[]).await;
+    let both = ["large giant rat", "fat giant rat"];
+    start(&mut g, &both, 35).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    // 20 of 35 is 57%: under the rest line (80), over the flee line.
+    g.round("The large giant rat lunges at you!", 20).await;
+    g.expect("look", arena(&["fat giant rat"], 20));
+    g.expect("a rat", line(ENGAGED, 20));
+    g.output(&kill(20)).await;
+    g.narrated("Fight: fat giant rat").await;
+    g.round("The fat giant rat lunges at you!", 20).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "look", "a rat"]);
+}
+
+#[tokio::test(start_paused = true)]
 async fn the_next_monster_is_found_by_looking_and_an_arrival_is_attacked() {
     let (played, _) = two_and_an_arrival().await;
     assert_eq!(
