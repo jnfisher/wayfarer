@@ -1216,6 +1216,209 @@ impl Session {
         });
     }
 
+    /// The character as the gear plan sees it: its class, race, level, stats and load, and the
+    /// weapon it has readied and the items it wears.
+    fn gear_subject(&self) -> crate::gear_plan::Subject {
+        let c = self.character.state();
+        let st = c.stats.as_ref();
+        let stat = |f: fn(&wayfarer_proto::Stats) -> Option<u32>| st.and_then(f).map(i64::from);
+        let load = c
+            .encumbrance
+            .as_ref()
+            .and_then(|e| Some((i64::from(e.current?), i64::from(e.max?))));
+        let items = &self.character.items;
+        let readied = items
+            .iter()
+            .find(|i| matches!(i.slot.as_deref(), Some("Weapon Hand" | "Two handed")))
+            .map(|i| i.name.clone());
+        let worn = items
+            .iter()
+            .filter(|i| {
+                i.slot.as_deref().is_some_and(|s| {
+                    !matches!(s, "Weapon Hand" | "Two handed" | "Nowhere")
+                        && !s.starts_with("Readied")
+                })
+            })
+            .map(|i| i.name.clone())
+            .collect();
+        crate::gear_plan::Subject {
+            class: c.class.clone(),
+            race: c.race.clone(),
+            level: c.level.map(i64::from),
+            stats: [
+                stat(|s| s.strength),
+                stat(|s| s.intellect),
+                stat(|s| s.willpower),
+                stat(|s| s.agility),
+                stat(|s| s.health),
+                stat(|s| s.charm),
+            ],
+            load,
+            readied,
+            worn,
+        }
+    }
+
+    /// The monsters a gear plan measures against: those asked for; else the loop the bot runs;
+    /// else the area around the believed room (its name up to a comma). Empty when there is
+    /// nothing to go by, with a note saying why.
+    fn gear_set(
+        &mut self,
+        gear: &crate::gear_plan::Gear,
+        atlas: &Atlas,
+        asked: Option<&wayfarer_proto::GearMonsters>,
+        notes: &mut Vec<String>,
+    ) -> Vec<wayfarer_world::gear::SetMonster> {
+        use wayfarer_proto::GearMonsters;
+        match asked {
+            Some(GearMonsters::Names(names)) => {
+                let (set, unknown) = gear.named_monsters(names);
+                for name in unknown {
+                    notes.push(format!("no monster {name:?}"));
+                }
+                set
+            }
+            Some(GearMonsters::Area(name)) => match gear.area_monsters(name) {
+                Ok(set) => {
+                    if set.is_empty() {
+                        notes.push(format!("no rooms named {name:?} spawn monsters"));
+                    }
+                    set
+                }
+                Err(why) => {
+                    notes.push(why);
+                    Vec::new()
+                }
+            },
+            Some(GearMonsters::Loop(id)) => match self.find_loop(atlas, id) {
+                Some(l) => {
+                    let stops: Vec<Key> = l.stops.iter().map(|s| (s.map, s.room)).collect();
+                    gear.room_monsters(&stops)
+                }
+                None => {
+                    notes.push(format!("no loop {id:?}"));
+                    Vec::new()
+                }
+            },
+            None => {
+                if let Some(t) = self.bot.task_mut() {
+                    let stops = t.stored().stops;
+                    return gear.room_monsters(&stops);
+                }
+                let Some(here) = self.position.best() else {
+                    notes.push("no loop running and the position is unknown".to_owned());
+                    return Vec::new();
+                };
+                let name = atlas.graph.room(here).map_or("", |r| r.name.as_str());
+                let area = name.split(',').next().unwrap_or("").trim();
+                let set = gear.area_monsters(area).unwrap_or_default();
+                if set.is_empty() {
+                    gear.room_monsters(&[here])
+                } else {
+                    set
+                }
+            }
+        }
+    }
+
+    /// `gear_plan_request`: the character's gear plan (docs/brain.md "Gear plan").
+    pub fn gear_plan(
+        &mut self,
+        req: &wayfarer_proto::GearPlanRequest,
+        gear: Option<&crate::gear_plan::Gear>,
+        out: &mut Vec<ToGateway>,
+    ) {
+        let (Some(gear), Some(atlas)) = (gear, self.atlas.clone()) else {
+            out.push(self.warning("gear plan: the brain has no world pack"));
+            return;
+        };
+        let ask = crate::gear_plan::Ask {
+            what_if: req.what_if.clone().unwrap_or_default(),
+            buffs: req.buffs.clone().unwrap_or_default(),
+            smash: req.smash.unwrap_or(false),
+            filter: req.filter.unwrap_or_default(),
+        };
+        // The routes for the character as it is now (its level shuts the Newhaven gate).
+        self.position
+            .refresh(&atlas, &self.character.snapshot(), self.clock.instant());
+        let mut notes = Vec::new();
+        let set = self.gear_set(gear, &atlas, req.monsters.as_ref(), &mut notes);
+        let who = self.gear_subject();
+        // The shops' steps from where the character is, a room ticket bought on the way.
+        let dist = self.position.best().map(|here| {
+            wayfarer_world::distances_buying(
+                &atlas.graph,
+                here,
+                10_000,
+                &self.position.traveller,
+                &atlas.exit_items,
+            )
+        });
+        let reach = |rooms: &[Key]| {
+            let dist = dist.as_ref()?;
+            rooms
+                .iter()
+                .filter_map(|k| dist.get(k).map(|d| (*d, *k)))
+                .min()
+        };
+        match gear.plan(&who, &ask, &set, reach) {
+            Ok(mut plan) => {
+                notes.append(&mut plan.notes);
+                out.push(ToGateway::GearPlan(wayfarer_proto::GearPlan {
+                    session: self.id.clone(),
+                    inputs: plan.inputs,
+                    monsters: plan.monsters,
+                    buffs_offered: plan.buffs_offered,
+                    rows: plan.rows,
+                    missing: (!plan.missing.is_empty()).then_some(plan.missing),
+                    notes,
+                }));
+            }
+            Err(why) => out.push(self.warning(&why)),
+        }
+    }
+
+    /// `gear_detail_request`: one weapon against each monster of the set.
+    pub fn gear_detail(
+        &mut self,
+        req: &wayfarer_proto::GearDetailRequest,
+        gear: Option<&crate::gear_plan::Gear>,
+        out: &mut Vec<ToGateway>,
+    ) {
+        let (Some(gear), Some(atlas)) = (gear, self.atlas.clone()) else {
+            out.push(self.warning("gear detail: the brain has no world pack"));
+            return;
+        };
+        let ask = crate::gear_plan::Ask {
+            what_if: req.what_if.clone().unwrap_or_default(),
+            buffs: req.buffs.clone().unwrap_or_default(),
+            smash: req.smash.unwrap_or(false),
+            filter: wayfarer_proto::GearFilter::All,
+        };
+        self.position
+            .refresh(&atlas, &self.character.snapshot(), self.clock.instant());
+        let mut notes = Vec::new();
+        let set = self.gear_set(gear, &atlas, req.monsters.as_ref(), &mut notes);
+        let who = self.gear_subject();
+        match gear.detail(&who, &ask, req.item, &set) {
+            Ok(mut d) => {
+                notes.append(&mut d.notes);
+                out.push(ToGateway::GearDetail(wayfarer_proto::GearDetail {
+                    session: self.id.clone(),
+                    item: req.item,
+                    name: d.name,
+                    inputs: d.inputs,
+                    monsters: d.monsters,
+                    load_percent: d.load_percent,
+                    moves: d.moves,
+                    missing: (!d.missing.is_empty()).then_some(d.missing),
+                    notes,
+                }));
+            }
+            Err(why) => out.push(self.warning(&why)),
+        }
+    }
+
     /// `stats_request`.
     pub fn stats_request(&mut self, out: &mut Vec<ToGateway>) {
         let (runs, samples) = self.ledger.summaries();

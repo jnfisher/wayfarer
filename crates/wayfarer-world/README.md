@@ -254,7 +254,8 @@ text blocks, and only the end of each room's record (where `cmdtext` and `placed
 One character, one weapon and one monster: what each blow costs, how often it lands, crits or
 is dodged, how much it does, how many blows land in each round, and the chance the monster is
 dead after round 1, 2, ... for an attack, a bash and a smash. Solo play: no party damage, no
-monster turns. It is the gear planner's engine; nothing in the brain uses it yet.
+monster turns. It is the gear planner's engine: the brain's gear plan (`docs/brain.md` "Gear
+plan").
 
 ```rust
 let fighter = Fighter::new(&Character { class: &witchunter, race: &human, level: 15,

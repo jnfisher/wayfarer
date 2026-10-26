@@ -585,6 +585,24 @@ impl WorldPack {
         self.names("races")
     }
 
+    /// Every class's raw record, (number, raw), by number (for `combat::ClassRecord`).
+    pub fn classes_raw(&self) -> Result<Vec<(i64, String)>, Error> {
+        self.raws("classes")
+    }
+
+    /// Every race's raw record, (number, raw), by number (for `combat::RaceRecord`).
+    pub fn races_raw(&self) -> Result<Vec<(i64, String)>, Error> {
+        self.raws("races")
+    }
+
+    fn raws(&self, table: &str) -> Result<Vec<(i64, String)>, Error> {
+        let mut st = self
+            .conn
+            .prepare_cached(&format!("SELECT number, raw FROM {table} ORDER BY number"))?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
     fn names(&self, table: &str) -> Result<Vec<(i64, String)>, Error> {
         let mut st = self
             .conn

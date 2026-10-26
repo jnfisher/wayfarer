@@ -32,6 +32,7 @@ mod errand;
 pub mod executor;
 mod fight;
 mod flee;
+pub mod gear_plan;
 mod journey;
 mod link;
 mod loot;
