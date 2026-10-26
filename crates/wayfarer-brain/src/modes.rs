@@ -891,6 +891,20 @@ impl Bot {
     }
 
     /// The walk in progress is a leg of Task's.
+    /// The loop's leg stopped for a monster in `room` that a move sent ahead walked past.
+    pub fn monster_behind(&mut self, room: Key) {
+        if let Some(t) = &mut self.task {
+            t.monster_behind(room);
+        }
+    }
+
+    /// The walk in progress stops where Fight would take the character: a leg of the task's,
+    /// or Recover's walk home after a rest.
+    pub fn walk_stops_for_fight(&self) -> bool {
+        self.task_walking()
+            || (self.acting == Some(BotMode::Recover) && self.recover.walking_home())
+    }
+
     pub fn task_walking(&self) -> bool {
         self.acting == Some(BotMode::Task)
     }
@@ -1286,7 +1300,8 @@ impl Bot {
                 // A rest starts when the fight is over: not while a monster it would attack is
                 // here, or before the look after a kill. One under way goes on (a monster that
                 // walks in wakes it only by attacking); under the flee line Flee goes first.
-                .filter(|_| self.recover.started() || self.fight.wants(v).is_none())
+                // Rested, the walk home waits for the fight too.
+                .filter(|_| self.recover.resting(v) || self.fight.wants(v).is_none())
             {
                 (BotMode::Recover, r)
             } else if let Some(r) = self.sneak.wants(v) {

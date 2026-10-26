@@ -122,9 +122,15 @@ impl Recover {
         !self.heal_due(v) && !Self::low(v)
     }
 
-    /// Took control and has not finished: a rest, or the walk to or from one, under way.
-    pub fn started(&self) -> bool {
-        self.active
+    /// Rested, and walking home.
+    pub fn walking_home(&self) -> bool {
+        self.active && self.last_walk == Some(false)
+    }
+
+    /// A rest under way, or the walk to one: took control and not rested yet. The walk home
+    /// after it is not.
+    pub fn resting(&self, v: &View) -> bool {
+        self.active && !Self::rested(v)
     }
 }
 

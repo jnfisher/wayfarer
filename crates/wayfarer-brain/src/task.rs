@@ -221,6 +221,9 @@ pub(crate) struct Task {
     rest: bool,
     /// The last "skipping unreachable stops" line said, so it is said once until it changes.
     unreachable_said: Option<String>,
+    /// A room with a monster to fight that a move sent ahead walked past: the next leg goes
+    /// back to it first.
+    back_to: Option<Key>,
 }
 
 impl Task {
@@ -268,7 +271,14 @@ impl Task {
             notes: Vec::new(),
             rest: false,
             unreachable_said: None,
+            back_to: None,
         }
+    }
+
+    /// The leg stopped for a monster in `room`, but a move sent ahead had gone already: go back
+    /// to it before going on.
+    pub fn monster_behind(&mut self, room: Key) {
+        self.back_to = Some(room);
     }
 
     /// A stored loop, put back after a restart: on the way to its stop again, nothing cleared.
@@ -645,6 +655,19 @@ impl Mode for Task {
             return self.next_leg(v);
         }
         if !here {
+            // Once: a walk back that ends elsewhere is not tried again.
+            if let Some(k) = self.back_to.take()
+                && v.room != Some(k)
+            {
+                return Step::walk(
+                    k,
+                    format!(
+                        "Loop {}: back to {} (a monster there)",
+                        self.name,
+                        v.room_name(Some(k))
+                    ),
+                );
+            }
             match self.phase {
                 // Waiting away from the loop's stops: for one to be ready.
                 Phase::Waiting => return self.next_leg(v),
