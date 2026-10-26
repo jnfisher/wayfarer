@@ -12,9 +12,11 @@ export const TERM_ROWS = 24;
 export const CELL_ASPECT = 8 / 16;
 
 /**
- * The grid for `count` tiles in a `width` x `height` area: 1; 1x2; 2x2; 2x3 or 3x2. Where two
- * shapes are possible (2, 5 or 6 tiles) the one that lets an 80x24 terminal be drawn largest
- * wins, so a wide screen puts tiles side by side and a tall one stacks them.
+ * The grid for `count` tiles in a `width` x `height` area: 1; 1x2; 2x2; 2x3 or 3x2. Two tiles
+ * are always side by side (John, 2026-10-26: one on the left, one on the right, even where
+ * stacking would draw them larger). Where two shapes are possible (5 or 6 tiles) the one that
+ * lets an 80x24 terminal be drawn largest wins, so a wide screen puts tiles side by side and a
+ * tall one stacks them.
  */
 export function tileGrid(count: number, width: number, height: number): Grid {
   if (count <= 0) return { rows: 0, cols: 0 };
@@ -22,10 +24,7 @@ export function tileGrid(count: number, width: number, height: number): Grid {
     count === 1
       ? [{ rows: 1, cols: 1 }]
       : count === 2
-        ? [
-            { rows: 1, cols: 2 },
-            { rows: 2, cols: 1 },
-          ]
+        ? [{ rows: 1, cols: 2 }]
         : count <= 4
           ? [{ rows: 2, cols: 2 }]
           : count <= 6

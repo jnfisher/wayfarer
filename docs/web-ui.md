@@ -7,9 +7,9 @@ is built (`npm --prefix ui ci && npm --prefix ui run build`, which writes `ui/di
 
 ## Tiles
 
-One tile per character in `wayfarer.toml`, laid out by count: 1; 1x2; 2x2; 2x3 or 3x2 (two,
-five or six tiles go side by side or stacked, whichever makes the terminals larger on your
-screen). Each tile is framed in the font's double lines, with a header on the top line
+One tile per character in `wayfarer.toml`, laid out by count: 1; 1x2; 2x2; 2x3 or 3x2. Two
+tiles always go side by side, one on the left and one on the right; five or six go side by
+side or stacked, whichever makes the terminals larger on your screen. Each tile is framed in the font's double lines, with a header on the top line
 (below).
 
 ## The header
