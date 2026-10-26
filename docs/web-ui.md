@@ -328,7 +328,9 @@ party with `par` at once and the invites and follows go again without waiting
 Under each follower is its state: `joined`, `not joined yet: forming up` (in the leader's
 room) or `: in another room`, `away: its bot is not running` (or not in the realm),
 `separated`, `walking to Penny (4 rooms)`, `resting 62%`, or `can't reach Penny: ...` with the
-reason. After the state comes what the member is doing and its HP, from its bot's `doing`:
+reason, and once it is in the party in the game its rank (`joined, back rank`). Where each
+character stands is its own *Party rank* setting (the settings panel, Party; front by
+default), and its bot moves it there ([brain.md](brain.md) "Parties"). After the state comes what the member is doing and its HP, from its bot's `doing`:
 `joined · attacking large giant rat · 72%`, `· healing Lauren · 100%`, `· resting with the
 party · 64%`, `· paused`. The leader's line, in the box's heading, shows what it is doing
 while it is joined.

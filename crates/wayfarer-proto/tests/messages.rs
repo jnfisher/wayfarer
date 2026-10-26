@@ -6,10 +6,10 @@ use wayfarer_proto::{
     CoinCount, Coins, CombatStats, DamageRow, DecodeError, Encumbrance, ExitKind, ExpSample,
     Family, Found, FoundKind, FoundRoom, GeneratedLoop, Journey, LoopStop, MapExit, MapRoom,
     MegaMudLoop, MemberState, MemberStatus, MonsterRuleEntry, MonsterRuleKind, PROTOCOL,
-    ParseCounts, PartyDef, PartyStatus, Position, RoomKey, RoomKind, RuleSource, RunSummary,
-    SessionAction, SessionInfo, SessionState, SettingChange, SettingKind, SettingRow, SettingValue,
-    SettingsFile, SpellPlanItem, Stats, StatsPart, TimeSpent, ToClient, ToGateway, Walking,
-    WorldPackInfo, protocol_mismatch,
+    ParseCounts, PartyDef, PartyRank, PartyStatus, Position, RoomKey, RoomKind, RuleSource,
+    RunSummary, SessionAction, SessionInfo, SessionState, SettingChange, SettingKind, SettingRow,
+    SettingValue, SettingsFile, SpellPlanItem, Stats, StatsPart, TimeSpent, ToClient, ToGateway,
+    Walking, WorldPackInfo, protocol_mismatch,
 };
 
 fn kasimir(state: SessionState, last_seq: u64) -> SessionInfo {
@@ -422,21 +422,24 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                             session: "kasimir".into(),
                             state: MemberState::Joined,
                             detail: None,
+                            rank: Some(PartyRank::Front),
                         },
                         MemberStatus {
                             session: "isolde".into(),
                             state: MemberState::Joined,
                             detail: None,
+                            rank: Some(PartyRank::Back),
                         },
                         MemberStatus {
                             session: "brynja".into(),
                             state: MemberState::NotJoined,
                             detail: Some("in another room".into()),
+                            rank: None,
                         },
                     ],
                 }],
             },
-            r#"{"type":"parties","parties":[{"party":{"id":"party-1","leader":"kasimir","followers":["isolde","brynja"]},"members":[{"session":"kasimir","state":"joined"},{"session":"isolde","state":"joined"},{"session":"brynja","state":"not_joined","detail":"in another room"}]}]}"#,
+            r#"{"type":"parties","parties":[{"party":{"id":"party-1","leader":"kasimir","followers":["isolde","brynja"]},"members":[{"session":"kasimir","state":"joined","rank":"front"},{"session":"isolde","state":"joined","rank":"back"},{"session":"brynja","state":"not_joined","detail":"in another room"}]}]}"#,
         ),
         (
             ToGateway::Blessings {

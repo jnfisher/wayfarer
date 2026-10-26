@@ -616,6 +616,15 @@ pub enum MemberState {
     Unreachable,
 }
 
+/// A party member's place in the battle line (`party.rank`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum PartyRank {
+    Front,
+    Mid,
+    Back,
+}
+
 /// One member's state in a `parties` message (the leader is a member too).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct MemberStatus {
@@ -624,6 +633,10 @@ pub struct MemberStatus {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub detail: Option<String>,
+    /// Its rank as the leader's last `par` showed it, while it is in the party in the game.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub rank: Option<PartyRank>,
 }
 
 /// A party and how each member stands.

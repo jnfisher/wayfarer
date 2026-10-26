@@ -194,7 +194,7 @@ to every UI. It relays by message type and never reads `fields` or `patch`.
 {"type":"spell_plan","session":"kasimir","cash":520,"items":[{"spell":"mend","spell_level":3,"scroll":"scroll of mend","shop":"Newhaven Spell Shop","map":1,"room":2144,"price":800,"steps":12,"usable":true,"affordable":false}]}
 {"type":"settings","session":"kasimir","layer":"character","files":[{"layer":"mine","path":"/data/settings.toml","exists":false},{"layer":"character","path":"/data/characters/kasimir.toml","exists":true}],"rows":[{"key":"health.flee_below_hp","label":"Flee below","help":"Leave the fight and run when HP falls below this.","group":"health","tier":"essential","kind":{"kind":"int","min":0,"max":90},"unit":"%","default":25,"value":35,"source":"character","own":35,"megamud":"HP Run If Below"}]}
 {"type":"found","session":"kasimir","query":"chief","results":[{"kind":"monster","name":"minotaur chieftain","rooms":[{"map":1,"room":1865,"name":"Large Wooden Room","steps":46,"boss":true}],"count":1,"monsters":["minotaur chieftain"]}]}
-{"type":"parties","parties":[{"party":{"id":"party-1","leader":"kasimir","followers":["isolde","brynja"]},"members":[{"session":"kasimir","state":"joined"},{"session":"isolde","state":"joined"},{"session":"brynja","state":"not_joined","detail":"in another room"}]}]}
+{"type":"parties","parties":[{"party":{"id":"party-1","leader":"kasimir","followers":["isolde","brynja"]},"members":[{"session":"kasimir","state":"joined","rank":"front"},{"session":"isolde","state":"joined","rank":"back"},{"session":"brynja","state":"not_joined","detail":"in another room"}]}]}
 {"type":"blessings","characters":[{"session":"isolde","spells":[{"short":"bles","name":"bless","mana":4,"chosen":true,"on":true},{"short":"aura","name":"holy aura","mana":15,"chosen":false,"on":false}]}]}
 ```
 
@@ -268,7 +268,9 @@ anywhere), then the nearer, then places before monsters before room names.
 
 The parties ([brain.md](brain.md) "Parties"), sent to every UI when one changes and when a
 member's state does: `parties` is `[{party, members}]`, `party` as `party_save` takes it (with
-its `id`), `members` the leader first and then each follower, `{session, state, detail?}`.
+its `id`), `members` the leader first and then each follower, `{session, state, detail?, rank?}`.
+`rank` (`front`, `mid` or `back`) is where the leader's last `par` showed it, while it is in the
+party in the game.
 `state` is `joined` (in the leader's party in the game), `not_joined` (forming up when in the
 leader's room), `away` (logged off or its bot not running, or the leader not in the realm: not waited for),
 `separated`, `walking` (to the leader), `resting` or `unreachable` (`detail` says why).

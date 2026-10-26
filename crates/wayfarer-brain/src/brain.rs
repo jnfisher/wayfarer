@@ -834,6 +834,12 @@ impl Brain {
                 s.party_flee(&why);
             }
         }
+        for (id, note) in plan.notes {
+            if let Some(s) = self.sessions.get(&id) {
+                tracing::info!(session = %id, %note, "party rank");
+                out.push(s.party_note(&note));
+            }
+        }
         for (id, why) in plan.give_up {
             if let Some(s) = self.sessions.get_mut(&id) {
                 tracing::warn!(session = %id, %why, "party");

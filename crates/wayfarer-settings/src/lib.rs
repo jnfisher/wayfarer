@@ -408,6 +408,17 @@ pub const CATALOGUE: &[Setting] = &[
         megamud: None,
     },
     Setting {
+        key: "party.rank",
+        label: "Party rank",
+        help: "Where the character stands in its party's battle line; its bot moves it there once it has joined. Rank does not change whom monsters attack. Front adds a little to both attack and defence (+5 each in this game, so it beats Mid), Mid adds nothing, Back gives up 10 attack for 15 defence: for a caster or healer that seldom swings. The game puts the leader in front and never lets it go back, keeps someone in front, and does not let the back outnumber the front.",
+        kind: Kind::Choice(&["front", "mid", "back"]),
+        default: Value::Choice("front"),
+        unit: "",
+        tier: Tier::Standard,
+        group: Group::Party,
+        megamud: Some("Party Rank"),
+    },
+    Setting {
         key: "party.help_bash",
         label: "Help the leader bash doors",
         help: "A follower in the leader's room bashes the locked door the leader is bashing, out of a fight, until it gives way: each bash is its own roll on Strength, so more bashers open it sooner. A bash costs a moment and now and then a few HP.",
