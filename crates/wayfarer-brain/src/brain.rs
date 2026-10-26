@@ -103,6 +103,8 @@ impl Atlas {
         } else {
             knowledge
         };
+        // The stretches of paths that open a sealed hidden exit from elsewhere and go through.
+        graph.learn_windows(&knowledge);
         let shops: HashMap<i64, i64> = pack.shop_types()?.into_iter().collect();
         let mut kinds = HashMap::new();
         for n in graph.nodes() {

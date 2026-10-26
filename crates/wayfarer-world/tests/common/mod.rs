@@ -1,5 +1,6 @@
 //! The pack built from `tests/fixtures/world` and the MegaMud paths in `tests/fixtures/megamud`
-//! and `tests/fixtures/megamud-crossings` (C-052), shared by the tests that read one.
+//! and `tests/fixtures/megamud-crossings` (C-052) and `tests/fixtures/megamud-windows` (path
+//! windows), shared by the tests that read one.
 
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
@@ -21,11 +22,15 @@ pub fn pack_path() -> &'static Path {
     PATH.get_or_init(|| {
         let export = repo("tests/fixtures/world");
         let mut manifest = std::fs::read(export.join("MANIFEST.json")).unwrap();
-        let mut files: Vec<_> = ["tests/fixtures/megamud", "tests/fixtures/megamud-crossings"]
-            .iter()
-            .flat_map(|d| std::fs::read_dir(repo(d).join("Default")).unwrap())
-            .map(|e| e.unwrap().path())
-            .collect();
+        let mut files: Vec<_> = [
+            "tests/fixtures/megamud",
+            "tests/fixtures/megamud-crossings",
+            "tests/fixtures/megamud-windows",
+        ]
+        .iter()
+        .flat_map(|d| std::fs::read_dir(repo(d).join("Default")).unwrap())
+        .map(|e| e.unwrap().path())
+        .collect();
         files.sort_by_key(|f| f.file_name().map(ToOwned::to_owned));
         for f in &files {
             manifest.extend(std::fs::read(f).unwrap());
