@@ -15,6 +15,6 @@ name: string,
  */
 to: RoomKey, 
 /**
- * A Go to asked with `fight` off: on the way it fights only what attacks it.
+ * A Go to with `fight` off: it fights nothing on the way.
  */
 passive?: boolean, };

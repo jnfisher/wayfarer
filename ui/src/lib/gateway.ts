@@ -207,6 +207,11 @@ export class GatewayClient {
     return this.send(msg);
   }
 
+  /** Whether the Go to under way fights on the way, from now; false when not connected. */
+  journeyFight(session: string, fight: boolean): boolean {
+    return this.send({ type: "journey_fight", session, fight });
+  }
+
   /** Find rooms, places and monsters by part of a name (a `found` answers); false when not
    * connected or the query is too short. */
   find(session: string, query: string): boolean {

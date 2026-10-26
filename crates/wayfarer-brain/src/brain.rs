@@ -550,6 +550,10 @@ impl Brain {
                 Some(s) => s.walk_to((map, room), stop_short, fight, now, out),
                 None => out.push(no_session("walk_to", &session)),
             },
+            ToClient::JourneyFight { session, fight } => match self.sessions.get_mut(&session) {
+                Some(s) => s.journey_fight(fight, now, out),
+                None => out.push(no_session("journey_fight", &session)),
+            },
             ToClient::Find { session, query } => match self.sessions.get(&session) {
                 Some(s) => s.find(&query, out),
                 None => out.push(no_session("find", &session)),

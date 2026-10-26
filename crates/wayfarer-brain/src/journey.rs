@@ -2,9 +2,9 @@
 //! to (`walk_to`) has one stop; a loop walked once (`walk_loop`) has the loop's stops from the
 //! one nearest the character round to it again. Like Task, it sits below Flee, Recover and
 //! Fight: the bot fights on the way and walks on from wherever the fight left it. A *passive*
-//! one (a Go to with `fight` off) attacks nothing on the way: Fight takes only what attacks
-//! the character. At the last stop the journey is over and the bot plays there, with that room
-//! as its home.
+//! Go to (`fight` off, which `journey_fight` can change on the way) fights nothing on the way,
+//! not even what attacks the character: it walks on, and Flee still runs under the flee line.
+//! At the last stop the journey is over and the bot plays there, with that room as its home.
 //!
 //! A walk the session stopped (a fight, a sneak to make again) is begun again from wherever
 //! the character is, [`LEG_TRIES`] times with no fight between; one the walker could not start
@@ -36,7 +36,7 @@ pub(crate) struct Journey {
     /// Over: arrived, or it could not get there (why).
     done: Option<Option<String>>,
     notes: Vec<String>,
-    /// Attack nothing on the way: fight only what attacks the character.
+    /// Fight nothing on the way.
     passive: bool,
 }
 
@@ -73,15 +73,24 @@ impl Journey {
         }
     }
 
-    /// The same journey, attacking nothing on the way when `passive`.
+    /// The same journey, fighting nothing on the way when `passive`.
     pub fn passive(mut self, passive: bool) -> Journey {
         self.passive = passive;
         self
     }
 
-    /// It attacks nothing on the way.
+    pub fn set_passive(&mut self, passive: bool) {
+        self.passive = passive;
+    }
+
+    /// It fights nothing on the way.
     pub fn is_passive(&self) -> bool {
         self.passive
+    }
+
+    /// A Go to, not a loop walked once.
+    pub fn is_go_to(&self) -> bool {
+        !self.looped
     }
 
     pub fn name(&self) -> &str {

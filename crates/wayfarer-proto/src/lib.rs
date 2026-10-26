@@ -410,7 +410,7 @@ pub struct Journey {
     pub name: String,
     /// Where it is walking to now.
     pub to: RoomKey,
-    /// A Go to asked with `fight` off: on the way it fights only what attacks it.
+    /// A Go to with `fight` off: it fights nothing on the way.
     #[serde(default, skip_serializing_if = "is_false")]
     #[ts(as = "Option<bool>", optional)]
     pub passive: bool,
@@ -1133,6 +1133,10 @@ pub enum ToClient {
     WalkStop {
         session: SessionId,
     },
+    JourneyFight {
+        session: SessionId,
+        fight: bool,
+    },
     MapRequest {
         session: SessionId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1349,8 +1353,8 @@ pub enum ToGateway {
     },
     /// UI → brain: walk the character to this room, confirming each step; replaces a walk in
     /// progress. `stop_short`: stop in the room before it when it is a boss lair; left out,
-    /// on for a boss lair (it changes nothing for another room). `fight`: attack monsters on
-    /// the way; off, the bot fights only what attacks it until it arrives (left out: on).
+    /// on for a boss lair (it changes nothing for another room). `fight`: fight on the way;
+    /// off, the bot fights nothing until it arrives, not even what attacks it (left out: on).
     WalkTo {
         session: SessionId,
         map: i64,
@@ -1365,6 +1369,12 @@ pub enum ToGateway {
     /// UI → brain: stop walking after the move in flight.
     WalkStop {
         session: SessionId,
+    },
+    /// UI → brain: whether the Go to under way fights on the way, from now (`walk_to`'s
+    /// `fight`, changed on the way). Nothing happens without a Go to.
+    JourneyFight {
+        session: SessionId,
+        fight: bool,
     },
     /// UI → brain: send a `map_view` now, of the rooms within `radius` steps (15 when left
     /// out; later automatic views use the same radius).
@@ -1713,6 +1723,7 @@ impl ToClient {
         "state_request",
         "walk_to",
         "walk_stop",
+        "journey_fight",
         "map_request",
         "bot_control",
         "loops_request",
@@ -1772,6 +1783,7 @@ impl ToClient {
             Self::StateRequest { .. } => "state_request",
             Self::WalkTo { .. } => "walk_to",
             Self::WalkStop { .. } => "walk_stop",
+            Self::JourneyFight { .. } => "journey_fight",
             Self::MapRequest { .. } => "map_request",
             Self::BotControl { .. } => "bot_control",
             Self::LoopsRequest { .. } => "loops_request",
@@ -1827,6 +1839,7 @@ impl ToClient {
             | Self::Resync { session }
             | Self::WalkTo { session, .. }
             | Self::WalkStop { session }
+            | Self::JourneyFight { session, .. }
             | Self::MapRequest { session, .. }
             | Self::BotControl { session, .. }
             | Self::LoopsRequest { session, .. }
@@ -1885,6 +1898,7 @@ impl ToGateway {
         "state_request",
         "walk_to",
         "walk_stop",
+        "journey_fight",
         "map_request",
         "bot_control",
         "loops_request",
@@ -1938,6 +1952,7 @@ impl ToGateway {
             Self::StateRequest { .. } => "state_request",
             Self::WalkTo { .. } => "walk_to",
             Self::WalkStop { .. } => "walk_stop",
+            Self::JourneyFight { .. } => "journey_fight",
             Self::MapRequest { .. } => "map_request",
             Self::BotControl { .. } => "bot_control",
             Self::LoopsRequest { .. } => "loops_request",
@@ -1992,6 +2007,7 @@ impl ToGateway {
             | Self::StateRequest { .. }
             | Self::WalkTo { .. }
             | Self::WalkStop { .. }
+            | Self::JourneyFight { .. }
             | Self::MapRequest { .. }
             | Self::BotControl { .. }
             | Self::LoopsRequest { .. }
@@ -2053,6 +2069,7 @@ impl ToGateway {
                 fight,
             },
             Self::WalkStop { session } => ToClient::WalkStop { session },
+            Self::JourneyFight { session, fight } => ToClient::JourneyFight { session, fight },
             Self::MapRequest { session, radius } => ToClient::MapRequest { session, radius },
             Self::BotControl { session, action } => ToClient::BotControl { session, action },
             Self::LoopsRequest {

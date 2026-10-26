@@ -51,9 +51,11 @@
     view: MapView | undefined;
     character: CharacterState | undefined;
     attached: boolean | null;
-    /** Walk there; `stopShort` false walks into a boss lair, `fight` false attacks nothing on
+    /** Walk there; `stopShort` false walks into a boss lair, `fight` false fights nothing on
      * the way (left out: the brain's defaults). */
     onwalk: (session: string, map: number, room: number, stopShort?: boolean, fight?: boolean) => void;
+    /** "fight on the way" changed: for the Go tos under way, every character's. */
+    onfightchange?: (fight: boolean) => void;
     onstop: (session: string) => void;
     /** The brain's last `loops` for it. */
     loops?: Loops;
@@ -84,6 +86,7 @@
     character,
     attached,
     onwalk,
+    onfightchange = () => {},
     onstop,
     following = null,
     loops,
@@ -114,8 +117,8 @@
       return undefined;
     }
   }
-  /** The box's "fight on the way": a Go to from it attacks monsters on the way (kept in the
-   * browser). A click on the map always does. */
+  /** "fight on the way", for every Go to (a click on the map, the go box), every character's,
+   * and the ones under way when it changes (kept in the browser). */
   let goFight = $state(loadGoFight(storage()));
   /** `walk_to`'s `fight`: left out while ticked. */
   const fightArg = $derived(goFight ? undefined : false);
@@ -123,6 +126,7 @@
   function toggleFight() {
     goFight = !goFight;
     saveGoFight(storage(), goFight);
+    onfightchange(goFight);
   }
 
   const results = $derived(
@@ -498,7 +502,7 @@
     const [x, y] = local(e);
     const room = roomAt(view, vs, x, y);
     if (room && !(room.map === view.center.map && room.room === view.center.room)) {
-      onwalk(session.id, room.map, room.room);
+      onwalk(session.id, room.map, room.room, undefined, fightArg);
     }
   }
 
@@ -578,6 +582,12 @@
       <button class="gobutton" aria-expanded={goOpen} onclick={toggleGo} title="Go to a room, a place or a monster by name (Alt+G)"
         >go</button
       >
+      <label
+        class="fight"
+        title="Whether a Go to (a click on the map or the go box) fights on the way. Unticked, it fights nothing until it arrives, not even what attacks; it runs below the flee line. Changing it changes the walks under way too."
+      >
+        <input type="checkbox" checked={goFight} onchange={toggleFight} /> fight on the way
+      </label>
       <span class="dim">level</span>
       <button aria-label="Level down" disabled={levels.indexOf(level) <= 0} onclick={() => changeLevel(-1)}>▼</button>
       <button class="gobutton" aria-expanded={loopsOpen} onclick={toggleLoops} title="Find a loop to run, near the character or anywhere you search">loops {loopsOpen ? "▾" : "▸"}</button>
@@ -605,12 +615,6 @@
           spellcheck="false"
           autocomplete="off"
         />
-        <label
-          class="fight"
-          title="Untick to walk past monsters: until it arrives, the bot fights only one that attacks the character"
-        >
-          <input type="checkbox" checked={goFight} onchange={toggleFight} /> fight on the way
-        </label>
         {#if query.trim().length === 0 && places.length > 0}
           <!-- Nothing typed: where the character died, fled and stopped, newest first. -->
           <ul aria-label="Recent places">
@@ -821,7 +825,7 @@
           >
         {/if}
         {#if character?.bot?.journey?.passive}
-          <span class="short">fighting only what attacks</span>
+          <span class="short">not fighting on the way</span>
         {/if}
         <span class="dim">step {walking.step}, {walking.steps_left} left</span>
         <button class="stop" onclick={() => onstop(session.id)}>stop</button>
@@ -909,9 +913,9 @@
   .go .walk {
     background: var(--vga-lightgreen);
   }
-  .go .fight {
-    display: block;
+  .fight {
     color: var(--dim);
+    white-space: nowrap;
   }
   .loops {
     padding: 2px 1ch;

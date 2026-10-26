@@ -487,6 +487,13 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
             r#"{"type":"walk_stop","session":"kasimir"}"#,
         ),
         (
+            ToGateway::JourneyFight {
+                session: "kasimir".into(),
+                fight: false,
+            },
+            r#"{"type":"journey_fight","session":"kasimir","fight":false}"#,
+        ),
+        (
             ToGateway::MapRequest {
                 session: "kasimir".into(),
                 radius: Some(15),
@@ -1093,12 +1100,12 @@ fn families_say_who_may_send_what() {
     for (msg, _) in to_gateway() {
         let family = msg.family();
         let want = match msg.type_name() {
-            "resync" | "state_request" | "walk_to" | "walk_stop" | "map_request"
-            | "bot_control" | "loops_request" | "walk_loop" | "run_loop" | "stats_request"
-            | "spell_plan_request" | "stats_reset" | "settings_request" | "settings_save"
-            | "save_loop" | "delete_loop" | "find" | "set_monster_rule" | "parties_request"
-            | "party_save" | "party_delete" | "party_leave" | "party_join" | "party_resync"
-            | "blessings_request" | "blessings_save" => Family::Control,
+            "resync" | "state_request" | "walk_to" | "walk_stop" | "journey_fight"
+            | "map_request" | "bot_control" | "loops_request" | "walk_loop" | "run_loop"
+            | "stats_request" | "spell_plan_request" | "stats_reset" | "settings_request"
+            | "settings_save" | "save_loop" | "delete_loop" | "find" | "set_monster_rule"
+            | "parties_request" | "party_save" | "party_delete" | "party_leave" | "party_join"
+            | "party_resync" | "blessings_request" | "blessings_save" => Family::Control,
             "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
             | "map_view" | "loops" | "stats" | "spell_plan" | "settings" | "found" | "parties"
             | "blessings" => Family::Brain,

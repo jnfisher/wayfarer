@@ -64,6 +64,7 @@ Client → gateway:
 {"type":"state_request","session":"kasimir"}
 {"type":"walk_to","session":"kasimir","map":1,"room":2150}
 {"type":"walk_stop","session":"kasimir"}
+{"type":"journey_fight","session":"kasimir","fight":false}
 {"type":"map_request","session":"kasimir","radius":15}
 {"type":"bot_control","session":"kasimir","action":"start"}
 {"type":"loops_request","session":"kasimir","radius":8}

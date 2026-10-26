@@ -215,12 +215,14 @@ and works nothing out itself.
   there as a click on the map does. A **boss lair**'s row (a room whose monster spawns one
   at a time, such as the Chieftain's) has a ticked **stop short** box: the walk stops in the
   room before the lair so you can look before going in, and the walk bar says `one room
-  short of Large Wooden Room (boss: minotaur chieftain)`. Untick it to walk in. Under the
-  box, **fight on the way** (ticked to start; the browser keeps it) says whether a Go to from
-  the box attacks monsters on the way; unticked, the bot fights only what attacks the
-  character until it arrives, and the walk bar says `fighting only what attacks`
-  ([brain.md](brain.md) "Go to"). A click on the map always fights on the way. `Esc` clears
+  short of Large Wooden Room (boss: minotaur chieftain)`. Untick it to walk in. `Esc` clears
   the box; `Esc` again closes it.
+- **Fight on the way**: the tick beside `go` on the tools line (ticked to start; the browser
+  keeps it) is for every Go to, a click on the map and the go box alike, and every character.
+  Unticked, the bot fights nothing until it arrives, not even what attacks it (it still flees
+  under its flee line), and the walk bar says `not fighting on the way`. Changing it changes
+  the Go tos already under way too (`journey_fight`): untick it mid-fight and the character
+  walks on. Once there, the bot plays and fights as usual ([brain.md](brain.md) "Go to").
 - **Connecting and logging off**: the tile's header has **[log off]** while the character is
   connected (logon, menu or realm) and **[connect]** when it is `closed` or `lost`. **log off**
   logs the character off cleanly, as the gateway does when it stops (the brain is told and stops

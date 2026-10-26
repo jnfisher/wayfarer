@@ -1566,8 +1566,8 @@ impl Session {
     }
 
     /// `walk_to`: plan a route from the believed room and start on it. `stop_short` (on when
-    /// left out): stop one room short of a boss lair. `fight` (on when left out): attack
-    /// monsters on the way; off, only what attacks the character is fought.
+    /// left out): stop one room short of a boss lair. `fight` (on when left out): fight on the
+    /// way; off, nothing is fought until it arrives, not even what attacks the character.
     pub fn walk_to(
         &mut self,
         to: Key,
@@ -2319,6 +2319,18 @@ impl Session {
 
     /// `walk_stop`: the map's `stop`, as ■ when the bot has a loop or journey: it is dropped,
     /// and a running bot plays on where it is. Any other walk just ends.
+    /// `journey_fight`: whether the Go to under way fights on the way, from now; the bot
+    /// decides again at once (a fight it was in is left for the walk).
+    pub fn journey_fight(&mut self, fight: bool, now: Instant, out: &mut Vec<ToGateway>) {
+        let says = self.bot.journey_fight(fight);
+        if says.is_empty() {
+            return;
+        }
+        self.say(says, out);
+        self.drive(now, out);
+        self.flush_views(out);
+    }
+
     pub fn walk_stop(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
         if self.bot.has_route() {
             self.bot_control(BotAction::Stop, now, out);

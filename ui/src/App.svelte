@@ -542,6 +542,9 @@
             character={focusedId ? brain.characters[focusedId] : undefined}
             attached={brain.attached}
             onwalk={(id, map, room, stopShort, fight) => client.walkTo(id, map, room, stopShort, fight)}
+            onfightchange={(fight) => {
+              for (const s of sessions) if (brain.characters[s.id]?.bot?.journey) client.journeyFight(s.id, fight);
+            }}
             found={focusedId ? foundBySession[focusedId] : undefined}
             onfind={(id, query) => client.find(id, query)}
             {goAsked}

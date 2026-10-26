@@ -261,12 +261,15 @@ for the map panel's go box (`docs/web-ui.md`, "The map").
   walk the walker cannot start (no route) or gives up by itself (lost, a door that will not
   open) ends the journey: "Not going to Burning Valley: the walk stopped; playing here". The
   snapshot's `bot.journey` says where it goes (`{name, to}`). See "The bot's states".
-- **Passing monsters by.** `walk_to` with `fight: false` (the go box's *fight on the way*
-  unticked) makes the journey *passive*: on the way the bot attacks nothing, and Fight takes
-  only a monster that attacks the character (as *never fight* does), after which it walks on.
-  Flee and Recover work as ever; the walk does not stop for a monster it would not attack.
-  Narrated "Going to Newhaven, Arena, fighting only what attacks"; `bot.journey.passive` is
-  set. Once it arrives the journey is over and the bot plays there as after any Go to.
+- **Passing monsters by.** `walk_to` with `fight: false` (the map panel's *fight on the way*
+  unticked) makes the journey *passive*: on the way the bot fights nothing, not even a monster
+  that attacks the character; it walks on, and the walk does not stop for one. Flee still runs
+  under the flee line (and from a *flee from* monster), and Recover does not rest while the
+  character is attacked. Narrated "Going to Newhaven, Arena, fighting nothing on the way";
+  `bot.journey.passive` is set. `journey_fight` changes it on the way: off in the middle of a
+  fight, the bot walks out of it; on, it fights from the next room (or here, once it looks).
+  A loop walked once always fights. Once it arrives the journey is over and the bot plays
+  there, fighting, as after any Go to.
 
 **The guard** lives in the executor every action goes through, so nothing the bot ever does can
 break it: never `train stats` (`docs/plan/01-goals.md` "Rules").

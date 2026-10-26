@@ -447,13 +447,19 @@ describe("the go box", () => {
     expect(onwalk).toHaveBeenLastCalledWith("aria", 1, 20, undefined, undefined);
   });
 
-  it("walks past monsters with 'fight on the way' unticked, and remembers it", async () => {
+  it("walks past monsters with 'fight on the way' unticked, says so at once, and remembers it", async () => {
     try {
-      const { onwalk } = mount({ character: here, found: chiefFound, goAsked: 2 });
+      const onfightchange = vi.fn();
+      // On the tools line, with the go box shut: it is for every Go to.
+      mount({ character: here, onfightchange });
+      const tick = screen.getByRole("checkbox", { name: "fight on the way" }) as HTMLInputElement;
+      expect(tick.checked).toBe(true);
+      cleanup();
+      const { onwalk } = mount({ character: here, found: chiefFound, goAsked: 2, onfightchange });
       const input = await typeIn("chief");
       const fight = screen.getByRole("checkbox", { name: "fight on the way" }) as HTMLInputElement;
-      expect(fight.checked).toBe(true);
       await fireEvent.click(fight);
+      expect(onfightchange).toHaveBeenCalledExactlyOnceWith(false);
       await fireEvent.keyDown(input, { key: "Enter" });
       expect(onwalk).toHaveBeenLastCalledWith("aria", 1, 11, true, false);
       expect(localStorage.getItem(GO_FIGHT_KEY)).toBe("off");
@@ -466,7 +472,7 @@ describe("the go box", () => {
     }
   });
 
-  it("says on the walk bar when the Go to fights only what attacks", () => {
+  it("says on the walk bar when the Go to does not fight on the way", () => {
     const walking = { to: { map: 1, room: 11 }, name: "Large Wooden Room", steps_left: 1, step: 1, commands: ["e"] };
     const bot = {
       state: "running",
@@ -476,7 +482,7 @@ describe("the go box", () => {
       monster_rules: [],
     };
     mount({ character: { ...here, walking, bot } as never });
-    expect(screen.getByLabelText("Walk").textContent).toContain("fighting only what attacks");
+    expect(screen.getByLabelText("Walk").textContent).toContain("not fighting on the way");
   });
 
   it("opens a result onto its rooms; one with no route cannot be walked to", async () => {

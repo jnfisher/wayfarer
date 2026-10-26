@@ -212,11 +212,13 @@ describe("handshake", () => {
     expect(r.client.walkTo("kasimir", 1, 1865)).toBe(true);
     expect(r.client.walkTo("kasimir", 1, 1865, false)).toBe(true);
     expect(r.client.walkTo("kasimir", 1, 2150, undefined, false)).toBe(true);
-    expect(r.last().sent.slice(-4)).toEqual([
+    expect(r.client.journeyFight("kasimir", true)).toBe(true);
+    expect(r.last().sent.slice(-5)).toEqual([
       { type: "find", session: "kasimir", query: "chief" },
       { type: "walk_to", session: "kasimir", map: 1, room: 1865 },
       { type: "walk_to", session: "kasimir", map: 1, room: 1865, stop_short: false },
       { type: "walk_to", session: "kasimir", map: 1, room: 2150, fight: false },
+      { type: "journey_fight", session: "kasimir", fight: true },
     ]);
   });
 

@@ -95,7 +95,7 @@ pub(crate) struct Fight {
     backstab: bool,
     /// Believed sneaking: the backstab goes before an attack spell.
     sneaking: bool,
-    /// On a passive Go to: only what attacks the character is fought.
+    /// On a passive Go to: nothing is fought, not even what attacks the character.
     passive: bool,
 }
 
@@ -125,6 +125,9 @@ pub(crate) fn cast_step(cast: &PartyCast, mode: &str) -> Step {
 
 impl Mode for Fight {
     fn wants(&self, v: &View) -> Option<String> {
+        if self.passive {
+            return None;
+        }
         if v.engaged {
             return Some("in combat".to_owned());
         }
@@ -373,21 +376,19 @@ impl Fight {
         {
             return Some(name);
         }
-        self.pick(v.atlas, v.rules, v.presence, self.passive)
+        self.pick(v.atlas, v.rules, v.presence)
     }
 
-    /// What to attack; `passive`: only a monster attacking the character.
     fn pick<'a>(
         &self,
         atlas: &Atlas,
         rules: &MonsterRules,
         presence: &'a Presence,
-        passive: bool,
     ) -> Option<&'a str> {
         target(
             &atlas.monsters,
             rules,
-            if passive { &[] } else { &presence.here },
+            &presence.here,
             &presence.attackers,
             &self.skip,
             self.cornered,
@@ -395,18 +396,12 @@ impl Fight {
     }
 
     /// Whether it would take the character with `presence` in the room: a monster it would
-    /// attack (`passive`: none but an attacker), or anything attacking.
-    pub fn would_fight(
-        &self,
-        atlas: &Atlas,
-        rules: &MonsterRules,
-        presence: &Presence,
-        passive: bool,
-    ) -> bool {
-        !presence.attackers.is_empty() || self.pick(atlas, rules, presence, passive).is_some()
+    /// attack, or anything attacking.
+    pub fn would_fight(&self, atlas: &Atlas, rules: &MonsterRules, presence: &Presence) -> bool {
+        !presence.attackers.is_empty() || self.pick(atlas, rules, presence).is_some()
     }
 
-    /// On a passive Go to (`true`): attack only what attacks the character.
+    /// On a passive Go to (`true`): fight nothing, not even what attacks the character.
     pub fn set_passive(&mut self, passive: bool) {
         self.passive = passive;
     }
