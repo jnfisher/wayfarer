@@ -65,19 +65,22 @@ impl Recover {
         self.home.is_some() && v.room != self.home
     }
 
+    /// Poison neither starts a rest nor holds one: it lasts until a cure or death, resting
+    /// does not end it, and its few HP a tick count against the HP lines like any other
+    /// damage (John, 2026-10-26: Penny rested at full HP for good after a forest spider's bite).
     fn low(v: &View) -> bool {
-        v.hp.is_some_and(|hp| hp < v.rest_below()) || v.poisoned || v.mana_low()
+        v.hp.is_some_and(|hp| hp < v.rest_below()) || v.mana_low()
     }
 
     fn rested(v: &View) -> bool {
-        !v.hp.is_some_and(|hp| hp < v.rest_until()) && !v.poisoned && v.mana_restored()
+        !v.hp.is_some_and(|hp| hp < v.rest_until()) && v.mana_restored()
     }
 
     /// A heal on the character, between fights: while HP is below the rest line, a heal
     /// spell and its mana are there, and not too many have gone. Resting waits for it.
     fn heal(&mut self, v: &View) -> Option<Step> {
         let below = v.own_heal_below();
-        if v.poisoned || below == 0 || v.hp? >= below {
+        if below == 0 || v.hp? >= below {
             return None;
         }
         let spell = v.heal_spell()?;
@@ -152,7 +155,6 @@ impl Mode for Recover {
         if Self::low(v) {
             return Some(match v.hp {
                 Some(hp) if hp < v.rest_below() => format!("HP {hp}%"),
-                _ if v.poisoned => "poisoned".to_owned(),
                 _ => format!("mana {}%", v.mana_percent().unwrap_or(0)),
             });
         }

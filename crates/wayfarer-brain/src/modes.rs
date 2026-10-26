@@ -195,7 +195,6 @@ pub(crate) struct View<'a> {
     /// In combat, or not known to be out of it.
     pub engaged: bool,
     pub resting: bool,
-    pub poisoned: bool,
     /// The believed room, and whether the belief is sure of it.
     pub room: Option<Key>,
     pub certain: bool,
