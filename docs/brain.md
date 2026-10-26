@@ -1125,7 +1125,9 @@ scroll read since is found the next time.
   highest average damage at the character's level (`minval + mininc*L/minlvls` to `maxval +
   maxinc*L/maxlvls`, `L` held to the level cap), the cheaper of two equal. Out of combat the
   spell engages and auto-combat casts it every round (`kb/spells.md`); when the mana runs short
-  the game falls back to melee itself. A cast the game refuses (`You do not have enough mana`,
+  the game falls back to melee itself. The mana line holds in the fight too: when a round's
+  prompt shows the mana at `spells.attack_mana_above` or below, Fight sends the attack command
+  at the same monster ("Fight: mana 40%, now the weapon"), as after the casts per monster. A cast the game refuses (`You do not have enough mana`,
   `You have already cast a spell this round!`) is not the target's fault: the fight uses the
   weapon for 12 s.
 - **Casts per monster.** `spells.max_casts_per_monster` (0, the default, is no limit) caps the
