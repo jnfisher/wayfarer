@@ -3,7 +3,7 @@
 //! its kills, deaths, flees, rests and level-ups, and a sample of exp and HP every minute. The
 //! numbers of the run in progress are also kept here, for the snapshot's `run`. Without a store
 //! the run is still counted, in memory only. The combat numbers (C-050) live here too, across
-//! runs, until the player resets them.
+//! runs, until the player resets them; and where the run's time goes, with the run.
 
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -17,6 +17,7 @@ use wayfarer_world::Key;
 
 use crate::clock::{Clock, rfc3339};
 use crate::combat_stats::CombatTally;
+use crate::time_stats::{Activity, TimeTally};
 
 /// How often a run samples the character's exp and HP.
 pub const SAMPLE_EVERY: Duration = Duration::from_secs(60);
@@ -25,6 +26,8 @@ pub const STATS_RUNS: usize = 10;
 /// How long the combat numbers may change before the store gets them: a brain restart loses
 /// at most this much.
 pub const COMBAT_SAVE_EVERY: Duration = Duration::from_secs(5);
+/// How long the run's time may go uncounted in the store.
+pub const TIME_SAVE_EVERY: Duration = Duration::from_secs(30);
 /// How many places the snapshot lists.
 pub const PLACES_SHOWN: usize = 10;
 /// The shortest time a run's exp per hour is taken over, so the first kill of a run is not
@@ -77,12 +80,17 @@ pub(crate) struct Ledger {
     combat: CombatTally,
     /// When the changed combat numbers go to the store.
     combat_save: Option<Instant>,
+    /// Where the run's time went; nothing without a run.
+    time: TimeTally,
+    /// When the run's time goes to the store.
+    time_save: Option<Instant>,
 }
 
-/// A session that goes keeps its last combat numbers.
+/// A session that goes keeps its last combat numbers and its run's time.
 impl Drop for Ledger {
     fn drop(&mut self) {
         self.save_combat();
+        self.save_time(self.clock.instant());
     }
 }
 
@@ -102,6 +110,8 @@ impl Ledger {
             places: Vec::new(),
             combat: CombatTally::default(),
             combat_save: None,
+            time: TimeTally::default(),
+            time_save: None,
         };
         ledger.saved = ledger.with(|s, id| s.bot(id)).flatten();
         let json = ledger.with(|s, id| s.combat_stats(id)).flatten();
@@ -245,6 +255,11 @@ impl Ledger {
             }
             None => None,
         };
+        self.time = TimeTally::load(
+            run.as_ref()
+                .and_then(|(r, _)| self.with(|s, _| s.run_time(r.id)).flatten())
+                .as_deref(),
+        );
         self.run = Some(match run {
             Some((run, totals)) => OpenRun {
                 id: run.id,
@@ -283,6 +298,8 @@ impl Ledger {
         self.with(|s, id| s.save_bot(id, &bot, at));
         let mut changed = false;
         if bot.state == BotState::Stopped {
+            self.save_time(now);
+            self.time = TimeTally::default();
             if self.run.take().is_some() {
                 changed = true;
             }
@@ -292,6 +309,7 @@ impl Ledger {
             self.stats = None;
         } else if self.run.is_none() {
             self.run = Some(self.start_run(at, bot.loop_id.as_deref()));
+            self.time = TimeTally::default();
             self.next_sample = Some(now + SAMPLE_EVERY);
             self.refresh();
             changed = true;
@@ -339,9 +357,13 @@ impl Ledger {
     /// End the run in progress (it stays in the history) and start another now, its numbers at
     /// zero. `false` when there is no run to reset.
     pub fn reset(&mut self, now: Instant) -> bool {
-        if self.run.take().is_none() {
+        if self.run.is_none() {
             return false;
         }
+        // The old run keeps its time; the new one counts from now, at what it is doing now.
+        self.save_time(now);
+        self.time = TimeTally::default();
+        self.run = None;
         let at = self.now();
         let loop_id = self.saved.as_ref().and_then(|b| b.loop_id.clone());
         self.with(|s, id| s.end_other_runs(id, None, at));
@@ -395,11 +417,44 @@ impl Ledger {
         }
     }
 
-    /// When the next sample, or the combat numbers' save, is due.
+    /// The character is doing `a` from `now`, for the run's time.
+    pub fn account(&mut self, a: Activity, now: Instant) {
+        if self.run.is_none() {
+            return;
+        }
+        self.time.observe(a, now);
+        if self.time.dirty() && self.time_save.is_none() {
+            self.time_save = Some(now + TIME_SAVE_EVERY);
+        }
+    }
+
+    /// The run's time up to `now` for the `stats` message; `None` with no run.
+    pub fn time_wire(&mut self, now: Instant) -> Option<wayfarer_proto::TimeSpent> {
+        self.run.as_ref()?;
+        self.time.flush(now);
+        Some(self.time.to_wire())
+    }
+
+    /// Save the run's time up to `now`, if it changed.
+    fn save_time(&mut self, now: Instant) {
+        self.time_save = None;
+        let Some(run) = self.run.as_ref().map(|r| r.id) else {
+            return;
+        };
+        self.time.flush(now);
+        if self.time.dirty() {
+            let (json, at) = (self.time.to_json(), self.now());
+            self.with(|s, _| s.save_run_time(run, &json, at));
+            self.time.saved();
+        }
+    }
+
+    /// When the next sample, or the combat numbers' or the time's save, is due.
     pub fn deadline(&self) -> Option<Instant> {
         self.next_sample
             .into_iter()
             .chain(self.combat_save)
+            .chain(self.time_save)
             .chain(self.combat.round_ends())
             .min()
     }
@@ -407,6 +462,9 @@ impl Ledger {
     /// Take a sample if one is due, and save the combat numbers if that is.
     pub fn sample(&mut self, exp: Option<i64>, hp: Option<i64>, now: Instant) -> bool {
         self.combat_due(now);
+        if self.time_save.is_some_and(|t| now >= t) {
+            self.save_time(now);
+        }
         let (Some(run), Some(due)) = (&self.run, self.next_sample) else {
             return false;
         };

@@ -169,7 +169,7 @@ impl Mode for Sneak {
                 self.fails = 0;
             }
             GameEvent::SpellCast { .. }
-            | GameEvent::CastFailed
+            | GameEvent::CastFailed { .. }
             | GameEvent::YouKilled
             | GameEvent::Resting { .. }
             | GameEvent::Prompt {

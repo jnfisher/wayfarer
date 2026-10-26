@@ -4,12 +4,12 @@
 
 mod game;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use game::*;
 use tokio::sync::mpsc;
 use wayfarer_brain::{Brain, ChannelLink, FixedClock, Store};
-use wayfarer_proto::{BotAction, MemberState, PartyDef, PartyStatus};
+use wayfarer_proto::{BotAction, MemberState, PartyDef, PartyRank, PartyStatus};
 
 const LEADER: &str = "penny";
 const FOLLOWER: &str = "lauren";
@@ -40,6 +40,38 @@ struct World {
     hp: BTreeMap<String, i32>,
     /// The Arena's north door is locked: the leader's bashes fail, the follower's gives way.
     locked: bool,
+    /// Each one's rank, `Midrank` when not here; inviting puts the leader in front.
+    ranks: BTreeMap<String, &'static str>,
+    /// The status screens are whole (stats, HP and mana), and the follower is a Cleric with
+    /// minor healing (2 mana, 20 of it).
+    cleric: bool,
+    /// Those whose prompts say `(Resting)`.
+    resting: BTreeSet<String>,
+}
+
+impl World {
+    fn rank(&self, session: &str) -> &'static str {
+        self.ranks.get(session).copied().unwrap_or("Midrank")
+    }
+}
+
+/// The `fight-arena` capture's whole status screen (level 1, Health 50, Willpower 40) for
+/// `session`: a Cleric with 20 mana for the follower, a Warrior for the leader.
+fn whole_status(session: &str) -> String {
+    let screen =
+        game::arena::status(35).replace("Aldric Stonebrook", &format!("{:<17}", name(session)));
+    if session != FOLLOWER {
+        return screen;
+    }
+    let hits = "Thievery:    \x1b[36m    0\r\n";
+    screen.replace("Warrior    ", "Cleric     ").replacen(
+        hits,
+        &format!(
+            "{hits}\x1b[32mMana: \x1b[36m * 20/20    \x1b[32mSpellcasting: \x1b[36m  40     \
+             \x1b[32mTraps:       \x1b[36m    0\r\n"
+        ),
+        1,
+    )
 }
 
 /// A room as `look` shows it; the Arena with nothing in it, so nobody stops to fight.
@@ -130,15 +162,58 @@ impl Gateway {
         .await;
     }
 
+    /// Game output for `session`, its prompts showing its HP and whether it rests.
+    async fn tell(&mut self, session: &str, text: &str) {
+        let t = match self.world.hp.get(session) {
+            Some(hp) => text.replace("[HP=35", &format!("[HP={hp}")),
+            None => text.to_owned(),
+        };
+        let t = if self.world.resting.contains(session) {
+            t.replace("\x1b[0;37m]:", "\x1b[0;37m (Resting) ]:")
+        } else {
+            t
+        };
+        self.output(session, t).await;
+    }
+
+    /// Act on the brain's messages for `secs` seconds of game time.
+    async fn play(&mut self, secs: u64) {
+        let wait = async {
+            loop {
+                self.next().await;
+            }
+        };
+        let _ = tokio::time::timeout(Duration::from_secs(secs), wait).await;
+    }
+
     /// The game's answer to `text` from `session`, and what the other one sees.
     fn answer(&mut self, session: &str, text: &str) -> Vec<(String, String)> {
         let other = if session == LEADER { FOLLOWER } else { LEADER };
         let me = |t: String| vec![(session.to_owned(), t)];
         match text {
+            "st" if self.world.cleric => me(whole_status(session)),
             "st" => me(format!(
                 "\x1b[0;32mName: \x1b[36m{:<25}\x1b[32mLives/CP:\x1b[36m     9/0\r\n{PROMPT}",
                 name(session)
             )),
+            "spells" if self.world.cleric && session == FOLLOWER => me(format!(
+                "You have the following spells:\r\nLevel Mana Short Spell Name\r\n  \
+                 1   2    mihe  minor healing\r\n{PROMPT}"
+            )),
+            t if t.starts_with("mihe ") => {
+                let healed = *self.world.hp.get(other).unwrap_or(&35);
+                self.world.hp.insert(other.to_owned(), (healed + 5).min(35));
+                vec![
+                    (
+                        session.to_owned(),
+                        said(&format!("You cast minor healing on {}!", first(other))),
+                    ),
+                    (
+                        other.to_owned(),
+                        said(&format!("{} casts minor healing on you!", first(session))),
+                    ),
+                ]
+            }
             "look" => me(shown(self.world.rooms[session])),
             "n" if self.world.locked && self.world.rooms[session] == ARENA => {
                 me(said("The door is closed!"))
@@ -179,8 +254,9 @@ impl Gateway {
             "par" => {
                 let row = |s: &str| {
                     format!(
-                        "  {:<30} (Witchunter)          [H:100%]   - Midrank\r\n",
-                        name(s)
+                        "  {:<30} (Witchunter)          [H:100%]   - {}\r\n",
+                        name(s),
+                        self.world.rank(s)
                     )
                 };
                 let screen = if self.world.following {
@@ -199,6 +275,7 @@ impl Gateway {
             }
             t if t.starts_with("invite ") => {
                 self.world.invited = true;
+                self.world.ranks.insert(session.to_owned(), "Frontrank");
                 vec![
                     (
                         session.to_owned(),
@@ -226,6 +303,42 @@ impl Gateway {
                     (
                         other.to_owned(),
                         said(&format!("{} started to follow you.", first(session))),
+                    ),
+                ]
+            }
+            "frontrank" | "midrank" | "backrank" => {
+                // The game's rules for two (`kb/grouping.md`): the leader never goes back, and
+                // someone stays in front.
+                let (rank, word, others) = match text {
+                    "frontrank" => ("Frontrank", "front", "front rank"),
+                    "midrank" => ("Midrank", "middle", "middle"),
+                    _ => ("Backrank", "back", "back rank"),
+                };
+                if rank == "Backrank" && session == LEADER {
+                    return me(said("You may not enter the backrank of your own party."));
+                }
+                if self.world.rank(session) == "Frontrank"
+                    && rank != "Frontrank"
+                    && self.world.rank(other) != "Frontrank"
+                {
+                    return me(said(
+                        "You are the only one in the front rank.  You may not leave.",
+                    ));
+                }
+                self.world.ranks.insert(session.to_owned(), rank);
+                vec![
+                    (
+                        session.to_owned(),
+                        said(&format!(
+                            "You have moved to the {word} ranks of your group."
+                        )),
+                    ),
+                    (
+                        other.to_owned(),
+                        said(&format!(
+                            "{} just moved to the {others} in your group.",
+                            first(session)
+                        )),
                     ),
                 ]
             }
@@ -275,11 +388,7 @@ impl Gateway {
                 let answers = self.answer(session, text);
                 for (i, (s, t)) in answers.into_iter().enumerate() {
                     let t = if i == 0 { format!("{text}\r\n{t}") } else { t };
-                    let t = match self.world.hp.get(&s) {
-                        Some(hp) => t.replace("[HP=35", &format!("[HP={hp}")),
-                        None => t,
-                    };
-                    self.output(&s, t).await;
+                    self.tell(&s, &t).await;
                 }
             }
             _ => {}
@@ -554,6 +663,129 @@ async fn a_follower_the_game_dropped_walks_back_and_joins_again() {
     assert_eq!(back[back.len() - 2..], [up.as_str(), "follow penny"]);
 }
 
+#[tokio::test(start_paused = true)]
+async fn a_resync_checks_at_once_and_forms_a_party_the_game_broke() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    formed(&mut g).await;
+    ranked(&mut g, FOLLOWER, PartyRank::Front).await;
+    // The game dropped Lauren without a word, in the same room: the next routine `par` is
+    // up to half a minute off. Out of the party, she is back at Midrank.
+    g.world.following = false;
+    g.world.ranks.remove(FOLLOWER);
+    let before = g.lines.len();
+    let at = tokio::time::Instant::now();
+    g.send(ToClient::PartyResync { party: None }).await;
+    g.until(|m| {
+        matches!(m, ToGateway::Notice { session: None, text } if text == "Re-sync: the parties are forming up again")
+            .then_some(())
+    })
+    .await;
+    g.member(FOLLOWER, MemberState::NotJoined).await;
+    g.member(FOLLOWER, MemberState::Joined).await;
+    assert!(at.elapsed() < Duration::from_secs(5), "{:?}", at.elapsed());
+    let after: Vec<_> = g.lines[before..]
+        .iter()
+        .map(|(s, l)| (s.as_str(), l.as_str()))
+        .collect();
+    assert!(after.contains(&(LEADER, "par")), "{after:?}");
+    assert!(after.contains(&(FOLLOWER, "par")), "{after:?}");
+    assert!(after.contains(&(FOLLOWER, "follow penny")), "{after:?}");
+    // And put back in her rank.
+    ranked(&mut g, FOLLOWER, PartyRank::Front).await;
+    let after: Vec<_> = g.lines[before..]
+        .iter()
+        .map(|(s, l)| (s.as_str(), l.as_str()))
+        .collect();
+    assert!(after.contains(&(FOLLOWER, "frontrank")), "{after:?}");
+    assert!(at.elapsed() < Duration::from_secs(15), "{:?}", at.elapsed());
+    // A party that is not there.
+    g.send(ToClient::PartyResync {
+        party: Some("party-9".into()),
+    })
+    .await;
+    g.until(|m| {
+        matches!(m, ToGateway::Warning { text, .. } if text.contains("no party \"party-9\""))
+            .then_some(())
+    })
+    .await;
+}
+
+/// Until a `parties` message where `session` has `rank`.
+async fn ranked(g: &mut Gateway, session: &str, rank: PartyRank) {
+    g.until(|m| match m {
+        ToGateway::Parties { parties }
+            if parties.iter().any(|p| {
+                p.members
+                    .iter()
+                    .any(|ms| ms.session == session && ms.rank == Some(rank))
+            }) =>
+        {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn each_member_takes_its_party_rank_front_by_default() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = brain(None).with_settings_dir(wayfarer_settings::SettingsDir::new(dir.path()));
+    let (mut g, _run) = Gateway::start(b).await;
+    formed(&mut g).await;
+    // Joined at Midrank, the follower moves to the front, beside the leader the invite put
+    // there.
+    ranked(&mut g, FOLLOWER, PartyRank::Front).await;
+    let leader = g.seen.iter().rev().find_map(|m| match m {
+        ToGateway::Parties { parties } => parties[0]
+            .members
+            .iter()
+            .find(|ms| ms.session == LEADER)
+            .map(|ms| ms.rank),
+        _ => None,
+    });
+    assert_eq!(leader, Some(Some(PartyRank::Front)));
+    // Set to the back on its character: it moves there.
+    g.send(ToClient::SettingsSave {
+        session: FOLLOWER.into(),
+        layer: "character".into(),
+        changes: vec![wayfarer_proto::SettingChange {
+            key: "party.rank".into(),
+            value: Some(wayfarer_proto::SettingValue::Text("back".into())),
+        }],
+    })
+    .await;
+    ranked(&mut g, FOLLOWER, PartyRank::Back).await;
+    let sent: Vec<_> = g
+        .lines
+        .iter()
+        .filter(|(_, l)| l.ends_with("rank"))
+        .map(|(s, l)| (s.as_str(), l.as_str()))
+        .collect();
+    assert_eq!(sent, [(FOLLOWER, "frontrank"), (FOLLOWER, "backrank")]);
+    // The leader set to the back: it stays in front, and its tile says why, once.
+    g.send(ToClient::SettingsSave {
+        session: LEADER.into(),
+        layer: "character".into(),
+        changes: vec![wayfarer_proto::SettingChange {
+            key: "party.rank".into(),
+            value: Some(wayfarer_proto::SettingValue::Text("back".into())),
+        }],
+    })
+    .await;
+    g.until(|m| {
+        matches!(m, ToGateway::Warning { session: Some(s), text } if s == LEADER
+            && text == "Penny stays in the front rank: a party's leader cannot go to the back rank")
+        .then_some(())
+    })
+    .await;
+    assert!(
+        !g.lines
+            .iter()
+            .any(|(s, l)| s == LEADER && l.ends_with("rank"))
+    );
+}
+
 /// A party rest has every member below its rest-until line rest (C-045): the follower at 71%
 /// (rest below 60, until 85) rests for the leader at 40%.
 #[tokio::test(start_paused = true)]
@@ -617,6 +849,7 @@ async fn a_follower_helps_the_leader_bash_a_door() {
         map: BEYOND_ARENA.0,
         room: BEYOND_ARENA.1,
         stop_short: None,
+        fight: None,
     })
     .await;
     // The leader's first `n` finds the door locked; its second goes through.
@@ -661,6 +894,7 @@ async fn a_follower_does_not_bash_with_help_off() {
         map: BEYOND_ARENA.0,
         room: BEYOND_ARENA.1,
         stop_short: None,
+        fight: None,
     })
     .await;
     g.until(|m| match m {
@@ -675,4 +909,49 @@ async fn a_follower_does_not_bash_with_help_off() {
     let bashes: Vec<_> = g.lines.iter().filter(|(_, t)| t == "bash n").collect();
     assert!(bashes.iter().all(|(s, _)| s == LEADER), "{:?}", g.lines);
     assert_eq!(bashes.len(), 3);
+}
+
+/// The follower's casts of minor healing on the leader so far.
+fn heals(g: &Gateway) -> usize {
+    g.lines
+        .iter()
+        .filter(|(s, t)| s == FOLLOWER && t == "mihe penny")
+        .count()
+}
+
+/// John on the live rig (2026-10-26): Faye, the leader, rested to 80% on her own (no party
+/// rest: she was over her rest line), and Lauren, a Cleric with her, never healed her: out of
+/// a party rest a member was healed only below the heal-a-member line (60%). A member resting
+/// on its own is healed up to its rest-until line, as in a party rest; one standing is not.
+#[tokio::test(start_paused = true)]
+async fn a_healer_heals_a_member_resting_on_its_own_up_to_its_rest_until_line() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    g.world.cleric = true;
+    formed(&mut g).await;
+    // 25 of 35 is 71%: over the leader's rest line (60) and the heal-a-member line (60), under
+    // her rest-until line (85). Standing, she is not healed.
+    g.world.hp.insert(LEADER.to_owned(), 25);
+    g.tell(LEADER, &said("Health:    25/35    [71%]")).await;
+    g.play(30).await;
+    assert_eq!(heals(&g), 0, "{:?}", g.lines);
+    // Resting: the Cleric heals her, once (5 of minor healing takes her to 30, 85%).
+    g.world.resting.insert(LEADER.to_owned());
+    g.tell(LEADER, &said("You are now resting.")).await;
+    g.until(|m| match m {
+        ToGateway::InputLine { session, text } if session == FOLLOWER && text == "mihe penny" => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+    g.play(30).await;
+    assert_eq!(heals(&g), 1, "{:?}", g.lines);
+    assert!(
+        g.seen
+            .iter()
+            .any(|m| matches!(m, ToGateway::Notice { session: Some(s), text }
+            if s == FOLLOWER && text == "Recover: casting minor healing on penny (resting)")),
+        "{:?}",
+        g.seen
+    );
 }

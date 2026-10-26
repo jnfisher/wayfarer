@@ -1,7 +1,7 @@
 // The stats tab (C-029): the brain's `stats` answer, and how its numbers are shown; the combat
-// numbers (C-050) as a table.
+// numbers (C-050) as a table; where the run's time went, and how efficient it is.
 
-import type { CombatStats, DamageRow, ExpSample, ToClient } from "../proto";
+import type { CombatStats, DamageRow, ExpSample, TimeSpent, ToClient } from "../proto";
 
 export type Stats = Extract<ToClient, { type: "stats" }>;
 
@@ -118,4 +118,87 @@ export function age(rfc3339: string, now = new Date()): string {
   if (d > 0) return `${d}d ${h}h`;
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
+}
+
+/** Seconds as "1h 18m", "12m 5s" or "45s". */
+export function duration(secs: number): string {
+  const s = Math.max(0, Math.round(secs));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return s % 60 ? `${m}m ${s % 60}s` : `${m}m`;
+  return `${s}s`;
+}
+
+/** One kind of time on the stats tab: what the character was doing, how long, and its share. */
+export interface TimeLine {
+  kind: "fight" | "flee" | "rest" | "walk" | "upkeep" | "wait" | "paused" | "away";
+  label: string;
+  secs: number;
+  /** Whole per cent of the counted time. */
+  pct: number;
+  /** The same, unrounded, for the bar's widths. */
+  share: number;
+}
+
+const TIME_KINDS: { kind: TimeLine["kind"]; label: string; title: string }[] = [
+  { kind: "fight", label: "fighting", title: "Fighting, or in combat" },
+  { kind: "flee", label: "fleeing", title: "Running away" },
+  { kind: "rest", label: "resting", title: "Resting, or waiting to rest, or healing" },
+  { kind: "walk", label: "walking", title: "Walking: the loop, a Go to, to a rest and back" },
+  { kind: "upkeep", label: "upkeep", title: "Picking up, casting blessings, sneaking" },
+  { kind: "wait", label: "waiting", title: "Nothing to do: waiting for a monster to come, or for the party" },
+  { kind: "paused", label: "paused", title: "The bot paused" },
+  { kind: "away", label: "away", title: "Out of the realm, or the connection down" },
+];
+
+/** What a kind of time means, for its row's title. */
+export function timeTitle(kind: TimeLine["kind"]): string {
+  return TIME_KINDS.find((k) => k.kind === kind)?.title ?? "";
+}
+
+/** The counted time. */
+export function counted(t: TimeSpent): number {
+  return TIME_KINDS.reduce((sum, k) => sum + t[`${k.kind}_secs`], 0);
+}
+
+/** Where the run's time went, biggest first; kinds with none left out. */
+export function timeLines(t: TimeSpent): TimeLine[] {
+  const total = counted(t);
+  if (total === 0) return [];
+  return TIME_KINDS.map(({ kind, label }) => {
+    const secs = t[`${kind}_secs`];
+    return { kind, label, secs, pct: Math.round((secs * 100) / total), share: (secs * 100) / total };
+  })
+    .filter((l) => l.secs > 0)
+    .sort((a, b) => b.secs - a.secs);
+}
+
+/** How efficient the run is, from its time and its kills and exp. */
+export interface Efficiency {
+  /** Kills an hour of the bot playing (paused and away left out); "" with no time yet. */
+  killsPerHour: string;
+  /** Exp a minute of fighting; "" with no fighting. */
+  expPerFightMinute: string;
+  /** Per kill: the time fighting, resting, and walking and waiting between kills. */
+  perKill?: { fight: string; rest: string; between: string };
+  /** The run's wall time the brain did not see (it was not running), when a minute or more. */
+  unseen?: string;
+}
+
+export function efficiency(t: TimeSpent, kills: number, exp: number, runSecs?: number): Efficiency {
+  const playing = counted(t) - t.paused_secs - t.away_secs;
+  const e: Efficiency = {
+    killsPerHour: playing > 0 ? count((kills * 3600) / playing) : "",
+    expPerFightMinute: t.fight_secs > 0 ? count((exp * 60) / t.fight_secs) : "",
+  };
+  if (kills > 0) {
+    e.perKill = {
+      fight: duration(t.fight_secs / kills),
+      rest: duration(t.rest_secs / kills),
+      between: duration((t.walk_secs + t.wait_secs) / kills),
+    };
+  }
+  if (runSecs !== undefined && runSecs - counted(t) >= 60) e.unseen = duration(runSecs - counted(t));
+  return e;
 }

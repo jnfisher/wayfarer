@@ -232,7 +232,7 @@ impl CombatTally {
             }
             // A failed cast is an attack cast's miss only in a fight: out of one it is a heal
             // or a blessing.
-            GameEvent::CastFailed | GameEvent::CastResisted if in_combat => {
+            GameEvent::CastFailed { .. } | GameEvent::CastResisted if in_combat => {
                 t.cast_misses += 1;
                 self.in_round(0, now);
             }
@@ -417,7 +417,13 @@ mod tests {
     async fn a_failed_cast_misses_only_in_a_fight() {
         let t0 = Instant::now();
         let mut c = CombatTally::load(None, 0);
-        c.event(&GameEvent::CastFailed, false, t0);
+        c.event(
+            &GameEvent::CastFailed {
+                spell: "bless".into(),
+            },
+            false,
+            t0,
+        );
         assert_eq!(c.tally().cast_misses, 0);
         c.event(&GameEvent::CastResisted, true, t0);
         c.event(

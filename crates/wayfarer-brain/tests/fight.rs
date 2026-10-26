@@ -69,6 +69,28 @@ async fn two_and_an_arrival() -> (Vec<String>, Vec<String>) {
 }
 
 #[tokio::test(start_paused = true)]
+async fn below_the_rest_line_a_monster_still_in_the_room_is_fought_before_a_rest() {
+    // Faye on the live rig (2026-10-26): her bandit died with her at 75%, under her rest
+    // line, and she rested beside the short bandit her party went on fighting. The fight is
+    // not over while a monster it would attack is here: the look after the kill goes, and the
+    // next is attacked; the rest comes when the room is clear.
+    let (mut g, run) = in_arena(&[]).await;
+    let both = ["large giant rat", "fat giant rat"];
+    start(&mut g, &both, 35).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    // 20 of 35 is 57%: under the rest line (80), over the flee line.
+    g.round("The large giant rat lunges at you!", 20).await;
+    g.expect("look", arena(&["fat giant rat"], 20));
+    g.expect("a rat", line(ENGAGED, 20));
+    g.output(&kill(20)).await;
+    g.narrated("Fight: fat giant rat").await;
+    g.round("The fat giant rat lunges at you!", 20).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "look", "a rat"]);
+}
+
+#[tokio::test(start_paused = true)]
 async fn the_next_monster_is_found_by_looking_and_an_arrival_is_attacked() {
     let (played, _) = two_and_an_arrival().await;
     assert_eq!(
@@ -101,6 +123,35 @@ async fn by_default_low_hp_rests_where_it_stands_even_in_a_room_that_spawns() {
         .await;
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "rest"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn poisoned_at_full_hp_it_fights_on_instead_of_resting() {
+    // Penny on the live rig (2026-10-26): a forest spider's poison held her resting at full HP
+    // for good. Poison lasts until a cure; only HP sends it to rest.
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 35).await;
+    g.narrated("Waiting here").await;
+    g.output(&line(
+        "Poison burns through your veins!\r\nYou feel ill.",
+        34,
+    ))
+    .await;
+    g.idle(Duration::from_secs(5)).await;
+    g.expect("a rat", line(ENGAGED, 34));
+    g.output(&line(
+        "A large giant rat creeps into the room from nowhere.",
+        34,
+    ))
+    .await;
+    g.narrated("Fight: large giant rat").await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat"]);
+    assert!(
+        !notices(&seen).iter().any(|n| n.starts_with("Recover")),
+        "{:?}",
+        notices(&seen)
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -137,6 +188,34 @@ async fn low_hp_rests_in_a_quiet_room_then_walks_back() {
         "{said:?}"
     );
     assert_eq!(as_ui_sees(&seen).position.unwrap().room, Some(ARENA.1));
+}
+
+#[tokio::test(start_paused = true)]
+async fn rested_a_monster_in_the_room_is_fought_before_the_walk_home() {
+    // Faye on the live rig (2026-10-26): rested, Recover walked her home past bandits her
+    // party stopped to fight; the walker stopped for them and Recover walked on at once. The
+    // rest is over: a monster it would attack comes before the walk back.
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 20).await;
+    g.expect("u", at_hp(&room(NARROW_ROAD), 20));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
+        .await;
+    for hp in [24, 28] {
+        g.output(&resting(hp)).await;
+        g.idle(Duration::from_secs(20)).await;
+    }
+    // Rested, with a rat in the room that has not attacked.
+    g.expect("a rat", line(ENGAGED, 31));
+    g.output(&format!(
+        "\x1b[79D\x1b[KA thin giant rat creeps into the room from nowhere.\r\n{}",
+        resting(31)
+    ))
+    .await;
+    g.narrated("Fight: thin giant rat").await;
+    g.round("The thin giant rat lunges at you!", 31).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u", "rest", "a rat"]);
 }
 
 #[tokio::test(start_paused = true)]
@@ -210,6 +289,34 @@ async fn a_monster_that_attacks_while_resting_wakes_fight() {
         .await;
     g.narrated("Fight: thin giant rat").await;
     g.round("The thin giant rat lunges at you!", 21).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u", "rest", "a rat"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_rest_that_ended_beside_a_monster_is_not_taken_up_again_before_the_fight() {
+    // John on the live rig (2026-10-26): Faye, resting, typed `rest` again and again beside a
+    // warlock bandit her party was fighting ("Faye stops to rest."), her rest ending each time.
+    // A rest under way goes on when a monster walks in; once it ends with the monster still
+    // here, a new one waits for the fight, as any rest does.
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 20).await;
+    g.expect("u", at_hp(&room(NARROW_ROAD), 20));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
+        .await;
+    g.output(&format!(
+        "\x1b[79D\x1b[KA thin giant rat creeps into the room from nowhere.\r\n{}",
+        resting(22)
+    ))
+    .await;
+    g.idle(Duration::from_secs(5)).await;
+    // The rest ends (the prompt lacks `(Resting)`), at 23 of 35, 65%: over the rest line,
+    // under the rest-until line.
+    g.expect("a rat", line(ENGAGED, 23));
+    g.output(&prompt(23)).await;
+    g.narrated("Fight: thin giant rat").await;
+    g.round("The thin giant rat lunges at you!", 23).await;
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "u", "rest", "a rat"]);
 }
@@ -401,6 +508,87 @@ async fn a_go_to_keeps_the_bot_on_and_it_plays_where_it_arrives() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_go_to_without_fighting_walks_past_a_monster() {
+    let (mut g, run) = in_arena(&["large giant rat"]).await;
+    g.expect("st", status(35));
+    g.expect("look", arena(&["large giant rat"], 35));
+    g.expect("u", room(NARROW_ROAD));
+    g.walk_to_with(NARROW_ROAD, None, Some(false)).await;
+    g.narrated("Going to Newhaven, Narrow Road, fighting nothing on the way: re-syncing")
+        .await;
+    g.narrated("Arrived: Newhaven, Narrow Road").await;
+    g.idle(Duration::from_secs(30)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u"]);
+    let b = bot(&seen);
+    assert_eq!((b.state, b.journey), (BotState::Running, None));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_go_to_without_fighting_does_not_fight_back() {
+    let (mut g, run) = in_arena(&["large giant rat"]).await;
+    g.expect("st", status(35));
+    g.expect(
+        "look",
+        arena(&["large giant rat"], 35) + &line("The large giant rat lunges at you!", 33),
+    );
+    g.expect("u", room(NARROW_ROAD));
+    g.walk_to_with(NARROW_ROAD, None, Some(false)).await;
+    g.narrated("Arrived: Newhaven, Narrow Road").await;
+    g.idle(Duration::from_secs(30)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn fighting_on_the_way_can_be_turned_on_mid_walk() {
+    let (mut g, run) = in_arena(&["large giant rat"]).await;
+    g.expect("st", status(35));
+    g.expect("look", arena(&["large giant rat"], 35));
+    g.after_cmd = Some((
+        "st".into(),
+        ToClient::JourneyFight {
+            session: ID.into(),
+            fight: true,
+        },
+    ));
+    g.expect("a rat", line(ENGAGED, 35));
+    g.walk_to_with(NARROW_ROAD, None, Some(false)).await;
+    g.narrated("Going to Newhaven, Narrow Road: fighting on the way")
+        .await;
+    g.narrated("Fight: large giant rat").await;
+    g.expect("look", arena(&[], 35));
+    g.expect("u", room(NARROW_ROAD));
+    g.output(&kill(35)).await;
+    g.narrated("Arrived: Newhaven, Narrow Road").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "look", "u"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn fighting_on_the_way_turned_off_mid_fight_walks_on() {
+    let (mut g, run) = in_arena(&["large giant rat"]).await;
+    g.expect("st", status(35));
+    g.expect("look", arena(&["large giant rat"], 35));
+    g.expect("a rat", line(ENGAGED, 35));
+    g.after_cmd = Some((
+        "a rat".into(),
+        ToClient::JourneyFight {
+            session: ID.into(),
+            fight: false,
+        },
+    ));
+    g.expect("u", room(NARROW_ROAD));
+    g.walk_to(NARROW_ROAD).await;
+    g.narrated("Going to Newhaven, Narrow Road: fighting nothing on the way")
+        .await;
+    g.narrated("Arrived: Newhaven, Narrow Road").await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "u"]);
+    assert_eq!(bot(&seen).journey, None);
+}
+
+#[tokio::test(start_paused = true)]
 async fn walk_to_while_the_bots_look_is_in_flight_walks_once_it_is_answered() {
     // Seen live: the player asked for a walk while the bot's `look` after a kill was out. The
     // walk's first step waits for that answer (one action at a time), then goes.
@@ -415,6 +603,7 @@ async fn walk_to_while_the_bots_look_is_in_flight_walks_once_it_is_answered() {
             map: NARROW_ROAD.0,
             room: NARROW_ROAD.1,
             stop_short: None,
+            fight: None,
         },
     ));
     g.expect("look", arena(&[], 35));

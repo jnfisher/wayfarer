@@ -12,6 +12,10 @@
 //! up at once, with no `bash`. A route through a Hidden exit not showing in the room's exits
 //! line searches for it first (`search <dir>`) until it is found, up to [`MAX_SEARCHES`] times.
 //!
+//! A route through a path window (a stretch of a MegaMud path that opens a sealed Hidden exit
+//! from elsewhere, `wayfarer_world::Window`) has its steps in place: a phrase on the way (`pull
+//! lever`) is typed and its prompt awaited, and the sealed exit is walked without a search.
+//!
 //! A route through an Item or Key exit whose item a shop sells goes by the shop when that is the
 //! only or the shorter way ([`route_buying`]): there the walker sends `buy <item>` and goes on. A
 //! one-charge item (a room ticket) is used up by its exit, so it is no longer counted as carried.
@@ -86,7 +90,10 @@ enum Doing {
     /// `use <key>` at a Key exit the character holds the key of.
     UseKey,
     Search,
-    /// `look` after a search that found nothing: is the exit showing after all?
+    /// A phrase that takes a block off a blocked Hidden exit (`Step::unblock`).
+    Unblock,
+    /// `look` after a search that found nothing, or a blocked exit's phrases: is the exit
+    /// showing?
     Recheck,
     Look,
     /// `look` after a room command or a crossing's phrase (C-055): a teleport shows no room
@@ -115,6 +122,8 @@ struct Walk {
     searches: u32,
     /// The step in progress's hidden exit was found by a search: move.
     searched: bool,
+    /// The phrases of the step in progress's blocked hidden exit typed so far.
+    typed: usize,
     relocations: u32,
     replans: u32,
     /// Rooms that were not the one the route expected.
@@ -452,6 +461,7 @@ impl Walker {
             key: None,
             searches: 0,
             searched: false,
+            typed: 0,
             relocations: 0,
             replans: 0,
             drifts: 0,
@@ -538,6 +548,15 @@ impl Walker {
             (Doing::Move, Outcome::Confirmed(Confirmed::Prompt)) if step.exit_type.is_command() => {
                 Ok(Doing::Arrive)
             }
+            // A path window's phrase on the way (`pull lever`): typed, its prompt came, and the
+            // character stays where it is.
+            (Doing::Move, Outcome::Confirmed(Confirmed::Prompt))
+                if step.exit_type == ExitType::RemoteAction =>
+            {
+                w.advance();
+                advanced = true;
+                Ok(Doing::Move)
+            }
             (Doing::Move | Doing::Arrive, Outcome::Confirmed(Confirmed::Room)) => {
                 if seen.unwrap_or(&pos.belief).contains(step.to) {
                     // A one-charge item (a room ticket) stays in the exit's box.
@@ -548,12 +567,7 @@ impl Walker {
                         pos.traveller.items.remove(&item);
                         pos.traveller.keys.remove(&item);
                     }
-                    w.next += 1;
-                    w.confirmed += 1;
-                    w.bashes = 0;
-                    w.key_tries = 0;
-                    w.searches = 0;
-                    w.searched = false;
+                    w.advance();
                     advanced = true;
                     if w.next == w.route.len() {
                         let (arrival, to) = (w.arrival(), w.to);
@@ -682,6 +696,21 @@ impl Walker {
                     w.replan(pos, atlas, &mut next, &why)
                 }
             }
+            (Doing::Unblock, Outcome::Confirmed(Confirmed::Prompt)) => {
+                if w.typed < step.unblock.len() {
+                    Ok(Doing::Unblock)
+                } else {
+                    Ok(Doing::Recheck)
+                }
+            }
+            // A blocked exit its phrases left shut: not tried again this walk.
+            (Doing::Recheck, Outcome::Confirmed(Confirmed::Room))
+                if !step.unblock.is_empty() && !pos.showing(step.from, step.dir) =>
+            {
+                pos.block(step.from, step.dir);
+                let why = format!("the hidden exit {} did not open", dir_name(step.dir));
+                w.replan(pos, atlas, &mut next, &why)
+            }
             // Showing: move; else search again (`after`, `Walk::first`).
             (Doing::Recheck, Outcome::Confirmed(Confirmed::Room)) => Ok(Doing::Move),
             (Doing::Look, Outcome::Confirmed(Confirmed::Room)) => {
@@ -719,6 +748,12 @@ impl Walker {
             Err(why) => {
                 self.end(&mut next, Say::Warning(format!("Stopped walking: {why}")));
                 self.then_start(pos, atlas, next)
+            }
+            // A phrase that went: where it took the character is looked at before the walk
+            // stops, or the position is lost (a teleport shows no room).
+            Ok(Doing::Arrive) if w.stopping.is_some() => {
+                next.action = Some(w.send(Doing::Arrive));
+                next
             }
             Ok(_) if w.stopping.is_some() => {
                 let why = w.stopping.take().expect("stopping");
@@ -759,6 +794,17 @@ impl Walker {
 }
 
 impl Walk {
+    /// The step in progress is done: on to the next.
+    fn advance(&mut self) {
+        self.next += 1;
+        self.confirmed += 1;
+        self.bashes = 0;
+        self.key_tries = 0;
+        self.searches = 0;
+        self.searched = false;
+        self.typed = 0;
+    }
+
     /// What the walk says when it ends in its destination.
     fn arrival(&self) -> String {
         match &self.short_of {
@@ -774,8 +820,27 @@ impl Walk {
             return Doing::Buy;
         }
         let s = &self.route[self.next];
-        if s.exit_type != ExitType::Hidden || self.searched || pos.showing(s.from, s.dir) {
+        if s.exit_type == ExitType::RemoteAction {
+            next.notice(format!("Typing `{}` to open the way ahead", s.command));
             return Doing::Move;
+        }
+        if s.exit_type != ExitType::Hidden
+            || s.passable
+            || self.searched
+            || pos.showing(s.from, s.dir)
+        {
+            return Doing::Move;
+        }
+        // Blocked, not hidden: no search finds it, its room's phrases open it.
+        if !s.unblock.is_empty() {
+            if self.typed == 0 {
+                next.notice(format!(
+                    "Opening the hidden exit {}: {}",
+                    dir_name(s.dir),
+                    s.unblock.join(", ")
+                ));
+            }
+            return Doing::Unblock;
         }
         if self.searches == 0 {
             next.notice(format!("Searching for the hidden exit {}", dir_name(s.dir)));
@@ -815,6 +880,11 @@ impl Walk {
     /// The action for `doing` at the step in progress.
     fn send(&mut self, doing: Doing) -> Action {
         self.doing = doing;
+        if doing == Doing::Unblock {
+            let phrase = self.route[self.next].unblock[self.typed].clone();
+            self.typed += 1;
+            return Action::new(phrase, Expect::Prompt);
+        }
         let step = &self.route[self.next];
         // A room command or a crossing has no direction; only doors are opened by one.
         let dir = mm::DIRS
@@ -822,6 +892,10 @@ impl Walk {
             .copied()
             .unwrap_or_default();
         match doing {
+            // A path window's phrase on the way: its prompt; the character stays.
+            Doing::Move if step.exit_type == ExitType::RemoteAction => {
+                Action::new(step.command.clone(), Expect::Prompt)
+            }
             // A room command or a crossing: its prompt, then a look (`Doing::Arrive`).
             Doing::Move if step.exit_type.is_command() => {
                 Action::new(step.command.clone(), Expect::Prompt)
@@ -838,6 +912,7 @@ impl Walk {
                 Action::new(format!("bash {dir}"), Expect::BashResult)
             }
             Doing::Search => Action::new(format!("search {dir}"), Expect::SearchResult),
+            Doing::Unblock => unreachable!("sent above"),
             Doing::Buy => {
                 self.heard_buy = None;
                 let name = self.purchase.as_ref().map_or("", |p| p.name.as_str());
@@ -891,6 +966,7 @@ impl Walk {
         self.bashes = 0;
         self.searches = 0;
         self.searched = false;
+        self.typed = 0;
         next.route_changed = true;
         if !r.is_empty() {
             next.notice(format!(

@@ -92,6 +92,46 @@ async fn flee_rest_and_return() -> (Vec<String>, Vec<String>) {
 }
 
 #[tokio::test(start_paused = true)]
+async fn on_the_walk_home_after_a_rest_a_monster_on_the_way_is_fought() {
+    // Faye on the live rig (2026-10-26): Recover's walk home went past bandits. A leg of the
+    // loop stops where Fight would take the character; the walk home does too.
+    let (mut g, run) = fighting().await;
+    g.expect(
+        "u",
+        format!("{}{}", at_hp(&room(NARROW_ROAD), 8), follows(8)),
+    );
+    g.expect("e", at_hp(&room(NARROW_PATH), 8));
+    g.output(&lunge(8)).await;
+    g.narrated("Safe in Newhaven, Narrow Path").await;
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(8)));
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Path")
+        .await;
+    for hp in [16, 24] {
+        g.output(&resting(hp)).await;
+        g.idle(Duration::from_secs(20)).await;
+    }
+    // A rat on the Narrow Road, on the way home: fought there, not walked past.
+    let road = at_hp(&room(NARROW_ROAD), 31);
+    let at = road.find("\x1b[0;32mObvious exits").unwrap();
+    let road_with_rat = format!(
+        "{}\x1b[0;35mAlso here: \x1b[1;35m{RAT}\x1b[0m\x1b[0;35m.\r\n{}",
+        &road[..at],
+        &road[at..]
+    );
+    g.expect("w", road_with_rat);
+    g.expect("a rat", line(ENGAGED, 31));
+    g.output(&resting(31)).await;
+    g.narrated("Recover: rested; walking back to Newhaven, Arena")
+        .await;
+    g.narrated("Stopped walking: a monster to fight").await;
+    g.narrated("Fight: large giant rat").await;
+    g.round("The large giant rat lunges at you!", 31).await;
+    let (_, played) = g.close(run).await;
+    assert!(!played.contains(&"d".to_owned()), "{played:?}");
+    assert_eq!(played.last().map(String::as_str), Some("a rat"));
+}
+
+#[tokio::test(start_paused = true)]
 async fn under_the_line_it_flees_keeps_running_when_followed_rests_and_returns() {
     let (played, said) = flee_rest_and_return().await;
     assert_eq!(

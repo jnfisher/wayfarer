@@ -639,6 +639,113 @@ async fn an_empty_search_for_an_exit_already_showing_moves_on_after_a_look() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_passable_hidden_exit_is_walked_without_a_search() {
+    // The Dirt Road (7:1137) north to the Black Weed Fields: never listed, but `EXF_PASSABLE`.
+    let (road, fields) = ((7, 1137), (7, 1142));
+    let (mut g, run) = Game::start(SessionState::Realm, road).await;
+    g.expect("n", room(fields));
+    g.walk_to(fields).await;
+    let said = g.walk_narrated("Arrived: Black Weed Fields").await;
+    assert!(!said.iter().any(|s| s.contains("Searching")), "{said:?}");
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["n"]);
+}
+
+/// The Slimy Tunnel in the sewers: west, a Hidden exit `push switch` opens (a search never
+/// finds it), to the Narrow Stone Tunnel.
+const SLIMY_TUNNEL: Key = (1, 619);
+const NARROW_TUNNEL: Key = (1, 2320);
+
+/// The Slimy Tunnel with its stone door open.
+fn tunnel_with_west_open() -> String {
+    room(SLIMY_TUNNEL).replace("Obvious exits: ", "Obvious exits: secret passage west, ")
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_hidden_exit_a_phrase_opens_is_opened_with_it_not_searched_for() {
+    let (mut g, run) = Game::start(SessionState::Realm, SLIMY_TUNNEL).await;
+    g.expect(
+        "push switch",
+        says("You push the switch, and you hear a loud grinding noise!\r\nA small stone door pops open!"),
+    );
+    g.expect("look", tunnel_with_west_open());
+    g.expect("w", room(NARROW_TUNNEL));
+    g.walk_to(NARROW_TUNNEL).await;
+    let said = g.walk_narration().await;
+    assert!(said.starts_with("Walking to "), "{said}");
+    assert_eq!(
+        g.walk_narration().await,
+        "Opening the hidden exit west: push switch"
+    );
+    let arrived = g.walk_narration().await;
+    assert!(arrived.starts_with("Arrived: "), "{arrived}");
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["push switch", "look", "w"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_hidden_exit_opened_shows_by_its_own_name_and_is_walked() {
+    // Like the Crypt's knight statue: `push eye` at the Mossy Cave's Rocky Outcropping (3:36)
+    // opens east, and the exits line names it by `exitpar4`'s "wide stone passage %s". Beyond is
+    // the Witch's Cave, a boss lair: the walk goes all the way in.
+    let (outcrop, beyond) = ((3, 36), (3, 37));
+    let open = room(outcrop).replace(
+        "Obvious exits: ",
+        "Obvious exits: wide stone passage east, ",
+    );
+    let (mut g, run) = Game::start(SessionState::Realm, outcrop).await;
+    g.expect("push eye", says("A section of the rock wall slides aside!"));
+    g.expect("look", open);
+    g.expect("e", room(beyond));
+    g.walk_to_short(beyond, Some(false)).await;
+    // Until it arrives or gives up: a walk that took the open exit for shut turns away.
+    let mut said = Vec::new();
+    let end = loop {
+        let n = g.walk_narration().await;
+        said.push(n.clone());
+        if n.starts_with("Arrived") || n.starts_with("Stopped") || n.starts_with("Not ") {
+            break n;
+        }
+    };
+    assert_eq!(end, "Arrived: Witch's Cave", "{said:?}");
+    assert!(
+        said.iter()
+            .any(|s| s == "Opening the hidden exit east: push eye"),
+        "{said:?}"
+    );
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["push eye", "look", "e"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_hidden_exit_its_phrase_did_not_open_is_walked_round() {
+    // Someone else's puzzle half done, or the pack wrong: the look shows no exit west, and
+    // the walk goes the long way round (south first) without typing the phrase again.
+    let (mut g, run) = Game::start(SessionState::Realm, SLIMY_TUNNEL).await;
+    g.expect(
+        "push switch",
+        says("You push the switch, and you hear a loud grinding noise!"),
+    );
+    g.expect("look", room(SLIMY_TUNNEL));
+    g.expect("s", room((1, 618)));
+    g.walk_to(NARROW_TUNNEL).await;
+    let replan = loop {
+        let n = g.walk_narration().await;
+        if n.starts_with("Replanned") {
+            break n;
+        }
+    };
+    assert!(
+        replan.starts_with("Replanned (the hidden exit west did not open): "),
+        "{replan}"
+    );
+    g.send(ToClient::WalkStop { session: ID.into() }).await;
+    g.narrated("Stopped walking: asked to stop").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["push switch", "look", "s"]);
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_hidden_exit_the_exits_line_shows_is_routed_through_without_a_search() {
     // Found by someone else: the brain never searched, but the room lists it.
     let (mut g, run) = Game::start_with(SessionState::Realm, keep_with_north_showing()).await;
@@ -647,4 +754,138 @@ async fn a_hidden_exit_the_exits_line_shows_is_routed_through_without_a_search()
     g.walk_narrated("Arrived: Darkwood Forest, Keep Wall").await;
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["n"]);
+}
+
+/// Crypt Level 1: the Stone Hallway's north (1:1056) to the Small Chamber (1:1063) is sealed:
+/// two blocks, taken off by the levers at 1:1044 and 1:1038; no search finds it. `Cry1cry2.mp`
+/// pulls both and goes through, a path window. The walks start at the Lower Level (1:1028), the
+/// one room of its name: the Crypt has 109 Stone Hallways.
+const CRYPT_ENTRY: Key = (1, 1028);
+const CRYPT_HALLWAY: Key = (1, 1056);
+const CRYPT_CHAMBER: Key = (1, 1063);
+
+/// The way from the Lower Level to the first lever, each move with the room it comes to.
+const TO_LEVER: [(&str, i64); 10] = [
+    ("n", 1029),
+    ("n", 1030),
+    ("n", 1031),
+    ("n", 1032),
+    ("w", 1039),
+    ("w", 1040),
+    ("s", 1041),
+    ("s", 1042),
+    ("s", 1043),
+    ("s", 1044),
+];
+
+/// The window's moves after the first lever, each with the room it comes to; `None` is the
+/// second lever.
+const CRYPT_WINDOW: [(&str, Option<i64>); 28] = [
+    ("n", Some(1043)),
+    ("n", Some(1042)),
+    ("n", Some(1041)),
+    ("n", Some(1040)),
+    ("e", Some(1039)),
+    ("e", Some(1032)),
+    ("e", Some(1033)),
+    ("e", Some(1034)),
+    ("s", Some(1035)),
+    ("s", Some(1036)),
+    ("s", Some(1037)),
+    ("s", Some(1038)),
+    ("pull lever", None),
+    ("n", Some(1037)),
+    ("n", Some(1036)),
+    ("n", Some(1035)),
+    ("n", Some(1034)),
+    ("w", Some(1033)),
+    ("w", Some(1032)),
+    ("n", Some(1045)),
+    ("n", Some(1046)),
+    ("n", Some(1047)),
+    ("n", Some(1052)),
+    ("n", Some(1053)),
+    ("n", Some(1054)),
+    ("n", Some(1055)),
+    ("n", Some(1056)),
+    ("n", Some(1063)),
+];
+
+const LEVER: &str = "You pull the lever, and hear a grinding sound in the distance.";
+
+#[tokio::test(start_paused = true)]
+async fn a_sealed_hidden_exit_is_opened_by_the_paths_levers_and_walked_without_a_search() {
+    let (mut g, run) = Game::start(SessionState::Realm, CRYPT_ENTRY).await;
+    for (cmd, to) in TO_LEVER {
+        g.expect(cmd, room((1, to)));
+    }
+    g.expect("pull lever", says(LEVER));
+    for (cmd, to) in CRYPT_WINDOW {
+        match to {
+            Some(r) => g.expect(cmd, room((1, r))),
+            None => g.expect(cmd, says(LEVER)),
+        }
+    }
+    g.walk_to(CRYPT_CHAMBER).await;
+    let said = g.walk_narrated("Arrived: Crypt, Small Chamber").await;
+    assert_eq!(said[0], "Walking to Crypt, Small Chamber: 39 steps");
+    let levers = said
+        .iter()
+        .filter(|s| *s == "Typing `pull lever` to open the way ahead")
+        .count();
+    assert_eq!(levers, 2, "{said:?}");
+    assert!(!said.iter().any(|s| s.contains("Search")), "{said:?}");
+    let (_, played) = g.close(run).await;
+    let mut expected: Vec<&str> = TO_LEVER.map(|(c, _)| c).to_vec();
+    expected.push("pull lever");
+    expected.extend(CRYPT_WINDOW.map(|(c, _)| c));
+    assert_eq!(played, expected);
+}
+
+/// Walk from the Lower Level to the Stone Hallway (1:1056), whose exits line is `hallway`.
+async fn to_the_hallway(g: &mut Game, hallway: String) {
+    let way = [
+        1029, 1030, 1031, 1032, 1045, 1046, 1047, 1052, 1053, 1054, 1055,
+    ];
+    for r in way {
+        g.expect("n", room((1, r)));
+    }
+    g.expect("n", hallway);
+    g.walk_to(CRYPT_HALLWAY).await;
+    g.walk_narrated("Arrived: Crypt, Stone Hallway").await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_sealed_hidden_exit_the_exits_line_shows_is_walked_straight_through() {
+    // Someone pulled the levers: the hallway lists north, so no lever and no search.
+    let (mut g, run) = Game::start(SessionState::Realm, CRYPT_ENTRY).await;
+    let open = room(CRYPT_HALLWAY).replace("Obvious exits: ", "Obvious exits: north, ");
+    to_the_hallway(&mut g, open).await;
+    g.expect("n", room(CRYPT_CHAMBER));
+    g.walk_to(CRYPT_CHAMBER).await;
+    g.walk_narrated("Arrived: Crypt, Small Chamber").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played.last().map(String::as_str), Some("n"));
+    assert_eq!(played.len(), 13);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_shut_sealed_hidden_exit_is_never_searched_for() {
+    // faye at the hallway, north shut: the walk goes back for the levers, not `search n`.
+    let (mut g, run) = Game::start(SessionState::Realm, CRYPT_ENTRY).await;
+    to_the_hallway(&mut g, room(CRYPT_HALLWAY)).await;
+    g.expect("s", room((1, 1055)));
+    g.walk_to(CRYPT_CHAMBER).await;
+    assert_eq!(
+        g.walk_narration().await,
+        "Walking to Crypt, Small Chamber: 43 steps"
+    );
+    g.send(ToClient::WalkStop { session: ID.into() }).await;
+    g.narrated("Stopped walking: asked to stop").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played.last().map(String::as_str), Some("s"));
+    assert!(
+        !played.iter().any(|c| c.starts_with("search")),
+        "{played:?}"
+    );
 }

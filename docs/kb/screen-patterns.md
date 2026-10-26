@@ -223,6 +223,11 @@ All of it is [C]. The details:
     is above/below, not up/down.
   - A found hidden exit shows its own WCCMSG text when it has one, otherwise `Secret passage
     north` (capital S only for north; `secret passage East` has a capital E, sic).
+  - That text is `exitpar4`'s message with the direction in its `%s`, last: 57 names in the stock
+    data, `crumbling hole %s` (80 exits), `circular hole %s` (29), `open stone door %s` (28),
+    `secret passage %s` (22) and so on; the Crypt's knight statue (1/1250) after `push eye`
+    reads `Obvious exits: cramped passage south, northeast, northwest` [C, stock data; live,
+    2026-10-26]. A reader takes the direction from the last word.
   - No exits: `Obvious exits: NONE!!!`.
   - Remote Action, unfound Hidden and Text exits are never listed. A **Trap** exit is listed
     by its direction name while its second parameter is not 2, and a **Timed** exit while its
@@ -289,7 +294,7 @@ These texts are not in the C source. They are WCCMSG records that the C code for
 | `mon_dodge_other` | 47 | `The giant rat lunges at Thornwyn, but she dodges out of the way!` | mon, verb, victim, weapon, pron | (missmsg text 1) |
 | `mon_miss_you` | 38 | `The kobold thief lunges at you with their shortsword!` | mon, verb, weapon | LJNCOMBT.C:3850 |
 | `mon_miss_other` | 35 | `The acid slime flails at Thornwyn!` | mon, verb, victim, weapon | |
-| `spell_cast_you` | 209 | `You cast vine strike at acid slime for 7 damage!` | spell, target, dmg | LJNSPELL.C:297 |
+| `spell_cast_you` | 209 | `You cast vine strike at acid slime for 7 damage!` | spell, target, dmg | LJNSPELL.C:297 (an attack spell whose line is "cast ... **on** ...", stonestrike's `You cast stonestrike on giant bat for 22 damage!`, is also WCCMSG 18, a spellcasting monster's hit message, and reads as `mon_hits_you` first: a `mon_hits_you` line starting `You cast ` is the character's own cast, an attack spell when it has damage [C, live 2026-10-26]) |
 | `spell_cast_on_you` | 332 | `Acid burns you for 3 damage!` (a monster's hit spell) | caster, spell, dmg | |
 | `spell_cast_room` | 561 | `Thornwyn casts vine strike on short kobold thief for 5 damage!` | caster, spell, target, dmg | |
 | `item_destroyed` (+ `_other`) | 36 | `Your torch flickers and goes out.` | | LJNBKGND.C:1950 |

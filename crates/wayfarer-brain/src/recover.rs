@@ -65,19 +65,22 @@ impl Recover {
         self.home.is_some() && v.room != self.home
     }
 
+    /// Poison neither starts a rest nor holds one: it lasts until a cure or death, resting
+    /// does not end it, and its few HP a tick count against the HP lines like any other
+    /// damage (John, 2026-10-26: Penny rested at full HP for good after a forest spider's bite).
     fn low(v: &View) -> bool {
-        v.hp.is_some_and(|hp| hp < v.rest_below()) || v.poisoned || v.mana_low()
+        v.hp.is_some_and(|hp| hp < v.rest_below()) || v.mana_low()
     }
 
     fn rested(v: &View) -> bool {
-        !v.hp.is_some_and(|hp| hp < v.rest_until()) && !v.poisoned && v.mana_restored()
+        !v.hp.is_some_and(|hp| hp < v.rest_until()) && v.mana_restored()
     }
 
     /// A heal on the character, between fights: while HP is below the rest line, a heal
     /// spell and its mana are there, and not too many have gone. Resting waits for it.
     fn heal(&mut self, v: &View) -> Option<Step> {
         let below = v.own_heal_below();
-        if v.poisoned || below == 0 || v.hp? >= below {
+        if below == 0 || v.hp? >= below {
             return None;
         }
         let spell = v.heal_spell()?;
@@ -121,6 +124,17 @@ impl Recover {
     pub fn yields_to_bless(&self, v: &View) -> bool {
         !self.heal_due(v) && !Self::low(v)
     }
+
+    /// Rested, and walking home.
+    pub fn walking_home(&self) -> bool {
+        self.active && self.last_walk == Some(false)
+    }
+
+    /// A rest under way, or the walk to one: took control and not rested yet. The walk home
+    /// after it is not.
+    pub fn resting(&self, v: &View) -> bool {
+        self.active && !Self::rested(v)
+    }
 }
 
 impl Mode for Recover {
@@ -141,7 +155,6 @@ impl Mode for Recover {
         if Self::low(v) {
             return Some(match v.hp {
                 Some(hp) if hp < v.rest_below() => format!("HP {hp}%"),
-                _ if v.poisoned => "poisoned".to_owned(),
                 _ => format!("mana {}%", v.mana_percent().unwrap_or(0)),
             });
         }
@@ -153,15 +166,14 @@ impl Mode for Recover {
     }
 
     fn step(&mut self, v: &View) -> Step {
-        // Between rests, a heal for a hurt member of the party: it shortens a party rest.
+        // Between rests, a heal for a hurt member of the party: it shortens a party rest, or
+        // a member's own.
         if self.heal_due(v)
-            && let Some(cast) = v.rest_party_heal()
+            && let Some((cast, why)) = v.rest_party_heal()
         {
             self.heal_ready = Some(v.now + HEAL_GAP);
             let mut step = crate::fight::cast_step(&cast, "Recover");
-            if v.party.party_rest().is_some() {
-                step.narration.push_str(" (party rest)");
-            }
+            step.narration.push_str(why);
             return step;
         }
         if self.walks_back > 0 && !Self::rested(v) {

@@ -246,7 +246,7 @@ fn megamud_paths_verify() {
 
     // The loops wayfarer may list or run: the 183 that walk to the end, all closing; those
     // through Newhaven (radius 8) among them.
-    let graph = wayfarer_world::RoomGraph::load(&pack).unwrap();
+    let mut graph = wayfarer_world::RoomGraph::load(&pack).unwrap();
     let monsters = wayfarer_world::Monsters::load(&pack).unwrap();
     let mm = wayfarer_world::loops::megamud_loops(&pack, &graph, &monsters).unwrap();
     assert_eq!(mm.len(), 183);
@@ -285,6 +285,40 @@ fn megamud_paths_verify() {
             .hidden_exits("Ftrehkep.mp")
             .contains(&((9, 724), 0))
     );
+    // The path windows, printed for the record: the Crypt's two levers before 1/1056 north
+    // among them, and the sealed exit never searched for.
+    for w in knowledge.windows() {
+        let last = w.steps.last().unwrap();
+        let typed: Vec<&str> = w
+            .steps
+            .iter()
+            .filter(|s| s.kind == wayfarer_world::ExitType::RemoteAction)
+            .map(|s| s.command.as_str())
+            .collect();
+        eprintln!(
+            "window {}: {}/{} to {}/{} dir {}, {} steps, typing {typed:?}",
+            w.file,
+            w.steps[0].from.0,
+            w.steps[0].from.1,
+            last.from.0,
+            last.from.1,
+            last.dir,
+            w.steps.len()
+        );
+    }
+    let crypt = knowledge
+        .windows()
+        .find(|w| {
+            w.steps
+                .last()
+                .is_some_and(|s| (s.from, s.dir) == ((1, 1056), 0))
+        })
+        .expect("the Crypt's window");
+    assert_eq!(crypt.steps[0].from, (1, 1044));
+    assert!(!knowledge.all_hidden_exits().contains(&((1, 1056), 0)));
+    let windows = graph.learn_windows(&knowledge);
+    eprintln!("path windows: {windows}");
+    assert!(windows >= 20, "{windows}");
     let strong = wayfarer_world::Traveller {
         level: Some(60),
         strength: Some(100),

@@ -1,7 +1,8 @@
 <script lang="ts">
   // The drawer's Parties panel (docs/plan/10-party-play.md §10): one box per party, its leader
   // picked and its followers ticked, with each member's live status; a new party; delete. It
-  // only edits definitions: the brain forms the parties in the game.
+  // only edits definitions: the brain forms the parties in the game. **re-sync** has the brain
+  // form a stuck party (or all of them) up again at once.
   import {
     MAX_FOLLOWERS,
     activityLine,
@@ -27,9 +28,13 @@
     characters?: Record<string, CharacterState>;
     onsave: (party: PartyDef) => void;
     ondelete: (id: string) => void;
+    /** Form party `id` (left out: every party) up again now. */
+    onresync?: (id?: string) => void;
   }
 
-  let { sessions, parties, attached, characters = {}, onsave, ondelete }: Props = $props();
+  let { sessions, parties, attached, characters = {}, onsave, ondelete, onresync = () => {} }: Props = $props();
+  const RESYNC_TITLE =
+    "Stuck? Every member checks its party with par now, and the invites and follows go again at once";
 
   const names = $derived(namesOf(sessions));
   /** Parties being edited, by id ("" for the new one). */
@@ -107,6 +112,11 @@
   {:else if parties === undefined}
     <p class="dim">Asking the brain…</p>
   {:else}
+    {#if parties.length > 0}
+      <div class="acts top">
+        <button class="resync-all" title={RESYNC_TITLE} onclick={() => onresync()}>re-sync all</button>
+      </div>
+    {/if}
     {#each parties as p (p.party.id)}
       {@const d = draft(p)}
       {@const leader = p.members.find((m) => m.session === p.party.leader)}
@@ -132,6 +142,7 @@
               }}>undo</button
             >
           {/if}
+          <button class="resync" title={RESYNC_TITLE} onclick={() => onresync(p.party.id)}>re-sync</button>
           <button class="delete" onclick={() => remove(p.party.id)}
             >{confirming === p.party.id ? "really delete?" : "delete"}</button
           >

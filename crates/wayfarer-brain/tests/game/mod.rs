@@ -33,9 +33,12 @@ pub use wayfarer_world::{Key, WorldPack};
 /// when asked, before C-054; a test of either default turns it back.
 pub fn test_settings(text: &str) -> wayfarer_settings::Settings {
     use wayfarer_settings::{Layer, Overrides, Settings};
-    let quiet =
-        Overrides::parse("[health]\nrest_quiet_room = true\n[bot]\nstart_on_logon = false\n")
-            .unwrap();
+    // The blessings' status-screen check is off: the scripts would have to answer its `st`.
+    let quiet = Overrides::parse(
+        "[health]\nrest_quiet_room = true\n[bot]\nstart_on_logon = false\n\
+         [spells]\nbless_check_seconds = 0\n",
+    )
+    .unwrap();
     let over = Overrides::parse(text).unwrap();
     Settings::resolve(&[(Layer::Mine, &quiet), (Layer::Character, &over)]).unwrap()
 }
@@ -218,10 +221,17 @@ impl Game {
 
     /// `brain` attached to a session whose history is `history`, once the catch-up's whole
     /// snapshot is out.
-    pub async fn start_brain(
+    pub async fn start_brain(state: SessionState, history: String, brain: Brain) -> (Game, Run) {
+        Game::start_brain_with(state, history, brain, None).await
+    }
+
+    /// The same, with `early` sent right after the welcome: before the catch-up is answered,
+    /// as a UI's `state_request` can be.
+    pub async fn start_brain_with(
         state: SessionState,
         history: String,
         mut brain: Brain,
+        early: Option<ToClient>,
     ) -> (Game, Run) {
         let (to_gateway, rx) = mpsc::channel(4096);
         let (tx, from_gateway) = mpsc::channel(4096);
@@ -257,6 +267,9 @@ impl Game {
             sessions: vec![info(state, 1)],
         })
         .await;
+        if let Some(msg) = early {
+            g.send(msg).await;
+        }
         // The catch-up's whole snapshot.
         g.until(|m| matches!(m, ToGateway::Character { .. }).then_some(()))
             .await;
@@ -303,11 +316,17 @@ impl Game {
 
     /// `walk_to` with its `stop_short`.
     pub async fn walk_to_short(&self, to: Key, stop_short: Option<bool>) {
+        self.walk_to_with(to, stop_short, None).await;
+    }
+
+    /// `walk_to` with its `stop_short` and `fight`.
+    pub async fn walk_to_with(&self, to: Key, stop_short: Option<bool>, fight: Option<bool>) {
         self.send(ToClient::WalkTo {
             session: ID.into(),
             map: to.0,
             room: to.1,
             stop_short,
+            fight,
         })
         .await;
     }

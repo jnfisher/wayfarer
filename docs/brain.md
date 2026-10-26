@@ -164,6 +164,10 @@ progress (after the move in flight).
   (`distances_any`) instead of "no route". A route through known exits is never given up for one
   through an unknown hidden exit, and a loop's legs and the loop list keep to the exits its path
   knows.
+- **Passable hidden exits**: most Hidden exits (993 of 1,383, nearly all in the wilderness
+  of maps 17 and 7) are marked passable: the game never lists them but lets anyone walk
+  through without a search. A route takes them as it takes any exit, at no extra cost, and the
+  walker moves through without searching. What follows is about the others.
 - **Hidden exits**: a route takes a Hidden exit the character knows of: one it found this
   session (a `search` of its own or the player's), one an exits line showed (`secret passage
   south`: found lately by anyone), one a loop's path names, or, when the character is shut
@@ -186,6 +190,27 @@ progress (after the move in flight).
   fast ticks, `kb/navigation.md` "Hidden"), so the brain forgets it showing then and searches
   again next time. A search costs two extra steps in the route. Moves are not pipelined through
   a hidden exit.
+- **Blocked hidden exits**: some Hidden exits are not searched for but blocked, and no search
+  ever finds them; a phrase typed in the room takes the blocks off (a Remote Action exit of
+  the room, `kb/navigation.md` "Hidden"). The pack says which: the Slimy Tunnel's stone door
+  west in the sewers opens at `push switch`, the Dark Sanctum's at `press d`, `press e`,
+  `press a`, `press t`, `press h`, typed in that order. Arriving at one that is not showing,
+  the walker types its phrases ("Opening the hidden exit west: push switch"), then `look`s: it
+  moves if the exit shows (`secret passage west`), else marks the exit refused for the session
+  and plans again ("the hidden exit west did not open").
+- **Sealed hidden exits and path windows**: a blocked exit whose phrases are typed in other
+  rooms (or that asks for an item) is *sealed* (`Edge::sealed`): it is never searched for,
+  whatever the character knows, and a route takes it only while an exits line shows it (opened
+  by someone else; it counts as found until a line of its room no longer shows it). Where a
+  verified MegaMud path opens one, the stretch of the path from the first phrase that opens it
+  to the exit is a **path window** (`PathKnowledge::windows`, `RoomGraph::learn_windows`): one
+  way through from the room of that first phrase to the room past the exit, costing its steps.
+  A route through it has the path's steps in place; the walker types each phrase ("Typing `pull
+  lever` to open the way ahead"), waits for its prompt, and walks the sealed exit without a
+  search. The Crypt's Stone Hallway (1/1056) north is one: `Cry1cry2.mp` pulls the levers at
+  1/1044 and 1/1038, then walks 13 rooms to it. The stock path set has 20 windows. Doors and
+  gates a path opens with a lever, and phrases the pack knows nothing about, are not windows
+  yet.
 - **Refusals** (level, alignment, class or race, not permitted, a spell or item needed, a toll
   not covered, a timed exit): the exit is marked refused for the session and the route planned
   again, at most five times a walk.
@@ -248,6 +273,15 @@ for the map panel's go box (`docs/web-ui.md`, "The map").
   walk the walker cannot start (no route) or gives up by itself (lost, a door that will not
   open) ends the journey: "Not going to Burning Valley: the walk stopped; playing here". The
   snapshot's `bot.journey` says where it goes (`{name, to}`). See "The bot's states".
+- **Passing monsters by.** `walk_to` with `fight: false` (the map panel's *fight on the way*
+  unticked) makes the journey *passive*: on the way the bot fights nothing, not even a monster
+  that attacks the character; it walks on, and the walk does not stop for one. Flee still runs
+  under the flee line (and from a *flee from* monster), and Recover does not rest while the
+  character is attacked. Narrated "Going to Newhaven, Arena, fighting nothing on the way";
+  `bot.journey.passive` is set. `journey_fight` changes it on the way: off in the middle of a
+  fight, the bot walks out of it; on, it fights from the next room (or here, once it looks).
+  A loop walked once always fights. Once it arrives the journey is over and the bot plays
+  there, fighting, as after any Go to.
 
 **The guard** lives in the executor every action goes through, so nothing the bot ever does can
 break it: never `train stats` (`docs/plan/01-goals.md` "Rules").
@@ -307,7 +341,8 @@ walk to at all is left out.
   the actions written before it (`n[search n]`), or a phrase that takes a Text exit (`climb
   tree`). The Hidden exits of every verified path become ones the character knows are there
   when a MegaMud loop is walked or run (`Traveller::searchable`, `all_hidden_exits`): routes may
-  take them, and the walker searches before each ("Walking"). A way into an area is usually
+  take them, and the walker searches before each ("Walking"). Not the sealed ones: no search
+  finds them, and a path window goes through them instead. A way into an area is usually
   another path's: the Bandit Keep's (`Ftrehkep.mp`: search north at the Hidden Keep, `climb
   tree` on the Keep Wall) is not `HKEPLOOP.mp`'s own, and `HKEPLOOP.mp` run from the Hidden
   Keep searches north first. A Text exit whose message has no text takes the phrase a path
@@ -330,6 +365,11 @@ walk to at all is left out.
   then sends `look` (C-055): a teleport prints no room ("You find yourself...elsewhere."), and a
   phrase where the room has no such script is only speech (`You say "ring chime"`). The room
   the look shows is checked as a move's: the one it was going to, or a drift and a new plan.
+  A stop that comes while the phrase is in flight (a party leader's hold for a follower the
+  teleport left behind, a fight, the player) still waits for that look: without it the
+  character's room is unknown, and the followers have nowhere to walk back to. A teleport
+  ends the party (`kb/grouping.md` §2), so the followers walk back by the same phrase, and
+  the leader invites them again.
 - Made once per anchor, radius, level, strength, picklocks and doors for the session, so asking
   again is cheap.
 - **Boss status.** A stop that is a boss's lair (a unique monster, `maxalive` 1, back `regenhrs`
@@ -413,7 +453,7 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
   | Mode | Wants control when | Does |
   |---|---|---|
   | Flee | HP below 25% (`health.flee_below_hp`) while running, whether or not engaged, with something to run from (a fight, an attacker, or a room that spawns); a monster to *flee from* in the room, whatever the HP; a stalemate; until it is done | Leaves by a confirmed exit toward a room that spawns nothing, keeps running if followed, then hands over to Recover ("Flee", below) |
-  | Recover | HP below 60% (`health.rest_below_hp`) (or poisoned) and not fighting; or a rest it began is not finished | Rests where it stands (a lair or an arena too: spawns are slow enough, John, 2026-10-24). With `health.rest_quiet_room` on: in this room if nothing spawns here; else walks (through the walker, each step confirmed) to the nearest room within 5 steps where nothing spawns, never a player's house (a room the pack has no name for), and rests there; else rests here anyway. `rest` again when the next prompt lacks `(Resting)` (three times, then a 30 s wait; `You are too sick to rest!` waits 30 s too). Rested at 95%, it walks back home. Each walk is tried twice (a fight can stop one): after two walks out that were stopped it rests where it is, against the quiet-room rule, and says so with a warning ("Recover: resting in Newhaven, Arena though it spawns: 2 walks to a quiet room were stopped"); after two walks home that were stopped it waits where it rested: "Rested; could not walk home, waiting here" |
+  | Recover | HP below 60% (`health.rest_below_hp`) and not fighting (poison alone is no reason: it lasts until a cure, resting does not end it, and its damage counts against the HP lines); or a rest it began is not finished. A rest starts only when the fight is over: not while a monster Fight would attack is in the room (one the party still fights, say), nor before the `look` after a kill, nor again after the walk to a quiet room, a flee, a cast or anything else ended it with such a monster here (a rest Recover took on but the prompt does not show as `(Resting)` waits for the fight like a new one: Faye kept typing `rest` beside a bandit her party fought, 2026-10-26); a rest under way (`(Resting)`) is woken only by an attack, and under the flee line Flee goes first | Rests where it stands (a lair or an arena too: spawns are slow enough, John, 2026-10-24). With `health.rest_quiet_room` on: in this room if nothing spawns here; else walks (through the walker, each step confirmed) to the nearest room within 5 steps where nothing spawns, never a player's house (a room the pack has no name for), and rests there; else rests here anyway. `rest` again when the next prompt lacks `(Resting)` (three times, then a 30 s wait; `You are too sick to rest!` waits 30 s too). Rested at 95%, it walks back home. Each walk is tried twice (a fight can stop one): after two walks out that were stopped it rests where it is, against the quiet-room rule, and says so with a warning ("Recover: resting in Newhaven, Arena though it spawns: 2 walks to a quiet room were stopped"); after two walks home that were stopped it waits where it rested: "Rested; could not walk home, waiting here" |
   | Fight | Engaged; or a monster worth fighting is here | Picks one that is attacking the character first, else the first listed, by the monster rules ("Monster rules", below: never one to *never fight* unless it attacks, never one to *flee from*); sends `a <its last word>` once and lets auto-combat run. After `*Combat Off*` or a kill it looks (`look`) and picks the next. A target the game refuses (`You do not see rat here!`, `Your weapon has no effect`) is left alone for the rest of the session. Four rounds of the character's swings with no damage dealt, one of them glancing off the target's armour at least, are a stalemate: it gives the target up and the bot leaves ("Monster rules"). Never leaves the room itself |
   | Idle | Otherwise | Sends nothing: "Waiting here" |
 
@@ -644,8 +684,13 @@ stop it is at or walking to, and the stops it passes by.
   the one expected, a refusal, a door) the second has gone already: its confirmation is void,
   and once its answer is in the walker plans again from wherever the belief puts the character
   ("Replanned (a move went ahead of a wrong step): one step"). `*Combat Engaged*` drops a move
-  ahead that has not gone yet, and stops the leg after those in flight. Only Task's legs
-  pipeline; a `walk_to`, `walk_loop` or Recover's walks go one move at a time.
+  ahead that has not gone yet, and stops the leg after those in flight. A room on the way
+  with a monster Fight would attack stops the leg too; when the move ahead has gone already,
+  the character ends a room on, and the loop's next leg goes back to the monster's room first
+  ("Loop Bandit Keep: back to Inner Keep Entrance (a monster there)"), once. Only Task's legs
+  pipeline; a `walk_to`, `walk_loop` or Recover's walks go one move at a time. Recover's walk
+  home after a rest stops for a monster on the way as a leg does, and once rested, a monster
+  in the room comes before the walk home.
 - **Ticks**: `run_loop` again for the loop the bot runs changes only the stops it passes by
   ("Loop Newhaven: passing by Small Cavern"); a leg to a stop just unticked stops after the
   move in flight. An unticked stop is not avoided as a room on the way to another (a loop's
@@ -864,6 +909,26 @@ shows them ([web-ui.md](web-ui.md) "The stats"). `stats_reset` zeroes the combat
 (below), and ends the current run and starts another at once with its numbers at zero (the old
 run stays in the list, its loop carried over): the way to measure a stretch of play without
 stopping the bot. With no run it zeroes the combat numbers alone, and the notice says so.
+`only: "run"` resets the run and keeps the combat numbers ("Reset: no run to reset" with
+none), `only: "combat"` zeroes the combat numbers and lets the run go on: the stats tab's two
+**reset** buttons.
+
+### Where the time goes
+
+Each run also keeps where its time went, so the player can see how efficiently the bot plays.
+After every message and timer the session says what the character is doing, and the time
+since it last said goes to what it was doing then: **fighting** (Fight has control, or the
+character is in combat), **fleeing**, **resting** (resting, or Recover waiting to rest or
+healing), **walking** (the walker moving it: a loop's legs, a Go to, the walk to a rest and
+back), **upkeep** (looting, casting a blessing, sneaking), **waiting** (the bot running with
+nothing to do: no monster here, or holding for the party), **paused**, and **away** (out of
+the realm or the connection down while the run is open). A follower the game moves after its
+leader is waiting by this count: its own walker is not moving it. Time the brain was not
+running is counted nowhere, so the parts can add up to less than the run's wall time.
+
+It is kept with the run in the store (`run_time`, as JSON), saved every 30 s while it changes,
+when the run ends and when the session goes; a restarted brain goes on counting the open run.
+The run's reset (and Stop) starts a new count. `stats` carries it as `time`.
 
 ### Combat statistics
 
@@ -884,7 +949,7 @@ are counted too.
 The numbers are kept per session in the store (`combat_stats`, as JSON), saved within 5 s of
 a change and when the session goes, so a brain restart loses a few seconds at most (and a
 round still going). Stop, Start, a death, a level-up and restarts leave them; only
-`stats_reset` zeroes them. `stats` carries them as `combat`.
+`stats_reset` zeroes them (not with `only: "run"`). `stats` carries them as `combat`.
 
 ## Errands
 
@@ -1060,7 +1125,9 @@ scroll read since is found the next time.
   highest average damage at the character's level (`minval + mininc*L/minlvls` to `maxval +
   maxinc*L/maxlvls`, `L` held to the level cap), the cheaper of two equal. Out of combat the
   spell engages and auto-combat casts it every round (`kb/spells.md`); when the mana runs short
-  the game falls back to melee itself. A cast the game refuses (`You do not have enough mana`,
+  the game falls back to melee itself. The mana line holds in the fight too: when a round's
+  prompt shows the mana at `spells.attack_mana_above` or below, Fight sends the attack command
+  at the same monster ("Fight: mana 40%, now the weapon"), as after the casts per monster. A cast the game refuses (`You do not have enough mana`,
   `You have already cast a spell this round!`) is not the target's fault: the fight uses the
   weapon for 12 s.
 - **Casts per monster.** `spells.max_casts_per_monster` (0, the default, is no limit) caps the
@@ -1096,17 +1163,31 @@ scroll read since is found the next time.
   Blessings panel (`blessings_save`, kept in the store) are kept on. They are the general
   spells (type 3) with a duration that the character's `spells` screen lists and that are cast
   on the caster (target 1, 2 or 6) or its party (10 or 13): bless, barkskin, holy aura. A Bless
-  mode, ahead of Recover's rests in the stack, casts one (`bles`, no target word) when
-  nothing attacks and it is not in combat, no party heal is due, the character is not under
-  its own rest line (it rests first), the spell is not believed on and the cast leaves the mana at or above `health.rest_mana_below`;
-  narrated "Blessing: casting bless". A cast ends a rest, the party's too, and Recover rests
+  mode, ahead of Recover's rests in the stack, casts one (`bles`, no target word) when the
+  spell is not believed on and the cast leaves the mana at or above `spells.bless_mana_above`
+  (20%); narrated "Blessing: casting bless". Between fights it waits for no party heal to be
+  due and for the character to be over its own rest line (it rests first). In a fight
+  (`spells.bless_in_combat`, on by default, C-056) it comes after a heal, its own or a
+  member's, and not in a round a spell of ours already went: the cast ends auto-combat, and
+  that `*Combat Off*` is the bot's own, as after a heal, so the same monster is attacked again
+  at once with no `look`. A cast ends a rest, the party's too, and Recover rests
   again after it: a blessing that wore off is not left off for a whole party rest. A cast is on from its prompt for as long as the spell
   lasts at the character's level (`duration + durinc*(L/durlvls)` 5-s rounds, the level held to
   the cap, at least `durlvl*L`), or until its wear-off line (the spell's Descriptive Message,
   `kb/spells.md`: "The effects of bless wear off!"); the line its target sees ("You feel
   lucky!") turns it on too, whoever cast it; a death ends them all. A failed cast ("You
   attempt to cast bless, but fail.", or no mana) is tried again after a round; three in a row
-  hold the spell for five minutes, since one already on may not renew. The panel shows which
+  hold the spell for five minutes, since one already on may not renew. A cast is done at the
+  first prompt after it, and another player's line can bring one before the cast's own reply
+  (Manuel, 2026-10-25): a failure line naming the spell that comes within the round after a
+  cast taken as on still counts as its failure. Between fights, while a ticked spell is
+  believed on, the bot looks at the status screen every `spells.bless_check_seconds` (60; 0
+  never; any `st` screen, a re-sync's or the player's, counts), narrated "Blessing: looking at
+  the status screen". The screen shows, after its last row, the line its target sees for every
+  spell on the character, whoever cast it (`kb/screen-patterns.md` "Status screens"); one
+  believed on whose line is not there is off, and is cast again ("Blessing: bless is not on
+  the status screen; casting it"). A spell with no such line, or a sysop's debug list in place
+  of the lines, is left as believed. `st` ends no rest (`kb/recovery.md`). The panel shows which
   are on (`blessings`).
 - **Not done.** Buffs on other members, light, area spells, cures, spells
   that need a target the bot does not pick (a Thief's backstab is not a spell), and the
@@ -1156,6 +1237,32 @@ own, one at a time:
   a bot running a loop stops the loop and fights where it is ("In Penny's party: the loop
   stops"). Its modes never walk it, Flee aside: Recover rests where it stands and does not
   walk home. Play and pause work as for any bot.
+- **Re-sync.** `party_resync` (the panel's **re-sync**, one party or all) is for a party that
+  is stuck: the game broke it without a word and the next routine `par` is half a minute off,
+  or a follower gave up on a walk back. Every member in the realm sends `par` at once (a
+  follower's tells it whom it follows), what each knows of its party counts as out of date
+  until those screens come, and the `invite`s and `follow`s they call for go without their
+  10-s wait. A follower's walk back that found no way is tried again, and the leader's wait for
+  a separated member starts afresh (a loop it stopped stays stopped). Ranks are checked
+  again too: the screens show where each member stands, ranks the game refused are asked for
+  again, and the members are put in their ranks in the order below. A notice says "Re-sync:
+  the parties are forming up again".
+- **Ranks.** Each character's *Party rank* (`party.rank`, Party: front, mid or back; front by
+  default, set per character) is where it stands in the party's battle line. Rank does not
+  change whom monsters attack; in this game Front gives +5 to attack and to defence (a
+  missing `break` in the source makes it take Back's bonus as well), Mid nothing, and Back
+  -10 attack for +15 defence, which suits a caster or healer that seldom swings
+  (`kb/grouping.md`). MegaMud's default is Mid; wayfarer's is Front, since it beats Mid. Once a
+  follower has joined, and whenever the leader's `par` shows a member in another rank than its
+  own setting, that member sends `frontrank`, `midrank` or `backrank`, never while it rests
+  (a rank command ends a rest) or fights. The game's rules decide the order: everyone going to
+  the front moves first, together; then one member at a time to the middle and then to the
+  back, each after a `par` that shows the last. A rank the game forbids is not asked for (the
+  leader never goes back, someone stays in front, the back never outnumbers the front), and a
+  refusal from the game stops the asking too: either way the member's tile says so once
+  ("Penny stays in the front rank: a party's leader cannot go to the back rank"), until its
+  setting changes or the party is re-synced. The `parties` message gives each member's rank as
+  the leader's `par` last showed it.
 - **Leaving.** `party_leave` takes a follower out (a party with no followers left is deleted;
   the leader's, the whole party): it sends `leave` while the game has it following, and plays
   on its own. A follower dropped from a party by `party_save` or `party_delete` does the same.
@@ -1220,7 +1327,7 @@ own, one at a time:
   A party heal is found by its record, never by its word: `rain` is also the Druid's acid
   rain. In a fight the healer goes back to its target after the cast, as after its own heal.
   A Witchunter is healed like anyone, though its anti-magic may resist the cast. There is no
-  mana kept back for heals.
+  mana kept back for heals below these lines.
 - **Heals in a party rest** (C-045). While the party rests, a healer heals each member up to
   that member's own rest-until line (`health.rest_until_hp`), itself included, instead of
   only below the heal-a-member line, and says so ("Recover: casting minor healing on lauren
@@ -1233,6 +1340,21 @@ own, one at a time:
   stat by magery); gear that alters them is not counted. Until a member's stats are known the
   cast goes only if it leaves the healer above its rest mana line. A heal-a-member line of 0
   turns these heals off too.
+- **Heals for a member resting on its own** (2026-10-26). Out of a party rest, a member with
+  the healer that rests on its own (its Recover has a rest under way: after a flee, say, or the
+  player typed `rest`; each session tells the coordinator so) is healed up to its own
+  rest-until line too, as in a party rest, since the party waits for it all the same ("Recover:
+  casting minor healing on penny (resting)"); one standing is healed only below the
+  heal-a-member line. The heals are Recover's, between fights: in a fight the healer heals a
+  member below the in-combat line only, and tops up a resting one once the fight is over. Not
+  while the healer rests itself (the cast would end its rest), one per round (5 s), and only
+  when the healer's mana keeps up: the healer is not resting, so its mana counts whatever its
+  rest-for-mana line, and a cast goes when the time until the members resting are rested and
+  the healer's mana is back at its rest-until mana line (`health.rest_mana_until`, 90%) is no
+  longer after it than before. A healer spends the mana it has above that line on any
+  resting member under its rest-until line; below it, only on a rest long enough for the mana
+  to come back, so a member a few points short is left to its rest. Until the rates are known
+  only the mana above the rest-until mana line is spent. A heal-a-member line of 0 turns these heals off too.
 - **The UIs** get `parties` when one changes or a member's state does: `joined`,
   `not_joined` ("forming up", "in another room"), `away` (with why), `separated`, `walking`,
   `unreachable` or `resting` (with its HP).

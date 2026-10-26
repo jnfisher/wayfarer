@@ -8,7 +8,8 @@ use regex::Regex;
 /// One exit of an `Obvious exits:` list.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Exit {
-    /// `north` ... `down`; `None` for a found hidden exit shown by its own text.
+    /// `north` ... `down`; `None` for an exit shown by its own text with no direction in it
+    /// (`a hole`).
     pub dir: Option<String>,
     /// `normal`, `door`, `gate`, `trap door`, `secret` or `custom`.
     pub kind: String,
@@ -26,6 +27,16 @@ fn exit_rx() -> &'static Regex {
     })
 }
 
+/// A direction as the exits line spells it, as the command names it: trap doors' `above` and
+/// `below` are `up` and `down`.
+fn direction(d: &str) -> String {
+    match d.to_lowercase().as_str() {
+        "above" => "up".to_owned(),
+        "below" => "down".to_owned(),
+        d => d.to_owned(),
+    }
+}
+
 /// `parse_exits`: `closed door north, up, open trap door below` to exits. Trap doors name up
 /// and down as above and below.
 pub fn parse_exits(exits: &str) -> Vec<Exit> {
@@ -39,19 +50,22 @@ pub fn parse_exits(exits: &str) -> Vec<Exit> {
             continue;
         }
         let Some(c) = exit_rx().captures(part) else {
+            // A Hidden exit opened shows by its own name with the direction last (`exitpar4`'s
+            // message: `cramped passage south`, `crumbling hole north`, `open stone door east`).
+            let dir = part
+                .rsplit(' ')
+                .next()
+                .filter(|_| part.contains(' '))
+                .and_then(|w| exit_rx().captures(w))
+                .map(|c| direction(&c["dir"]));
             out.push(Exit {
-                dir: None,
+                dir,
                 kind: "custom".into(),
                 state: Some(part.to_owned()),
             });
             continue;
         };
-        let d = c["dir"].to_lowercase();
-        let d = match d.as_str() {
-            "above" => "up".to_owned(),
-            "below" => "down".to_owned(),
-            _ => d,
-        };
+        let d = direction(&c["dir"]);
         let kind = match (c.name("kind"), c.name("secret")) {
             (Some(k), _) => k.as_str().to_owned(),
             (None, Some(_)) => "secret".to_owned(),
@@ -211,6 +225,31 @@ mod tests {
             }
         );
         assert!(parse_exits("NONE!!!").is_empty());
+    }
+
+    #[test]
+    fn an_opened_hidden_exit_by_its_own_name_keeps_its_direction() {
+        // The Crypt's knight statue (1:1250) after `push eye`: `exitpar4`'s "cramped passage %s".
+        let e = parse_exits("cramped passage south, northeast, northwest");
+        assert_eq!(
+            e[0],
+            Exit {
+                dir: Some("south".into()),
+                kind: "custom".into(),
+                state: Some("cramped passage south".into())
+            }
+        );
+        assert_eq!(e[1].dir.as_deref(), Some("northeast"));
+        for (text, dir) in [
+            ("crumbling hole north", "north"),
+            ("open stone door southwest", "southwest"),
+            ("concealed doorway up", "up"),
+        ] {
+            assert_eq!(parse_exits(text)[0].dir.as_deref(), Some(dir), "{text}");
+        }
+        // No direction word last: no direction.
+        assert_eq!(parse_exits("a hole")[0].dir, None);
+        assert_eq!(parse_exits("south wind")[0].dir, None);
     }
 
     #[test]

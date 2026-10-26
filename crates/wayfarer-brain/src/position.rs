@@ -215,7 +215,7 @@ impl Position {
         self.exits = seen.exits;
         if let GameEvent::RoomExits { exits } = ev {
             self.doors_shown(exits);
-            self.hidden_shown(atlas);
+            self.hidden_shown(atlas, now);
         }
         if self.belief.certain()
             && let Some(k) = self.belief.best()
@@ -227,15 +227,29 @@ impl Position {
 
     /// The Hidden exits an exits line shows (found lately, by anyone: `secret passage south`)
     /// are known to be there: routes may take them, and the walker moves through while they
-    /// show. When they were found is not known, so they are not counted as found.
-    fn hidden_shown(&mut self, atlas: &Atlas) {
+    /// show. When they were found is not known, so they are not counted as found. A sealed one
+    /// (opened from elsewhere, a lever) is never searched for: it counts as found from when a
+    /// line first shows it until a line of its room does not, and routes take it meanwhile.
+    fn hidden_shown(&mut self, atlas: &Atlas, now: Instant) {
         let (Some(k), true, Some(shown)) = (self.belief.best(), self.belief.certain(), self.exits)
         else {
             return;
         };
-        for e in atlas.graph.edges(k) {
-            if e.hidden() && shown.contains(e.dir) {
-                self.traveller.searchable.insert((k, e.dir));
+        for e in atlas.graph.edges(k).iter().filter(|e| e.hidden()) {
+            let at = (k, e.dir);
+            match (e.sealed(), shown.contains(e.dir)) {
+                (true, true) => {
+                    self.traveller.found.insert(at);
+                    self.found_at.entry(at).or_insert(now);
+                }
+                (true, false) => {
+                    self.traveller.found.remove(&at);
+                    self.found_at.remove(&at);
+                }
+                (false, true) => {
+                    self.traveller.searchable.insert(at);
+                }
+                (false, false) => {}
             }
         }
     }

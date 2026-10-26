@@ -211,10 +211,28 @@ describe("handshake", () => {
     expect(r.client.find("kasimir", " chief ")).toBe(true);
     expect(r.client.walkTo("kasimir", 1, 1865)).toBe(true);
     expect(r.client.walkTo("kasimir", 1, 1865, false)).toBe(true);
-    expect(r.last().sent.slice(-3)).toEqual([
+    expect(r.client.walkTo("kasimir", 1, 2150, undefined, false)).toBe(true);
+    expect(r.client.journeyFight("kasimir", true)).toBe(true);
+    expect(r.last().sent.slice(-5)).toEqual([
       { type: "find", session: "kasimir", query: "chief" },
       { type: "walk_to", session: "kasimir", map: 1, room: 1865 },
       { type: "walk_to", session: "kasimir", map: 1, room: 1865, stop_short: false },
+      { type: "walk_to", session: "kasimir", map: 1, room: 2150, fight: false },
+      { type: "journey_fight", session: "kasimir", fight: true },
+    ]);
+  });
+
+  it("resets the run, the combat numbers, or both", () => {
+    const r = rig();
+    r.last().open();
+    r.last().receive(welcome(session("kasimir", 0)));
+    expect(r.client.resetStats("kasimir")).toBe(true);
+    expect(r.client.resetStats("kasimir", "run")).toBe(true);
+    expect(r.client.resetStats("kasimir", "combat")).toBe(true);
+    expect(r.last().sent.slice(-3)).toEqual([
+      { type: "stats_reset", session: "kasimir" },
+      { type: "stats_reset", session: "kasimir", only: "run" },
+      { type: "stats_reset", session: "kasimir", only: "combat" },
     ]);
   });
 
@@ -252,12 +270,16 @@ describe("handshake", () => {
     expect(client.leaveParty("lauren")).toBe(true);
     expect(client.joinParty("lauren", "party-1")).toBe(true);
     expect(client.deleteParty("party-1")).toBe(true);
-    expect(sockets[0].sent.slice(-5)).toEqual([
+    expect(client.resyncParties()).toBe(true);
+    expect(client.resyncParties("party-1")).toBe(true);
+    expect(sockets[0].sent.slice(-7)).toEqual([
       { type: "parties_request" },
       { type: "party_save", party },
       { type: "party_leave", session: "lauren" },
       { type: "party_join", session: "lauren", party: "party-1" },
       { type: "party_delete", id: "party-1" },
+      { type: "party_resync" },
+      { type: "party_resync", party: "party-1" },
     ]);
     const parties = [{ party: { ...party, id: "party-1" }, members: [] }];
     sockets[0].receive({ type: "parties", parties });
