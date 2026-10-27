@@ -745,14 +745,16 @@ against silvermere's oracle, `tests/fixtures/command-words/`) and sends it as it
 
 ## Stopping, restarting, the gateway going away
 
-- **The gateway stops** (it logs every character off): before each log-off it sends
-  `logging_off`. If the character is under attack (a monster or a player attacked it in this
+- **The gateway stops** (it logs every character off), or a UI logs one off: before each
+  log-off it sends `logging_off`. With `bot.log_off` at its default, `hangup`, the brain stops
+  the bot at once, attacked or not, and answers `ready_to_leave` without `clean`: the gateway
+  drops the line. With `clean`, if the character is under attack (a monster or a player attacked it in this
   room, or its own auto-combat is going on), the brain flees first, whatever the bot was doing
   and whatever the HP, since every attack cancels the exit (`kb/recovery.md`): "Logging off
   under attack: fleeing first", the same hops as Flee, to a room where nothing follows (or
   cornered: `break`). Then, and at once when it was not attacked, it stops that character's bot
   ("Stopped: the gateway is logging off"), stops a walk after the move in flight, sends nothing
-  more to it (no re-sync either) and answers `ready_to_leave`. The gateway waits 30 s for that
+  more to it (no re-sync either) and answers `ready_to_leave` with `clean`. The gateway waits 30 s for that
   answer at most. The brain stays attached while the gateway logs off (the retried `x`s come as
   `sent`), then the gateway closes the connection.
 - **Ctrl-C or SIGTERM** closes the WebSocket and exits. Nothing is sent to the game; the

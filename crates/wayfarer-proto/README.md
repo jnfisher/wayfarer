@@ -119,6 +119,6 @@ Brain → gateway (the answer to `logging_off`, and which sessions' input the br
 arbitrates; never relayed):
 
 ```json
-{"type":"ready_to_leave","session":"kasimir"}
+{"type":"ready_to_leave","session":"kasimir","clean":true}
 {"type":"arbitrate","session":"kasimir","on":true}
 ```

@@ -6,7 +6,7 @@
 //! No TLS: remote access goes through SSH or Tailscale. On a loopback bind the handshake's
 //! token is not checked; on any other bind the gateway will not start without one.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::future::{Future, IntoFuture};
 use std::io;
 use std::net::SocketAddr;
@@ -124,8 +124,9 @@ struct HubInner {
     relay: broadcast::Sender<ToClient>,
     /// Turns `true` when the hub stops, so every connection ends.
     stopping: watch::Sender<bool>,
-    /// The sessions the brain has said `ready_to_leave` for since their `logging_off`.
-    ready: watch::Sender<HashSet<SessionId>>,
+    /// The sessions the brain has said `ready_to_leave` for since their `logging_off`, each
+    /// with whether to exit cleanly.
+    ready: watch::Sender<HashMap<SessionId, bool>>,
     /// Numbers brain registrations, so a guard clears only its own.
     next_id: AtomicU64,
 }
@@ -170,7 +171,7 @@ impl Hub {
                 brain: watch::channel(None).0,
                 relay: broadcast::channel(RELAY).0,
                 stopping: watch::channel(false).0,
-                ready: watch::channel(HashSet::new()).0,
+                ready: watch::channel(HashMap::new()).0,
                 next_id: AtomicU64::new(0),
             }),
         }
@@ -189,8 +190,9 @@ impl Hub {
     /// Log every session off and then end every connection. Each session in the realm is
     /// announced to the brain first (`logging_off`) and its log-off waits for the brain's
     /// `ready_to_leave`, up to [`LEAVE_PATIENCE`] or until the brain goes
-    /// ([`Gateway::shutdown_after`]); the brain's connection, like the UIs', stays open until
-    /// every log-off has finished or given up. If `now` completes first, what is left is
+    /// ([`Gateway::shutdown_after`]), then exits cleanly or hangs up as the answer says; the
+    /// brain's connection, like the UIs', stays open until every log-off has finished or
+    /// given up. If `now` completes first, what is left is
     /// closed at once ([`Gateway::shutdown_now`]).
     pub async fn shutdown_unless(&self, now: impl Future<Output = ()>) {
         let gateway = self.gateway().clone();
@@ -211,7 +213,9 @@ impl Hub {
 
     /// Tell the brain that `session` is about to be logged off, and wait for its
     /// `ready_to_leave` (at most [`LEAVE_PATIENCE`]), or for it to go. At once with no brain.
-    async fn ready_to_leave(&self, session: SessionId) {
+    /// Whether to exit cleanly: only when the brain's answer says so (`bot.log_off`); a
+    /// brain that is gone or silent gets the default, a hangup.
+    async fn ready_to_leave(&self, session: SessionId) -> bool {
         let Some((id, out)) = self
             .inner
             .brain
@@ -219,7 +223,7 @@ impl Hub {
             .as_ref()
             .map(|b| (b.id, b.out.clone()))
         else {
-            return;
+            return false;
         };
         self.inner.ready.send_modify(|ready| {
             ready.remove(&session);
@@ -236,7 +240,7 @@ impl Hub {
                 return "the brain has gone";
             }
             tokio::select! {
-                _ = ready.wait_for(|r| r.contains(&session)) => "the brain is ready",
+                _ = ready.wait_for(|r| r.contains_key(&session)) => "the brain is ready",
                 _ = brain.wait_for(|b| b.as_ref().is_none_or(|b| b.id != id)) => "the brain has gone",
             }
         };
@@ -248,6 +252,12 @@ impl Hub {
                 LEAVE_PATIENCE.as_secs()
             ),
         }
+        self.inner
+            .ready
+            .borrow()
+            .get(&session)
+            .copied()
+            .unwrap_or(false)
     }
 
     /// Attach a client over a pair of channels instead of a WebSocket: send its `hello` first,
@@ -705,9 +715,9 @@ impl Connection {
             return self.handle_own(msg).await;
         }
         match msg {
-            ToGateway::ReadyToLeave { session } => {
+            ToGateway::ReadyToLeave { session, clean } => {
                 self.hub.inner.ready.send_modify(|ready| {
-                    ready.insert(session);
+                    ready.insert(session, clean);
                 });
                 return None;
             }
@@ -862,13 +872,14 @@ impl Connection {
                     let done = match action {
                         SessionAction::Connect => gateway.open(&session),
                         SessionAction::LogOff => {
-                            if gateway
+                            let in_realm = gateway
                                 .state(&session)
-                                .is_ok_and(|s| s == SessionState::Realm)
-                            {
-                                hub.ready_to_leave(session.clone()).await;
+                                .is_ok_and(|s| s == SessionState::Realm);
+                            if !in_realm || hub.ready_to_leave(session.clone()).await {
+                                gateway.close(&session).await
+                            } else {
+                                gateway.close_now(&session).await
                             }
-                            gateway.close(&session).await
                         }
                         SessionAction::HangUp => gateway.close_now(&session).await,
                     };

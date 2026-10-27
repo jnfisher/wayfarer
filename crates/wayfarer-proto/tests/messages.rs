@@ -1011,8 +1011,9 @@ fn to_gateway() -> Vec<(ToGateway, &'static str)> {
         (
             ToGateway::ReadyToLeave {
                 session: "kasimir".into(),
+                clean: true,
             },
-            r#"{"type":"ready_to_leave","session":"kasimir"}"#,
+            r#"{"type":"ready_to_leave","session":"kasimir","clean":true}"#,
         ),
         (
             ToGateway::Arbitrate {
