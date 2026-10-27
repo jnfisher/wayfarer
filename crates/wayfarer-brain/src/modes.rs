@@ -86,13 +86,22 @@ impl Presence {
                 self.floor
                     .retain(|name, _| crate::loot::coin_word(name) != word);
             }
-            GameEvent::AlsoHere { monsters, players } => match &mut self.shown {
-                Some(shown) => *shown = (monsters.clone(), players.clone()),
-                None => {
-                    self.here.clone_from(monsters);
-                    self.players.clone_from(players);
+            GameEvent::AlsoHere { monsters, players } => {
+                // A one-word, capitalised name reads as a player's; a monster's name (`Thrag`)
+                // is a monster's.
+                let (named, players): (Vec<String>, Vec<String>) = players
+                    .iter()
+                    .cloned()
+                    .partition(|p| !atlas.monsters.by_name(p).is_empty());
+                let monsters = [monsters.as_slice(), &named].concat();
+                match &mut self.shown {
+                    Some(shown) => *shown = (monsters, players),
+                    None => {
+                        self.here = monsters;
+                        self.players = players;
+                    }
                 }
-            },
+            }
             GameEvent::RoomExits { .. } | GameEvent::RoomDark | GameEvent::Prompt { .. } => {
                 if let Some((here, players)) = self.shown.take() {
                     self.here = here;
