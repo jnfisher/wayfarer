@@ -743,7 +743,7 @@ fn offered_buffs(
     magery: &HashMap<String, (i64, i64)>,
 ) -> Result<Vec<Offered>, wayfarer_world::Error> {
     // By name: those of one name that do the same are one offer, those that differ are told
-    // apart by their classes.
+    // apart by their classes, and by what they do when the same classes cast both (frenzy).
     let mut by_name: BTreeMap<String, Vec<(Buff, Vec<String>)>> = BTreeMap::new();
     for s in pack.spells()? {
         let Ok(v) = serde_json::from_str::<Value>(&s.raw) else {
@@ -830,12 +830,16 @@ fn offered_buffs(
     let mut out = Vec::new();
     for (spell, kinds) in by_name {
         let several = kinds.len() > 1;
-        for (buff, classes) in kinds {
-            let name = if several {
-                format!("{spell} ({})", classes.join("/"))
-            } else {
+        let shared = |cs: &Vec<String>| kinds.iter().filter(|(_, c)| c == cs).count() > 1;
+        for (buff, classes) in &kinds {
+            let name = if !several {
                 spell.clone()
+            } else if shared(classes) {
+                format!("{spell} ({}: {})", classes.join("/"), effect(buff))
+            } else {
+                format!("{spell} ({})", classes.join("/"))
             };
+            let (buff, classes) = (*buff, classes.clone());
             out.push(Offered {
                 wire: GearBuff {
                     effect: format!("{spell}: {}", effect(&buff)),

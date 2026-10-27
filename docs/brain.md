@@ -1085,7 +1085,9 @@ nothing is bought or walked, and the brain sends a plan only when asked. Solo pl
   Alter Energy Usage (87), with the classes that cast it and what it does ("song of valour: +5
   AV"). A slot whose value is 0 takes the spell's strength at the level it is learned (the middle
   of `minval`..`maxval`, `kb/spells.md`). Two spells of one name that do different things are told
-  apart by their classes ("frenzy (Mage)"). The ticked ones count as cast; an Anti-Magic
+  apart by their classes ("frenzy (Mage)"), and by what they do when the same classes cast both
+  ("frenzy (Gypsy/Mage/Warlock: +5 AV, +2 max damage, blows cost 85%)"): every name offered is
+  its own, since a ticked buff comes back by name. The ticked ones count as cast; an Anti-Magic
   character's rows carry a note that it resists them some of the time (the roll is not modelled).
 - **Smash** is scored only with `smash` set, and only for the classes that may keep it, from the
   level they may (`kb/combat.md`: Warrior 22, Witchunter 20, Paladin 25, Cleric 27, Warlock 27,

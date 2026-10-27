@@ -1135,8 +1135,9 @@ pub struct GearMonster {
 /// A lasting spell a gear plan can count as cast on the character.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct GearBuff {
-    /// What a `gear_plan_request` names it by: the spell's name, with the class when two
-    /// spells of that name do different things.
+    /// What a `gear_plan_request` names it by, unique in the plan: the spell's name, with the
+    /// classes when two spells of that name do different things, and what it does as well when
+    /// the same classes cast both.
     pub name: String,
     /// The classes that cast it.
     pub classes: Vec<String>,
