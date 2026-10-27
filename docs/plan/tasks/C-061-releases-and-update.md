@@ -48,7 +48,10 @@ before building on an ARM machine and points at `update.sh`.
 
 - Runs on a pushed tag `v*`, and by hand (`workflow_dispatch`). Run by hand, it builds and
   uploads the tarballs as workflow artifacts but publishes no release, so it can be tried
-  without a tag.
+  without a tag. (As built: also on a pull request that changes `release.yml`,
+  `scripts/update.sh` or `packaging/**`, which builds the same artifacts and publishes
+  nothing. GitHub only offers `workflow_dispatch` for workflows already on the default
+  branch, so the PR run is this card's "Done when" evidence.)
 - Builds natively on two runners: `ubuntu-22.04` (x86_64) and `ubuntu-22.04-arm` (aarch64).
   22.04's glibc (2.35) also runs on newer Ubuntu, Debian 12 and Raspberry Pi OS (bookworm).
   No cross-compiling.

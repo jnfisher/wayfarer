@@ -1,19 +1,29 @@
 # wayfarer.service: a systemd user unit (docs/server.md).
-# Copy to ~/.config/systemd/user/wayfarer.service and replace the placeholders:
-#   /home/USER/wayfarer                the checkout (binary in target/release, UI in ui/dist)
-#   /home/USER/.local/share/wayfarer   the data directory (config, credentials, token, world)
-#   100.x.y.z                          this machine's Tailscale address (`tailscale ip -4`)
+#
+# A release box: scripts/update.sh writes this to ~/.config/systemd/user/wayfarer.service the
+# first time, with @BIND@ filled in, and leaves it alone after that. It runs the release
+# update.sh last installed (releases/current). To install it by hand, copy it there and
+# replace @BIND@ with this machine's Tailscale address and the port, e.g. 100.x.y.z:7373
+# (`tailscale ip -4`). %h is your home directory; systemd fills it in.
+#
+# A box built from source (docs/server.md "Build") points ExecStart at its checkout instead,
+# and keeps the world pack in the data directory:
+#   ExecStart=%h/wayfarer/target/release/wayfarer serve \
+#     --config %h/.local/share/wayfarer/wayfarer.toml \
+#     --bind 100.x.y.z:7373 \
+#     --ui-dir %h/wayfarer/ui/dist \
+#     --world %h/.local/share/wayfarer/world.sqlite
 [Unit]
 Description=wayfarer: MajorMUD client and bot
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=/home/USER/wayfarer/target/release/wayfarer serve \
-  --config /home/USER/.local/share/wayfarer/wayfarer.toml \
-  --bind 100.x.y.z:7373 \
-  --ui-dir /home/USER/wayfarer/ui/dist \
-  --world /home/USER/.local/share/wayfarer/world.sqlite
+ExecStart=%h/.local/share/wayfarer/releases/current/wayfarer serve \
+  --config %h/.local/share/wayfarer/wayfarer.toml \
+  --bind @BIND@ \
+  --ui-dir %h/.local/share/wayfarer/releases/current/ui/dist \
+  --world %h/.local/share/wayfarer/releases/current/world.sqlite
 Restart=on-failure
 RestartSec=5
 # SIGTERM logs every character off cleanly; the gateway waits up to 360 s for that (a

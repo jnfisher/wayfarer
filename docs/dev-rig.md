@@ -131,7 +131,7 @@ listen; then starts the brain against it. Each step prints as it goes. A window 
 exits stays open, so a failed build can be read there. `WAYFARER_BIND_IP`, `WAYFARER_PORT` and
 `WAYFARER_TMUX_SESSION` override the address, the port and the session. On an ARM machine it
 asks before building: a release box (a Raspberry Pi) updates from a GitHub release with
-`scripts/update.sh` instead ([server.md](server.md), C-061).
+`scripts/update.sh` instead ([server.md, "Running a release"](server.md#running-a-release)).
 
 ## What restarts when
 
