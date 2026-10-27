@@ -19,7 +19,8 @@ use wayfarer_gateway::{
 #[derive(Parser)]
 #[command(
     name = "wayfarer",
-    version,
+    // A release build (.github/workflows/release.yml) sets WAYFARER_VERSION to the tag.
+    version = option_env!("WAYFARER_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
     about = "A MajorMUD playing client and bot"
 )]
 struct Cli {
