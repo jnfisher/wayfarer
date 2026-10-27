@@ -184,8 +184,21 @@ brain_dead() {
   pane_tail brain 20 | sed 's/^/      /'
   die "the brain exited; its window is kept: tmux attach -t $tmux_session"
 }
-# Only a brain in this pane's own process session counts.
-until pgrep -s "$(pane_pid brain)" -f "wayfarer brain --config" >/dev/null; do
+# Only a brain started from this pane counts: one whose parents lead back to the pane's
+# process (cargo-watch runs it in a session of its own, so the session can't tell).
+brain_in_pane() {
+  local pane pid up
+  pane=$(pane_pid brain)
+  for pid in $(pgrep -f "wayfarer brain --config"); do
+    up=$pid
+    while [ -n "$up" ] && [ "$up" -gt 1 ]; do
+      [ "$up" = "$pane" ] && return 0
+      up=$(ps -o ppid= -p "$up" 2>/dev/null | tr -d ' ')
+    done
+  done
+  return 1
+}
+until brain_in_pane; do
   brain_dead
   [ $((SECONDS - t0)) -lt "$start_wait" ] || die "the brain has not started after ${start_wait}s"
   status "building" $((SECONDS - t0)) "$(last_line brain)"
