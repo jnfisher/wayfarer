@@ -76,6 +76,7 @@ Cards don't repeat these:
 | 7 | Party upkeep: shorter rests, member activity, blessings, sneaking | 2026-10-23, at John's request after wave 6 |
 | 8 | Combat statistics; no resting for mana by default | 2026-10-24, at John's request (the milestones after M3 were retired the same day) |
 | 9 | The gear planner: a combat model, the gear catalogue, the plan and its full-screen view | 2026-10-26, at John's request |
+| 10 | Releases: tagged Linux builds and `update.sh` for a server that never builds | 2026-10-26, at John's request |
 
 ## Index (wave 1, M0)
 
@@ -195,6 +196,17 @@ for Faye and for his Witchunter on his rig, sees the maul's best move is bash an
 darkwood staff beats it, sees the Magebane and the headcutter change places between level 15
 and 20 by a what-if, and ticks a buff and sees the rows change. (Asked for on 2026-10-26:
 solo play only; the damage roll includes its top value; buffs as checkboxes.)
+
+## Index (wave 10, releases)
+
+| Id | Title | Tier | Size | Depends | Review |
+|---|---|---|---|---|---|
+| [C-061](C-061-releases-and-update.md) | Releases and `update`: a tag builds Linux x86_64 and aarch64 tarballs; `scripts/update.sh` installs one on a server and restarts the systemd unit | B | M | — | |
+
+Wave 10 (2026-10-26, at John's request): a server such as a Raspberry Pi runs releases and
+never builds. `scripts/dev/refresh.sh`, which refreshes the dev rig in tmux, came with the
+card's own PR. **Wave 10 is done** when John pushes a tag, runs `update.sh` on the Pi, and
+watches its characters from the laptop's browser.
 
 Tier: B Opus, C Sonnet. Size: S under half a day of agent time, M about a day, L two to three
 days.
