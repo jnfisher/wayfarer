@@ -298,7 +298,7 @@
     {#if (plan?.buffs_offered.length ?? 0) > 0 || showSmash}
       <div class="line" role="group" aria-label="Buffs">
         <span class="head">buffs</span>
-        {#each plan?.buffs_offered ?? [] as b (b.name)}
+        {#each plan?.buffs_offered ?? [] as b, i (i)}
           <label title={b.classes.join(", ")}>
             <input type="checkbox" checked={inputs.buffs.includes(b.name)} onchange={(e) => toggleBuff(b.name, e.currentTarget.checked)} />
             {b.effect}

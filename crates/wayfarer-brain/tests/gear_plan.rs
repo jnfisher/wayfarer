@@ -151,6 +151,31 @@ fn a_gnome_druid_bashes_with_the_maul_but_the_darkwood_staff_beats_it() {
 }
 
 #[test]
+fn every_buff_offered_has_its_own_name() {
+    let p = plan(&subject("Witchunter", "Kang"), &ask(WITCHUNTER_15));
+    let mut names: Vec<&str> = p.buffs_offered.iter().map(|b| b.name.as_str()).collect();
+    names.sort();
+    let before = names.len();
+    names.dedup();
+    assert_eq!(names.len(), before, "{:?}", p.buffs_offered);
+    // Two frenzy spells that do different things, both cast by Gypsy, Mage and Warlock: the
+    // classes alone do not tell them apart, so each is named by what it does as well.
+    let frenzies: Vec<&str> = p
+        .buffs_offered
+        .iter()
+        .filter(|b| b.effect.starts_with("frenzy:"))
+        .map(|b| b.name.as_str())
+        .collect();
+    assert_eq!(
+        frenzies,
+        [
+            "frenzy (Gypsy/Mage/Warlock: +2 AV, +2 max damage, +2 crit)",
+            "frenzy (Gypsy/Mage/Warlock: +5 AV, +2 max damage, blows cost 85%)",
+        ]
+    );
+}
+
+#[test]
 fn a_ticked_buff_raises_the_hit_chance() {
     let who = subject("Witchunter", "Kang");
     let plain = plan(&who, &ask(WITCHUNTER_15));
