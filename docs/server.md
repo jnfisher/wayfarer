@@ -94,8 +94,16 @@ download and its checksum, the unit, the stop, the switch, the start, and the ti
 stopped until the new release is downloaded, checked and unpacked. The stop is `systemctl
 --user stop wayfarer`, which logs every character off cleanly (it shows the journal's last
 line and a timer meanwhile; up to six minutes). It keeps the current, previous and one more
-release and deletes older ones. When the new release does not start it prints the journal's
-last lines and says to run `update.sh --rollback`. The same tag again stops with "already
+release and deletes older ones. It counts the new release as started only when the unit's own
+process holds the port and is still running a few seconds later with no restart; when it
+does not start, it prints the journal's last lines and says to run `update.sh --rollback`.
+
+It refuses, before downloading or stopping anything, when another wayfarer runs on the machine
+outside the unit (a dev rig in tmux, or a `wayfarer serve` started by hand: two would log the
+same characters in), or when something else holds the unit's port (the unit could not bind it,
+and systemd would restart it every few seconds). It names the processes; stop them first. A
+machine that runs the dev rig refreshes with `scripts/dev/refresh.sh` instead
+([dev-rig.md](dev-rig.md)). The same tag again stops with "already
 installed" and changes nothing, unless `--force`.
 
 `update.sh` leaves an existing unit alone; if its `ExecStart` does not run
