@@ -38,6 +38,19 @@ async fn start_attacks_once_waits_while_engaged_and_looks_after_the_kill() {
     assert_eq!(b.narration, "Waiting here");
 }
 
+/// A monster with a one-word, capitalised name (`Thrag`) reads like a player in `Also here:`;
+/// the monsters' names say it is one, and it is fought. A player beside it is not.
+#[tokio::test(start_paused = true)]
+async fn a_named_monster_listed_like_a_player_is_fought() {
+    let here = ["Lauren", "Thrag"];
+    let (mut g, run) = in_arena(&here).await;
+    start(&mut g, &here, 35).await;
+    g.expect("a Thrag", line(ENGAGED, 35));
+    g.narrated("Fight: Thrag").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a Thrag"]);
+}
+
 /// Two monsters, then a third that arrives: each attacked once, the next found by looking.
 async fn two_and_an_arrival() -> (Vec<String>, Vec<String>) {
     let (mut g, run) = in_arena(&[]).await;
