@@ -100,7 +100,7 @@
     goAsked = 0,
   }: Props = $props();
 
-  // The go box: open or not, what is typed, the row chosen, the results opened onto their
+  // The go box: its list open or not, what is typed, the row chosen, the results opened onto their
   // rooms, and the boss-lair rows whose "stop short" was unticked.
   let goOpen = $state(false);
   let query = $state("");
@@ -144,7 +144,7 @@
     });
   });
 
-  // Alt+G: open the box and put the cursor in it.
+  // Alt+G: open the list and put the cursor in the box.
   $effect(() => {
     if (goAsked <= handledGo) return;
     handledGo = goAsked;
@@ -160,6 +160,7 @@
   }
 
   function oninput() {
+    goOpen = true;
     clearTimeout(findTimer);
     const q = query.trim();
     if (!session || q.length < MIN_QUERY) return;
@@ -241,6 +242,8 @@
     if (session && !locked) onwalk(session.id, p.map, p.room, undefined, fightArg);
   }
   const known = $derived(position?.room !== undefined);
+  /** The go list has something to show: the recent places, or what was found. */
+  const goListed = $derived(goOpen && (query.trim().length === 0 ? places.length > 0 : query.trim().length >= MIN_QUERY));
   const walking = $derived(character?.walking);
   // The loops list: open or not, the loop hovered and the one picked
   // (a generated loop's id, or `mm:` and a MegaMud file).
@@ -390,12 +393,25 @@
     if (loopsOpen) askLoops();
   }
 
+  function openLoops() {
+    if (!loopsOpen) toggleLoops();
+  }
+
+  function onloopinput() {
+    loopsOpen = true;
+    askLoopsSoon();
+  }
+
+  /** Esc clears what is typed, and again closes the list. */
   function onloopkeydown(e: KeyboardEvent) {
-    if (e.key === "Escape" && loopQuery) {
-      e.preventDefault();
-      e.stopPropagation();
+    if (e.key !== "Escape" || (!loopQuery && !loopsOpen)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (loopQuery) {
       loopQuery = "";
       askLoopsSoon(0);
+    } else {
+      loopsOpen = false;
     }
   }
 
@@ -578,9 +594,19 @@
     {#if locked}
       <p class="msg locked">{locked}</p>
     {/if}
-    <div class="tools">
-      <button class="gobutton" aria-expanded={goOpen} onclick={toggleGo} title="Go to a room, a place or a monster by name (Alt+G)"
-        >go</button
+    <div class="field">
+      <label title="Go to a room, a place or a monster by name (Alt+G)"
+        ><span class="name">Go</span><input
+          bind:this={goInput}
+          bind:value={query}
+          {oninput}
+          onfocus={() => (goOpen = true)}
+          onkeydown={ongokeydown}
+          placeholder="part of a name (woo, chief) or map:room (1:1217)"
+          aria-label="Go to"
+          spellcheck="false"
+          autocomplete="off"
+        /></label
       >
       <label
         class="fight"
@@ -588,33 +614,10 @@
       >
         <input type="checkbox" checked={goFight} onchange={toggleFight} /> fight on the way
       </label>
-      <span class="dim">level</span>
-      <button aria-label="Level down" disabled={levels.indexOf(level) <= 0} onclick={() => changeLevel(-1)}>▼</button>
-      <button class="gobutton" aria-expanded={loopsOpen} onclick={toggleLoops} title="Find a loop to run, near the character or anywhere you search">loops {loopsOpen ? "▾" : "▸"}</button>
-      <span class="level">{level}</span>
-      <button aria-label="Level up" disabled={levels.indexOf(level) >= levels.length - 1} onclick={() => changeLevel(1)}>
-        ▲
-      </button>
-      <span class="dim">zoom {zoom + 1}/{ZOOMS.length}</span>
-      {#if moved}
-        <button onclick={recentre}>centre</button>
-      {/if}
-      {#if (position?.candidates ?? 0) > 1}
-        <span class="maybe">{position?.candidates} candidates</span>
-      {/if}
+      <button class="toggle" aria-label="Go list" aria-expanded={goOpen} onclick={toggleGo}>{goOpen ? "▾" : "▸"}</button>
     </div>
-    {#if goOpen}
+    {#if goListed}
       <div class="go" aria-label="Go to">
-        <input
-          bind:this={goInput}
-          bind:value={query}
-          {oninput}
-          onkeydown={ongokeydown}
-          placeholder="go to: part of a name (woo, chief) or map:room (1:1217)"
-          aria-label="Go to"
-          spellcheck="false"
-          autocomplete="off"
-        />
         {#if query.trim().length === 0 && places.length > 0}
           <!-- Nothing typed: where the character died, fled and stopped, newest first. -->
           <ul aria-label="Recent places">
@@ -672,16 +675,19 @@
       </div>
     {/if}
     <div class="loops" aria-label="Loops">
-      <div class="head">
-        <input
-          type="search"
-          class="filter"
-          placeholder="find a loop by name, file, author or stop…"
-          aria-label="Find a loop"
-          bind:value={loopQuery}
-          oninput={() => askLoopsSoon()}
-          onkeydown={onloopkeydown}
-        />
+      <div class="head field">
+        <label title="Find a loop to run, near the character or anywhere you search"
+          ><span class="name">Loop</span><input
+            type="search"
+            placeholder="name, file, author or stop…"
+            aria-label="Find a loop"
+            bind:value={loopQuery}
+            onfocus={openLoops}
+            oninput={onloopinput}
+            onkeydown={onloopkeydown}
+          /></label
+        >
+        <button class="toggle" aria-label="Loop list" aria-expanded={loopsOpen} onclick={toggleLoops}>{loopsOpen ? "▾" : "▸"}</button>
       </div>
       {#if loopsOpen}
         {#if !loops || loops.session !== session?.id}
@@ -788,6 +794,19 @@
       {/if}
     </div>
     <div class="canvas" bind:clientWidth={width} bind:clientHeight={height}>
+      <div class="tools">
+        <span class="dim">level</span>
+        <button aria-label="Level down" disabled={levels.indexOf(level) <= 0} onclick={() => changeLevel(-1)}>▼</button>
+        <span class="level">{level}</span>
+        <button aria-label="Level up" disabled={levels.indexOf(level) >= levels.length - 1} onclick={() => changeLevel(1)}>▲</button>
+        <span class="dim">zoom {zoom + 1}/{ZOOMS.length}</span>
+        {#if moved}
+          <button onclick={recentre}>centre</button>
+        {/if}
+        {#if (position?.candidates ?? 0) > 1}
+          <span class="maybe">{position?.candidates} candidates</span>
+        {/if}
+      </div>
       <div class="here" class:lost={position?.map == null} role="status" aria-label="Location" title="Where the brain believes the character is: map:room">
         {position?.map != null && position.room != null ? `${position.map}:${position.room}` : "unknown"}{(position?.candidates ?? 0) > 1
           ? ` (1 of ${position?.candidates})`
@@ -852,7 +871,6 @@
     margin: 2px 1ch;
     color: var(--vga-lightcyan);
   }
-  .tools,
   .bar {
     display: flex;
     flex-wrap: wrap;
@@ -870,13 +888,38 @@
     overflow-y: auto;
     border-bottom: 1px solid var(--frame);
   }
-  .go input:not([type]) {
-    width: 100%;
+  .field {
+    display: flex;
+    align-items: center;
+    gap: 1ch;
+    padding: 2px 1ch;
+  }
+  .loops .field {
+    padding: 2px 0;
+  }
+  .field label:not(.fight) {
+    flex: 1;
+    min-width: 0;
+  }
+  .field .name {
+    flex: none;
+    width: 4ch;
+    color: var(--vga-lightgray);
+  }
+  .field input:not([type="checkbox"]) {
+    flex: 1;
+    min-width: 0;
     box-sizing: border-box;
     font: inherit;
     color: var(--vga-white);
     background: var(--vga-black);
     border: 1px solid var(--vga-darkgray);
+  }
+  .field .toggle {
+    flex: none;
+    color: var(--vga-lightgray);
+    background: none;
+    padding: 0;
   }
   .go ul {
     list-style: none;
@@ -970,14 +1013,6 @@
   .loops li.isrunning {
     border-left: 2px solid var(--vga-lightgreen);
   }
-  .loops .filter {
-    flex: 1 1 18ch;
-    min-width: 12ch;
-    font: inherit;
-    color: var(--vga-lightgray);
-    background: #000;
-    border: 1px solid var(--frame);
-  }
   .loops .around {
     padding: 2px 0;
   }
@@ -985,12 +1020,6 @@
     min-width: 3ch;
     text-align: right;
     color: var(--vga-lightgreen);
-  }
-  .loops .head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 1ch;
   }
   .loops ul {
     list-style: none;
@@ -1054,6 +1083,17 @@
     flex: 1;
     min-height: 0;
     overflow: hidden;
+  }
+  .tools {
+    position: absolute;
+    top: 2px;
+    left: 1ch;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 1ch;
+    padding: 0 1ch;
+    background: var(--vga-black);
   }
   .here {
     position: absolute;
