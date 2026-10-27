@@ -2,8 +2,10 @@
 # Tests for scripts/update.sh (C-061), with no network and nothing of the real machine's:
 # each case runs in a temporary HOME, with fake releases built here (a stub `wayfarer` that
 # listens on a loopback port and logs a log-off line on SIGTERM) served from a file:// base,
-# and stub systemctl, journalctl, tailscale and uname first on PATH. The stub systemctl runs
-# the unit's ExecStart itself; it never talks to systemd.
+# and stub systemctl, journalctl, tailscale, uname and pgrep first on PATH. The stub systemctl
+# runs the unit's ExecStart itself; it never talks to systemd. The stub pgrep lists the unit's
+# process and $HOME/.stub/procs, never the machine's own (a dev rig may be running); `ss` is
+# the real one, so the port checks see the stub wayfarers' real sockets.
 # Usage: scripts/tests/update-test.sh    (UPDATE_TEST_VERBOSE=1 prints update.sh's output too)
 set -euo pipefail
 
@@ -21,7 +23,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'; }
+port=$(free_port)
+port2=$(free_port)
 rel=$tmp/rel
 bin=$tmp/bin
 mkdir -p "$rel" "$bin"
@@ -47,6 +51,16 @@ while [ $# -gt 0 ]; do case "$1" in -n) n=$2; shift ;; esac; shift; done
 exit 0
 EOF
 
+cat >"$bin/pgrep" <<'EOF'
+#!/usr/bin/env bash
+pidfile=$HOME/.stub/pid
+if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+  echo "$(cat "$pidfile") $HOME/.local/share/wayfarer/releases/current/wayfarer serve --config x"
+fi
+[ -f "$HOME/.stub/procs" ] && cat "$HOME/.stub/procs"
+exit 0
+EOF
+
 # The unit's state is $HOME/.stub/pid (running: alive; failed: its process died). Every call
 # goes to $HOME/.stub/calls; a stop records where releases/current pointed at the time.
 cat >"$bin/systemctl" <<'EOF'
@@ -66,7 +80,12 @@ case "$1" in
     if alive; then a=active s=running
     elif [ -f "$pidfile" ]; then a=failed s=failed
     else a=inactive s=dead; fi
-    if [ "$prop" = ActiveState ]; then echo "$a"; else echo "$s"; fi
+    case "$prop" in
+      ActiveState) echo "$a" ;;
+      SubState) echo "$s" ;;
+      MainPID) if alive; then cat "$pidfile"; else echo 0; fi ;;
+      NRestarts) echo 0 ;;
+    esac
     ;;
   start)
     echo "start current=$(current)" >>"$state/calls"
@@ -103,7 +122,27 @@ make_release() {
   cp "$root/packaging/wayfarer.service" "$top/wayfarer.service"
   cp "$update" "$top/update.sh"
   echo "$tag" >"$top/VERSION"
-  if [ "$kind" = broken ]; then
+  if [ "$kind" = flaky ]; then
+    # Listens, then dies a moment later (as a gateway whose brain cannot start might).
+    cat >"$top/wayfarer" <<EOF
+#!/usr/bin/env bash
+[ "\${1:-}" = --version ] && { echo "wayfarer $tag"; exit 0; }
+bind=''
+while [ \$# -gt 0 ]; do [ "\$1" = --bind ] && bind=\$2; shift; done
+exec python3 -c '
+import socket, sys, time
+tag, ip, port = sys.argv[1], sys.argv[2], int(sys.argv[3])
+s = socket.socket()
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind((ip, port))
+s.listen()
+print(tag + ": listening on " + ip + ":" + str(port), flush=True)
+time.sleep(0.4)
+print(tag + ": error: the brain stopped", flush=True)
+sys.exit(1)
+' "$tag" "\${bind%:*}" "\${bind##*:}"
+EOF
+  elif [ "$kind" = broken ]; then
     cat >"$top/wayfarer" <<EOF
 #!/usr/bin/env bash
 [ "\${1:-}" = --version ] && { echo "wayfarer $tag"; exit 0; }
@@ -156,7 +195,7 @@ run_update() {
   rc=0
   out=$(cd "$tmp" && env -u WAYFARER_DATA_DIR -u XDG_DATA_HOME -u XDG_CONFIG_HOME -u WAYFARER_REPO \
     -u WAYFARER_BIND_IP HOME="$home" USER=tester PATH="$bin:$PATH" WAYFARER_PORT="$port" \
-    WAYFARER_RELEASE_BASE="file://$rel" ${extra_env[@]+"${extra_env[@]}"} \
+    WAYFARER_RELEASE_BASE="file://$rel" WAYFARER_START_STEADY=1 ${extra_env[@]+"${extra_env[@]}"} \
     bash "$update" "$@" 2>&1) || rc=$?
   if [ -n "${UPDATE_TEST_VERBOSE:-}" ]; then printf '%s\n' "$out" | sed 's/^/       | /'; fi
 }
@@ -187,6 +226,7 @@ section() {
 
 for t in v0.1.0 v0.2.0 v0.3.0 v0.4.0; do make_release "$t"; done
 make_release v0.5.0 broken
+make_release v0.6.0 flaky
 make_release v0.9.0
 # A tampered release: the tarball no longer matches its sums.
 echo junk >>"$rel/v0.9.0/wayfarer-v0.9.0-linux-x86_64.tar.gz"
@@ -202,6 +242,8 @@ check "current is v0.1.0" '[ "$(link current)" = v0.1.0 ]'
 check "no previous" '[ -z "$(link previous)" ]'
 check "the unit is reloaded, enabled and started" 'calls | tr "\n" " " | grep -q "daemon-reload enable start current=v0.1.0"'
 check "the port answers" 'answers'
+check "the pre-flight check passes" 'has "no other wayfarer running, and port $port is free for the unit"'
+check "the unit's own process holds the port" 'has "listening on 127.0.0.1:$port" && has "still running after 1s"'
 check "every step is printed" 'has "[1] Checking" && has "[2] Finding" && has "[3] Downloading" && has "[4] Checking the systemd unit" && has "[5] Stopping" && has "[6] Switching" && has "[7] Starting" && has "[8] Tidying"'
 check "the tag is found" 'has "the latest release is v0.1.0"'
 check "linger is suggested" 'has "sudo loginctl enable-linger tester"'
@@ -257,6 +299,14 @@ check "says how to go back" 'has "update.sh --rollback"'
 run_update --rollback
 check "--rollback brings v0.4.0 back" '[ "$rc" = 0 ] && [ "$(link current)" = v0.4.0 ] && answers'
 
+section "a release that listens, then dies"
+run_update v0.6.0
+check "exits non-zero" '[ "$rc" != 0 ]'
+check "says it did not stay up" 'has "listening on 127.0.0.1:$port" && ! has "still running after" && has "wayfarer did not start"'
+check "shows the journal" 'has "v0.6.0: error: the brain stopped"'
+run_update --rollback
+check "--rollback brings v0.4.0 back" '[ "$rc" = 0 ] && [ "$(link current)" = v0.4.0 ] && answers'
+
 section "a bad checksum"
 before=$(calls | wc -l)
 run_update v0.9.0
@@ -279,7 +329,7 @@ check "nothing installed" '[ ! -e "$data/releases" ] && [ ! -e "$home/.config/sy
 
 section "--rollback with no previous release"
 new_home 3
-extra_env=(WAYFARER_BIND_IP=127.0.0.1)
+extra_env=(WAYFARER_BIND_IP=127.0.0.1 WAYFARER_PORT=$port2)
 run_update --rollback
 extra_env=()
 check "exits non-zero" '[ "$rc" != 0 ]'
@@ -294,6 +344,25 @@ extra_env=()
 check "exits non-zero" '[ "$rc" != 0 ]'
 check "a clear refusal" 'has "this machine is riscv64" && has "x86_64 and aarch64"'
 check "nothing changed" '[ ! -e "$data/releases" ] && [ -z "$(calls)" ]'
+section "another wayfarer running (a dev rig)"
+new_home 5
+mkdir -p "$home/.stub"
+echo "4242 ./target/release/wayfarer gateway --config x --bind 127.0.0.1:$port2" >"$home/.stub/procs"
+echo "4243 target/debug/wayfarer brain --config x" >>"$home/.stub/procs"
+extra_env=(WAYFARER_PORT=$port2)
+run_update
+extra_env=()
+check "exits non-zero" '[ "$rc" != 0 ]'
+check "names them" 'has "another wayfarer is running" && has "4242 ./target/release/wayfarer gateway" && has "4243 target/debug/wayfarer brain"'
+check "nothing installed or started" '[ ! -e "$data/releases" ] && [ ! -e "$home/.config/systemd/user/wayfarer.service" ] && [ -z "$(calls)" ]'
+
+section "the port held by something else (home 1's unit still has it)"
+new_home 6
+run_update
+check "exits non-zero" '[ "$rc" != 0 ]'
+check "names the holder" 'has "port $port is already in use, by:" && has "$(cat "$tmp/home1/.stub/pid") python3"'
+check "nothing installed or started" '[ ! -e "$data/releases" ] && [ ! -e "$home/.config/systemd/user/wayfarer.service" ] && [ -z "$(calls)" ]'
+check "home 1's unit still answers" 'answers'
 section ""
 
 if [ "$fails" = 0 ]; then

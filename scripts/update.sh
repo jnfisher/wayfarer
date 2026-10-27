@@ -9,9 +9,12 @@
 # Nothing is stopped until the new release is downloaded, checked and unpacked. The unit is
 # stopped with `systemctl --user stop`, whose SIGTERM makes the gateway log every character
 # off cleanly first (dropping in the realm is punished, docs/kb/connection.md); that can take
-# a few minutes. It never kills wayfarer any other way. The first run installs the unit
-# from the release's template. Needs only bash, curl, tar, sha256sum and systemctl (and
-# tailscale for the address the first time); docs/server.md "Running a release".
+# a few minutes. It never kills wayfarer any other way. It refuses up front when another
+# wayfarer runs outside the unit (a dev rig) or something else holds the port, and counts a
+# start only when the unit's own process holds the port and stays up. The first run
+# installs the unit from the release's template. Needs only bash, curl, tar, sha256sum and
+# systemctl (and tailscale for the address the first time; ss, from iproute2, to name what
+# holds the port); docs/server.md "Running a release".
 #
 # Environment: WAYFARER_DATA_DIR (default ~/.local/share/wayfarer), WAYFARER_REPO (default
 # jnfisher/wayfarer), WAYFARER_BIND_IP (default `tailscale ip -4`) and WAYFARER_PORT (default
@@ -30,6 +33,9 @@ docs="docs/server.md (https://github.com/$repo/blob/main/docs/server.md)"
 logoff_wait=420
 start_wait=180
 tick=0.2
+# How long a started unit must keep running, with the port held by its own process and no
+# restart, before it counts as started (a gateway that cannot bind exits within a second).
+steady=${WAYFARER_START_STEADY:-3}
 
 if [ -t 1 ]; then
   bold=$'\e[1m' dim=$'\e[2m' red=$'\e[31m' green=$'\e[32m' yellow=$'\e[33m' reset=$'\e[0m'
@@ -110,6 +116,50 @@ pick_address() {
   fi
 }
 
+# The unit's main process, when it runs (else nothing).
+main_pid() {
+  local pid
+  pid=$(unit_state MainPID)
+  [ -n "$pid" ] && [ "$pid" != 0 ] && echo "$pid" || true
+}
+# Every wayfarer gateway, brain, serve or tui on the machine, as "PID command" lines.
+wayfarer_procs() { pgrep -af '(^|/)wayfarer (gateway|brain|serve|tui)( |$)' 2>/dev/null || true; }
+# The PIDs listening on the port (needs ss; empty when nothing listens or ss is missing).
+port_pids() {
+  command -v ss >/dev/null 2>&1 || return 0
+  ss -ltnpH "sport = :$port" 2>/dev/null | grep -o 'pid=[0-9]\+' | cut -d= -f2 | sort -u || true
+}
+port_answers() { (exec 3<>"/dev/tcp/$ip/$port") 2>/dev/null; }
+proc_line() { printf '%s %s' "$1" "$(tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null | cut -c1-120)"; }
+
+# Refuses, before anything is downloaded or stopped, when another wayfarer runs on this
+# machine (a dev rig in tmux, a `wayfarer serve` by hand: two would log the same characters
+# in) or something other than the unit holds its port (the unit would fail to bind, and
+# systemd would restart it every few seconds).
+check_alone() {
+  local main others holders pid
+  main=$(main_pid)
+  others=$(wayfarer_procs | awk -v m="$main" '$1 != m')
+  if [ -n "$others" ]; then
+    note "another wayfarer is running on this machine, outside the unit:"
+    printf '%s\n' "$others" | cut -c1-150 | sed 's/^/      /'
+    if command -v tmux >/dev/null 2>&1 && tmux has-session -t wayfarer 2>/dev/null; then
+      note "it looks like the dev rig (tmux session wayfarer): this machine refreshes with scripts/dev/refresh.sh"
+    fi
+    die "stop it first (two would log the same characters in); nothing was changed"
+  fi
+  holders=$(port_pids | awk -v m="$main" '$1 != m')
+  if [ -n "$holders" ]; then
+    note "port $port is already in use, by:"
+    for pid in $holders; do printf '      %s\n' "$(proc_line "$pid")"; done
+    die "free the port, or install with another WAYFARER_PORT; nothing was changed"
+  fi
+  if [ -z "$main" ] && ! command -v ss >/dev/null 2>&1 && port_answers; then
+    die "something is already listening on $ip:$port (and ss is missing to say what); nothing was changed"
+  fi
+  ok "no other wayfarer running, and port $port is free for the unit"
+}
+
 stop_unit() {
   say "Stopping wayfarer (logging every character off cleanly)"
   if ! unit_running; then
@@ -132,28 +182,44 @@ stop_unit() {
   ok "wayfarer has stopped ($((SECONDS - t0))s): $(journal_last 1)"
 }
 
+# The unit has started when its own process holds the port (with ss; else the port answers)
+# and it then keeps running for $steady seconds with the same process and no restart.
 start_unit() {
   say "Starting wayfarer"
+  local restarts t0=$SECONDS state sub main='' held_at=''
+  restarts=$(unit_state NRestarts)
   systemctl --user start wayfarer || true
-  local t0=$SECONDS state sub
-  until (exec 3<>"/dev/tcp/$ip/$port") 2>/dev/null; do
+  start_failed() {
+    status_done
+    note "$1"
+    journal_last 20 | sed 's/^/      /'
+    die "wayfarer did not start. Go back with: update.sh --rollback (logs: journalctl --user -u wayfarer)"
+  }
+  while :; do
     state=$(unit_state ActiveState) sub=$(unit_state SubState)
-    if [ "$state" = failed ] || [ "$state" = inactive ] || [ "$sub" = auto-restart ] ||
-      [ $((SECONDS - t0)) -ge "$start_wait" ]; then
-      status_done
-      if [ $((SECONDS - t0)) -ge "$start_wait" ]; then
-        note "not listening on $ip:$port after ${start_wait}s"
-      else
-        note "the unit is $state ($sub)"
-      fi
-      journal_last 20 | sed 's/^/      /'
-      die "wayfarer did not start. Go back with: update.sh --rollback (logs: journalctl --user -u wayfarer)"
+    if [ "$state" = failed ] || [ "$state" = inactive ] || [ "$sub" = auto-restart ]; then
+      start_failed "the unit is $state ($sub)"
     fi
-    status "starting" $((SECONDS - t0)) "$(journal_last 1)"
+    [ "$(unit_state NRestarts)" = "$restarts" ] || start_failed "the unit restarted: it exited after starting"
+    [ $((SECONDS - t0)) -lt "$start_wait" ] || start_failed "not listening on $ip:$port after ${start_wait}s"
+    if [ -z "$held_at" ]; then
+      main=$(main_pid)
+      if [ -n "$main" ] && { if command -v ss >/dev/null 2>&1; then port_pids | grep -qx "$main"; else port_answers; fi; }; then
+        held_at=$SECONDS
+        status_done
+        ok "listening on $ip:$port ($((SECONDS - t0))s, pid $main)"
+      else
+        status "starting" $((SECONDS - t0)) "$(journal_last 1)"
+      fi
+    else
+      [ "$(main_pid)" = "$main" ] || start_failed "the unit's process changed: it exited after starting"
+      [ $((SECONDS - held_at)) -lt "$steady" ] || break
+      status "keeping an eye on it" $((SECONDS - held_at)) "$(journal_last 1)"
+    fi
     sleep "$tick"
   done
   status_done
-  ok "listening on $ip:$port ($((SECONDS - t0))s)"
+  ok "still running after ${steady}s"
 }
 
 finish() {
@@ -184,6 +250,7 @@ missing() { die "$data/$1 is missing: $2 ($docs)"; }
 [ -f "$data/gateway-token" ] || missing gateway-token 'make it as in "Running a release", step 2 (the token the browser asks for)'
 ok "wayfarer.toml, credentials.toml and gateway-token found"
 pick_address
+check_alone
 mkdir -p "$releases"
 
 # --- --rollback: steps 5 to 7 with current and previous swapped ------------------------------
