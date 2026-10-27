@@ -287,6 +287,17 @@ pub const CATALOGUE: &[Setting] = &[
         megamud: None,
     },
     Setting {
+        key: "bot.log_off",
+        label: "Leaving the realm",
+        help: "How the character leaves when you log it off or wayfarer stops. Hangup drops the line at once. Clean flees anything attacking first, then exits with x and waits out the meditation, which can take minutes. A hangup outside a safe room is announced to the whole game; on a server set to punish it (PUNHUP) it costs hit points and drops items, on one that ships PUNHUP NONE it costs nothing.",
+        kind: Kind::Choice(&["hangup", "clean"]),
+        default: Value::Choice("hangup"),
+        unit: "",
+        tier: Tier::Advanced,
+        group: Group::Bot,
+        megamud: None,
+    },
+    Setting {
         key: "health.flee_rooms",
         label: "Rooms to flee through",
         help: "How many rooms to run through while a monster keeps following, before the bot turns and fights it (healing if it can). The flee stops at the first room nothing follows into, and a new monster that comes in while HP is still under the flee line starts it again.",

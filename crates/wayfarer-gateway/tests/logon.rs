@@ -14,7 +14,7 @@ use wayfarer_gateway::{
     Config, Connect, Credentials, Gateway, Hub, Options, ServerOptions, SessionState, StateChange,
     Stream, serve,
 };
-use wayfarer_proto::{ClientKind, PROTOCOL, ToClient, ToGateway};
+use wayfarer_proto::{ClientKind, PROTOCOL, SessionAction, ToClient, ToGateway};
 use wayfarer_telnet::cp437;
 
 use SessionState::{Closed, Connected, Connecting, Logon, Lost, Menu, Realm};
@@ -517,6 +517,34 @@ async fn a_second_stop_closes_the_server_at_once() {
     let mut game = rig.accept().await;
     game.log_on().await;
     rig.states_until(ID, Realm).await;
+    let mut s = serve_with_brain(&rig).await;
+    s.stop.send(()).unwrap();
+    hear(&mut s.heard, logging_off).await;
+    s.brain
+        .send(ToGateway::ReadyToLeave {
+            session: ID.into(),
+            clean: true,
+        })
+        .await
+        .unwrap();
+    assert_eq!(game.line().await, "x");
+    // The character meditates; the player won't wait.
+    let started = Instant::now();
+    s.stop.send(()).unwrap();
+    game.closed().await;
+    s.server.await.unwrap().unwrap();
+    assert_eq!(started.elapsed(), Duration::ZERO);
+    assert_eq!(rig.gw.state(ID).unwrap(), Closed);
+    assert_eq!(rig.sent(ID), b"Aldric\r********\rM\rE\rx\r");
+}
+
+#[tokio::test(start_paused = true)]
+async fn with_no_brain_a_stop_hangs_up_at_once() {
+    let mut rig = Rig::new();
+    rig.gw.open(ID).unwrap();
+    let mut game = rig.accept().await;
+    game.log_on().await;
+    rig.states_until(ID, Realm).await;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let options = ServerOptions {
         ui_dir: rig.dir.path().join("no-ui-here"),
@@ -531,16 +559,13 @@ async fn a_second_stop_closes_the_server_at_once() {
         options,
         stops,
     ));
-    stop.send(()).unwrap();
-    assert_eq!(game.line().await, "x");
-    // The character meditates; the player won't wait.
     let started = Instant::now();
     stop.send(()).unwrap();
     game.closed().await;
     server.await.unwrap().unwrap();
     assert_eq!(started.elapsed(), Duration::ZERO);
     assert_eq!(rig.gw.state(ID).unwrap(), Closed);
-    assert_eq!(rig.sent(ID), b"Aldric\r********\rM\rE\rx\r");
+    assert_eq!(rig.sent(ID), b"Aldric\r********\rM\rE\r");
 }
 
 #[tokio::test(start_paused = true)]
@@ -855,7 +880,10 @@ async fn stopping_asks_the_brain_first_and_keeps_it_attached_until_the_log_off_i
     game.quiet().await;
     let ready = Instant::now();
     s.brain
-        .send(ToGateway::ReadyToLeave { session: ID.into() })
+        .send(ToGateway::ReadyToLeave {
+            session: ID.into(),
+            clean: true,
+        })
         .await
         .unwrap();
     assert_eq!(game.line().await, "x");
@@ -882,7 +910,7 @@ async fn stopping_asks_the_brain_first_and_keeps_it_attached_until_the_log_off_i
 
 #[tokio::test(start_paused = true)]
 async fn the_log_off_waits_thirty_seconds_for_a_silent_brain_and_not_for_one_that_leaves() {
-    // Silent: `x` goes 30 s after the stop.
+    // Silent: hung up 30 s after the stop, with no `x`.
     let mut rig = Rig::new();
     rig.gw.open(ID).unwrap();
     let mut game = rig.accept().await;
@@ -892,13 +920,12 @@ async fn the_log_off_waits_thirty_seconds_for_a_silent_brain_and_not_for_one_tha
     let started = Instant::now();
     s.stop.send(()).unwrap();
     hear(&mut s.heard, logging_off).await;
-    assert_eq!(game.line().await, "x");
+    game.closed().await;
     assert_eq!(started.elapsed().as_secs(), 30);
-    leave(&mut game).await;
     drop(game);
     s.server.await.unwrap().unwrap();
 
-    // Gone: `x` goes as soon as the brain's connection ends.
+    // Gone: hung up as soon as the brain's connection ends.
     let mut rig = Rig::new();
     rig.gw.open(ID).unwrap();
     let mut game = rig.accept().await;
@@ -910,11 +937,81 @@ async fn the_log_off_waits_thirty_seconds_for_a_silent_brain_and_not_for_one_tha
     tokio::time::sleep(Duration::from_secs(5)).await;
     let left = Instant::now();
     drop(s.brain);
-    assert_eq!(game.line().await, "x");
+    game.closed().await;
     assert_eq!(left.elapsed(), Duration::ZERO);
-    leave(&mut game).await;
     drop(game);
     s.server.await.unwrap().unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_brain_that_does_not_ask_for_a_clean_exit_is_hung_up_at_once() {
+    // `bot.log_off` at its default: `ready_to_leave` without `clean`.
+    let mut rig = Rig::new();
+    rig.gw.open(ID).unwrap();
+    let mut game = rig.accept().await;
+    game.log_on().await;
+    rig.states_until(ID, Realm).await;
+    let mut s = serve_with_brain(&rig).await;
+    s.stop.send(()).unwrap();
+    hear(&mut s.heard, logging_off).await;
+    let ready = Instant::now();
+    s.brain
+        .send(ToGateway::ReadyToLeave {
+            session: ID.into(),
+            clean: false,
+        })
+        .await
+        .unwrap();
+    game.closed().await;
+    assert_eq!(ready.elapsed(), Duration::ZERO);
+    drop(game);
+    s.server.await.unwrap().unwrap();
+    assert_eq!(rig.gw.state(ID).unwrap(), Closed);
+    assert_eq!(
+        rig.gw.reason(ID).unwrap().as_deref(),
+        Some("dropped in the realm: closed at once")
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_uis_log_off_asks_the_brain_and_hangs_up_or_exits_as_it_says() {
+    for clean in [false, true] {
+        let mut rig = Rig::new();
+        rig.gw.open(ID).unwrap();
+        let mut game = rig.accept().await;
+        game.log_on().await;
+        rig.states_until(ID, Realm).await;
+        let mut s = serve_with_brain(&rig).await;
+        let (ui, _to_ui) = s.hub.connect();
+        ui.send(ToGateway::Hello {
+            protocol: PROTOCOL,
+            client: ClientKind::Ui,
+            token: None,
+        })
+        .await
+        .unwrap();
+        ui.send(ToGateway::SessionControl {
+            session: ID.into(),
+            action: SessionAction::LogOff,
+        })
+        .await
+        .unwrap();
+        assert_eq!(hear(&mut s.heard, logging_off).await, ID);
+        s.brain
+            .send(ToGateway::ReadyToLeave {
+                session: ID.into(),
+                clean,
+            })
+            .await
+            .unwrap();
+        if clean {
+            assert_eq!(game.line().await, "x");
+            leave(&mut game).await;
+        } else {
+            game.closed().await;
+        }
+        rig.states_until(ID, Closed).await;
+    }
 }
 
 #[tokio::test(start_paused = true)]
@@ -937,6 +1034,7 @@ async fn only_sessions_in_the_realm_are_announced_and_a_ui_may_not_answer() {
     .unwrap();
     ui.send(ToGateway::ReadyToLeave {
         session: "kasimir".into(),
+        clean: true,
     })
     .await
     .unwrap();
@@ -955,6 +1053,7 @@ async fn only_sessions_in_the_realm_are_announced_and_a_ui_may_not_answer() {
     s.brain
         .send(ToGateway::ReadyToLeave {
             session: "kasimir".into(),
+            clean: true,
         })
         .await
         .unwrap();

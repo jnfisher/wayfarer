@@ -572,7 +572,12 @@ async fn without_a_store_the_run_is_still_counted() {
 
 /// Fighting the rat in the Arena, at 20 of 35 HP (57%).
 async fn fighting_on(path: &Path) -> (Game, Run) {
-    let (mut g, run) = arena_brain(brain_on(path), &["large giant rat"]).await;
+    fighting_in(brain_on(path)).await
+}
+
+/// [`fighting_on`] with `brain`.
+async fn fighting_in(brain: Brain) -> (Game, Run) {
+    let (mut g, run) = arena_brain(brain, &["large giant rat"]).await;
     start(&mut g, &["large giant rat"], 35).await;
     g.expect("a rat", line(ENGAGED, 35));
     g.narrated("Fight: large giant rat").await;
@@ -617,7 +622,11 @@ async fn a_flee_is_counted_in_the_run() {
 async fn a_flee_before_a_log_off_is_counted_before_the_run_ends() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
-    let (mut g, run) = fighting_on(&path).await;
+    // Only a clean exit flees first; a hangup leaves at once.
+    use wayfarer_settings::{Layer, Overrides, Settings};
+    let clean = Overrides::parse("[bot]\nlog_off = \"clean\"\n").unwrap();
+    let settings = Settings::resolve(&[(Layer::Character, &clean)]).unwrap();
+    let (mut g, run) = fighting_in(brain_on(&path).with_settings(settings)).await;
     g.expect("u", at_hp(&room(NARROW_ROAD), 20));
     g.send(ToClient::LoggingOff { session: ID.into() }).await;
     g.until(|m| matches!(m, ToGateway::ReadyToLeave { .. }).then_some(()))

@@ -146,7 +146,10 @@ wrong one gets `refused`. Running `--new-token` again replaces the token.
 **Stopping.** SIGINT or SIGTERM stops accepting and logs every character off
 (`Hub::shutdown_unless`, over `Gateway::shutdown_after`: in parallel, up to 360 s). For each
 session in the realm the brain gets `logging_off` first, and the log-off waits for its
-`ready_to_leave` (`LEAVE_PATIENCE`, 30 s) or for the brain to go. Only once every log-off has
+`ready_to_leave` (`LEAVE_PATIENCE`, 30 s) or for the brain to go. The answer's `clean` (the
+character's `bot.log_off`) runs the logoff script; without it (the default, and with no brain
+or no answer) the session is hung up at once (`close_now`). A UI's `session_control log_off`
+goes the same way. Only once every log-off has
 finished or given up are the connections ended (`Hub::stop`, channel ones included), so the
 brain hears the log-off. A second signal during the log-off closes what is left at once
 (`shutdown_now`), which the game punishes. `serve` takes the stops as a stream (`stop_signals()` in the binary), so tests drive

@@ -266,22 +266,23 @@ impl Gateway {
     /// Log every session off, all at once, and wait for them; after
     /// [`Options::logoff_patience`] (360 s) close what is left at once.
     pub async fn shutdown(&self) {
-        self.shutdown_after(|_| async {}).await;
+        self.shutdown_after(|_| async { true }).await;
     }
 
     /// [`Gateway::shutdown`], each session in the realm first waiting for `ready(id)` (the
-    /// brain getting the character ready to leave); the patience covers the wait too.
+    /// brain getting the character ready to leave), which says whether to log off cleanly or
+    /// hang up; the patience covers the wait too.
     pub async fn shutdown_after<F, Fut>(&self, ready: F)
     where
         F: Fn(String) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = ()> + Send + 'static,
+        Fut: Future<Output = bool> + Send + 'static,
     {
         let ready = Arc::new(ready);
         let all = self.each(move |gateway, id| {
             let ready = Arc::clone(&ready);
             async move {
-                if gateway.state(&id)? == SessionState::Realm {
-                    ready(id.clone()).await;
+                if gateway.state(&id)? == SessionState::Realm && !ready(id.clone()).await {
+                    return gateway.close_now(&id).await;
                 }
                 gateway.close(&id).await
             }

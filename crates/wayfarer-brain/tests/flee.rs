@@ -404,9 +404,31 @@ async fn nothing_is_sent_while_paused_or_stopped() {
     }
 }
 
+/// `bot.log_off` set to a clean exit.
+const CLEAN: &str = "[bot]\nlog_off = \"clean\"\n";
+
+#[tokio::test(start_paused = true)]
+async fn logging_off_under_attack_hangs_up_at_once_by_default() {
+    // A hangup: no flee, the bot stops and the gateway may drop the line now.
+    let (mut g, run) = fighting().await;
+    g.send(ToClient::LoggingOff { session: ID.into() }).await;
+    let ready = g
+        .until(|m| match m {
+            ToGateway::ReadyToLeave { session, clean } => Some((session.clone(), *clean)),
+            _ => None,
+        })
+        .await;
+    assert_eq!(ready, (ID.into(), false));
+    g.idle(Duration::from_secs(60)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat"]);
+    assert!(!notices(&seen).iter().any(|n| n.contains("fleeing")));
+    assert_eq!(bot(&seen).state, BotState::Stopped);
+}
+
 #[tokio::test(start_paused = true)]
 async fn logging_off_under_attack_flees_first_then_answers_ready_to_leave() {
-    let (mut g, run) = fighting().await;
+    let (mut g, run) = fighting_with(CLEAN).await;
     g.expect("u", at_hp(&room(NARROW_ROAD), 18));
     g.send(ToClient::LoggingOff { session: ID.into() }).await;
     let said = g.narrated("Stopped: the gateway is logging off").await;
@@ -422,11 +444,11 @@ async fn logging_off_under_attack_flees_first_then_answers_ready_to_leave() {
     );
     let ready = g
         .until(|m| match m {
-            ToGateway::ReadyToLeave { session } => Some(session.clone()),
+            ToGateway::ReadyToLeave { session, clean } => Some((session.clone(), *clean)),
             _ => None,
         })
         .await;
-    assert_eq!(ready, ID);
+    assert_eq!(ready, (ID.into(), true));
     // The gateway's `x`, a re-sync asked for: nothing goes.
     g.typed("x").await;
     g.send(ToClient::Resync { session: ID.into() }).await;
@@ -452,7 +474,7 @@ async fn logging_off_under_attack_flees_first_then_answers_ready_to_leave() {
 
 #[tokio::test(start_paused = true)]
 async fn logging_off_cornered_breaks_off_and_still_answers() {
-    let (mut g, run) = fighting().await;
+    let (mut g, run) = fighting_with(CLEAN).await;
     g.expect(
         "u",
         line("You may not enter that room while in combat.", 18),
@@ -461,11 +483,11 @@ async fn logging_off_cornered_breaks_off_and_still_answers() {
     g.send(ToClient::LoggingOff { session: ID.into() }).await;
     let ready = g
         .until(|m| match m {
-            ToGateway::ReadyToLeave { session } => Some(session.clone()),
+            ToGateway::ReadyToLeave { session, clean } => Some((session.clone(), *clean)),
             _ => None,
         })
         .await;
-    assert_eq!(ready, ID);
+    assert_eq!(ready, (ID.into(), true));
     let (seen, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "a rat", "u", "break"]);
     assert_eq!(bot(&seen).state, BotState::Stopped);

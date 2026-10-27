@@ -687,11 +687,12 @@ async fn logging_off_stops_the_bot_answers_ready_to_leave_and_sends_nothing_more
     g.narrated("Stopped: the gateway is logging off").await;
     let ready = g
         .until(|m| match m {
-            ToGateway::ReadyToLeave { session } => Some(session.clone()),
+            ToGateway::ReadyToLeave { session, clean } => Some((session.clone(), *clean)),
             _ => None,
         })
         .await;
-    assert_eq!(ready, ID);
+    // `bot.log_off` is `hangup` by default.
+    assert_eq!(ready, (ID.into(), false));
     // The gateway's `x`, interrupted; a re-sync asked for; the fight going on: nothing goes.
     g.typed("x").await;
     g.output(&line(
@@ -729,11 +730,11 @@ async fn logging_off_is_answered_with_no_bot_and_for_an_unknown_session() {
         .await;
         let ready = g
             .until(|m| match m {
-                ToGateway::ReadyToLeave { session } => Some(session.clone()),
+                ToGateway::ReadyToLeave { session, clean } => Some((session.clone(), *clean)),
                 _ => None,
             })
             .await;
-        assert_eq!(ready, session);
+        assert_eq!(ready, (session.into(), false));
     }
     let (_, played) = g.close(run).await;
     assert!(played.is_empty());

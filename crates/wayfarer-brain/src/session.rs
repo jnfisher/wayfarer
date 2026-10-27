@@ -1495,17 +1495,17 @@ impl Session {
     }
 
     /// `logging_off`: the gateway is about to log the character off. A line the player typed
-    /// that has not gone yet is dropped with a warning, as one typed from now on is. If the
-    /// character is attacked or fighting, the bot flees first (an attack cancels the exit,
-    /// `kb/recovery.md`), whatever it was doing, and `false` is returned: the session answers
-    /// `ready_to_leave` itself once the flee is over. Otherwise, at once: the bot stops, a
-    /// walk stops after the move in flight, an action not sent yet is dropped, and nothing
-    /// more goes to the game (a re-sync included) while the session is in the realm; the
-    /// caller answers.
+    /// that has not gone yet is dropped with a warning, as one typed from now on is. For a
+    /// clean exit ([`Session::clean_log_off`]), if the character is attacked or fighting, the
+    /// bot flees first (an attack cancels the exit, `kb/recovery.md`), whatever it was doing,
+    /// and `false` is returned: the session answers `ready_to_leave` itself once the flee is
+    /// over. Otherwise (a hangup, or nothing attacking), at once: the bot stops, a walk stops
+    /// after the move in flight, an action not sent yet is dropped, and nothing more goes to
+    /// the game (a re-sync included) while the session is in the realm; the caller answers.
     pub fn logging_off(&mut self, now: Instant, out: &mut Vec<ToGateway>) -> bool {
         // A typed line still waiting would go mid-flee or into the log-off menus.
         self.drop_typed(out);
-        if self.attacked(now) {
+        if self.clean_log_off() && self.attacked(now) {
             if self.walker.walking() {
                 self.stop_walk("the gateway is logging off", out);
             }
@@ -1531,6 +1531,12 @@ impl Session {
         }
         self.leave_now(out);
         true
+    }
+
+    /// Whether the gateway should exit with the logoff script rather than hang up
+    /// (`bot.log_off`).
+    pub fn clean_log_off(&self) -> bool {
+        self.settings.choice("bot.log_off") == "clean"
     }
 
     /// Drop the player's typed lines still waiting, each with a warning (`logging_off`).
@@ -1564,6 +1570,7 @@ impl Session {
         self.leave_now(out);
         out.push(ToGateway::ReadyToLeave {
             session: self.id.clone(),
+            clean: true,
         });
     }
 

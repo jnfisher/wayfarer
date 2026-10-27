@@ -699,13 +699,14 @@ impl Brain {
             }
             ToClient::LoggingOff { session } => {
                 tracing::info!(%session, "the gateway is logging the character off");
-                // An attacked character flees first; its session answers when that is over.
-                let ready = match self.sessions.get_mut(&session) {
-                    Some(s) => s.logging_off(now, out),
-                    None => true,
+                // On a clean exit an attacked character flees first; its session answers when
+                // that is over. A session the brain does not know is hung up.
+                let (ready, clean) = match self.sessions.get_mut(&session) {
+                    Some(s) => (s.logging_off(now, out), s.clean_log_off()),
+                    None => (true, false),
                 };
                 if ready {
-                    out.push(ToGateway::ReadyToLeave { session });
+                    out.push(ToGateway::ReadyToLeave { session, clean });
                 }
             }
             ToClient::PartiesRequest => {

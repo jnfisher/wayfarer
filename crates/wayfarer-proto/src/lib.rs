@@ -1368,8 +1368,8 @@ pub struct GearDetail {
 pub enum SessionAction {
     /// Open the connection and log on (nothing if it is open).
     Connect,
-    /// Log off cleanly (the brain is asked to get ready first) and disconnect: never
-    /// reconnected.
+    /// Leave the realm and disconnect: never reconnected. The brain is asked to get ready
+    /// first, and its `bot.log_off` says whether the gateway exits cleanly or hangs up.
     LogOff,
     /// Drop the connection at once, in the realm or not: the game may punish it.
     HangUp,
@@ -2108,9 +2108,13 @@ pub enum ToGateway {
     },
 
     /// Brain → gateway: the answer to `logging_off`: the brain sends the session nothing more,
-    /// and the log-off may start.
+    /// and the log-off may start. `clean`: exit with the logoff script (`bot.log_off` is
+    /// `clean`); left out, the gateway hangs up.
     ReadyToLeave {
         session: SessionId,
+        #[serde(default, skip_serializing_if = "is_false")]
+        #[ts(as = "Option<bool>", optional)]
+        clean: bool,
     },
     /// Brain → gateway: whether the brain arbitrates the session's input (its bot is running
     /// or paused): while it does, a UI's lines go to the brain as `user_input` and its keys are

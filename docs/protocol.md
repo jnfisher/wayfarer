@@ -141,8 +141,8 @@ typed line always comes after its `sent`. UIs never get `sent`.
 | `sent {session, seq, text}` | gateway → brain | A line went to the game: typed by any client (`input_line`; not `input_keys`), or sent by a logon or log-off step, after it was written to the socket. `seq` is the session's latest output `seq` at that moment. A password, or a typed line equal to it, is `********` |
 | `brain_state {attached}` | gateway → UIs | Whether a brain is attached: right after `welcome`, then whenever one attaches or leaves |
 | `brain_lagged {missed}` | gateway → UI | The UI read too slowly and `missed` relayed brain messages were dropped for it. Recover with `state_request` |
-| `logging_off {session}` | gateway → brain | The gateway is stopping and is about to log this session off (sent only for a session in the realm). The brain stops playing the character and answers `ready_to_leave` |
-| `ready_to_leave {session}` | brain → gateway | The brain sends the session nothing more: the log-off may start. The gateway waits for it up to 30 s after `logging_off`, or until the brain goes; never relayed, and refused from a UI |
+| `logging_off {session}` | gateway → brain | The gateway is about to log this session off: it is stopping, or a UI asked (`session_control log_off`); sent only for a session in the realm. The brain stops playing the character and answers `ready_to_leave` |
+| `ready_to_leave {session, clean?}` | brain → gateway | The brain sends the session nothing more: the log-off may start. `clean` (the character's `bot.log_off`): exit with the logoff script; left out, the gateway hangs up. The gateway waits for it up to 30 s after `logging_off`, or until the brain goes, and hangs up when none came; never relayed, and refused from a UI |
 | `arbitrate {session, on}` | brain → gateway | Whether the brain arbitrates the session's input: on while its bot runs or is paused, off when it stops. Never relayed, and refused from a UI |
 | `user_input {session, text, from}` | gateway → brain | A line a UI typed (`input_line`) for a session the brain arbitrates; the gateway sent nothing to the game. `from` names the UI's connection (`ui-3`). The brain's own `input_line` is never turned into one |
 | `keys_sent {session}` | gateway → brain | A UI's `input_keys` went to the game for a session the brain arbitrates |
@@ -152,7 +152,7 @@ typed line always comes after its `sent`. UIs never get `sent`.
 {"type":"brain_state","attached":true}
 {"type":"brain_lagged","missed":17}
 {"type":"logging_off","session":"kasimir"}
-{"type":"ready_to_leave","session":"kasimir"}
+{"type":"ready_to_leave","session":"kasimir","clean":true}
 {"type":"arbitrate","session":"kasimir","on":true}
 {"type":"user_input","session":"kasimir","text":"a rat","from":"ui-3"}
 {"type":"keys_sent","session":"kasimir"}

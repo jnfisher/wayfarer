@@ -139,8 +139,11 @@ and goes to the brain as `sent` like any line.
 
 Stopping the gateway (Ctrl-C or SIGTERM) logs every character off at once. With a brain
 attached it first tells the brain (`logging_off`) for each character in the realm and waits up
-to 30 s for its `ready_to_leave` (the brain stops that character's bot; from C-028 it flees a
-fight first), or for the brain to go. The brain's connection, and the UIs', stay open until
+to 30 s for its `ready_to_leave` (the brain stops that character's bot), or for the brain to
+go. By default the gateway then hangs up: the setting `bot.log_off` is `hangup`. With it set
+to `clean` the brain flees a fight first (C-028), says so in its answer, and the gateway runs
+the logoff script above. With no brain, or no answer, it hangs up. A UI's Log off button goes
+the same way. The brain's connection, and the UIs', stay open until
 every log-off has finished; then the gateway closes them and exits. It waits up to six minutes
 in all, then disconnects whatever is left. A second Ctrl-C disconnects at once.
 

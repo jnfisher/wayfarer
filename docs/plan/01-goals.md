@@ -57,7 +57,10 @@ a card wants to reuse a prototype behaviour, the card says so and why.
 
 **Game facts that become guards** (the game punishes the alternative, `kb/`):
 
-- Log off cleanly; dropping in the realm is punished (`kb/connection.md`).
+- None at present. Logging off cleanly was one; it is now a setting (`bot.log_off`), hangup by
+  default: the clean exit is slow, and on a server with `PUNHUP NONE` a hangup costs nothing
+  but the notice; on one that punishes it, choose `clean` (`kb/recovery.md`; John,
+  2026-10-27).
 
 **Prototype policies that become settings with defaults, not rules:**
 

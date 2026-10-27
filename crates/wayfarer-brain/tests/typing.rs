@@ -243,10 +243,9 @@ async fn a_line_waiting_when_logging_off_starts_is_dropped_and_nothing_typed_goe
     // The rat's line with no prompt after it: talk waits for one.
     g.output("The large giant rat lunges at you!\r\n").await;
     g.user_input("gossip hi").await;
-    // Under attack: the log-off flees first, up to the Narrow Road.
-    g.expect("u", at_hp(&room(NARROW_ROAD), 18));
+    // Under attack, but a hangup (`bot.log_off`) does not flee first.
     g.send(ToClient::LoggingOff { session: ID.into() }).await;
-    // A line typed mid-flee is refused as well.
+    // A line typed while logging off is refused as well.
     g.user_input("gossip bye").await;
     g.output(&prompt(20)).await;
     g.until(|m| matches!(m, ToGateway::ReadyToLeave { .. }).then_some(()))
@@ -255,11 +254,11 @@ async fn a_line_waiting_when_logging_off_starts_is_dropped_and_nothing_typed_goe
     g.set_state(SessionState::Menu).await;
     g.idle(Duration::from_secs(10)).await;
     let (seen, played) = g.close(run).await;
-    assert_eq!(played, ["st", "look", "a rat", "u"]);
-    // Nothing typed went, and nothing at all after the flee's move.
+    assert_eq!(played, ["st", "look", "a rat"]);
+    // Nothing typed went, and nothing at all after the attack.
     let sent = lines(&seen);
     assert!(!sent.iter().any(|l| l.starts_with("gossip")), "{sent:?}");
-    assert_eq!(sent.last().map(String::as_str), Some("u"));
+    assert_eq!(sent.last().map(String::as_str), Some("a rat"));
     let warned: Vec<_> = seen
         .iter()
         .filter_map(|m| match m {
