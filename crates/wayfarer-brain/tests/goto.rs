@@ -176,6 +176,34 @@ async fn the_spectral_mage_is_found_and_walked_to_by_ringing_the_chime() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_walk_stopped_while_the_chime_rings_still_looks_where_it_went() {
+    // A party leader's hold (or any stop) that comes while the phrase is in flight: the walk
+    // stops, but only after the look, or the character is lost (Faye on the live rig,
+    // 2026-10-25: her followers had no room to walk back to for five minutes).
+    let (mut g, run) = Game::start(SessionState::Realm, SLUM_INTERSECTION).await;
+    g.expect("w", room(SLUM_STREET));
+    g.expect("ring chime", NOTHING);
+    g.expect("look", room(MANSION_ENTRANCE));
+    g.walk_to(SPECTRAL_THRONE).await;
+    g.until(|m| match m {
+        ToGateway::InputLine { text, .. } if text == "ring chime" => Some(()),
+        _ => None,
+    })
+    .await;
+    g.send(ToClient::WalkStop { session: ID.into() }).await;
+    g.output(&format!(
+        "ring chime\r\nYou ring the chime...\r\nYou find yourself...elsewhere.\r\n{}",
+        prompt(35)
+    ))
+    .await;
+    g.walk_narrated("Stopped walking: asked to stop").await;
+    let pos = g.position().await;
+    assert_eq!(pos.room, Some(MANSION_ENTRANCE.1), "{pos:?}");
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["w", "ring chime", "look"]);
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_phrase_that_is_only_speech_is_not_taken_for_the_move() {
     // C-055: believed on Slum Street but in the Entrance already, the chime is speech there;
     // the look shows where the character is, and it is where the walk was going.

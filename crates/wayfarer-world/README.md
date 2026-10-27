@@ -212,3 +212,73 @@ let monsters = Monsters::load(&pack)?;
 
 The graph has no state: doors relock at a cold start, found Hidden exits hide again after about
 five minutes (`kb/navigation.md`); the brain's `Traveller` holds what it learns.
+
+## Gear: the catalogue and monster sets
+
+The data side of the gear planner (`gear.rs`), as `spellshop.rs` is for spells. Read once per
+class and race and kept; the per-character part is cheap.
+
+```rust
+let cat = Catalogue::build(&pack, 2, 11)?;          // Witchunter, Kang: ~120 ms
+let who = Wearer { level: 10, charm: Some(75), strength: Some(80) };
+let items = cat.for_level(who, |rooms| nearest(rooms)); // Vec<GearItem>
+```
+
+- **Who may use it** (`user_can_use`, `kb/economy.md` "Carrying and wearing items"): each
+  weapon and armour piece is `Now`, `Later` (only a Minimum Level or an alignment stands in
+  the way: alignment depends on the legal level, which wayfarer does not track) or `Never`
+  (the class or race lists, the weapon kind, the armour type, Magical against Anti-Magic, an
+  off-hand item for a one-handed class, a Maximum Level passed), with every `Reason`. Being
+  named in the class or race list overrides the weapon and armour types. A weapon above the
+  character's Str is usable; `str_short` says by how much.
+- **Where it comes from** (`Source`): the shops whose slot has `maxqty` above 0, with the price
+  for the character's Charm (`buy_price`: cost in copper, the markup, then Charm) and the
+  nearest shop room; the monsters that carry it, with the chance, HP, largest normal hit,
+  boss and respawn hours, the rooms they are in (`genmonster` or `specmon` rooms, else those
+  whose spawn pool holds them), and `first_kill` for a limited monster that has never died;
+  the text blocks with `giveitem` (not a `random` table's `NN:` line) and the rooms or
+  monsters they hang from (a room's command text, a monster's talk text, through links and
+  talk answers); the rooms it is placed in. `sales` are the shops that buy it (any slot, not a
+  gang shop) and what they pay (`sell_price`: cost × (Cha/2 + 25)%). Also `limited`,
+  `deleted_at_cleanup` and `magical`.
+- **Monster sets**: `loop_monsters` (a loop's stop rooms' spawn pools, each monster once with
+  how many stops spawn it), `area_monsters` (the rooms of a name, or the name and a comma:
+  "Slum Street" takes "Slum Street, Bend") and `named_monsters` (names, and those that match
+  none).
+
+A build reads the 26,720 rooms once, on a second read-only connection beside the monsters and
+text blocks, and only the end of each room's record (where `cmdtext` and `placed` are).
+
+## The combat model (`combat.rs`)
+
+One character, one weapon and one monster: what each blow costs, how often it lands, crits or
+is dodged, how much it does, how many blows land in each round, and the chance the monster is
+dead after round 1, 2, ... for an attack, a bash and a smash. Solo play: no party damage, no
+monster turns. It is the gear planner's engine: the brain's gear plan (`docs/brain.md` "Gear
+plan").
+
+```rust
+let fighter = Fighter::new(&Character { class: &witchunter, race: &human, level: 15,
+    stats: Stats { str: 95, int: 50, agi: 56, cha: 50 }, weapon: Some(&magebane),
+    worn: vec![], encumbrance: 55, max_energy: 1000, buffs: vec![] });
+let monk = Defender::new(&dark_monk, &[]);           // + its weapon and worn item, if any
+let fight = Fight::new(&fighter, &monk, Move::Bash);  // cost 632, blows 1, 2, 1, 2, 1, 2, 2, 1
+fight.p_kill_by_round[1];                             // dead after round 2
+```
+
+- The formulas are the recovered source's, in C integer arithmetic: `move_player_to_fighter`,
+  `move_monster_to_fighter`, `calculate_attack` and the auto-combat blow loop (LJNCOMBT.C),
+  with the bonus totals of `update_dynamic_stats` (LJNABIL.C: the best Alter AV, the averaged
+  Alter Energy Usage). `kb/combat.md` has them in words.
+- Every roll includes its top value (`ROLL_TOP_INCLUDED`, John, 2026-10-26): a hit chance of
+  34 lands 33 times in 100, the damage roll runs `min..=max+1`.
+- The kill chances are exact: the damage dealt so far is a distribution over `0..maxhp`, and
+  each blow (a miss, glance or dodge, a normal range and a crit range, ×3 or ×5) is folded
+  in with a sliding window. A smash that does damage knocks the monster down (if
+  `Str + level > its level + magicres + 30`) and the later smashes use its DV less 35.
+- `expected_rounds` counts at most 20 rounds; `rounds_capped` says the fight may well run
+  longer. A planner request (150 weapons × 3 moves × 10 monsters of 300 HP) takes about 0.2 s.
+- Records come from the pack's `raw` JSON: `ItemRecord`, `MonsterRecord`, `ClassRecord`,
+  `RaceRecord` (`from_raw`). Left out: casting, backstab, martial arts, Protective Shield,
+  light and blindness, Quickness and Slowness, rank, the alignment defences.
+

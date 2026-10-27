@@ -103,6 +103,8 @@ impl Atlas {
         } else {
             knowledge
         };
+        // The stretches of paths that open a sealed hidden exit from elsewhere and go through.
+        graph.learn_windows(&knowledge);
         let shops: HashMap<i64, i64> = pack.shop_types()?.into_iter().collect();
         let mut kinds = HashMap::new();
         for n in graph.nodes() {
@@ -209,6 +211,8 @@ pub struct World {
     pub info: Option<WorldPackInfo>,
     pub pack: Option<Arc<Mutex<WorldPack>>>,
     pub atlas: Option<Arc<Atlas>>,
+    /// The gear planner's data (`gear_plan_request`), with a pack.
+    pub gear: Option<Arc<crate::gear_plan::Gear>>,
 }
 
 impl World {
@@ -236,12 +240,17 @@ impl World {
     /// An open pack: its game texts and its atlas (no `info`).
     pub fn from_pack(pack: WorldPack) -> Result<Self, wayfarer_world::Error> {
         let texts = pack.game_texts()?;
-        let atlas = Atlas::load(&pack)?;
+        let atlas = Arc::new(Atlas::load(&pack)?);
+        let pack = Arc::new(Mutex::new(pack));
         Ok(Self {
             registry: Arc::new(Registry::new(&texts)),
             info: None,
-            pack: Some(Arc::new(Mutex::new(pack))),
-            atlas: Some(Arc::new(atlas)),
+            gear: Some(Arc::new(crate::gear_plan::Gear::new(
+                pack.clone(),
+                atlas.clone(),
+            ))),
+            pack: Some(pack),
+            atlas: Some(atlas),
         })
     }
 
@@ -257,6 +266,7 @@ impl World {
             info: None,
             pack: None,
             atlas: None,
+            gear: None,
         }
     }
 }
@@ -545,9 +555,14 @@ impl Brain {
                 map,
                 room,
                 stop_short,
+                fight,
             } => match self.sessions.get_mut(&session) {
-                Some(s) => s.walk_to((map, room), stop_short, now, out),
+                Some(s) => s.walk_to((map, room), stop_short, fight, now, out),
                 None => out.push(no_session("walk_to", &session)),
+            },
+            ToClient::JourneyFight { session, fight } => match self.sessions.get_mut(&session) {
+                Some(s) => s.journey_fight(fight, now, out),
+                None => out.push(no_session("journey_fight", &session)),
             },
             ToClient::Find { session, query } => match self.sessions.get(&session) {
                 Some(s) => s.find(&query, out),
@@ -638,6 +653,14 @@ impl Brain {
                 Some(s) => s.spell_plan(out),
                 None => out.push(no_session("spell_plan_request", &session)),
             },
+            ToClient::GearPlanRequest(req) => match self.sessions.get_mut(&req.session) {
+                Some(s) => s.gear_plan(&req, self.world.gear.as_deref(), out),
+                None => out.push(no_session("gear_plan_request", &req.session)),
+            },
+            ToClient::GearDetailRequest(req) => match self.sessions.get_mut(&req.session) {
+                Some(s) => s.gear_detail(&req, self.world.gear.as_deref(), out),
+                None => out.push(no_session("gear_detail_request", &req.session)),
+            },
             ToClient::StatsRequest { session } => match self.sessions.get_mut(&session) {
                 Some(s) => s.stats_request(out),
                 None => out.push(no_session("stats_request", &session)),
@@ -654,8 +677,8 @@ impl Brain {
                 Some(s) => s.settings_save(&layer, &changes, now, out),
                 None => out.push(no_session("settings_save", &session)),
             },
-            ToClient::StatsReset { session } => match self.sessions.get_mut(&session) {
-                Some(s) => s.stats_reset(now, out),
+            ToClient::StatsReset { session, only } => match self.sessions.get_mut(&session) {
+                Some(s) => s.stats_reset(only, now, out),
                 None => out.push(no_session("stats_reset", &session)),
             },
             ToClient::Resync { session } => match self.sessions.get_mut(&session) {
@@ -711,6 +734,30 @@ impl Brain {
                 match self.parties.join(&session, &party, &known) {
                     Ok((changed, emptied)) => self.store_parties(&changed, &emptied),
                     Err(why) => out.push(party_warning(&format!("party_join: {why}"))),
+                }
+                self.parties_tick(out);
+            }
+            ToClient::PartyResync { party } => {
+                match self.parties.resync(party.as_deref()) {
+                    Some(members) => {
+                        for id in members {
+                            if let Some(s) = self.sessions.get_mut(&id) {
+                                s.party_resync();
+                            }
+                        }
+                        let what = party.map_or_else(
+                            || "the parties are".to_owned(),
+                            |id| format!("party {id} is"),
+                        );
+                        out.push(ToGateway::Notice {
+                            session: None,
+                            text: format!("Re-sync: {what} forming up again"),
+                        });
+                    }
+                    None => out.push(party_warning(&format!(
+                        "party_resync: no party {:?}",
+                        party.unwrap_or_default()
+                    ))),
                 }
                 self.parties_tick(out);
             }
@@ -803,6 +850,12 @@ impl Brain {
             if let Some(s) = self.sessions.get_mut(&id) {
                 tracing::info!(session = %id, %why, "party flee");
                 s.party_flee(&why);
+            }
+        }
+        for (id, note) in plan.notes {
+            if let Some(s) = self.sessions.get(&id) {
+                tracing::info!(session = %id, %note, "party rank");
+                out.push(s.party_note(&note));
             }
         }
         for (id, why) in plan.give_up {

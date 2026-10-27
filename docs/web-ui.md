@@ -7,9 +7,9 @@ is built (`npm --prefix ui ci && npm --prefix ui run build`, which writes `ui/di
 
 ## Tiles
 
-One tile per character in `wayfarer.toml`, laid out by count: 1; 1x2; 2x2; 2x3 or 3x2 (two,
-five or six tiles go side by side or stacked, whichever makes the terminals larger on your
-screen). Each tile is framed in the font's double lines, with a header on the top line
+One tile per character in `wayfarer.toml`, laid out by count: 1; 1x2; 2x2; 2x3 or 3x2. Two
+tiles always go side by side, one on the left and one on the right; five or six go side by
+side or stacked, whichever makes the terminals larger on your screen. Each tile is framed in the font's double lines, with a header on the top line
 (below).
 
 ## The header
@@ -116,6 +116,8 @@ but no pause sign, so pause is `[║]`.
 | `Alt+P`, or the `parties` button | Open the drawer on the parties: pick a leader, tick its followers, save; each member's state under it (on a Mac, `Option`) |
 | The party chip in the tile's header | `★ Leading`, `Following` or `Separated`; click it to leave the party, or to join one |
 | `Alt+B`, or the `blessings` button | Open the drawer on the blessings: tick the lasting spells each character keeps on itself (bless, barkskin, holy aura); ● marks one that is on (on a Mac, `Option`) |
+| `Alt+E`, or the `gear` button | Open the gear planner over the tiles for the focused character: every weapon it could use, scored by attack, bash and smash against its monsters; `Alt+E` again or `Esc` closes it (on a Mac, `Option`) |
+| Click a column's heading, or a row, in the gear planner | Sort by that column (again: the other way round); a row opens its detail under it: each monster's numbers for each move |
 | `F10`, or `[■]` in the tile's header | Drop the focused character's loop or Go to: it plays on where it is (paused, it stays off); with neither, turn the bot off, or on |
 | `F9`, or `[║]` and `[►]` in the tile's header | Pause the focused character's loop or Go to and go on with it; with neither, turn the bot off and on where it stands (fight what comes, rest when low) |
 | `Alt+S`, or the `stats` button | Open the drawer on the stats of the focused character's runs: exp per hour, kills, deaths and flees, now and for the last runs; or close it (on a Mac, `Option`) |
@@ -149,9 +151,10 @@ is per browser until settings arrive (`docs/plan/04-settings.md`); it is not wri
 ## The drawer
 
 The map, the parties, the blessings, the stats, the settings and the dev panel share one
-drawer on the right, a third of the window at most; the tiles refit beside it. Its title has
-the six tabs, `map`, `parties`, `blessings`, `stats`, `settings` and `dev`, the
-focused character's name and a close button. `Alt+M` (on a Mac, `Option+M`) or the `map`
+drawer on the right, a third of the window at most; the tiles refit beside it. Its tabs are
+the six buttons on the bar at the top, `map`, `parties`, `blessings`, `stats`, `settings` and
+`dev`, the open one lit, with the focused character's name before them while it is open; it
+has no title row of its own. `Alt+M` (on a Mac, `Option+M`) or the `map`
 button opens it on the map, and again closes it; `Alt+S` or the `stats` button and `Alt+D` or
 the `dev` button do the same for the stats and the dev panel, and each key switches tabs when
 the drawer is open on another. It follows the focused tile.
@@ -214,8 +217,14 @@ and works nothing out itself.
   there as a click on the map does. A **boss lair**'s row (a room whose monster spawns one
   at a time, such as the Chieftain's) has a ticked **stop short** box: the walk stops in the
   room before the lair so you can look before going in, and the walk bar says `one room
-  short of Large Wooden Room (boss: minotaur chieftain)`. Untick it to walk in. `Esc`
-  clears the box; `Esc` again closes it.
+  short of Large Wooden Room (boss: minotaur chieftain)`. Untick it to walk in. `Esc` clears
+  the box; `Esc` again closes it.
+- **Fight on the way**: the tick beside `go` on the tools line (ticked to start; the browser
+  keeps it) is for every Go to, a click on the map and the go box alike, and every character.
+  Unticked, the bot fights nothing until it arrives, not even what attacks it (it still flees
+  under its flee line), and the walk bar says `not fighting on the way`. Changing it changes
+  the Go tos already under way too (`journey_fight`): untick it mid-fight and the character
+  walks on. Once there, the bot plays and fights as usual ([brain.md](brain.md) "Go to").
 - **Connecting and logging off**: the tile's header has **[log off]** while the character is
   connected (logon, menu or realm) and **[connect]** when it is `closed` or `lost`. **log off**
   logs the character off cleanly, as the gateway does when it stops (the brain is told and stops
@@ -313,12 +322,17 @@ its name; ticking it moves it. Changing a box shows `save` and `undo`; `delete` 
 (`really delete?`) before the party goes and its followers leave it in the game. `+ New
 party` opens an empty box led by the first character in no party. The panel only edits the
 parties: the brain forms them in the game when a leader and a follower with its bot running
-are in one room.
+are in one room. When one gets stuck (a follower shown joined that is not, or separated for
+no reason), **re-sync** in its box, or **re-sync all** at the top, has every member check its
+party with `par` at once and the invites and follows go again without waiting
+(`party_resync`, [brain.md](brain.md) "Parties").
 
 Under each follower is its state: `joined`, `not joined yet: forming up` (in the leader's
 room) or `: in another room`, `away: its bot is not running` (or not in the realm),
 `separated`, `walking to Penny (4 rooms)`, `resting 62%`, or `can't reach Penny: ...` with the
-reason. After the state comes what the member is doing and its HP, from its bot's `doing`:
+reason, and once it is in the party in the game its rank (`joined, back rank`). Where each
+character stands is its own *Party rank* setting (the settings panel, Party; front by
+default), and its bot moves it there ([brain.md](brain.md) "Parties"). After the state comes what the member is doing and its HP, from its bot's `doing`:
 `joined · attacking large giant rat · 72%`, `· healing Lauren · 100%`, `· resting with the
 party · 64%`, `· paused`. The leader's line, in the box's heading, shows what it is doing
 while it is joined.
@@ -355,9 +369,19 @@ over the newest run, a bar a minute. Then the last ten runs as rows, newest firs
 started, its loop (`here` for "fight here"), minutes, exp per hour, kills, deaths and flees;
 the run still going is in cyan. The rows come from the brain's store (`stats_request`): asked
 for when the tab opens, when a run starts or ends, every minute while it is open, and on
-`refresh`. **Reset**, beside "run since" (or "no run"), zeroes the combat numbers and ends
-the current run and starts a new one at zero (`stats_reset`); the old run stays in the list.
-With the bot stopped it zeroes the combat numbers alone.
+`refresh`. **Reset**, beside "run since", ends the current run and starts a new one at zero
+(`stats_reset` with `only: "run"`); the old run stays in the list and the combat numbers are
+kept. It shows only while there is a run. "run since" says how long ago, too: the time since
+the run started or was reset.
+
+Under the run, **where the time went** ([brain.md](brain.md) "Where the time goes"): a bar
+and a line for each kind, biggest first, with its share and its time: fighting, resting,
+walking, waiting (for a monster, or the party), upkeep (looting, blessings, sneaking), fleeing,
+paused and away. Then how efficient the run is: kills an hour of the bot playing (paused and
+away left out), exp a minute of fighting, and per kill the time fighting, resting and between
+kills (walking and waiting). A long time between kills says there are too few monsters where
+it hunts; long rests say the fights cost too much. When the brain was not running for part of
+the run, a line says how much of it was not seen.
 
 Under the run, the **combat** numbers ([brain.md](brain.md) "Combat statistics"): since when
 (the last reset, and how long ago), then swings, accuracy and crit rate, then a table in the
@@ -365,8 +389,9 @@ shape of MegaMud's Combat tab: `miss` (with the dodges), `hit`, `crit`, `bs` (wi
 of the backstab tries landed and how many crit), `cast` (its accuracy, and the failed casts),
 `glance` and `round`, each with its count, its share of the swings, min-max and average
 damage. Rows with nothing counted are left out. Last, killed, fled, and the lowest HP and mana
-seen. They are kept across runs, stops and restarts until **Reset**: press it after changing
-weapons or settings, starting a loop or a level-up.
+seen. They are kept across runs, stops and restarts until their own **Reset**, beside "combat
+since" (`only: "combat"`; the run goes on): press it after changing weapons or settings,
+starting a loop or a level-up.
 
 Between the two, the **monster rules** the bot plays by ([brain.md](brain.md) "Monster
 rules"): each rule (*flee from*, *never fight*, *avoid*), its pattern and where it comes from
@@ -398,6 +423,58 @@ settings show with `all`.
   below shows through (the default, a preset, or another file).
 - A change made to the file by hand shows up too: the brain sends the form again when it
   reloads a file.
+
+## The gear planner
+
+The `gear` button on the bar at the top, beside the drawer's tabs, or `Alt+E` (on a Mac,
+`Option+E`) opens the gear planner over the tiles and the drawer, which stay as they are
+underneath; `Alt+E` again, `Esc` or `[x] Esc` closes it. It opens on the focused character, and
+the picker in its header switches to another. It is a view of the brain's gear plan
+([brain.md](brain.md) "Gear plan"): every weapon the character's class and race could ever use,
+and the rest greyed, each scored for a plain attack, a bash and a smash against a monster set.
+Solo play only. It asks (`gear_plan_request`) when it opens and a fifth of a second after each
+change of an input. Only weapons for now; the header's `weapons` tab leaves room for armour.
+
+**The header**:
+
+- **Monsters**: `its loop` (the loop the bot runs, else the area around the character), `an
+  area` (a field suggesting the names of the areas whose rooms spawn monsters) or `names`
+  (monster names, separated by commas). The set is listed under the header: each monster's HP,
+  AC, DR, dodge and how many of the set's rooms spawn it, its weight in the averages.
+- **What if**: the level, the six stats and the load %, filled in with the character's own;
+  a value changed is yellow and sent as a what-if, the others are not. `live` puts them back.
+  The character's load is shown beside them.
+- **Buffs**: a box for each lasting spell that would change the scores, labelled with what it
+  does ("song of valour: +5 AV"); the ticks are kept per character in the browser's
+  `localStorage` under `wayfarer.gear.buffs`. For the classes that may keep smash (Warrior,
+  Witchunter, Paladin, Cleric, Warlock, Ranger), **score smash (as if it had it)** adds the
+  smash columns: the planner cannot see whether the character has it yet.
+- **Show**: `usable now`, `now or later` or `everything`; `has a source` hides what nothing
+  sells, drops or gives; `max price` (in gold) hides what the cheapest shop sells for more,
+  keeping what no shop sells. These filter the rows in the page, without asking again.
+
+**The table** has a row per weapon: its name, damage, speed, the Str it needs (red, with the
+shortfall, when short), the level it may be used from, one- or two-handed, whether it may be
+used (`now`, or why not: `level 15`, `class`, `alignment evil`) and where it comes from (the
+cheapest shop and its price, else the best drop, "25% minotaur champion, boss, first kill",
+else `quest` or `placed`; `‡` marks a limited item and `†` one deleted at cleanup; hover for
+every source). Rows the character can use now are green, later yellow, never grey and not
+scored. Then, for each move, `k1` and `k2`, the chances of a kill in round 1 and by round 2,
+`rds`, the rounds expected to the kill (`20+` when a fight may run longer), and `dmg1`, the
+damage expected in round 1, each averaged over the set. A row's best move (the fewest rounds)
+is in cyan, and the best row of all is pinned on top with a `★`. Click a heading to sort by it
+(again for the other way round); rows with nothing in that column go last.
+
+**The detail**: click a row to open it under itself (`gear_detail_request`), again to close
+it: for each move, the blows struck in rounds 1 to 8 ("1 2 1 2 1 2 2 1") and the energy a blow
+costs, and for each monster the hit, crit and dodge chances, the damage of a landed blow and
+of a crit, the damage expected from a blow and in round 1, the chances of a kill by rounds 1,
+2 and 3 (hover for all eight) and the rounds expected.
+
+When there is nothing to score the view says why: no stats yet ("type `st` in the tile"), no
+inventory yet for the load (type `i`, or set a load % under What if), no loop running and no
+position for the default set (pick an area or names), the brain not attached, or the brain's
+own reason (no world pack).
 
 ## The dev panel
 

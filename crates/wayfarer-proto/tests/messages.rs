@@ -4,12 +4,14 @@
 use wayfarer_proto::{
     BlessingSpell, Blessings, Bot, BotAction, BotMode, BotState, CharacterState, Chunk, ClientKind,
     CoinCount, Coins, CombatStats, DamageRow, DecodeError, Encumbrance, ExitKind, ExpSample,
-    Family, Found, FoundKind, FoundRoom, GeneratedLoop, Journey, LoopStop, MapExit, MapRoom,
-    MegaMudLoop, MemberState, MemberStatus, MonsterRuleEntry, MonsterRuleKind, PROTOCOL,
-    ParseCounts, PartyDef, PartyStatus, Position, RoomKey, RoomKind, RuleSource, RunSummary,
-    SessionAction, SessionInfo, SessionState, SettingChange, SettingKind, SettingRow, SettingValue,
-    SettingsFile, SpellPlanItem, Stats, ToClient, ToGateway, Walking, WorldPackInfo,
-    protocol_mismatch,
+    Family, Found, FoundKind, FoundRoom, GearBuff, GearDetail, GearDetailMove, GearDetailRequest,
+    GearFilter, GearInputs, GearMonster, GearMonsterScore, GearMonsters, GearMove, GearMoveScore,
+    GearPlan, GearPlanRequest, GearRow, GearSource, GearSourceKind, GearStatus, GearWhatIf,
+    GeneratedLoop, Journey, LoopStop, MapExit, MapRoom, MegaMudLoop, MemberState, MemberStatus,
+    MonsterRuleEntry, MonsterRuleKind, PROTOCOL, ParseCounts, PartyDef, PartyRank, PartyStatus,
+    Position, RoomKey, RoomKind, RuleSource, RunSummary, SessionAction, SessionInfo, SessionState,
+    SettingChange, SettingKind, SettingRow, SettingValue, SettingsFile, SpellPlanItem, Stats,
+    StatsPart, TimeSpent, ToClient, ToGateway, Walking, WorldPackInfo, protocol_mismatch,
 };
 
 fn kasimir(state: SessionState, last_seq: u64) -> SessionInfo {
@@ -103,6 +105,7 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                         journey: Some(Journey {
                             name: "Newhaven, Arena".into(),
                             to: RoomKey { map: 1, room: 2150 },
+                            passive: false,
                         }),
                         monster_rules: vec![MonsterRuleEntry {
                             pattern: "gigantic black ooze".into(),
@@ -322,8 +325,18 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                     lowest_hp: Some(50),
                     lowest_mana: None,
                 }),
+                time: Some(Box::new(TimeSpent {
+                    fight_secs: 52,
+                    flee_secs: 0,
+                    rest_secs: 30,
+                    walk_secs: 25,
+                    upkeep_secs: 3,
+                    wait_secs: 10,
+                    paused_secs: 0,
+                    away_secs: 0,
+                })),
             },
-            r#"{"type":"stats","session":"kasimir","runs":[{"started_at":"2026-10-19T12:00:00Z","minutes":2,"exp_per_hour":540,"kills":2,"deaths":0,"flees":0,"rests":1,"exp_gained":18}],"samples":[{"at":"2026-10-19T12:01:00Z","exp":355,"hp":30}],"combat":{"since":"2026-10-24T12:00:00Z","swings":4,"accuracy_per_mille":750,"crit_rate_per_mille":333,"rows":[{"kind":"hit","count":2,"per_mille":500,"min":21,"max":84,"avg_tenths":525}],"misses":1,"dodged":0,"glances":0,"backstab_tries":0,"backstab_crits":0,"cast_misses":0,"cast_accuracy_per_mille":0,"kills":1,"flees":0,"lowest_hp":50}}"#,
+            r#"{"type":"stats","session":"kasimir","runs":[{"started_at":"2026-10-19T12:00:00Z","minutes":2,"exp_per_hour":540,"kills":2,"deaths":0,"flees":0,"rests":1,"exp_gained":18}],"samples":[{"at":"2026-10-19T12:01:00Z","exp":355,"hp":30}],"combat":{"since":"2026-10-24T12:00:00Z","swings":4,"accuracy_per_mille":750,"crit_rate_per_mille":333,"rows":[{"kind":"hit","count":2,"per_mille":500,"min":21,"max":84,"avg_tenths":525}],"misses":1,"dodged":0,"glances":0,"backstab_tries":0,"backstab_crits":0,"cast_misses":0,"cast_accuracy_per_mille":0,"kills":1,"flees":0,"lowest_hp":50},"time":{"fight_secs":52,"flee_secs":0,"rest_secs":30,"walk_secs":25,"upkeep_secs":3,"wait_secs":10,"paused_secs":0,"away_secs":0}}"#,
         ),
         (
             ToGateway::SpellPlan {
@@ -343,6 +356,144 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                 }],
             },
             r#"{"type":"spell_plan","session":"kasimir","cash":520,"items":[{"spell":"mend","spell_level":3,"scroll":"scroll of mend","shop":"Newhaven Spell Shop","map":1,"room":2144,"price":800,"steps":12,"usable":true,"affordable":false}]}"#,
+        ),
+        (
+            ToGateway::GearPlan(GearPlan {
+                session: "kasimir".into(),
+                inputs: GearInputs {
+                    class: Some("Witchunter".into()),
+                    race: Some("Kang".into()),
+                    level: Some(15),
+                    str: Some(95),
+                    int: Some(30),
+                    wil: Some(45),
+                    agi: Some(56),
+                    hea: Some(91),
+                    cha: Some(41),
+                    load_percent: Some(51),
+                    readied: None,
+                    what_if: vec!["level".into()],
+                    buffs: vec!["song of valour".into()],
+                    smash: false,
+                },
+                monsters: vec![GearMonster {
+                    number: 60,
+                    name: "minotaur champion".into(),
+                    hp: 200,
+                    ac: 40,
+                    dr: 50,
+                    dodge: 0,
+                    rooms: 1,
+                    boss: true,
+                }],
+                buffs_offered: vec![GearBuff {
+                    name: "song of valour".into(),
+                    classes: vec!["Bard".into()],
+                    effect: "song of valour: +5 AV".into(),
+                }],
+                rows: vec![GearRow {
+                    item: 646,
+                    name: "Magebane sword".into(),
+                    min_damage: 10,
+                    max_damage: 24,
+                    speed: 1600,
+                    str_req: 60,
+                    str_short: None,
+                    min_level: Some(15),
+                    two_handed: false,
+                    status: GearStatus::Now,
+                    reasons: vec![],
+                    sources: vec![GearSource {
+                        kind: GearSourceKind::Quest,
+                        name: "huge dwarven witchunter".into(),
+                        price: None,
+                        percent: None,
+                        room: None,
+                        steps: None,
+                        boss: false,
+                        first_kill: false,
+                    }],
+                    limited: None,
+                    deleted_at_cleanup: false,
+                    load_percent: Some(51),
+                    moves: vec![GearMoveScore {
+                        mv: GearMove::Bash,
+                        energy: 620,
+                        blows: vec![1, 2, 1],
+                        hit: 745,
+                        crit: 0,
+                        damage_round1: 364,
+                        kill_round1: 52,
+                        kill_round2: 458,
+                        rounds: 376,
+                        rounds_capped: false,
+                    }],
+                    best_move: Some(GearMove::Bash),
+                    best: true,
+                    note: Some("Anti-Magic resists friendly buffs some of the time: a ticked buff may not take".into()),
+                }],
+                missing: None,
+                notes: vec![],
+                areas: vec!["Dwarven Mines".into(), "Newhaven".into()],
+            }),
+            r#"{"type":"gear_plan","session":"kasimir","inputs":{"class":"Witchunter","race":"Kang","level":15,"str":95,"int":30,"wil":45,"agi":56,"hea":91,"cha":41,"load_percent":51,"what_if":["level"],"buffs":["song of valour"],"smash":false},"monsters":[{"number":60,"name":"minotaur champion","hp":200,"ac":40,"dr":50,"dodge":0,"rooms":1,"boss":true}],"buffs_offered":[{"name":"song of valour","classes":["Bard"],"effect":"song of valour: +5 AV"}],"rows":[{"item":646,"name":"Magebane sword","min_damage":10,"max_damage":24,"speed":1600,"str_req":60,"min_level":15,"two_handed":false,"status":"now","reasons":[],"sources":[{"kind":"quest","name":"huge dwarven witchunter"}],"load_percent":51,"moves":[{"move":"bash","energy":620,"blows":[1,2,1],"hit":745,"crit":0,"damage_round1":364,"kill_round1":52,"kill_round2":458,"rounds":376}],"best_move":"bash","best":true,"note":"Anti-Magic resists friendly buffs some of the time: a ticked buff may not take"}],"areas":["Dwarven Mines","Newhaven"]}"#,
+        ),
+        (
+            ToGateway::GearDetail(GearDetail {
+                session: "kasimir".into(),
+                item: 646,
+                name: "Magebane sword".into(),
+                inputs: GearInputs {
+                    class: Some("Witchunter".into()),
+                    race: Some("Kang".into()),
+                    level: Some(15),
+                    str: Some(95),
+                    int: Some(30),
+                    wil: Some(45),
+                    agi: Some(56),
+                    hea: Some(91),
+                    cha: Some(41),
+                    load_percent: Some(51),
+                    readied: None,
+                    what_if: vec![],
+                    buffs: vec![],
+                    smash: false,
+                },
+                monsters: vec![GearMonster {
+                    number: 405,
+                    name: "kobold warrior".into(),
+                    hp: 50,
+                    ac: 35,
+                    dr: 20,
+                    dodge: 0,
+                    rooms: 0,
+                    boss: false,
+                }],
+                load_percent: Some(51),
+                moves: vec![GearDetailMove {
+                    mv: GearMove::Attack,
+                    energy: 310,
+                    blows_per_round: vec![3, 3, 3, 3, 3, 4, 3, 3],
+                    monsters: vec![GearMonsterScore {
+                        monster: 405,
+                        hit: 819,
+                        crit: 8,
+                        dodge: 0,
+                        damage: vec![17, 33],
+                        crit_damage: Some(vec![64, 130]),
+                        damage_per_blow: 209,
+                        damage_round1: 627,
+                        damage_round2: 627,
+                        kill_by_round: vec![530, 960, 999, 1000, 1000, 1000, 1000, 1000],
+                        rounds: 151,
+                        rounds_capped: false,
+                        knocks_down: false,
+                    }],
+                }],
+                missing: None,
+                notes: vec![],
+            }),
+            r#"{"type":"gear_detail","session":"kasimir","item":646,"name":"Magebane sword","inputs":{"class":"Witchunter","race":"Kang","level":15,"str":95,"int":30,"wil":45,"agi":56,"hea":91,"cha":41,"load_percent":51,"what_if":[],"buffs":[],"smash":false},"monsters":[{"number":405,"name":"kobold warrior","hp":50,"ac":35,"dr":20,"dodge":0,"rooms":0}],"load_percent":51,"moves":[{"move":"attack","energy":310,"blows_per_round":[3,3,3,3,3,4,3,3],"monsters":[{"monster":405,"hit":819,"crit":8,"dodge":0,"damage":[17,33],"crit_damage":[64,130],"damage_per_blow":209,"damage_round1":627,"damage_round2":627,"kill_by_round":[530,960,999,1000,1000,1000,1000,1000],"rounds":151}]}]}"#,
         ),
         (
             ToGateway::Settings {
@@ -411,21 +562,24 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                             session: "kasimir".into(),
                             state: MemberState::Joined,
                             detail: None,
+                            rank: Some(PartyRank::Front),
                         },
                         MemberStatus {
                             session: "isolde".into(),
                             state: MemberState::Joined,
                             detail: None,
+                            rank: Some(PartyRank::Back),
                         },
                         MemberStatus {
                             session: "brynja".into(),
                             state: MemberState::NotJoined,
                             detail: Some("in another room".into()),
+                            rank: None,
                         },
                     ],
                 }],
             },
-            r#"{"type":"parties","parties":[{"party":{"id":"party-1","leader":"kasimir","followers":["isolde","brynja"]},"members":[{"session":"kasimir","state":"joined"},{"session":"isolde","state":"joined"},{"session":"brynja","state":"not_joined","detail":"in another room"}]}]}"#,
+            r#"{"type":"parties","parties":[{"party":{"id":"party-1","leader":"kasimir","followers":["isolde","brynja"]},"members":[{"session":"kasimir","state":"joined","rank":"front"},{"session":"isolde","state":"joined","rank":"back"},{"session":"brynja","state":"not_joined","detail":"in another room"}]}]}"#,
         ),
         (
             ToGateway::Blessings {
@@ -475,6 +629,7 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
                 map: 1,
                 room: 2150,
                 stop_short: None,
+                fight: None,
             },
             r#"{"type":"walk_to","session":"kasimir","map":1,"room":2150}"#,
         ),
@@ -483,6 +638,13 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
                 session: "kasimir".into(),
             },
             r#"{"type":"walk_stop","session":"kasimir"}"#,
+        ),
+        (
+            ToGateway::JourneyFight {
+                session: "kasimir".into(),
+                fight: false,
+            },
+            r#"{"type":"journey_fight","session":"kasimir","fight":false}"#,
         ),
         (
             ToGateway::MapRequest {
@@ -537,8 +699,39 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
             r#"{"type":"spell_plan_request","session":"kasimir"}"#,
         ),
         (
+            ToGateway::GearPlanRequest(GearPlanRequest {
+                session: "kasimir".into(),
+                monsters: Some(GearMonsters::Names(vec![
+                    "minotaur".into(),
+                    "minotaur champion".into(),
+                ])),
+                what_if: Some(GearWhatIf {
+                    level: Some(20),
+                    str: Some(97),
+                    load_percent: Some(54),
+                    ..GearWhatIf::default()
+                }),
+                buffs: Some(vec!["song of valour".into()]),
+                smash: Some(true),
+                filter: Some(GearFilter::Now),
+            }),
+            r#"{"type":"gear_plan_request","session":"kasimir","monsters":{"names":["minotaur","minotaur champion"]},"what_if":{"level":20,"str":97,"load_percent":54},"buffs":["song of valour"],"smash":true,"filter":"now"}"#,
+        ),
+        (
+            ToGateway::GearDetailRequest(GearDetailRequest {
+                session: "kasimir".into(),
+                item: 646,
+                monsters: Some(GearMonsters::Loop("Mwodloop.mp".into())),
+                what_if: None,
+                buffs: None,
+                smash: None,
+            }),
+            r#"{"type":"gear_detail_request","session":"kasimir","item":646,"monsters":{"loop":"Mwodloop.mp"}}"#,
+        ),
+        (
             ToGateway::StatsReset {
                 session: "kasimir".into(),
+                only: None,
             },
             r#"{"type":"stats_reset","session":"kasimir"}"#,
         ),
@@ -626,6 +819,10 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
                 party: "party-1".into(),
             },
             r#"{"type":"party_join","session":"isolde","party":"party-1"}"#,
+        ),
+        (
+            ToGateway::PartyResync { party: None },
+            r#"{"type":"party_resync"}"#,
         ),
         (
             ToGateway::BlessingsRequest,
@@ -835,8 +1032,57 @@ fn walk_to_may_say_whether_to_stop_short() {
         map: 1,
         room: 1865,
         stop_short: Some(false),
+        fight: None,
     };
     let json = r#"{"type":"walk_to","session":"kasimir","map":1,"room":1865,"stop_short":false}"#;
+    assert_eq!(msg.to_json(), json);
+    assert_eq!(ToGateway::from_json(json).unwrap(), msg);
+    assert!(include_str!("../../../docs/protocol.md").contains(json));
+}
+
+#[test]
+fn walk_to_may_say_not_to_fight_on_the_way() {
+    let msg = ToGateway::WalkTo {
+        session: "kasimir".into(),
+        map: 1,
+        room: 2150,
+        stop_short: None,
+        fight: Some(false),
+    };
+    let json = r#"{"type":"walk_to","session":"kasimir","map":1,"room":2150,"fight":false}"#;
+    assert_eq!(msg.to_json(), json);
+    assert_eq!(ToGateway::from_json(json).unwrap(), msg);
+    assert!(include_str!("../../../docs/protocol.md").contains(json));
+}
+
+#[test]
+fn stats_reset_may_zero_only_the_run_or_the_combat_numbers() {
+    for (only, json) in [
+        (
+            StatsPart::Run,
+            r#"{"type":"stats_reset","session":"kasimir","only":"run"}"#,
+        ),
+        (
+            StatsPart::Combat,
+            r#"{"type":"stats_reset","session":"kasimir","only":"combat"}"#,
+        ),
+    ] {
+        let msg = ToGateway::StatsReset {
+            session: "kasimir".into(),
+            only: Some(only),
+        };
+        assert_eq!(msg.to_json(), json);
+        assert_eq!(ToGateway::from_json(json).unwrap(), msg);
+        assert!(include_str!("../../../docs/protocol.md").contains(json));
+    }
+}
+
+#[test]
+fn party_resync_may_name_one_party() {
+    let msg = ToGateway::PartyResync {
+        party: Some("party-1".into()),
+    };
+    let json = r#"{"type":"party_resync","party":"party-1"}"#;
     assert_eq!(msg.to_json(), json);
     assert_eq!(ToGateway::from_json(json).unwrap(), msg);
     assert!(include_str!("../../../docs/protocol.md").contains(json));
@@ -1037,15 +1283,38 @@ fn families_say_who_may_send_what() {
     for (msg, _) in to_gateway() {
         let family = msg.family();
         let want = match msg.type_name() {
-            "resync" | "state_request" | "walk_to" | "walk_stop" | "map_request"
-            | "bot_control" | "loops_request" | "walk_loop" | "run_loop" | "stats_request"
-            | "spell_plan_request" | "stats_reset" | "settings_request" | "settings_save"
-            | "save_loop" | "delete_loop" | "find" | "set_monster_rule" | "parties_request"
-            | "party_save" | "party_delete" | "party_leave" | "party_join"
-            | "blessings_request" | "blessings_save" => Family::Control,
+            "resync"
+            | "state_request"
+            | "walk_to"
+            | "walk_stop"
+            | "journey_fight"
+            | "map_request"
+            | "bot_control"
+            | "loops_request"
+            | "walk_loop"
+            | "run_loop"
+            | "stats_request"
+            | "spell_plan_request"
+            | "gear_plan_request"
+            | "gear_detail_request"
+            | "stats_reset"
+            | "settings_request"
+            | "settings_save"
+            | "save_loop"
+            | "delete_loop"
+            | "find"
+            | "set_monster_rule"
+            | "parties_request"
+            | "party_save"
+            | "party_delete"
+            | "party_leave"
+            | "party_join"
+            | "party_resync"
+            | "blessings_request"
+            | "blessings_save" => Family::Control,
             "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
-            | "map_view" | "loops" | "stats" | "spell_plan" | "settings" | "found" | "parties"
-            | "blessings" => Family::Brain,
+            | "map_view" | "loops" | "stats" | "spell_plan" | "gear_plan" | "gear_detail"
+            | "settings" | "found" | "parties" | "blessings" => Family::Brain,
             "ready_to_leave" | "arbitrate" => Family::BrainToGateway,
             _ => Family::Gateway,
         };

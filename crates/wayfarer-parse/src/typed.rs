@@ -429,7 +429,9 @@ pub enum GameEvent {
     /// `cast_resisted`: `You attempt to cast mmis at orc, but the spell is resisted.`
     CastResisted,
     /// `cast_fail`: `You attempt to cast vine strike, but fail.`
-    CastFailed,
+    CastFailed {
+        spell: String,
+    },
 
     /// `sneak_attempt`: `Attempting to sneak...`, with `You don't think you're sneaking.` on
     /// the same line when the character's perception caught a failure (`failed`). A failure
@@ -474,6 +476,17 @@ pub enum GameEvent {
     },
     /// `invite_needed`: `You must be invited first!`
     PartyMustBeInvited,
+    /// `rank_moved`, the character's own: `You have moved to the front ranks of your group.`
+    RankMoved {
+        rank: Rank,
+    },
+    /// `rank_moved`, another member's: `Lauren just moved to the back rank in your group.`
+    PartyMemberRanked {
+        name: String,
+    },
+    /// `rank_refused`: `You are the only one in the front rank.  You may not leave.`, `You may
+    /// not enter the backrank of your own party.` (the leader), or not enough left in front.
+    RankRefused,
     /// `follow_leader`: ` -- Following your Party leader north --`: the game moved a follower.
     PartyMoved {
         dir: String,
@@ -734,9 +747,19 @@ impl GameEvent {
                 name: monster_name(ev, "who"),
             },
             // A spellcasting monster's attack slot names a spell message (17 for the dark
-            // priest), whose first text is the caster's own line: "You cast bless on Aldric!"
-            // is the character's cast, not a blow.
-            "mon_hits_you" if ev.line.trim_start().starts_with("You cast ") => G::Other(ev.clone()),
+            // priest, 18 for an attack spell), whose first text is the caster's own line: "You
+            // cast bless on Aldric!" is the character's cast, not a blow, and "You cast
+            // stonestrike on giant bat for 22 damage!" its attack spell landing.
+            "mon_hits_you" if ev.line.trim_start().starts_with("You cast ") => {
+                match int(ev, "dmg") {
+                    Some(damage) => G::SpellCast {
+                        spell: text(ev, "mon"),
+                        target: ev.text("s2").map(str::to_owned).filter(|t| !t.is_empty()),
+                        damage,
+                    },
+                    None => G::Other(ev.clone()),
+                }
+            }
             "mon_hits_you"
             | "mon_hits_you_generic"
             | "mon_miss_you"
@@ -891,7 +914,9 @@ impl GameEvent {
             },
             "no_mana" => G::NoMana,
             "already_this_round" => G::AlreadyCast,
-            "cast_fail" => G::CastFailed,
+            "cast_fail" => G::CastFailed {
+                spell: text(ev, "spell"),
+            },
             "cast_resisted" => G::CastResisted,
             "sneak_attempt" => G::SneakAttempt {
                 failed: ev
@@ -941,6 +966,19 @@ impl GameEvent {
                 name: text(ev, "who"),
             },
             "invite_needed" => G::PartyMustBeInvited,
+            "rank_moved" => match ev.text("rank") {
+                Some(r) => G::RankMoved {
+                    rank: match r {
+                        "front" => Rank::Front,
+                        "back" => Rank::Back,
+                        _ => Rank::Mid,
+                    },
+                },
+                None => G::PartyMemberRanked {
+                    name: text(ev, "who"),
+                },
+            },
+            "rank_refused" => G::RankRefused,
             "follow_leader" => G::PartyMoved {
                 dir: text(ev, "dir").to_ascii_lowercase(),
             },

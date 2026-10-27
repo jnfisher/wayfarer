@@ -11,7 +11,7 @@ use std::time::UNIX_EPOCH;
 use game::arena::*;
 use game::*;
 use wayfarer_brain::{Brain, InstantClock, SAMPLE_EVERY, Store};
-use wayfarer_proto::{BotAction, BotState, CombatStats, RunSummary};
+use wayfarer_proto::{BotAction, BotState, CombatStats, RunSummary, StatsPart, TimeSpent};
 use wayfarer_store::{BotRecord, EventKind};
 
 fn brain_on(path: &Path) -> Brain {
@@ -62,6 +62,16 @@ impl Game {
         .await
     }
 
+    async fn time(&mut self) -> Option<TimeSpent> {
+        self.send(ToClient::StatsRequest { session: ID.into() })
+            .await;
+        self.until(|m| match m {
+            ToGateway::Stats { time, .. } => Some(time.as_deref().copied()),
+            _ => None,
+        })
+        .await
+    }
+
     async fn stats(&mut self) -> (Vec<RunSummary>, usize) {
         self.send(ToClient::StatsRequest { session: ID.into() })
             .await;
@@ -71,6 +81,38 @@ impl Game {
         })
         .await
     }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_ui_asking_for_the_state_during_the_catch_up_does_not_stop_the_resume() {
+    // Seen live (2026-10-26): with the web UI open, a restarted brain got its `state_request`
+    // while catching up. The session was published early, the catch-up never counted as the
+    // first, the bot was never resumed, and from then on nothing was saved: Start ran the bot
+    // with no run, and the old run stayed open with its numbers frozen.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let (mut g, run) = arena_brain(brain_on(&path), &[]).await;
+    start(&mut g, &[], 35).await;
+    g.narrated("Waiting here").await;
+    g.close(run).await;
+    let (mut g, run) = Game::start_brain_with(
+        SessionState::Realm,
+        arena(&[], 35),
+        brain_on(&path),
+        Some(ToClient::StateRequest { session: None }),
+    )
+    .await;
+    g.until(|m| matches!(m, ToGateway::MapView { .. }).then_some(()))
+        .await;
+    g.idle(Duration::from_secs(20)).await;
+    assert_said(&g, "Resumed: fighting in Newhaven, Arena (brain restarted)");
+    let (seen, _) = g.close(run).await;
+    let ui = as_ui_sees(&seen);
+    assert_eq!(bot(&seen).state, BotState::Running);
+    assert_eq!(
+        ui.run.expect("the run goes on").run_started_at,
+        "2026-10-19T12:00:20Z"
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -347,7 +389,11 @@ async fn a_reset_starts_a_new_run_at_zero_and_keeps_the_old_one() {
     g.output(&kill(35)).await;
     g.narrated("Waiting here").await;
     g.idle(Duration::from_secs(120)).await;
-    g.send(ToClient::StatsReset { session: ID.into() }).await;
+    g.send(ToClient::StatsReset {
+        session: ID.into(),
+        only: None,
+    })
+    .await;
     g.narrated("Reset: the combat numbers are at zero, and a new run starts now (the old one is kept in the history)")
         .await;
     let (runs, _) = g.stats().await;
@@ -375,9 +421,109 @@ async fn a_reset_with_no_run_zeroes_the_combat_numbers() {
     let c = g.combat().await.expect("combat numbers");
     assert_eq!((c.swings, c.misses, c.accuracy_per_mille), (2, 1, 500));
     assert_eq!(c.rows[0].kind, "crit");
-    g.send(ToClient::StatsReset { session: ID.into() }).await;
+    g.send(ToClient::StatsReset {
+        session: ID.into(),
+        only: None,
+    })
+    .await;
     g.narrated("Reset: the combat numbers are at zero").await;
     assert_eq!(g.combat().await, None);
+    g.close(run).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_run_and_the_combat_numbers_reset_apart() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let (mut g, run) = arena_brain(brain_on(&path), &["large giant rat"]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    g.output(&line("You smack large giant rat for 9 damage!", 35))
+        .await;
+    g.expect("look", arena(&[], 35));
+    g.output(&kill(35)).await;
+    g.narrated("Waiting here").await;
+    g.idle(Duration::from_secs(10)).await;
+    // The run alone: a new one at zero, the combat numbers kept.
+    g.send(ToClient::StatsReset {
+        session: ID.into(),
+        only: Some(StatsPart::Run),
+    })
+    .await;
+    g.narrated("Reset: a new run starts now (the old one is kept in the history)")
+        .await;
+    let (runs, _) = g.stats().await;
+    assert_eq!(runs.len(), 2, "{runs:?}");
+    assert_eq!(runs[0].kills, 0);
+    let c = g.combat().await.expect("combat numbers kept");
+    assert_eq!(c.kills, 1);
+    // The combat numbers alone: the run goes on.
+    g.send(ToClient::StatsReset {
+        session: ID.into(),
+        only: Some(StatsPart::Combat),
+    })
+    .await;
+    g.narrated("Reset: the combat numbers are at zero").await;
+    assert_eq!(g.combat().await, None);
+    let (runs, _) = g.stats().await;
+    assert_eq!(runs.len(), 2, "no new run: {runs:?}");
+    g.close(run).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_run_reset_with_no_run_says_so() {
+    let (mut g, run) = Game::start_with(SessionState::Realm, arena(&[], 35)).await;
+    g.output(&line("You smack large giant rat for 9 damage!", 35))
+        .await;
+    g.send(ToClient::StatsReset {
+        session: ID.into(),
+        only: Some(StatsPart::Run),
+    })
+    .await;
+    g.narrated("Reset: no run to reset").await;
+    assert!(g.combat().await.is_some(), "the combat numbers are kept");
+    g.close(run).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_runs_time_is_counted_kept_over_a_restart_and_reset_with_the_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let (mut g, run) = arena_brain(brain_on(&path), &["large giant rat"]).await;
+    assert_eq!(g.time().await, None, "no run, no time");
+    start(&mut g, &["large giant rat"], 35).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    for hp in [33, 30, 30, 28] {
+        g.round("The large giant rat lunges at you!", hp).await;
+        g.round("You whap large giant rat for 6 damage!", hp).await;
+    }
+    g.expect("look", arena(&[], 28));
+    g.output(&kill(28)).await;
+    g.narrated("Waiting here").await;
+    g.idle(Duration::from_secs(60)).await;
+    let t = g.time().await.expect("a run's time");
+    assert!(t.fight_secs >= 15, "{t:?}");
+    // The minute after the kill, and the re-sync before the first attack.
+    assert!((60..=80).contains(&t.wait_secs), "{t:?}");
+    assert_eq!((t.walk_secs, t.flee_secs, t.away_secs), (0, 0, 0), "{t:?}");
+    g.close(run).await;
+    // Restarted: the run goes on with the time it had, and the bot waits on in the Arena.
+    let (mut g, run) = arena_brain(brain_on(&path), &[]).await;
+    let again = g.time().await.expect("the run goes on");
+    assert_eq!(again.fight_secs, t.fight_secs, "{again:?}");
+    assert!(again.wait_secs >= t.wait_secs + 15, "{again:?}");
+    // A new run counts from zero.
+    g.send(ToClient::StatsReset {
+        session: ID.into(),
+        only: Some(StatsPart::Run),
+    })
+    .await;
+    g.narrated("Reset: a new run starts now (the old one is kept in the history)")
+        .await;
+    let fresh = g.time().await.expect("the new run");
+    assert_eq!((fresh.fight_secs, fresh.wait_secs), (0, 0), "{fresh:?}");
     g.close(run).await;
 }
 

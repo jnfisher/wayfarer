@@ -52,6 +52,20 @@
     works as an exit). The BBS-credit loan code is never called. `MAXIMUM_BANK_BALANCE` caps a book's
     balance when it is read from disk (0 = no limit). [C] `LJNCMDB.C:5011-5040`, `LJNBUFF.C:4038`
 
+## Coins from monsters
+- A monster's coins are rolled when it spawns: each coin type with a nonzero maximum in its
+  record gets `lngrnd(0, max+1)`, so about half the maximum on average. [C] `LJNMONST.C:697-714`
+- For money, rank areas by **average coins per monster hit point** (kill time scales with HP).
+  From the stock data [C data, I ranking]: the Silvermere slums average about 45 copper on
+  about 45 HP (≈1 copper/HP; half-ogre bodyguard 65c/60 HP but hits 36). The Darkwood keep's
+  bandits (9:749 Forest Keep, 9:776 Keep Wall Path, 9:807 Hallway; Chaotic Evil, AC 20, hit 12)
+  average about 110 copper on 55 HP (≈2 copper/HP) and give 125 exp, so a party of four L7s
+  makes about twice the slums' money and exp per kill-time there. 135 steps on foot from the
+  Town Gates; 9:725 Keep Wall and the cells/dungeon are dark (−100/−200).
+- The richest single monster at low level, the Graveyard gravedigger (up to 10 gold, 15 silver,
+  50 copper, about 6 gold average), is no money route: one alive at a time, back an hour after
+  its kill (`maxalive` 1, `regenhrs` 1), and Neutral. [C data]
+
 ## Prices
 - An item record has `cost` in the item's `currency` (offset 0x421: 0 copper, 1 silver, 2 gold,
   3 platinum, 4 runic). [C] `MAJORMUD.H:404-409`, `struct item`
@@ -89,6 +103,9 @@
   copy" case, which would also take one copy off the slot, cannot happen in the original,
   because `remove_logical_from_room` always returns 1, LJNUSE.C:788-845), 2 "You cannot afford X.", 4-7 the gang house deed
   rules (4 is unreachable: a deed owner gets 5). [C] `LJNUTIL.C:5783-5787`, `:6114-6139`
+- **A shop buys only items on its own list of wares** (any slot, `maxqty` 0 included); anything
+  else gets "You cannot sell <item> here." A full shelf still pays: the copy is simply not put
+  back on sale. The price ignores the shop's markup. [C] `LJNUTIL.C:6290-6372`
 - SELL puts the copy back on the shelf only while `qty < maxqty` (so a `maxqty` 0 slot never
   takes it); the money is always copper, then changed up into the fewest coins. Gang shops buy
   nothing; a worn cursed item sells only when a second copy is carried. [C]
@@ -145,6 +162,24 @@ Shop type 11 inside a gang house room; the house is the room's `ganghouse` numbe
   items with the Magical ability (28). Skip missile weapons, which need ammunition. Respect
   `classes` restrictions (item offset 0x324). [C]
 - Afterwards, sell replaced gear if it's worth 50 copper or more; otherwise drop it. [C, John]
+- **A party buys through its highest-Charm member** and hands the gear over: `GIVE <item> TO
+  <player>` moves an item (unreadied first; not a no-drop item or a worn cursed one) into the
+  receiver's pack, or back to the giver when the receiver has no room. [C] `LJNCMDB.C:4300-4335`
+  `cmd_give` At Charm 75 the buy price is 95% (110 − 75/5), against 100% at Charm 50 and 102%
+  at 40, and old gear sells for 62% of cost against 50%. [C] (formula above)
+- **Silvermere's armour shops**, all at 100% markup [C data]: Skali's Fine Armour (head, hands
+  and feet 1:305; torso and legs 1:306; shields in the back room 1:2153), Sentara's Clothing
+  (leather torso, legs, hands and belts 1:310; leather helms and boots 1:2154), the Cloakroom
+  1:312. They are 11-14 steps from the Town Gates. Newhaven's shops are out of reach after level 3
+  (the docks crossing takes levels 0-3). The best value sets, at Charm 50 [C data, I ranking by
+  AC + 3 × DR per gold, a knapsack over the shops' stock]:
+  - Classes limited to Studded Rigid Leather (armour type 6: Bard, Druid and others): rigid
+    leather tunic (AC 13, DR 1.3), rigid leather pants, hard leather helm, hard leather
+    gauntlets, hardened leather boots and a leather belt. AC 25.5, DR 2.3, about 30 gold.
+  - Scalemail or better (Witchunter, Cleric, Warrior): scalemail tunic (AC 20, DR 6),
+    scalemail leggings, pot-helm, scale gauntlets, chainmail boots and a belt. AC 44.5,
+    DR 8.7, about 100 gold. Plate costs two to five times as much per point (light plate
+    corselet AC 21, DR 9, about 300 gold).
 
 ## Encumbrance
 - Capacity y = Str × 48, plus 36 per point over 100 (Str 79 → 3,792), times (100 + Alter
@@ -201,6 +236,25 @@ From the silvermere T-030 port of the item code (LJNUTIL, LJNCMDB, LJNSUPP, LJNF
   Inclusion. A "Limited" weapon class may use only items 100 (quarterstaff) and 68 (the third
   exempt number is 0, which names no item). [C]
   `LJNUTIL.C:9418-9740`, `LJNGAME.C:1030-1032`
+  - The numbers: Magical is item ability 28, Anti Magic 51 (on the class *or* the race), Good 97,
+    Evil 98, Not Good 110, Not Evil 111, Neutral 112, Minimum Level 135 and Maximum Level 136
+    (the level is the ability's value). The class record's `weapon` is its weapon kind against
+    the item's `wpntype` (0 one-handed blunt, 1 two-handed blunt, 2 one-handed sharp, 3
+    two-handed sharp): kinds 0-3 that type only, 4 any one-handed, 5 any two-handed, 6 any
+    sharp, 7 any blunt, 8 all, 9 Limited; its `armour` is the heaviest `armtype` allowed. The
+    one-handed kinds (0, 2, 4) may not use `worn` 12, the off-hand slot. Item type 11 is only
+    for classes 1-4 and 9. A weapon above the character's Str is still usable. [C]
+    `LJNUTIL.C:9418-9740`
+  - In the stock data, 900 weapons and armour pieces: 542 have a Minimum Level, 419 are
+    Magical, 123 need an alignment (57 Evil, 44 Good, 20 Neutral), one has a Maximum Level.
+    Examples: the mithril cutlass names the Witchunter, so a Kang Witchunter may use it; the
+    jeweled main-gauche is off-hand but names the Bard; the golden broadsword is Magical and so
+    never for a Witchunter. [C data] (wayfarer C-058, `crates/wayfarer-world/src/gear.rs`)
+  - A quest item can hang from a monster's talk block: the Magebane sword (item 646, Minimum
+    Level 15) is `giveitem 646` in block 399, the link of block 398, which is the `sword`
+    answer of the huge dwarven witchunter's talk block 393 (`failability 50`, `class 2`,
+    `minlevel 15` first). 292 stock text blocks have `giveitem` lines; those of a `random`
+    table (`NN:` first: chests, gambling) give an item only by chance. [C data]
 - Only one light may be lit ("You already have something lit!"); `i` shows it as
   `torch (Readied/<uses/10>)`. A burnt-out light needs recharging before it can be lit again.
   [C] `LJNCMDB.C:4010-4013`, `:4042-4047`, `LJNDISP.C:3978`

@@ -48,6 +48,12 @@ pub(crate) struct Presence {
 }
 
 impl Presence {
+    /// Out of the realm (the line dropped, or logged off): nothing is attacking any more.
+    pub fn left_the_realm(&mut self) {
+        self.attackers.clear();
+        self.pvp.clear();
+    }
+
     pub fn event(&mut self, atlas: &Atlas, ev: &GameEvent) {
         match ev {
             GameEvent::RoomTitle { .. } => {
@@ -189,7 +195,6 @@ pub(crate) struct View<'a> {
     /// In combat, or not known to be out of it.
     pub engaged: bool,
     pub resting: bool,
-    pub poisoned: bool,
     /// The believed room, and whether the belief is sure of it.
     pub room: Option<Key>,
     pub certain: bool,
@@ -286,12 +291,18 @@ impl View<'_> {
     /// The attack spell for the next fight, if the mana allows one.
     pub fn attack_spell(&self) -> Option<&SpellDef> {
         let (mana, _) = self.mana?;
-        if !self.casts_attacks()
-            || self.mana_percent()? <= self.setting("spells.attack_mana_above", 15)
-        {
+        self.mana_percent()?;
+        if !self.casts_attacks() || self.attack_mana_short() {
             return None;
         }
         self.book.attack(self.level, mana)
+    }
+
+    /// Mana at or below `spells.attack_mana_above` per cent: no attack spell, the weapon
+    /// fights (a fight under way changes to it).
+    pub fn attack_mana_short(&self) -> bool {
+        self.mana_percent()
+            .is_some_and(|m| m <= self.setting("spells.attack_mana_above", 15))
     }
 
     /// The heal for the HP that are missing, if there is a spell and the mana for one.
@@ -313,12 +324,17 @@ impl View<'_> {
         self.heal_for(|_| member_line, own_line)
     }
 
-    /// The party heal between fights (Recover). In a party rest (C-045) each member is healed
-    /// up to its own rest-until line, the caster too, and only when the cast does not make the
-    /// rest longer ([`View::heal_pays`]); out of one, below the heal-a-member line (C-043).
-    pub fn rest_party_heal(&self) -> Option<PartyCast<'_>> {
+    /// The party heal between fights (Recover), and why it goes beyond the heal-a-member line,
+    /// for the narration. In a party rest (C-045) each member is healed up to its own
+    /// rest-until line, the caster too, and only when the cast does not make the rest longer
+    /// ([`View::heal_pays`]); out of one, below the heal-a-member line (C-043), and a member
+    /// resting on its own up to its rest-until line ([`View::resting_member_heal`]).
+    pub fn rest_party_heal(&self) -> Option<(PartyCast<'_>, &'static str)> {
         if self.party.party_rest().is_none() {
-            return self.party_heal(self.member_heal_resting(), self.rest_heal_below());
+            return self
+                .party_heal(self.member_heal_resting(), self.rest_heal_below())
+                .map(|c| (c, ""))
+                .or_else(|| self.resting_member_heal().map(|c| (c, " (resting)")));
         }
         if self.member_heal_resting() == 0 {
             return None;
@@ -328,7 +344,70 @@ impl View<'_> {
             PartyCast::On(s, name) => (s, Healed::Mate(name)),
             PartyCast::Party(s) => (s, Healed::All),
         };
-        self.heal_pays(who.0, who.1).then_some(cast)
+        self.heal_pays(who.0, who.1)
+            .then_some((cast, " (party rest)"))
+    }
+
+    /// Out of a party rest, a member with the caster that rests on its own (its Recover's
+    /// rest, or the player's `rest`) is healed up to its rest-until line, as in a party rest:
+    /// the party waits for it all the same. Not while the caster rests itself (the cast would
+    /// end its rest), and only when the caster's mana is back at its rest-until mana line no
+    /// later than the members resting are rested ([`View::top_up_pays`]). A heal-a-member line
+    /// of 0 turns it off.
+    fn resting_member_heal(&self) -> Option<PartyCast<'_>> {
+        let line = self.member_heal_resting();
+        if line == 0 || self.resting || !self.party.mates().iter().any(|m| m.resting) {
+            return None;
+        }
+        let cast = self.heal_for(
+            |m| if m.resting { m.until.max(line) } else { line },
+            self.rest_heal_below(),
+        )?;
+        let (spell, who) = match &cast {
+            PartyCast::On(s, name) => (*s, Healed::Mate(name)),
+            PartyCast::Party(s) => (*s, Healed::All),
+        };
+        self.top_up_pays(spell, who).then_some(cast)
+    }
+
+    /// Whether a heal for members resting on their own leaves the caster no worse off for
+    /// mana: the caster is not resting, so its mana counts whatever its rest-for-mana line.
+    /// The cast goes when the time until those members are rested and the caster's mana is
+    /// back at its rest-until mana line (`health.rest_mana_until`) is no longer after it than
+    /// before. With a rate not known, only mana above that line is spent.
+    fn top_up_pays(&self, spell: &SpellDef, who: Healed) -> bool {
+        let Some((mana, max)) = self.mana else {
+            return false;
+        };
+        let after = mana - spell.mana;
+        let line = max * i64::from(self.setting("health.rest_mana_until", 90)) / 100;
+        let fallback = || after >= line;
+        let Some(rate) = self.regen.mana else {
+            return fallback();
+        };
+        let me = crate::regen::Waiting {
+            // Not resting: its HP is nobody's wait.
+            hp_short: 0,
+            hp_rate: Some(0),
+            mana_before: crate::regen::wait_secs(line - mana, rate),
+            mana_after: crate::regen::wait_secs(line - after, rate),
+            healed: false,
+        };
+        let mate = |m: &crate::party::Mate| crate::regen::Waiting {
+            hp_short: m.short,
+            hp_rate: m.hp_rate,
+            mana_before: m.mana_wait,
+            mana_after: m.mana_wait,
+            healed: match who {
+                Healed::All => true,
+                Healed::Me => false,
+                Healed::Mate(n) => n == m.name,
+            },
+        };
+        let resting = self.party.mates().iter().filter(|m| m.resting);
+        let waiting: Vec<_> = std::iter::once(me).chain(resting.map(mate)).collect();
+        let heal = spell.average(self.level) as i64;
+        crate::regen::shortens(&waiting, heal).unwrap_or_else(fallback)
     }
 
     /// The HP line below which Recover heals the character itself: its rest-until line in a
@@ -453,6 +532,11 @@ impl View<'_> {
     /// The mana line Recover rests below (`health.rest_mana_below`, per cent).
     pub fn rest_mana_below(&self) -> i32 {
         self.setting("health.rest_mana_below", 0)
+    }
+
+    /// The mana a blessing leaves at least (`spells.bless_mana_above`, per cent).
+    pub fn bless_mana_above(&self) -> i32 {
+        self.setting("spells.bless_mana_above", 20)
     }
 
     /// The character rests for mana: it uses mana and has a rest-for-mana line (0 is none).
@@ -604,6 +688,8 @@ pub(crate) struct Bot {
     recover: Recover,
     bless: crate::bless::Bless,
     sneak: crate::sneak::Sneak,
+    /// A follower bashing the leader's door with it.
+    bash_help: crate::bash_help::BashHelp,
     /// The gateway is logging the character off under attack: Flee alone runs, then the bot
     /// stops.
     leaving: bool,
@@ -633,6 +719,16 @@ impl Bot {
     /// Flee below `percent` HP from now on (the settings changed: the class became known).
     pub fn set_flee_below(&mut self, percent: i32) {
         self.flee.set_below(percent);
+    }
+
+    /// How often the blessings are looked for on the status screen (`spells.bless_check_seconds`).
+    pub fn set_bless_check(&mut self, every: std::time::Duration) {
+        self.bless.set_check(every);
+    }
+
+    /// The mode that had control at the last step.
+    pub fn mode(&self) -> BotMode {
+        self.mode
     }
 
     pub fn running(&self) -> bool {
@@ -713,12 +809,16 @@ impl Bot {
         says
     }
 
-    /// `walk_to` or `walk_loop`: go on `journey`, fighting on the way, from any state (it
-    /// replaces a loop). A bot that was not running starts afresh and the session re-syncs
-    /// first (`resync`).
+    /// `walk_to` or `walk_loop`: go on `journey`, fighting on the way (a passive one: nothing),
+    /// from any state (it replaces a loop). A bot that was not running starts
+    /// afresh and the session re-syncs first (`resync`).
     pub fn go(&mut self, journey: Journey, resync: bool) -> Vec<Say> {
         let mut says = Vec::new();
-        let name = journey.name().to_owned();
+        let name = if journey.is_passive() {
+            format!("{}, fighting nothing on the way", journey.name())
+        } else {
+            journey.name().to_owned()
+        };
         if resync {
             self.state = BotState::Running;
             self.mode = BotMode::Idle;
@@ -847,6 +947,11 @@ impl Bot {
             .flatten()
     }
 
+    /// Recover has the character: a rest, or the walk to or from one, not finished.
+    pub fn recovering(&self) -> bool {
+        self.recover.busy()
+    }
+
     /// Its flee line, per cent of the maximum HP.
     pub fn flee_below(&self) -> i32 {
         self.flee.below()
@@ -873,6 +978,20 @@ impl Bot {
     }
 
     /// The walk in progress is a leg of Task's.
+    /// The loop's leg stopped for a monster in `room` that a move sent ahead walked past.
+    pub fn monster_behind(&mut self, room: Key) {
+        if let Some(t) = &mut self.task {
+            t.monster_behind(room);
+        }
+    }
+
+    /// The walk in progress stops where Fight would take the character: a leg of the task's,
+    /// or Recover's walk home after a rest.
+    pub fn walk_stops_for_fight(&self) -> bool {
+        self.task_walking()
+            || (self.acting == Some(BotMode::Recover) && self.recover.walking_home())
+    }
+
     pub fn task_walking(&self) -> bool {
         self.acting == Some(BotMode::Task)
     }
@@ -885,7 +1004,35 @@ impl Bot {
     /// Whether Fight would take the character here: a monster it would attack, or one
     /// attacking.
     pub fn would_fight(&self, atlas: &Atlas, rules: &MonsterRules, presence: &Presence) -> bool {
-        self.fight.would_fight(atlas, rules, presence)
+        !self.passive() && self.fight.would_fight(atlas, rules, presence)
+    }
+
+    /// On a Go to that fights nothing on the way.
+    fn passive(&self) -> bool {
+        self.journey.as_ref().is_some_and(Journey::is_passive)
+    }
+
+    /// `journey_fight`: whether the Go to under way fights on the way, from now. Nothing
+    /// without a Go to (a loop walked once always fights) or when nothing changes.
+    pub fn journey_fight(&mut self, fight: bool) -> Vec<Say> {
+        let mut says = Vec::new();
+        let Some(j) = self
+            .journey
+            .as_mut()
+            .filter(|j| j.is_go_to() && j.is_passive() == fight)
+        else {
+            return says;
+        };
+        j.set_passive(!fight);
+        let name = j.name().to_owned();
+        self.fight.set_passive(!fight);
+        let text = if fight {
+            format!("Going to {name}: fighting on the way")
+        } else {
+            format!("Going to {name}: fighting nothing on the way")
+        };
+        self.narrate(text, &mut says);
+        says
     }
 
     /// A monster to flee from is in the room (or a stalemate wants out), and Flee would take
@@ -1108,6 +1255,8 @@ impl Bot {
             Some(BotMode::Loot) => self.loot.outcome(action, outcome),
             Some(BotMode::Bless) => self.bless.outcome(action, outcome),
             Some(BotMode::Sneak) => self.sneak.outcome(action, outcome),
+            // Idle's only action: a follower's bash at its leader's door.
+            Some(BotMode::Idle) => self.bash_help.outcome(&outcome),
             _ => {}
         }
         // Flee broke off the fight it could not run from.
@@ -1230,6 +1379,7 @@ impl Bot {
                 None => self.recover.set_home(to),
             }
         }
+        self.fight.set_passive(self.passive());
         if !self.leaving
             && let Some(home) = self.recover.find_home(v)
         {
@@ -1238,6 +1388,7 @@ impl Bot {
         }
         // A mode that finishes in its step (safe, rested, back home) hands over at once: the
         // stack is asked again, once.
+        let fighting = v.engaged || !v.presence.attackers.is_empty();
         for _ in 0..2 {
             let (mut mode, reason) = if let Some(r) = self.flee.wants(v) {
                 (BotMode::Flee, r)
@@ -1246,14 +1397,31 @@ impl Bot {
                 return (None, says);
             } else if let Some(r) = self.loot.wants(v) {
                 (BotMode::Loot, r)
-            } else if let Some(r) = self
-                .bless
-                .wants(v)
-                .filter(|_| self.recover.yields_to_bless(v))
-            {
-                // A blessing that wore off goes ahead of a rest, the party's too.
+            } else if let Some(r) = self.bless.wants(v).filter(|_| {
+                if fighting {
+                    self.fight.may_bless(v)
+                } else {
+                    self.recover.yields_to_bless(v)
+                }
+            }) {
+                // A blessing that wore off goes ahead of a rest, the party's too; in a fight
+                // (C-056) after a heal, and the fight goes on after it.
+                if fighting {
+                    self.fight.cast_mid_fight(v.now);
+                }
                 (BotMode::Bless, r)
-            } else if let Some(r) = self.recover.wants(v) {
+            } else if let Some(r) = self
+                .recover
+                .wants(v)
+                // A rest starts when the fight is over: not while a monster it would attack is
+                // here, or before the look after a kill. One under way goes on (a monster that
+                // walks in wakes it only by attacking); under the flee line Flee goes first.
+                // Under way is the game's word, the prompt's `(Resting)`: a rest Recover
+                // took on and has not begun, or one a cast or an attack ended, waits for the
+                // fight like a new one (after a flee, say, beside a monster the party fights).
+                // Rested, the walk home waits for the fight too.
+                .filter(|_| (v.resting && self.recover.resting(v)) || self.fight.wants(v).is_none())
+            {
                 (BotMode::Recover, r)
             } else if let Some(r) = self.sneak.wants(v) {
                 (BotMode::Sneak, r)
@@ -1297,6 +1465,7 @@ impl Bot {
                     }
                     step
                 }
+                BotMode::Idle if let Some(step) = self.bash_help.step(v) => step,
                 BotMode::Idle if self.recover.stranded(v) => {
                     Step::wait("Rested; could not walk home, waiting here")
                 }

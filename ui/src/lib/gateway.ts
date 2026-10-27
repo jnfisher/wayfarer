@@ -12,6 +12,8 @@ import type {
   BotAction,
   CharacterState,
   Chunk,
+  GearDetailRequest,
+  GearPlanRequest,
   MonsterRuleKind,
   PartyDef,
   PartyStatus,
@@ -20,6 +22,7 @@ import type {
   SessionInfo,
   SessionState,
   SettingChange,
+  StatsPart,
   ToClient,
   ToGateway,
 } from "../proto";
@@ -27,6 +30,7 @@ import { clampRadius, LOOP_RADIUS, type Loops, type MapView } from "./map";
 import { MIN_QUERY, type FoundMessage } from "./goto";
 import type { SettingsMessage } from "./settings";
 import type { SpellPlan } from "./spells";
+import type { GearDetailMessage, GearPlanMessage } from "./gear";
 import type { Stats } from "./stats";
 
 /** The part of the browser's `WebSocket` the client uses. */
@@ -93,6 +97,10 @@ export interface GatewayEvents {
   stats?(stats: Stats): void;
   /** The spells a character lacks and where to buy them, for the tile's errand menu. */
   spellPlan?(plan: SpellPlan): void;
+  /** A character's weapons scored against a monster set, for the gear planner. */
+  gearPlan?(plan: GearPlanMessage): void;
+  /** One weapon against each monster of the set, for the gear planner's open row. */
+  gearDetail?(detail: GearDetailMessage): void;
   /** A character's settings, for the settings tab. */
   settings?(settings: SettingsMessage): void;
   /** What a `find` found, for the map panel's go box. */
@@ -199,10 +207,16 @@ export class GatewayClient {
 
   /** Walk a character to a room (replacing a walk in progress); `stopShort` false walks into a
    * boss lair (left out, the walk stops one room short of one). False when not connected. */
-  walkTo(session: string, map: number, room: number, stopShort?: boolean): boolean {
+  walkTo(session: string, map: number, room: number, stopShort?: boolean, fight?: boolean): boolean {
     const msg: Extract<ToGateway, { type: "walk_to" }> = { type: "walk_to", session, map, room };
     if (stopShort !== undefined) msg.stop_short = stopShort;
+    if (fight !== undefined) msg.fight = fight;
     return this.send(msg);
+  }
+
+  /** Whether the Go to under way fights on the way, from now; false when not connected. */
+  journeyFight(session: string, fight: boolean): boolean {
+    return this.send({ type: "journey_fight", session, fight });
   }
 
   /** Find rooms, places and monsters by part of a name (a `found` answers); false when not
@@ -258,6 +272,16 @@ export class GatewayClient {
     return this.send({ type: "spell_plan_request", session });
   }
 
+  /** Ask for a gear plan (a `gear_plan` answer); false when not connected. */
+  requestGearPlan(req: GearPlanRequest): boolean {
+    return this.send({ type: "gear_plan_request", ...req });
+  }
+
+  /** Ask for one weapon's numbers per monster (a `gear_detail` answer); false when not connected. */
+  requestGearDetail(req: GearDetailRequest): boolean {
+    return this.send({ type: "gear_detail_request", ...req });
+  }
+
   /** Ask for the character's last runs (a `stats` answer); false when not connected. */
   requestStats(session: string): boolean {
     return this.send({ type: "stats_request", session });
@@ -275,10 +299,13 @@ export class GatewayClient {
     return this.send({ type: "settings_save", session, layer, changes });
   }
 
-  /** End the current run and start a new one at zero (the old one stays in the history);
-   * false when not connected. */
-  resetStats(session: string): boolean {
-    return this.send({ type: "stats_reset", session });
+  /** Zero the character's numbers: `run` ends the current run and starts a new one at zero
+   * (the old one stays in the history), `combat` zeroes the combat numbers; left out, both.
+   * False when not connected. */
+  resetStats(session: string, only?: StatsPart): boolean {
+    const msg: Extract<ToGateway, { type: "stats_reset" }> = { type: "stats_reset", session };
+    if (only !== undefined) msg.only = only;
+    return this.send(msg);
   }
 
   /** Walk a generated loop once; false when not connected. */
@@ -327,6 +354,12 @@ export class GatewayClient {
   /** Add a character to party `party` as a follower; false when not connected. */
   joinParty(session: string, party: string): boolean {
     return this.send({ type: "party_join", session, party });
+  }
+
+  /** Form party `party` (left out: every party) up again now: each member checks with `par`
+   * and invites and follows go at once. False when not connected. */
+  resyncParties(party?: string): boolean {
+    return this.send(party === undefined ? { type: "party_resync" } : { type: "party_resync", party });
   }
 
   /** Ask for every character's blessings (a `blessings` answer); false when not connected. */
@@ -469,6 +502,12 @@ export class GatewayClient {
         break;
       case "spell_plan":
         this.opts.events.spellPlan?.(message);
+        break;
+      case "gear_plan":
+        this.opts.events.gearPlan?.(message);
+        break;
+      case "gear_detail":
+        this.opts.events.gearDetail?.(message);
         break;
       case "settings":
         this.opts.events.settings?.(message);

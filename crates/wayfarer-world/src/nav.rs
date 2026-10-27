@@ -47,6 +47,9 @@ pub enum ExitType {
     /// Not an exit of the pack: a phrase a MegaMud path types where the pack has no way
     /// through to the room its next step starts in (C-052).
     PathCommand,
+    /// Not an exit of the pack: a stretch of a MegaMud path, replayed step by step, that opens a
+    /// sealed Hidden exit from elsewhere and goes through it ([`Edge::window`]).
+    PathWindow,
 }
 
 const EXIT_TYPES: [ExitType; 25] = {
@@ -103,6 +106,7 @@ impl ExitType {
         match self {
             ExitType::RoomCommand => "Room Command",
             ExitType::PathCommand => "Path Command",
+            ExitType::PathWindow => "Path Window",
             _ => mm::EXIT_TYPES[self as usize],
         }
     }
@@ -116,10 +120,13 @@ impl ExitType {
         )
     }
 
-    /// Not an exit at all, but a way through C-052 adds: never listed, never drawn, and its
-    /// `dir` is past the ten directions.
+    /// Not an exit at all, but a way through C-052 or a path window adds: never listed, never
+    /// drawn, and its `dir` is past the ten directions.
     pub fn is_command(self) -> bool {
-        matches!(self, ExitType::RoomCommand | ExitType::PathCommand)
+        matches!(
+            self,
+            ExitType::RoomCommand | ExitType::PathCommand | ExitType::PathWindow
+        )
     }
 
     pub fn listing(self) -> Listing {
@@ -127,7 +134,8 @@ impl ExitType {
             ExitType::Text
             | ExitType::RemoteAction
             | ExitType::RoomCommand
-            | ExitType::PathCommand => Listing::Never,
+            | ExitType::PathCommand
+            | ExitType::PathWindow => Listing::Never,
             ExitType::Hidden | ExitType::Trap | ExitType::SpellTrap | ExitType::Timed => {
                 Listing::Maybe
             }
@@ -233,13 +241,22 @@ pub struct Edge {
     /// whose message has no text, or a room command with no phrase the game would read as
     /// one, which can't be taken).
     pub command: String,
-    /// Every phrase a Text exit, a room command or a crossing takes; empty for other exits.
+    /// Every phrase a Text exit, a room command or a crossing takes, or a Remote Action's
+    /// message has; empty for other exits.
     pub phrases: Vec<String>,
+    /// A Hidden exit that is blocked, not searched for: the phrases of its own room's Remote
+    /// Action exits that take its blocks off, in the order to type them ([`unblocking`]).
+    /// Empty for any other exit, and for one its room's Remote Actions can't open.
+    pub unblock: Vec<String>,
     pub gate: Gate,
     /// Doors, gates and key doors, with the pack's lock state.
     pub door: Option<LockState>,
     /// `exitpar1`..`exitpar4`, raw.
     pub params: [i64; 4],
+    /// A path window's steps, in order: exits, and the phrases typed on the way as Remote
+    /// Action edges from their room to itself; the last is the sealed exit they open. Empty for
+    /// any other way through.
+    pub window: Vec<Edge>,
     pub(crate) to_ix: u32,
 }
 
@@ -248,12 +265,28 @@ impl Edge {
         self.kind == ExitType::Hidden
     }
 
+    /// A Hidden exit marked `EXF_PASSABLE`: never listed, but walked without a search
+    /// (`kb/navigation.md` "Hidden"); most of the wilderness's unlisted ways are.
+    pub fn passable(&self) -> bool {
+        self.hidden() && self.params[0] & EXF_PASSABLE != 0 && self.params[0] & EXF_NEEDSEARCH == 0
+    }
+
+    /// A Hidden exit no search finds and its own room's phrases can't open: blocked, with no
+    /// `EXF_NEEDSEARCH` (`kb/navigation.md` "Hidden"), so it opens only from elsewhere (the
+    /// Crypt's levers). Walked only through a path window.
+    pub fn sealed(&self) -> bool {
+        self.hidden()
+            && !self.passable()
+            && self.params[0] & EXF_NEEDSEARCH == 0
+            && self.unblock.is_empty()
+    }
+
     /// Whether typing `command` takes this exit: its direction (any spelling) for an exit
     /// walked by direction, or one of its phrases (whole line, any case) for a Text exit, a
     /// room command or a crossing.
     pub fn taken_by(&self, command: &str) -> bool {
         match self.kind {
-            ExitType::RemoteAction => false,
+            ExitType::RemoteAction | ExitType::PathWindow => false,
             k if k.is_phrase() => {
                 let c = command.trim();
                 self.phrases.iter().any(|p| p.eq_ignore_ascii_case(c))
@@ -265,6 +298,46 @@ impl Edge {
 
 /// The first `dir` of the ways through that are not exits ([`ExitType::is_command`]).
 pub const COMMAND_DIRS: u8 = 10;
+
+/// A Hidden exit's flags (`exitpar1`, `EXF_`): walked without being found.
+const EXF_PASSABLE: i64 = 0x0001;
+/// Found by searching.
+const EXF_NEEDSEARCH: i64 = 0x0002;
+/// Its first block, `EXF_BLOCKED1`; blocks 2 to 10 are the bits above it.
+const EXF_BLOCKED1: i64 = 0x0010;
+
+/// The phrases that open a blocked Hidden exit with parameters `params`, in the order to type
+/// them, from `actions`, the (action, phrase) of its room's Remote Actions on it; empty when it
+/// is searched for, or some block has no phrase (`kb/navigation.md` "Remote Action"). The
+/// game blocks it again with `|exitpar2|` blocks, 1 to n; action 0 takes them all off,
+/// action n block n, and with `exitpar2` 0 or more only once block n+1 is off, so they are
+/// typed from n down.
+fn unblocking(params: [i64; 4], actions: &[(i64, String)]) -> Vec<String> {
+    let flags = params[0];
+    if flags & EXF_NEEDSEARCH != 0 {
+        return Vec::new();
+    }
+    let set = (1..=10)
+        .filter(|b| flags & (EXF_BLOCKED1 << (b - 1)) != 0)
+        .max();
+    let again = Some(params[1].abs()).filter(|n| (1..=10).contains(n));
+    let Some(n) = set.max(again) else {
+        return Vec::new();
+    };
+    if let Some((_, all)) = actions.iter().find(|(a, _)| *a == 0) {
+        return vec![all.clone()];
+    }
+    (1..=n)
+        .rev()
+        .map(|b| {
+            actions
+                .iter()
+                .find(|(a, _)| *a == b)
+                .map(|(_, p)| p.clone())
+        })
+        .collect::<Option<Vec<_>>>()
+        .unwrap_or_default()
+}
 
 /// The clauses a room command line may have and still be a way through: what they do can be
 /// told beforehand (`kb/navigation.md` "Text blocks"). Anything else (a `cast`, a `random`, a
@@ -443,7 +516,7 @@ impl RoomGraph {
                 let house = unnamed.contains(&to) && !unnamed.contains(&key);
                 into_unnamed += usize::from(house);
                 let p = e.params;
-                let texts = if kind == ExitType::Text {
+                let texts = if matches!(kind, ExitType::Text | ExitType::RemoteAction) {
                     match phrases.entry(p[0]) {
                         Entry::Occupied(o) => o.get().clone(),
                         Entry::Vacant(v) => {
@@ -507,9 +580,11 @@ impl RoomGraph {
                     kind,
                     command,
                     phrases: texts,
+                    unblock: Vec::new(),
                     gate,
                     door,
                     params: p,
+                    window: Vec::new(),
                     to_ix,
                 });
             }
@@ -529,9 +604,11 @@ impl RoomGraph {
                     kind: ExitType::RoomCommand,
                     command: phrases[0].clone(),
                     phrases,
+                    unblock: Vec::new(),
                     gate,
                     door: None,
                     params: [0; 4],
+                    window: Vec::new(),
                     to_ix,
                 });
             }
@@ -543,6 +620,49 @@ impl RoomGraph {
             });
         }
         dangling += ex.count();
+        // The blocked Hidden exits: the phrases of their room's own Remote Actions (one that
+        // asks for an item, `exitpar4`, is left out).
+        let mut remote_phrases: HashMap<i64, Option<String>> = HashMap::new();
+        for node in &nodes {
+            let here = &edges[node.edges.start as usize..node.edges.end as usize];
+            let mut found: Vec<(usize, Vec<String>)> = Vec::new();
+            for (i, e) in here.iter().enumerate() {
+                if e.kind != ExitType::Hidden {
+                    continue;
+                }
+                let mut phrases: Vec<(i64, String)> = Vec::new();
+                for r in here.iter().filter(|r| {
+                    r.kind == ExitType::RemoteAction
+                        && r.to == r.from
+                        && r.params[1] >= 0
+                        && r.params[1] % 10 == i64::from(e.dir)
+                        && r.params[3] == 0
+                }) {
+                    let first = match remote_phrases.entry(r.params[0]) {
+                        Entry::Occupied(o) => o.get().clone(),
+                        Entry::Vacant(v) => v
+                            .insert(
+                                pack.message(r.params[0])?
+                                    .unwrap_or_default()
+                                    .into_iter()
+                                    .map(|t| t.trim().to_owned())
+                                    .find(|t| !t.is_empty()),
+                            )
+                            .clone(),
+                    };
+                    if let Some(p) = first {
+                        phrases.push((r.params[1] / 10, p));
+                    }
+                }
+                let unblock = unblocking(e.params, &phrases);
+                if !unblock.is_empty() {
+                    found.push((node.edges.start as usize + i, unblock));
+                }
+            }
+            for (i, unblock) in found {
+                edges[i].unblock = unblock;
+            }
+        }
         let mut by_name: HashMap<String, Vec<u32>> = HashMap::new();
         for (i, n) in nodes.iter().enumerate() {
             by_name
@@ -678,12 +798,59 @@ impl RoomGraph {
                 kind: ExitType::PathCommand,
                 command: phrase.clone(),
                 phrases: vec![phrase],
+                unblock: Vec::new(),
                 gate: Gate::None,
                 door: None,
                 params: [0; 4],
+                window: Vec::new(),
                 to_ix,
             });
         }
+        self.add_edges(added)
+    }
+
+    /// Add MegaMud's path windows (`PathKnowledge::windows`) as ways through: each a
+    /// [`ExitType::PathWindow`] from the room its first step is typed in to the room past the
+    /// sealed exit it opens, numbered after the room's other ways. Returns how many it added.
+    pub fn learn_windows(&mut self, k: &crate::knowledge::PathKnowledge) -> usize {
+        let mut added: HashMap<u32, Vec<Edge>> = HashMap::new();
+        for w in k.windows() {
+            let (Some(first), Some(last)) = (w.steps.first(), w.steps.last()) else {
+                continue;
+            };
+            let (from, to) = (first.from, last.to);
+            let (Some(&i), Some(&to_ix)) = (self.index.get(&from), self.index.get(&to)) else {
+                continue;
+            };
+            let mine = added.entry(i).or_default();
+            let dir = self
+                .edges_at(i)
+                .iter()
+                .chain(mine.iter())
+                .map(|e| e.dir + 1)
+                .max()
+                .unwrap_or(0)
+                .max(COMMAND_DIRS);
+            mine.push(Edge {
+                from,
+                to,
+                dir,
+                kind: ExitType::PathWindow,
+                command: w.file.clone(),
+                phrases: Vec::new(),
+                unblock: Vec::new(),
+                gate: Gate::None,
+                door: None,
+                params: [0; 4],
+                window: w.steps.clone(),
+                to_ix,
+            });
+        }
+        self.add_edges(added)
+    }
+
+    /// Put `added`'s edges after each room's own (by node index); returns how many.
+    fn add_edges(&mut self, mut added: HashMap<u32, Vec<Edge>>) -> usize {
         let count = added.values().map(Vec::len).sum();
         if count == 0 {
             return 0;

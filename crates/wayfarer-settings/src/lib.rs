@@ -333,7 +333,7 @@ pub const CATALOGUE: &[Setting] = &[
     Setting {
         key: "spells.attack_mana_above",
         label: "Cast attack spells while mana is above",
-        help: "Below this per cent of the maximum mana a fight is fought with weapons, keeping what is left for healing.",
+        help: "At or below this per cent of the maximum mana a fight is fought with weapons, keeping what is left for healing; a fight cast in changes to the weapon when the mana comes down to it.",
         kind: Kind::Int { min: 0, max: 90 },
         default: Value::Int(15),
         unit: "%",
@@ -388,7 +388,7 @@ pub const CATALOGUE: &[Setting] = &[
     Setting {
         key: "party.heal_member_resting_below_hp",
         label: "Heal a party member while resting below",
-        help: "Out of a fight, heal a party member in the room below this per cent of their HP, between rests: it shortens a party rest. 0 turns it off.",
+        help: "Out of a fight, heal a party member in the room below this per cent of their HP, between rests: it shortens a party rest. A member resting (the party's rest or its own) is healed up to its own Rest until line while the mana keeps up. 0 turns these heals off.",
         kind: Kind::Int { min: 0, max: 99 },
         default: Value::Int(60),
         unit: "%",
@@ -406,6 +406,28 @@ pub const CATALOGUE: &[Setting] = &[
         tier: Tier::Standard,
         group: Group::Party,
         megamud: None,
+    },
+    Setting {
+        key: "party.rank",
+        label: "Party rank",
+        help: "Where the character stands in its party's battle line; its bot moves it there once it has joined. Rank does not change whom monsters attack. Front adds a little to both attack and defence (+5 each in this game, so it beats Mid), Mid adds nothing, Back gives up 10 attack for 15 defence: for a caster or healer that seldom swings. The game puts the leader in front and never lets it go back, keeps someone in front, and does not let the back outnumber the front.",
+        kind: Kind::Choice(&["front", "mid", "back"]),
+        default: Value::Choice("front"),
+        unit: "",
+        tier: Tier::Standard,
+        group: Group::Party,
+        megamud: Some("Party Rank"),
+    },
+    Setting {
+        key: "party.help_bash",
+        label: "Help the leader bash doors",
+        help: "A follower in the leader's room bashes the locked door the leader is bashing, out of a fight, until it gives way: each bash is its own roll on Strength, so more bashers open it sooner. A bash costs a moment and now and then a few HP.",
+        kind: Kind::Bool,
+        default: Value::Bool(true),
+        unit: "",
+        tier: Tier::Standard,
+        group: Group::Party,
+        megamud: Some("Help Leader Bash Doors"),
     },
     Setting {
         key: "party.wait_rest_minutes",
@@ -513,6 +535,39 @@ pub const CATALOGUE: &[Setting] = &[
         kind: Kind::Int { min: 10, max: 90 },
         default: Value::Int(50),
         unit: "%",
+        tier: Tier::Advanced,
+        group: Group::Spells,
+        megamud: None,
+    },
+    Setting {
+        key: "spells.bless_in_combat",
+        label: "Bless in a fight",
+        help: "A ticked blessing that wears off in a fight is cast again there and then, after any heal that is due, and the fight goes on at once with the same monster. Off: blessings are cast between fights only.",
+        kind: Kind::Bool,
+        default: Value::Bool(true),
+        unit: "",
+        tier: Tier::Standard,
+        group: Group::Spells,
+        megamud: Some("Bless During Combat"),
+    },
+    Setting {
+        key: "spells.bless_mana_above",
+        label: "Bless only above mana",
+        help: "A blessing is cast, in a fight or out of one, only when the mana left after it is at least this per cent of the maximum, so it does not spend the mana a heal needs.",
+        kind: Kind::Int { min: 0, max: 90 },
+        default: Value::Int(20),
+        unit: "%",
+        tier: Tier::Advanced,
+        group: Group::Spells,
+        megamud: Some("Mana Bless If Above"),
+    },
+    Setting {
+        key: "spells.bless_check_seconds",
+        label: "Check blessings every",
+        help: "Between fights, while a ticked blessing is believed on, the status screen (st) is looked at this often; one it does not show is cast again. Looking ends no rest. 0: never.",
+        kind: Kind::Int { min: 0, max: 600 },
+        default: Value::Int(60),
+        unit: "seconds",
         tier: Tier::Advanced,
         group: Group::Spells,
         megamud: None,
@@ -1250,6 +1305,9 @@ mod tests {
         assert_eq!(s.int("bot.passed_by_minutes"), 5);
         // No resting for mana unless the player sets a line (C-051), whatever the class.
         assert_eq!(s.int("health.rest_mana_below"), 0);
+        // Blessings are kept on in a fight, above their own mana line (C-056).
+        assert!(s.bool("spells.bless_in_combat"));
+        assert_eq!(s.int("spells.bless_mana_above"), 20);
         for class in ["Mage", "Priest", "Warrior", "Ninja"] {
             for style in ["careful", "balanced", "bold"] {
                 assert!(

@@ -40,6 +40,8 @@ pub(crate) struct GameParty {
     pub changed: Option<Instant>,
     /// When the game last said `You must be invited first!`.
     pub must_invite: Option<Instant>,
+    /// When the game last refused the character a rank.
+    pub rank_refused: Option<Instant>,
     /// A `par` screen being read.
     screen: Option<Screen>,
 }
@@ -110,8 +112,13 @@ impl GameParty {
                         self.following = None;
                         self.changed(now);
                     }
+                    // A rank change, the character's or another's: the ranks the last screen
+                    // showed are out of date.
                     GameEvent::PartyFollowerJoined { .. }
-                    | GameEvent::PartyFollowerRemoved { .. } => self.changed(now),
+                    | GameEvent::PartyFollowerRemoved { .. }
+                    | GameEvent::RankMoved { .. }
+                    | GameEvent::PartyMemberRanked { .. } => self.changed(now),
+                    GameEvent::RankRefused => self.rank_refused = Some(now),
                     // No invitation stands: one remembered was taken back (`uninvite`
                     // tells only the leader).
                     GameEvent::PartyMustBeInvited => {
@@ -125,6 +132,12 @@ impl GameParty {
         }
     }
 
+    /// What it knows may be out of date (a `party_resync`): stale, as after a join or a drop,
+    /// until the next whole `par` screen.
+    pub fn doubt(&mut self, now: Instant) {
+        self.changed(now);
+    }
+
     fn changed(&mut self, now: Instant) {
         self.stale = true;
         self.changed = Some(now);
@@ -134,6 +147,14 @@ impl GameParty {
     /// only invited.
     pub fn lists(&self, name: &str) -> bool {
         self.members.iter().any(|m| m.name == name && !m.invited)
+    }
+
+    /// The rank the last whole `par` screen showed for `name` (a full name), following.
+    pub fn rank_of(&self, name: &str) -> Option<Rank> {
+        self.members
+            .iter()
+            .find(|m| m.name == name && !m.invited)
+            .and_then(|m| m.rank)
     }
 
     /// The screen being read is over: take it if it is whole.

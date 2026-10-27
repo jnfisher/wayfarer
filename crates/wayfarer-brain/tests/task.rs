@@ -290,6 +290,37 @@ async fn a_hostile_monster_on_the_way_stops_the_leg_and_the_loop_goes_on_after_t
     g.close(run).await;
 }
 
+/// The Narrow Path with a rat in it that has not attacked.
+fn path_with_rat() -> String {
+    let path = room(NARROW_PATH);
+    let at = path.find("\x1b[0;32mObvious exits").unwrap();
+    format!(
+        "{}\x1b[0;35mAlso here: \x1b[1;35mlarge giant rat\x1b[0m\x1b[0;35m.\r\n{}",
+        &path[..at],
+        &path[at..]
+    )
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_monster_a_pipelined_move_walked_past_is_walked_back_to() {
+    // Faye on the live rig (2026-10-26): the move ahead had gone when the room it left showed
+    // bandits, and the loop went on without them. The leg stops, and the next goes back first.
+    let (mut g, run) = ready_at(VILLAGE_ENTRANCE).await;
+    g.expect("w", path_with_rat());
+    // The move ahead, gone already.
+    g.expect("w", room(NARROW_ROAD));
+    g.expect("e", path_with_rat());
+    g.expect("a rat", line(ENGAGED, 35));
+    g.run_loop(&[SMALL_CAVERN]).await;
+    g.narrated("Loop Newhaven: back to Newhaven, Narrow Path (a monster there)")
+        .await;
+    g.narrated("Fight: large giant rat").await;
+    g.round("The large giant rat lunges at you!", 35).await;
+    g.freeze();
+    let (_, played) = g.close(run).await;
+    assert_eq!(&played[2..], ["w", "w", "e", "a rat"]);
+}
+
 #[tokio::test(start_paused = true)]
 async fn pause_on_the_way_and_resume_goes_on_to_the_same_stop() {
     let (mut g, run) = ready_at(VILLAGE_ENTRANCE).await;

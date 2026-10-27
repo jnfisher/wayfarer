@@ -6,13 +6,16 @@
 //! [`WorldPack`] reads one. [`RoomGraph`] holds its rooms and exits in memory for [`route`],
 //! the position [`Belief`] and the map [`layout`]; [`Monsters`] says what rooms spawn, and
 //! [`loops`] makes circuits over an area's hunt rooms; [`Finder`] finds rooms, places and
-//! monsters by name for "go to", and knows the boss lairs.
+//! monsters by name for "go to", and knows the boss lairs. [`combat`] is the game's combat
+//! model: a character's blows against a monster, round by round, for the gear planner.
 
 pub mod belief;
 pub mod build;
+pub mod combat;
 pub mod cp437;
 pub mod exit_items;
 pub mod find;
+pub mod gear;
 pub mod knowledge;
 pub mod layout;
 pub mod loops;
@@ -31,9 +34,10 @@ use std::path::PathBuf;
 
 pub use belief::Belief;
 pub use build::{BuildReport, MegaMudReport, build};
+pub use combat::{Blow, Buff, Character, Defender, Fight, Fighter, Move, Stats};
 pub use exit_items::ExitItem;
 pub use find::{Finder, Found, FoundKind, FoundRoom, PlaceKind, Reach};
-pub use knowledge::{PathExit, PathKnowledge};
+pub use knowledge::{PathExit, PathKnowledge, Window};
 pub use layout::{Layout, Placed, Segment, SegmentKind, layout};
 pub use loops::{Area, HuntRoom, Loop, MmLoop, generate, hunt_rooms, megamud_loops};
 pub use monsters::{DEFAULT_RULES, MonsterRule, MonsterRules, Monsters, huntable};

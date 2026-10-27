@@ -92,6 +92,46 @@ async fn flee_rest_and_return() -> (Vec<String>, Vec<String>) {
 }
 
 #[tokio::test(start_paused = true)]
+async fn on_the_walk_home_after_a_rest_a_monster_on_the_way_is_fought() {
+    // Faye on the live rig (2026-10-26): Recover's walk home went past bandits. A leg of the
+    // loop stops where Fight would take the character; the walk home does too.
+    let (mut g, run) = fighting().await;
+    g.expect(
+        "u",
+        format!("{}{}", at_hp(&room(NARROW_ROAD), 8), follows(8)),
+    );
+    g.expect("e", at_hp(&room(NARROW_PATH), 8));
+    g.output(&lunge(8)).await;
+    g.narrated("Safe in Newhaven, Narrow Path").await;
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(8)));
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Path")
+        .await;
+    for hp in [16, 24] {
+        g.output(&resting(hp)).await;
+        g.idle(Duration::from_secs(20)).await;
+    }
+    // A rat on the Narrow Road, on the way home: fought there, not walked past.
+    let road = at_hp(&room(NARROW_ROAD), 31);
+    let at = road.find("\x1b[0;32mObvious exits").unwrap();
+    let road_with_rat = format!(
+        "{}\x1b[0;35mAlso here: \x1b[1;35m{RAT}\x1b[0m\x1b[0;35m.\r\n{}",
+        &road[..at],
+        &road[at..]
+    );
+    g.expect("w", road_with_rat);
+    g.expect("a rat", line(ENGAGED, 31));
+    g.output(&resting(31)).await;
+    g.narrated("Recover: rested; walking back to Newhaven, Arena")
+        .await;
+    g.narrated("Stopped walking: a monster to fight").await;
+    g.narrated("Fight: large giant rat").await;
+    g.round("The large giant rat lunges at you!", 31).await;
+    let (_, played) = g.close(run).await;
+    assert!(!played.contains(&"d".to_owned()), "{played:?}");
+    assert_eq!(played.last().map(String::as_str), Some("a rat"));
+}
+
+#[tokio::test(start_paused = true)]
 async fn under_the_line_it_flees_keeps_running_when_followed_rests_and_returns() {
     let (played, said) = flee_rest_and_return().await;
     assert_eq!(
@@ -586,6 +626,55 @@ async fn under_the_hangup_line_with_a_monster_hitting_it_hangs_up_once_and_stops
         "{said:?}"
     );
     assert_eq!(bot(&seen).state, BotState::Stopped);
+}
+
+#[tokio::test(start_paused = true)]
+async fn back_in_the_realm_after_a_hangup_it_waits_for_a_new_blow_before_hanging_up_again() {
+    // Manuel, 2026-10-24: hung up at -18%, then every entry hung up again at once, the rat
+    // that had been hitting him being remembered across the drop though it had not struck.
+    // Now the rat is only here: under the flee line, it flees.
+    let (mut g, run) = fighting().await;
+    g.round("The large giant rat lunges at you!", 3).await;
+    hang_up_and_come_back(&mut g).await;
+    g.expect("st", status(3));
+    g.expect("look", arena(&[RAT], 3));
+    g.expect("u", at_hp(&room(NARROW_ROAD), 3));
+    g.bot(BotAction::Start).await;
+    // On the paused clock: a hang-up instead fails here at once rather than waiting forever.
+    tokio::time::timeout(
+        Duration::from_secs(60),
+        g.narrated("Safe in Newhaven, Narrow Road"),
+    )
+    .await
+    .expect("it fled to safety");
+    g.freeze();
+    let (seen, played) = g.close(run).await;
+    assert_eq!(hangups(&seen), 1, "{:?}", notices(&seen));
+    assert_eq!(played.last().map(String::as_str), Some("u"));
+}
+
+#[tokio::test(start_paused = true)]
+async fn back_in_the_realm_after_a_hangup_a_new_blow_hangs_up_again() {
+    let (mut g, run) = fighting().await;
+    g.round("The large giant rat lunges at you!", 3).await;
+    hang_up_and_come_back(&mut g).await;
+    // The rat strikes before the bot has looked for a way out.
+    g.freeze();
+    g.bot(BotAction::Start).await;
+    g.idle(Duration::from_secs(1)).await;
+    g.round("The large giant rat lunges at you!", 2).await;
+    let (seen, _) = g.close(run).await;
+    assert_eq!(hangups(&seen), 2, "{:?}", notices(&seen));
+}
+
+/// The line dropped: the logon menus, then into the realm again with the rat still there,
+/// not attacking.
+async fn hang_up_and_come_back(g: &mut Game) {
+    g.set_state(SessionState::Menu).await;
+    g.output("[MAJORMUD]: ").await;
+    g.idle(Duration::from_secs(5)).await;
+    g.set_state(SessionState::Realm).await;
+    g.output(&arena(&[RAT], 3)).await;
 }
 
 #[tokio::test(start_paused = true)]

@@ -722,7 +722,9 @@ fn the_spell_list_and_the_casting_refusals() {
     assert_eq!(example("spells_none"), GameEvent::SpellsNone);
     assert_eq!(example("no_mana"), GameEvent::NoMana);
     assert_eq!(example("already_this_round"), GameEvent::AlreadyCast);
-    assert_eq!(example("cast_fail"), GameEvent::CastFailed);
+    assert!(
+        matches!(example("cast_fail"), GameEvent::CastFailed { ref spell } if !spell.is_empty())
+    );
 }
 
 #[test]
@@ -954,6 +956,39 @@ fn party_followers() {
 }
 
 #[test]
+fn rank_moves_and_refusals() {
+    for (text, rank) in [
+        (
+            "You have moved to the front ranks of your group.",
+            Rank::Front,
+        ),
+        (
+            "You have moved to the middle ranks of your group.",
+            Rank::Mid,
+        ),
+        (
+            "You have moved to the back ranks of your group.",
+            Rank::Back,
+        ),
+    ] {
+        assert_eq!(line(text), [GameEvent::RankMoved { rank }], "{text}");
+    }
+    assert_eq!(
+        line("Lauren just moved to the back rank in your group."),
+        [GameEvent::PartyMemberRanked {
+            name: "Lauren".into()
+        }]
+    );
+    for text in [
+        "You are the only one in the front rank.  You may not leave.",
+        "You may not enter the backrank of your own party.",
+        "There would not be enough people left in the frontrank if you did that.",
+    ] {
+        assert_eq!(line(text), [GameEvent::RankRefused], "{text}");
+    }
+}
+
+#[test]
 fn par_row_at_minus_100() {
     // `par` prints `%3.3s` of the percentage: -100% and below are `-10` (`kb/grouping.md` §2a).
     let evs = line(
@@ -977,6 +1012,21 @@ fn the_characters_own_cast_is_no_blow() {
             "{l}: {evs:?}"
         );
     }
+}
+
+#[test]
+fn an_attack_spell_landing_is_the_characters_cast() {
+    // Message 18 ("You cast %s on %s for %d damage!") is a monster's hit message too, and wins
+    // over `you_cast_generic`: the line is still the character's cast, and counts as one (faye's
+    // stonestrike, 2026-10-26).
+    assert_eq!(
+        line("You cast stonestrike on giant bat for 22 damage!"),
+        [GameEvent::SpellCast {
+            spell: "stonestrike".into(),
+            target: Some("giant bat".into()),
+            damage: 22
+        }]
+    );
 }
 
 #[test]

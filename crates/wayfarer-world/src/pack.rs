@@ -266,6 +266,12 @@ impl WorldPack {
         Ok(pack)
     }
 
+    /// The connection, for a module that filters raw records in SQL before reading them
+    /// (`gear`: the rooms with items placed or a command text, out of 26,720).
+    pub(crate) fn conn(&self) -> &Connection {
+        &self.conn
+    }
+
     /// A `pack_meta` value: `schema_version`, `builder`, `source.<TABLE>.file_sha256`, ...
     pub fn meta(&self, key: &str) -> Result<Option<String>, Error> {
         Ok(self
@@ -577,6 +583,24 @@ impl WorldPack {
     /// Every race, (number, name), by number.
     pub fn races(&self) -> Result<Vec<(i64, String)>, Error> {
         self.names("races")
+    }
+
+    /// Every class's raw record, (number, raw), by number (for `combat::ClassRecord`).
+    pub fn classes_raw(&self) -> Result<Vec<(i64, String)>, Error> {
+        self.raws("classes")
+    }
+
+    /// Every race's raw record, (number, raw), by number (for `combat::RaceRecord`).
+    pub fn races_raw(&self) -> Result<Vec<(i64, String)>, Error> {
+        self.raws("races")
+    }
+
+    fn raws(&self, table: &str) -> Result<Vec<(i64, String)>, Error> {
+        let mut st = self
+            .conn
+            .prepare_cached(&format!("SELECT number, raw FROM {table} ORDER BY number"))?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<Result<_, _>>()?)
     }
 
     fn names(&self, table: &str) -> Result<Vec<(i64, String)>, Error> {

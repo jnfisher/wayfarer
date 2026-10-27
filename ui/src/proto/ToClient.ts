@@ -6,6 +6,10 @@ import type { Chunk } from "./Chunk";
 import type { CombatStats } from "./CombatStats";
 import type { ExpSample } from "./ExpSample";
 import type { Found } from "./Found";
+import type { GearDetail } from "./GearDetail";
+import type { GearDetailRequest } from "./GearDetailRequest";
+import type { GearPlan } from "./GearPlan";
+import type { GearPlanRequest } from "./GearPlanRequest";
 import type { GeneratedLoop } from "./GeneratedLoop";
 import type { MapExit } from "./MapExit";
 import type { MapRoom } from "./MapRoom";
@@ -21,6 +25,8 @@ import type { SettingChange } from "./SettingChange";
 import type { SettingRow } from "./SettingRow";
 import type { SettingsFile } from "./SettingsFile";
 import type { SpellPlanItem } from "./SpellPlanItem";
+import type { StatsPart } from "./StatsPart";
+import type { TimeSpent } from "./TimeSpent";
 import type { WorldPackInfo } from "./WorldPackInfo";
 
 /**
@@ -38,11 +44,15 @@ matches: number, } | { "type": "stats", session: string, runs: Array<RunSummary>
 /**
  * The combat numbers since the last reset; absent when nothing has been counted.
  */
-combat?: CombatStats, } | { "type": "spell_plan", session: string, cash: number, items: Array<SpellPlanItem>, } | { "type": "settings", session: string, 
+combat?: CombatStats, 
+/**
+ * Where the current run's time went; absent with no run.
+ */
+time?: TimeSpent, } | { "type": "spell_plan", session: string, cash: number, items: Array<SpellPlanItem>, } | { "type": "gear_plan" } & GearPlan | { "type": "gear_detail" } & GearDetail | { "type": "settings", session: string, 
 /**
  * The layer whose own values `own` shows.
  */
-layer: string, files: Array<SettingsFile>, rows: Array<SettingRow>, } | { "type": "found", session: string, query: string, results: Array<Found>, } | { "type": "parties", parties: Array<PartyStatus>, } | { "type": "blessings", characters: Array<Blessings>, } | { "type": "resync", session: string, } | { "type": "state_request", session?: string, } | { "type": "walk_to", session: string, map: number, room: number, stop_short?: boolean, } | { "type": "walk_stop", session: string, } | { "type": "map_request", session: string, radius?: number, } | { "type": "bot_control", session: string, action: BotAction, } | { "type": "loops_request", session: string, anchor?: RoomKey, radius: number, doors?: boolean, 
+layer: string, files: Array<SettingsFile>, rows: Array<SettingRow>, } | { "type": "found", session: string, query: string, results: Array<Found>, } | { "type": "parties", parties: Array<PartyStatus>, } | { "type": "blessings", characters: Array<Blessings>, } | { "type": "resync", session: string, } | { "type": "state_request", session?: string, } | { "type": "walk_to", session: string, map: number, room: number, stop_short?: boolean, fight?: boolean, } | { "type": "walk_stop", session: string, } | { "type": "journey_fight", session: string, fight: boolean, } | { "type": "map_request", session: string, radius?: number, } | { "type": "bot_control", session: string, action: BotAction, } | { "type": "loops_request", session: string, anchor?: RoomKey, radius: number, doors?: boolean, 
 /**
  * Only the loops whose name, file, description, author or a stop's room name holds
  * every word of this (any case), from anywhere in the world.
@@ -51,7 +61,7 @@ query?: string,
 /**
  * The most loops to send, the nearest first (12 if left out, 50 at most).
  */
-limit?: number, } | { "type": "walk_loop", session: string, id: string, } | { "type": "run_loop", session: string, id: string, skip?: Array<RoomKey>, } | { "type": "stats_request", session: string, } | { "type": "spell_plan_request", session: string, } | { "type": "stats_reset", session: string, } | { "type": "settings_request", session: string, 
+limit?: number, } | { "type": "walk_loop", session: string, id: string, } | { "type": "run_loop", session: string, id: string, skip?: Array<RoomKey>, } | { "type": "stats_request", session: string, } | { "type": "spell_plan_request", session: string, } | { "type": "gear_plan_request" } & GearPlanRequest | { "type": "gear_detail_request" } & GearDetailRequest | { "type": "stats_reset", session: string, only?: StatsPart, } | { "type": "settings_request", session: string, 
 /**
  * The layer to show the player's own values of: `mine`, `server` or `character`
  * (left out: `character`).
@@ -60,4 +70,4 @@ layer?: string, } | { "type": "settings_save", session: string,
 /**
  * The layer to write: `mine`, `server` or `character`.
  */
-layer: string, changes: Array<SettingChange>, } | { "type": "save_loop", session: string, name: string, base?: string, stops: Array<RoomKey>, } | { "type": "delete_loop", session: string, id: string, } | { "type": "find", session: string, query: string, } | { "type": "set_monster_rule", session: string, pattern: string, rule: MonsterRuleKind | null, } | { "type": "parties_request" } | { "type": "party_save", party: PartyDef, } | { "type": "party_delete", id: string, } | { "type": "party_leave", session: string, } | { "type": "party_join", session: string, party: string, } | { "type": "blessings_request" } | { "type": "blessings_save", session: string, spells: Array<string>, } | { "type": "sent", session: string, seq: number, text: string, } | { "type": "brain_state", attached: boolean, } | { "type": "brain_lagged", missed: number, } | { "type": "logging_off", session: string, } | { "type": "user_input", session: string, text: string, from: string, } | { "type": "keys_sent", session: string, };
+layer: string, changes: Array<SettingChange>, } | { "type": "save_loop", session: string, name: string, base?: string, stops: Array<RoomKey>, } | { "type": "delete_loop", session: string, id: string, } | { "type": "find", session: string, query: string, } | { "type": "set_monster_rule", session: string, pattern: string, rule: MonsterRuleKind | null, } | { "type": "parties_request" } | { "type": "party_save", party: PartyDef, } | { "type": "party_delete", id: string, } | { "type": "party_leave", session: string, } | { "type": "party_join", session: string, party: string, } | { "type": "party_resync", party?: string, } | { "type": "blessings_request" } | { "type": "blessings_save", session: string, spells: Array<string>, } | { "type": "sent", session: string, seq: number, text: string, } | { "type": "brain_state", attached: boolean, } | { "type": "brain_lagged", missed: number, } | { "type": "logging_off", session: string, } | { "type": "user_input", session: string, text: string, from: string, } | { "type": "keys_sent", session: string, };

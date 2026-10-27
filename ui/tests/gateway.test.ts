@@ -211,10 +211,28 @@ describe("handshake", () => {
     expect(r.client.find("kasimir", " chief ")).toBe(true);
     expect(r.client.walkTo("kasimir", 1, 1865)).toBe(true);
     expect(r.client.walkTo("kasimir", 1, 1865, false)).toBe(true);
-    expect(r.last().sent.slice(-3)).toEqual([
+    expect(r.client.walkTo("kasimir", 1, 2150, undefined, false)).toBe(true);
+    expect(r.client.journeyFight("kasimir", true)).toBe(true);
+    expect(r.last().sent.slice(-5)).toEqual([
       { type: "find", session: "kasimir", query: "chief" },
       { type: "walk_to", session: "kasimir", map: 1, room: 1865 },
       { type: "walk_to", session: "kasimir", map: 1, room: 1865, stop_short: false },
+      { type: "walk_to", session: "kasimir", map: 1, room: 2150, fight: false },
+      { type: "journey_fight", session: "kasimir", fight: true },
+    ]);
+  });
+
+  it("resets the run, the combat numbers, or both", () => {
+    const r = rig();
+    r.last().open();
+    r.last().receive(welcome(session("kasimir", 0)));
+    expect(r.client.resetStats("kasimir")).toBe(true);
+    expect(r.client.resetStats("kasimir", "run")).toBe(true);
+    expect(r.client.resetStats("kasimir", "combat")).toBe(true);
+    expect(r.last().sent.slice(-3)).toEqual([
+      { type: "stats_reset", session: "kasimir" },
+      { type: "stats_reset", session: "kasimir", only: "run" },
+      { type: "stats_reset", session: "kasimir", only: "combat" },
     ]);
   });
 
@@ -252,16 +270,49 @@ describe("handshake", () => {
     expect(client.leaveParty("lauren")).toBe(true);
     expect(client.joinParty("lauren", "party-1")).toBe(true);
     expect(client.deleteParty("party-1")).toBe(true);
-    expect(sockets[0].sent.slice(-5)).toEqual([
+    expect(client.resyncParties()).toBe(true);
+    expect(client.resyncParties("party-1")).toBe(true);
+    expect(sockets[0].sent.slice(-7)).toEqual([
       { type: "parties_request" },
       { type: "party_save", party },
       { type: "party_leave", session: "lauren" },
       { type: "party_join", session: "lauren", party: "party-1" },
       { type: "party_delete", id: "party-1" },
+      { type: "party_resync" },
+      { type: "party_resync", party: "party-1" },
     ]);
     const parties = [{ party: { ...party, id: "party-1" }, members: [] }];
     sockets[0].receive({ type: "parties", parties });
     expect(seen).toEqual([parties]);
+  });
+
+  it("asks for a gear plan and a detail and hands the answers to their handlers", () => {
+    const seen: unknown[] = [];
+    const sockets: FakeSocket[] = [];
+    const client = new GatewayClient({
+      url: "ws://gateway.test/ws",
+      socket: (url) => {
+        const s = new FakeSocket(url);
+        sockets.push(s);
+        return s;
+      },
+      events: { gearPlan: (p) => seen.push(p), gearDetail: (d) => seen.push(d) },
+    });
+    client.connect();
+    sockets[0].open();
+    sockets[0].receive(welcome(session("kasimir", 0)));
+    expect(client.requestGearPlan({ session: "kasimir", what_if: { level: 20 }, smash: true })).toBe(true);
+    expect(client.requestGearDetail({ session: "kasimir", item: 646, monsters: { area: "Dwarven Mines" } })).toBe(true);
+    expect(sockets[0].sent.slice(-2)).toEqual([
+      { type: "gear_plan_request", session: "kasimir", what_if: { level: 20 }, smash: true },
+      { type: "gear_detail_request", session: "kasimir", item: 646, monsters: { area: "Dwarven Mines" } },
+    ]);
+    const inputs = { what_if: [], buffs: [], smash: false };
+    const plan: ToClient = { type: "gear_plan", session: "kasimir", inputs, monsters: [], buffs_offered: [], rows: [] };
+    const detail: ToClient = { type: "gear_detail", session: "kasimir", item: 646, name: "Magebane sword", inputs, monsters: [], moves: [] };
+    sockets[0].receive(plan);
+    sockets[0].receive(detail);
+    expect(seen).toEqual([plan, detail]);
   });
 
   it("hands a found to its handler", () => {

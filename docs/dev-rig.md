@@ -114,6 +114,25 @@ gateway's sessions reconnect and log on again through their logon scripts (C-005
 browser reconnects and asks for the output it missed by sequence number, so nothing is lost
 from the scrollback. A card session carries on where it stopped; a CI wait simply resumes.
 
+## Refreshing everything at once
+
+`scripts/dev/refresh.sh` brings the rig up to date with `main` in one go, when the gateway and
+brain run in a tmux session `wayfarer` (windows `gateway` and `brain`):
+
+```sh
+scripts/dev/refresh.sh            # then: tmux attach -t wayfarer
+```
+
+It checks the checkout can pull (on `main`, no uncommitted changes, no commits `origin` lacks)
+before stopping anything; stops the gateway first, so it logs every character off cleanly
+while the brain is still attached (up to six minutes); stops the brain; pulls; starts the
+gateway on this machine's Tailscale address (`tailscale ip -4`, port 7373) and waits for it to
+listen; then starts the brain against it. Each step prints as it goes. A window whose program
+exits stays open, so a failed build can be read there. `WAYFARER_BIND_IP`, `WAYFARER_PORT` and
+`WAYFARER_TMUX_SESSION` override the address, the port and the session. On an ARM machine it
+asks before building: a release box (a Raspberry Pi) updates from a GitHub release with
+`scripts/update.sh` instead ([server.md, "Running a release"](server.md#running-a-release)).
+
 ## What restarts when
 
 | Part | Restarted when |

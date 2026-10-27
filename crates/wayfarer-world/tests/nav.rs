@@ -597,6 +597,41 @@ fn a_hidden_exit_known_to_the_traveller_is_routed_through() {
 }
 
 #[test]
+fn a_passable_hidden_exit_is_routed_through_like_any_exit() {
+    let (_, g) = graph();
+    // The Dirt Road (7:1137): north, a Hidden exit with `EXF_PASSABLE`, never listed but
+    // walked without a search, to the Black Weed Fields.
+    let north = g.edge((7, 1137), 0).unwrap();
+    assert_eq!(north.kind, ExitType::Hidden);
+    assert!(north.passable());
+    let anyone = Traveller::default();
+    assert!(anyone.can_take(north));
+    let r = route(&g, (7, 1137), (7, 1142), &anyone).unwrap();
+    assert_eq!(commands(&r), ["n"]);
+    // The Hidden Keep's north is searched for.
+    assert!(!g.edge(HIDDEN_KEEP, 0).unwrap().passable());
+}
+
+#[test]
+fn a_blocked_hidden_exit_is_opened_by_the_phrases_of_its_rooms_remote_actions() {
+    let (_, g) = graph();
+    // The Slimy Tunnel in the sewers (1:619): west, a Hidden exit with one block, which the
+    // room's Remote Action north takes off at `push switch`. A search never finds it.
+    let west = g.edge((1, 619), 3).unwrap();
+    assert_eq!(west.kind, ExitType::Hidden);
+    assert_eq!(west.unblock, ["push switch"]);
+    // The Dark Sanctum (17:2235): five blocks (`exitpar2` 5, in order), one Remote Action
+    // each, typed from the fifth down.
+    let sanctum = g.edge((17, 2235), 3).unwrap();
+    assert_eq!(
+        sanctum.unblock,
+        ["press d", "press e", "press a", "press t", "press h"]
+    );
+    // A Hidden exit found by searching needs no phrase.
+    assert!(g.edge(HIDDEN_KEEP, 0).unwrap().unblock.is_empty());
+}
+
+#[test]
 fn a_key_exit_is_taken_with_its_key_and_a_hidden_one_as_a_last_resort() {
     use wayfarer_world::{distances, distances_any, route_or_search};
     let (_pack, g) = graph();

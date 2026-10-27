@@ -19,6 +19,7 @@
 //! # Ok(()) }
 //! ```
 
+mod bash_help;
 mod bless;
 mod boss;
 mod brain;
@@ -31,6 +32,7 @@ mod errand;
 pub mod executor;
 mod fight;
 mod flee;
+pub mod gear_plan;
 mod journey;
 mod link;
 mod loot;
@@ -49,6 +51,7 @@ mod sneak;
 mod spellcraft;
 mod stats;
 mod task;
+mod time_stats;
 mod trip;
 mod walker;
 

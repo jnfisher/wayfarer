@@ -41,3 +41,7 @@ SSH.
 
 GitHub Actions builds every platform on a tag (Windows and macOS runners for their
 installers), attaches the files to the GitHub Release, and publishes the update manifest.
+The first piece exists (C-061): `.github/workflows/release.yml` builds Linux x86_64 and aarch64
+tarballs on a `v*` tag and publishes them with `SHA256SUMS`, and `scripts/update.sh` installs
+one on a headless box and restarts its systemd unit (`docs/server.md`, "Running a release");
+no installers, signing or manifest yet.

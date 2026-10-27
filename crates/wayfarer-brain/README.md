@@ -84,6 +84,10 @@ brain.run(&mut link).await?;                             // Ok when the gateway 
   `Monsters`, MegaMud's verified loops and what its paths know (`PathKnowledge`; the graph
   learns the phrases of Text exits with a blank message from it), loaded once
   per brain and shared by its sessions; `World` keeps the `WorldPack` open beside it.
+- **`gear_plan.rs`**: `gear_plan_request` and `gear_detail_request` (`docs/brain.md` "Gear
+  plan"): `Gear` (in `World`, shared by the sessions) keeps a `wayfarer_world::gear::Catalogue`
+  per class and race and the item, class and race records, and scores each weapon's moves
+  against a monster set with `wayfarer_world::combat`, the fights on a thread per core.
 - **`stats.rs`**: the `Ledger` per session: the bot's state saved when it changes (the brain
   calls `Session::persist` after every message and timer), the run from Start to Stop with its
   events and a sample a minute, and the run's numbers for the snapshot's `run`. A stored bot

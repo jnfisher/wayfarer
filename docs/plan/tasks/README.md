@@ -75,6 +75,8 @@ Cards don't repeat these:
 | 6 | M7: party play, brought forward (`../10-party-play.md`) | 2026-10-22, after John approved the design |
 | 7 | Party upkeep: shorter rests, member activity, blessings, sneaking | 2026-10-23, at John's request after wave 6 |
 | 8 | Combat statistics; no resting for mana by default | 2026-10-24, at John's request (the milestones after M3 were retired the same day) |
+| 9 | The gear planner: a combat model, the gear catalogue, the plan and its full-screen view | 2026-10-26, at John's request |
+| 10 | Releases: tagged Linux builds and `update.sh` for a server that never builds | 2026-10-26, at John's request |
 
 ## Index (wave 1, M0)
 
@@ -174,9 +176,37 @@ C-049 came after it, at John's request, in its own.
 | [C-053](C-053-lost-and-rests.md) | Lost in a player's house: a room the map lacks is unknown, failed legs pause, `par` only when apart; rests where it stands by default | B | M | C-030, C-039 | |
 | [C-054](C-054-safe-logon.md) | Safe logon: the gateway enters the realm only with a brain attached, and entering the realm starts the bot | B | S | C-005, C-049 | |
 | [C-055](C-055-phrase-arrival.md) | A phrase's way through is looked at, not waited for: `ring chime` prints no room | B | S | C-052 | |
+| [C-056](C-056-bless-in-combat.md) | Blessings are kept on in a fight: a buff that wore off is cast mid-fight, after a heal, on its own mana line | B | S | C-047 | |
 
 C-051 and C-050 are independent; they run one after the other in one session. C-052 and C-053 came after
-them, at John's request, each in its own; C-054 and C-055 together in one.
+them, at John's request, each in its own; C-054 and C-055 together in one; C-056 on its own.
+
+## Index (wave 9, the gear planner)
+
+| Id | Title | Tier | Size | Depends | Review |
+|---|---|---|---|---|---|
+| [C-057](C-057-combat-model.md) | The combat model: a character's blows against a monster, per round, from the game's formulas | B | M | — | review |
+| [C-058](C-058-gear-catalogue.md) | The gear catalogue: every weapon and armour piece a character could ever use, why not now, and where it comes from | B | M | — | |
+| [C-059](C-059-gear-plan.md) | The gear plan: the brain scores every weapon by attack, bash and smash against a monster set | B | M | C-057, C-058 | |
+| [C-060](C-060-gear-planner-ui.md) | The gear planner: a full-screen view from the top bar, scored rows, green, amber and grey | B | M | C-059 | |
+
+Wave 9: C-057 and C-058 together (both new files in `wayfarer-world`, touching only
+`lib.rs` in common); then C-059; then C-060. **Wave 9 is done** when John opens the planner
+for Faye and for his Witchunter on his rig, sees the maul's best move is bash and the
+darkwood staff beats it, sees the Magebane and the headcutter change places between level 15
+and 20 by a what-if, and ticks a buff and sees the rows change. (Asked for on 2026-10-26:
+solo play only; the damage roll includes its top value; buffs as checkboxes.)
+
+## Index (wave 10, releases)
+
+| Id | Title | Tier | Size | Depends | Review |
+|---|---|---|---|---|---|
+| [C-061](C-061-releases-and-update.md) | Releases and `update`: a tag builds Linux x86_64 and aarch64 tarballs; `scripts/update.sh` installs one on a server and restarts the systemd unit | B | M | — | |
+
+Wave 10 (2026-10-26, at John's request): a server such as a Raspberry Pi runs releases and
+never builds. `scripts/dev/refresh.sh`, which refreshes the dev rig in tmux, came with the
+card's own PR. **Wave 10 is done** when John pushes a tag, runs `update.sh` on the Pi, and
+watches its characters from the laptop's browser.
 
 Tier: B Opus, C Sonnet. Size: S under half a day of agent time, M about a day, L two to three
 days.

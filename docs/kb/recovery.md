@@ -79,6 +79,20 @@ Everything below is from `slow_update_character` (LJNBKGND.C:1555-1725), the med
   goes out.", so the room sees nothing. Only an item with no destroy message gets the standard
   pair, "<item> is no longer lit!" and, to the room, "<who>'s <item> just went out.". [C]
   `LJNBKGND.C:1929-1985`
+- **Whose light counts** [C] `LJNUTIL.C:8818-8830`: Alter User Light (13: race night vision, worn
+  items) counts only for its owner; a lit source (`player.light`) and Alter Room Light (14,
+  `player.roomlight`) count for everyone in the room. So a Dwarf's or Gnome's night vision does
+  nothing for a Kang beside them, but their lantern or the Druid's **starlight** does. Starlight
+  (`star`, Druid level 1, 4 mana, Alter Room Light +175, 80 + 1 per level rounds) is a free
+  scroll at the Druid Spell Shop 1:1314 and in Newhaven. [C data]
+- **Light for a character without night vision that cannot use Magical items** (a Kang
+  Witchunter) [C data]: the **mining helm** (head, AC 5, DR 1, Alter User Light +75, not
+  Magical, free at the Dwarven Miner's Guild 6:1567) sees it through rooms down to −225; the
+  layered sun skirt (legs, AC 2, +25, L10, Gypsy Man 6:124). Lights: lantern +175 for 2,400
+  charges (about 2 h) and brass lamp +175 for 1,800, both a few gold; moon-lamp +200 for 4,000
+  (Arlysia 17:2439, Nekojin 12:49); Eternal Fire +200 for 9,999 (an alignment-quest step,
+  Neutral only). The skull mask, flametongue, golden belt, golden broadsword, carved ivory mask
+  and mithril-runed tunic give light but are Magical.
 - Policy: always carry a light; light it on entering a room darker than −150 or on seeing a
   darkness message; rebuy when it burns out. [C]
 - `search` needs sight too: in a room too dark to see it prints only the darkness line and

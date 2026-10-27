@@ -9,6 +9,8 @@
   import PartiesPanel from "./PartiesPanel.svelte";
   import SettingsPanel from "./SettingsPanel.svelte";
   import StatsPanel from "./StatsPanel.svelte";
+  import GearPlanner from "./GearPlanner.svelte";
+  import { gearRefusal, type GearDetailMessage, type GearPlanMessage } from "./lib/gear";
   import type { SettingsMessage } from "./lib/settings";
   import { planRefusal, type SpellPlan } from "./lib/spells";
   import { STATS_REFRESH_MS, type Stats } from "./lib/stats";
@@ -16,6 +18,7 @@
   import {
     DEV_PANEL_CODE,
     FOCUS_TILE_CODE,
+    GEAR_CODE,
     GO_CODE,
     MAP_PANEL_CODE,
     PARTIES_PANEL_CODE,
@@ -105,6 +108,11 @@
   let plansBySession = $state.raw<Record<string, SpellPlan>>({});
   // Why the brain gave no spell plan, per session, until it gives one.
   let planRefusals = $state.raw<Record<string, string>>({});
+  // The gear planner (Alt+E): open over the tiles; the brain's last answers per session.
+  let gearOpen = $state(false);
+  let gearPlans = $state.raw<Record<string, GearPlanMessage>>({});
+  let gearDetails = $state.raw<Record<string, GearDetailMessage>>({});
+  let gearRefusals = $state.raw<Record<string, string>>({});
   // The brain's last `stats` per session.
   let statsBySession = $state.raw<Record<string, Stats>>({});
   // The brain's last `settings` per session, for the settings tab.
@@ -327,6 +335,14 @@
         const { [plan.session]: _, ...rest } = planRefusals;
         planRefusals = rest;
       },
+      gearPlan: (plan) => {
+        gearPlans = { ...gearPlans, [plan.session]: plan };
+        const { [plan.session]: _, ...rest } = gearRefusals;
+        gearRefusals = rest;
+      },
+      gearDetail: (detail) => {
+        gearDetails = { ...gearDetails, [detail.session]: detail };
+      },
       settings: (settings) => {
         settingsBySession = { ...settingsBySession, [settings.session]: settings };
       },
@@ -357,6 +373,8 @@
           plansBySession = rest;
           planRefusals = { ...planRefusals, [id]: why };
         }
+        const gearWhy = kind === "warning" && id ? gearRefusal(text) : null;
+        if (id && gearWhy) gearRefusals = { ...gearRefusals, [id]: gearWhy };
         addNote(dev, kind, text, id, Date.now());
         devChanged();
       },
@@ -382,11 +400,21 @@
     }
   }
 
-  // Alt+M, Alt+S and Alt+D open the drawer on the map, stats or dev panel; Alt+G on the map's go
-  // box; Alt+1..Alt+6 focus a tile; Ctrl +/-/0
+  // Alt+E opens or closes the gear planner, and Esc closes it; Alt+M, Alt+S and Alt+D open the
+  // drawer on the map, stats or dev panel; Alt+G on the map's go box; Alt+1..Alt+6 focus a tile; Ctrl +/-/0
   // zoom the focused one; F9 and F10 pause or resume, start or stop its bot. Captured before
   // xterm sees them.
   function onkeydown(e: KeyboardEvent) {
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === GEAR_CODE) {
+      e.preventDefault();
+      gearOpen = !gearOpen;
+      return;
+    }
+    if (gearOpen && e.key === "Escape" && !helpArea) {
+      e.preventDefault();
+      gearOpen = false;
+      return;
+    }
     if ((e.key === PAUSE_KEY || e.key === START_KEY) && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
       e.preventDefault();
       const id = sessions[focused]?.id;
@@ -456,10 +484,24 @@
   <div class="bar">
     <span class="title">wayfarer</span>
     <span class="right">
+      {#if devPrefs.open}
+        <!-- The drawer has no title row: these buttons are its tabs, and this is whose it is. -->
+        <span class="who">═ {sessions[focused]?.name ?? "no character"} ═</span>
+      {/if}
+      <button
+        class="devbtn"
+        class:on={gearOpen}
+        aria-pressed={gearOpen}
+        onclick={() => (gearOpen = !gearOpen)}
+        title="Gear planner (Alt+E)"
+      >
+        gear
+      </button>
       {#each DRAWER_BUTTONS as b (b.panel)}
         <button
           class="devbtn"
           class:on={devPrefs.open && devPrefs.panel === b.panel}
+          aria-pressed={devPrefs.open && devPrefs.panel === b.panel}
           onclick={() => toggleDrawer(devPrefs, b.panel)}
           title={b.title}
         >
@@ -530,29 +572,16 @@
     {#if devPrefs.open}
       <!-- A drawer on the right of the tiles, a third of the width at most; the tiles refit. -->
       <aside class="drawer" aria-label="{devPrefs.panel} panel">
-        <div class="title">
-          <span class="tabs" role="tablist">
-            {#each DRAWER_BUTTONS as b (b.panel)}
-              <button
-                role="tab"
-                aria-selected={devPrefs.panel === b.panel}
-                class:on={devPrefs.panel === b.panel}
-                onclick={() => (devPrefs.panel = b.panel)}
-              >
-                {b.panel}
-              </button>
-            {/each}
-          </span>
-          <span>═ <span class="who">{sessions[focused]?.name ?? "no character"}</span> ═</span>
-          <button onclick={() => (devPrefs.open = false)} title="Close">x</button>
-        </div>
         {#if devPrefs.panel === "map"}
           <MapPanel
             session={sessions[focused]}
             view={focusedId ? mapViews[focusedId] : undefined}
             character={focusedId ? brain.characters[focusedId] : undefined}
             attached={brain.attached}
-            onwalk={(id, map, room, stopShort) => client.walkTo(id, map, room, stopShort)}
+            onwalk={(id, map, room, stopShort, fight) => client.walkTo(id, map, room, stopShort, fight)}
+            onfightchange={(fight) => {
+              for (const s of sessions) if (brain.characters[s.id]?.bot?.journey) client.journeyFight(s.id, fight);
+            }}
             found={focusedId ? foundBySession[focusedId] : undefined}
             onfind={(id, query) => client.find(id, query)}
             {goAsked}
@@ -573,6 +602,7 @@
             characters={brain.characters}
             onsave={(party) => client.saveParty(party)}
             ondelete={(id) => client.deleteParty(id)}
+            onresync={(id) => client.resyncParties(id)}
           />
         {:else if devPrefs.panel === "blessings"}
           <BlessingsPanel
@@ -596,7 +626,7 @@
             stats={focusedId ? statsBySession[focusedId] : undefined}
             attached={brain.attached}
             onrefresh={(id) => client.requestStats(id)}
-            onreset={(id) => client.resetStats(id)}
+            onreset={(id, only) => client.resetStats(id, only)}
             onrule={(id, pattern, rule) => client.setMonsterRule(id, pattern, rule)}
           />
         {:else}
@@ -611,6 +641,22 @@
           />
         {/if}
       </aside>
+    {/if}
+    {#if gearOpen}
+      <!-- Over the tiles and the drawer; they stay mounted underneath. -->
+      <GearPlanner
+        {sessions}
+        initial={focusedId}
+        characters={brain.characters}
+        attached={brain.attached}
+        plans={gearPlans}
+        details={gearDetails}
+        refusals={gearRefusals}
+        storage={browserStorage()}
+        onplan={(req) => client.requestGearPlan(req)}
+        ondetail={(req) => client.requestGearDetail(req)}
+        onclose={() => (gearOpen = false)}
+      />
     {/if}
   </div>
   {#if docked.length > 0}
@@ -677,33 +723,9 @@
     line-height: 16px;
     font-size: 16px;
   }
-  .drawer .title {
-    display: flex;
-    justify-content: space-between;
-    gap: 1ch;
-    padding: 0 1ch 2px;
-    color: var(--frame);
+  .who {
     white-space: pre;
-    border-bottom: 1px solid var(--frame);
-  }
-  .drawer .tabs {
-    display: flex;
-    gap: 1ch;
-  }
-  .drawer .who {
-    color: var(--vga-yellow);
-  }
-  .drawer button {
-    font: inherit;
-    line-height: 16px;
-    padding: 0 1ch;
-    color: #000;
-    background: var(--vga-lightgray);
-    border: none;
-    cursor: pointer;
-  }
-  .drawer button.on {
-    background: var(--vga-lightcyan);
+    color: var(--vga-blue);
   }
   /* The tiles, and the dev panel to their right when it is open. */
   /* The bar of minimized characters, under the tiles. */
@@ -738,6 +760,7 @@
     flex: 1;
     min-height: 0;
     display: flex;
+    position: relative;
   }
   .conn.open {
     color: var(--vga-green);

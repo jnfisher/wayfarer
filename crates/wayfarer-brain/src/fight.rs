@@ -95,6 +95,8 @@ pub(crate) struct Fight {
     backstab: bool,
     /// Believed sneaking: the backstab goes before an attack spell.
     sneaking: bool,
+    /// On a passive Go to: nothing is fought, not even what attacks the character.
+    passive: bool,
 }
 
 /// A name as the game shows it (`lauren` is Lauren).
@@ -123,6 +125,9 @@ pub(crate) fn cast_step(cast: &PartyCast, mode: &str) -> Step {
 
 impl Mode for Fight {
     fn wants(&self, v: &View) -> Option<String> {
+        if self.passive {
+            return None;
+        }
         if v.engaged {
             return Some("in combat".to_owned());
         }
@@ -140,7 +145,7 @@ impl Mode for Fight {
             if let Some(step) = self.heal_mates(v) {
                 return step;
             }
-            if let Some(step) = self.enough_casts(v) {
+            if let Some(step) = self.weapon_now(v) {
                 return step;
             }
             let t = self.target.as_deref().unwrap_or("in combat");
@@ -228,7 +233,7 @@ impl Mode for Fight {
             }
             GameEvent::YouDoNotSee { .. } | GameEvent::NoEffect => self.refused(),
             // A cast at the target, hit or missed: counted for the limit.
-            GameEvent::SpellCast { .. } | GameEvent::CastFailed if self.spell_fight => {
+            GameEvent::SpellCast { .. } | GameEvent::CastFailed { .. } if self.spell_fight => {
                 self.casts += 1;
             }
             GameEvent::YouKilled => {
@@ -298,6 +303,27 @@ impl Fight {
         )
     }
 
+    /// Whether a blessing may be cast in this fight now (C-056): no heal is due, its own or a
+    /// party member's, and no spell of ours went this round (one general spell a round).
+    pub fn may_bless(&self, v: &View) -> bool {
+        if self.heal_ready.is_some_and(|t| v.now < t) {
+            return false;
+        }
+        let own =
+            v.hp.is_some_and(|hp| hp < v.heal_in_combat_below() && v.heal_spell().is_some());
+        let mates = v
+            .party_heal(v.member_heal_in_combat(), v.heal_in_combat_below())
+            .is_some();
+        !own && !mates
+    }
+
+    /// A blessing is cast in the fight: the `*Combat Off*` it causes is ours, as after a heal
+    /// (the same monster is attacked again at once), and no heal goes this round.
+    pub fn cast_mid_fight(&mut self, now: Instant) {
+        self.healed = true;
+        self.heal_ready = Some(now + HEAL_GAP);
+    }
+
     /// A heal for another member of the party in the room, or the party heal (C-043); the fight
     /// goes on at once after the cast, as after its own heal.
     fn heal_mates(&mut self, v: &View) -> Option<Step> {
@@ -310,20 +336,28 @@ impl Fight {
         Some(cast_step(&cast, "Fight"))
     }
 
-    /// The spell has been cast as often as `spells.max_casts_per_monster` allows at this
-    /// monster: the attack command is sent at it, which carries on the fight with the weapon.
-    fn enough_casts(&mut self, v: &View) -> Option<Step> {
-        if !spell_fight_is_over(v.max_casts(), self.spell_fight, self.casts, self.switched) {
+    /// The spell fight is over: the spell has been cast as often as
+    /// `spells.max_casts_per_monster` allows at this monster, or the mana has come down to
+    /// `spells.attack_mana_above` (the game casts the spell every round on its own, so the line
+    /// checked when the fight opened is not enough). The attack command is sent at it, which
+    /// carries on the fight with the weapon.
+    fn weapon_now(&mut self, v: &View) -> Option<Step> {
+        let t = self.target.clone().unwrap_or_else(|| "it".to_owned());
+        let why = if spell_fight_is_over(v.max_casts(), self.spell_fight, self.casts, self.switched)
+        {
+            format!("{} casts at {t}", self.casts)
+        } else if self.spell_fight && !self.switched && v.attack_mana_short() {
+            format!("mana {}%", v.mana_percent().unwrap_or(0))
+        } else {
             return None;
-        }
+        };
         self.switched = true;
         self.weapon_only = true;
         self.spell_fight = false;
-        let t = self.target.clone().unwrap_or_else(|| "it".to_owned());
         let attack = format!("{} {}", v.attack_command(), attack_word(&t));
         Some(Step::send(
             Action::new(attack, Expect::Engaged),
-            format!("Fight: {} casts at {t}, now the weapon", self.casts),
+            format!("Fight: {why}, now the weapon"),
         ))
     }
 
@@ -373,6 +407,11 @@ impl Fight {
     /// attack, or anything attacking.
     pub fn would_fight(&self, atlas: &Atlas, rules: &MonsterRules, presence: &Presence) -> bool {
         !presence.attackers.is_empty() || self.pick(atlas, rules, presence).is_some()
+    }
+
+    /// On a passive Go to (`true`): fight nothing, not even what attacks the character.
+    pub fn set_passive(&mut self, passive: bool) {
+        self.passive = passive;
     }
 
     /// The monster it fights or last went for.

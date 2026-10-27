@@ -1,0 +1,149 @@
+# Release builds (C-061, docs/server.md "Running a release"): a pushed tag `v*` builds Linux
+# tarballs for x86_64 and aarch64, natively on two runners, and publishes them with
+# SHA256SUMS and update.sh as a GitHub Release. Run by hand, or on a pull request that changes
+# this file, scripts/update.sh or packaging/, it only builds the tarballs and keeps them as the
+# run's artifacts, so it can be tried without a tag. (A pull request run is there because
+# GitHub only offers "Run workflow" for workflows already on the default branch.)
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/workflows/release.yml"
+      - "scripts/update.sh"
+      - "packaging/**"
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  build:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    name: build (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 22.04's glibc (2.35) also runs on newer Ubuntu, Debian 12 and Raspberry Pi OS.
+          - runner: ubuntu-22.04
+            arch: x86_64
+            file: x86-64
+          - runner: ubuntu-22.04-arm
+            arch: aarch64
+            file: ARM aarch64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag
+        id: tag
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then tag=$GITHUB_REF_NAME; else tag=dev-${HEAD_SHA::7}; fi
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+          echo "Building $tag for ${{ matrix.arch }}"
+      - name: Toolchain (from rust-toolchain.toml)
+        run: |
+          if ! command -v rustup >/dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+            echo "$HOME/.cargo/bin" >>"$GITHUB_PATH"
+            export PATH=$HOME/.cargo/bin:$PATH
+          fi
+          rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.arch }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Build wayfarer
+        env:
+          WAYFARER_VERSION: ${{ steps.tag.outputs.tag }}
+        run: cargo build --release --locked -p wayfarer
+      - name: Build the UI
+        working-directory: ui
+        run: npm ci && npm run build
+      - name: Build the world pack
+        run: ./target/release/wayfarer import-world --export tests/fixtures/world --megamud data/megamud --out world.sqlite
+      - name: Pack
+        id: pack
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          top=dist/wayfarer-$TAG
+          mkdir -p "$top/ui"
+          cp target/release/wayfarer "$top/"
+          cp -r ui/dist "$top/ui/dist"
+          cp world.sqlite packaging/wayfarer.service scripts/update.sh "$top/"
+          echo "$TAG" >"$top/VERSION"
+          tarball=wayfarer-$TAG-linux-$ARCH.tar.gz
+          tar -czf "dist/$tarball" -C dist "wayfarer-$TAG"
+          echo "tarball=$tarball" >>"$GITHUB_OUTPUT"
+      - name: Check the tarball
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          FILE_ARCH: ${{ matrix.file }}
+        run: |
+          mkdir check && tar -xzf "dist/$TARBALL" -C check
+          tar -tzf "dist/$TARBALL" | grep -v '^wayfarer-[^/]*/ui/dist/.' | sort
+          for f in wayfarer ui/dist/index.html world.sqlite wayfarer.service update.sh VERSION; do
+            test -e "check/wayfarer-$TAG/$f" || { echo "missing $f"; exit 1; }
+          done
+          file "check/wayfarer-$TAG/wayfarer" | tee /dev/stderr | grep -q "$FILE_ARCH"
+          version=$("check/wayfarer-$TAG/wayfarer" --version)
+          echo "$version"
+          test "$version" = "wayfarer $TAG"
+          ls -l "dist/$TARBALL"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wayfarer-linux-${{ matrix.arch }}
+          path: dist/${{ steps.pack.outputs.tarball }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wayfarer-linux-*
+          path: dist
+          merge-multiple: true
+      - name: SHA256SUMS and the notes
+        run: |
+          cp scripts/update.sh dist/
+          (cd dist && sha256sum ./*.tar.gz update.sh | sed 's| \./| |' >SHA256SUMS && cat SHA256SUMS)
+          # The tag's own message is the release notes (checkout leaves the tag object behind).
+          git fetch --force --depth=1 origin "refs/tags/$TAG:refs/tags/$TAG"
+          git tag -l --format='%(contents)' "$TAG" >notes.md
+          grep -q . notes.md || echo "wayfarer $TAG" >notes.md
+      - name: Publish the release
+        run: |
+          pre=()
+          case "$TAG" in *-*) pre=(--prerelease) ;; esac
+          gh release create "$TAG" dist/* --title "$TAG" --notes-file notes.md --verify-tag "${pre[@]}"
