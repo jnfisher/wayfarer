@@ -603,6 +603,7 @@
             onsave={(party) => client.saveParty(party)}
             ondelete={(id) => client.deleteParty(id)}
             onresync={(id) => client.resyncParties(id)}
+            onsend={(ids, text) => ids.forEach((id) => client.sendLine(id, text))}
           />
         {:else if devPrefs.panel === "blessings"}
           <BlessingsPanel
