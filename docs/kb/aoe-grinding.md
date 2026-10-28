@@ -93,7 +93,7 @@ meditate → regen delay (5 min, 20 min in map-3 caves) → repeat**, ideally ro
 |---|---|---|
 | Max mana | `Mana abilities + 2×(magelvl×level + 3) + manabonus`. **Int/Wil do not raise max mana.** Mana abilities: Half-Elf/Elf +10, items. | LJNUTIL.C:4904-4945 |
 | Regen (every 30-s slow tick) | `stat × (level+20) × (magelvl+2) / 1650`, × (100+"Alter Mana Regeneration")%. stat: Mage magery Int, Priest Wil, Druid (Int+Wil)/2. | LJNBKGND.C:1671-1716 |
-| MEDITATE | Same amount every 15 s **in addition** to the slow tick → **3× regen**. Needs ability 187: Dhelvanen (Luxurious Room 7:1008, 227 steps) quest: 50 nanati black diamonds, return his sigil at **L20** (Mage/Priest/Druid) or **L23** (Warlock/Cleric). Poisoned = can't. | LJNBKGND.C:2143-2210, LJNCMDS.C:993, WCCTEXT 9024-9046 |
+| MEDITATE | Same amount every 15 s **in addition** to the slow tick → **3× regen**. Needs ability 187: Dhelvanen (Luxurious Room 7:1008, 227 steps) quest: 50 nanati black diamonds, return his sigil at **L20** (Mage/Priest/Druid), **L23** (Warlock/Cleric/Gypsy/Missionary) or **L27** (Paladin/Bard/Ranger); Warrior, Witchunter, Ninja, Thief and Mystic never get it (text 9046 has no `giveability` for them). Poisoned = can't. | LJNBKGND.C:2143-2210, LJNCMDS.C:993, WCCTEXT 9024-9046 |
 | Spellcast | `2×level + castbase + 5×magelvl + "Spellcasting" items`; castbase Mage (3Int+Wil)/6, Priest (3Wil+Int)/6, Druid (Int+Wil)/3 | LJNUTIL.C:4919-4952 |
 
 Break-even (AoE vs best single-target nuke at the same level, by dmg/mana) [I]:

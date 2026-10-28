@@ -23,7 +23,7 @@ wolves, Ancient Crypt undead, then Orc Mansion/Ancestral Tomb in plate.
 | weapons / armour | 8 = All / **9 = Platemail** | Same as Warrior |
 | abilities | 31 Bash | |
 | Smash | keepable from **L25** | LJNUTIL.C:692 (source of the ability not found) |
-| Meditate | keepable from L27 | LJNUTIL.C:715 |
+| Meditate | from L27, Dhelvanen's quest gives it (`giveability 187` at minlevel 27, WCCTEXT 9046) [C] | LJNUTIL.C:715 |
 | Alignment-quest reward | +1 max damage | LJNUTIL.C:479-487 |
 | L11 trainer | Super Paladin Trainer, shop 55 at **1:2260** | crypt quest (§7) |
 - No code forces a Paladin to be Good [C: no class check in LJNEVIL.C/LJNUTIL.C]. But *protection from evil*, *holy force*, the copper cross and most Paladin endgame items are **Good-aligned** only, so stay good [C item/spell abilities 97].

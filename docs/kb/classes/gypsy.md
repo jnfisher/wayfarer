@@ -20,7 +20,7 @@ light on HP.
 | magery | **Mage (1), level 2** | Learns every mage spell with magelvl ≤ 2. Misses only the magelvl-3 spells (Mage class has those) [C LJNUTIL.C:9779] |
 | weapons | 4 = Any 1H | No 2H, no off-hand items unless the item lists class 10 (LJNUTIL.C:9697) |
 | armour | 6 = Studded Rigid Leather | |
-| abilities | 103 Class Stealth, 37 Picklocks, 39 Thievery (+0), 40 Find Traps, 31 Bash | Same thief kit as Bard |
+| abilities | 103 Class Stealth, 37 Picklocks, 39 Thievery (+0), 40 Find Traps, 31 Bash | Same thief kit as Bard; Meditate from **L23** via Dhelvanen 7:1008 (50 nanati black diamonds, `giveability 187` at minlevel 23, WCCTEXT 9046) [C] |
 
 Casting [C LJNUTIL.C:4919-4952; LJNBKGND.C:1677, 2143]:
 - Max mana = 2×(2×level+3) (+10 Half-Elf/Elf). Mana regen/tick and MEDITATE = **Int** × (level+20) × 4 / 1650.

@@ -20,7 +20,7 @@ up for any party.
 | magery | **Bard (4), level 2** | Every bard song in the data is magelvl 0, so a Bard can learn **all** of them [C LJNUTIL.C:9779] |
 | weapons | 4 = Any 1-handed | **No 2H. No off-hand items** unless the item lists class 9 (LJNUTIL.C:9697-9712). Instruments and the jeweled main-gauche are class-9 items, so they are allowed. |
 | armour | 6 = Studded Rigid Leather | No chain, scale or plate |
-| abilities | 103 Class Stealth, 40 Find Traps, 39 Thievery (+0), 37 Picklocks, 31 Bash | Thief has Thievery +10, Bard +0 |
+| abilities | 103 Class Stealth, 40 Find Traps, 39 Thievery (+0), 37 Picklocks, 31 Bash | Thief has Thievery +10, Bard +0; Meditate from **L27** via Dhelvanen 7:1008 (50 nanati black diamonds, `giveability 187` at minlevel 27, WCCTEXT 9046) [C] |
 
 Derived formulas [C LJNUTIL.C:4740-4960, LJNBKGND.C:1690-1710, 2143-2200]:
 - Max mana = 2×(2×level+3) + "Mana" abilities (Half-Elf/Elf +10). Example: L10 = 46 (+10).

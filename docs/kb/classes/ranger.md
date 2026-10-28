@@ -20,7 +20,7 @@ L10 crypt quest (witchwood spear). Kobolds → wolves → Ancestral Tomb. Heavie
 | magery | **Druid (3), level 1** | All druid spells in the data are magelvl 0 except *camouflage* (1): a Ranger can learn every druid spell [C WCCSPELS] |
 | mana / SC | mana `2×(L+3)`; SC = `2L + (Int+Wil)/3 + 5` | Int and Wil count equally (LJNUTIL.C ~4925) |
 | weapons / armour | 8 = All / **6 = Studded Rigid Leather** | Shields only up to armour type 6 (buckler) unless class-listed (ironwood/darkwood shields, cls 13/14) |
-| abilities | 31 Bash, **38 Tracking**, **103 Class Stealth** | Sneak, hide, backstab (1H weapon with ability 116) |
+| abilities | 31 Bash, **38 Tracking**, **103 Class Stealth** | Sneak, hide, backstab (1H weapon with ability 116); Meditate from **L27** via Dhelvanen 7:1008 (50 nanati black diamonds, `giveability 187` at minlevel 27, WCCTEXT 9046) [C] |
 | Smash | keepable from **L22** | LJNUTIL.C:692 |
 | Perfect Stealth | keepable from L20 | sneak always succeeds (LJNCMDA.C:2900) |
 | Alignment-quest reward | backstab min/max +10, stealth +2 | LJNUTIL.C:504-510 |

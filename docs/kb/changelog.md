@@ -202,3 +202,7 @@
 - **2026-10-26**: `screen-patterns.md`: an opened hidden exit shows on the exits line by `exitpar4`'s message with the direction last (57 names, `cramped passage south` at the Crypt's knight statue); stonestrike's `You cast stonestrike on giant bat for 22 damage!` is also WCCMSG 18, a monster's hit message, so it reads as `mon_hits_you` first [C, stock data; live].
 - **2026-10-26**: `combat.md`: whether `genrdn` includes its top value is unproven; the gear planner models it included (John) [I].
 - **2026-10-26**: `combat.md`: a monster's Dodge, Alter Defence, Alter DR and Defence Modifier also come from its weapon, worn item and carried items (eight stock monsters' bows) [C LJNABIL.C:681-810, fixtures]; the Alter AV abilities take the best value and Alter Energy Usage averages by source order [C LJNABIL.C:1046-1385]; the smash knock-down needs a damaging smash and its -35 DV counts only on a round's first blow [C LJNCOMBT.C:2676-2703, :3053-3140]. Found while writing the combat model (wayfarer C-057).
+- **2026-10-28**: Meditate (ability 187) class list corrected [C] from Dhelvanen's quest text (WCCTEXT 9046, `giveability 187` per class and minlevel).
+  - Gypsy and Missionary get it at L23, and Paladin, Bard and Ranger at L27, as well as Mage, Priest and Druid at L20 and Warlock and Cleric at L23.
+  - Warrior, Witchunter, Ninja, Thief and Mystic never get it.
+  - Files: `aoe-grinding.md` (MEDITATE row) and the bard, gypsy, missionary, paladin and ranger class files.

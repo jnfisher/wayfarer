@@ -20,7 +20,7 @@ the three hybrids.
 | magery | **Priest (2), level 2** | All priest spells with magelvl ≤ 2. Same list as Cleric (4/2); Priest class (5/3) gets magelvl-3 extras. |
 | weapons | 4 = Any 1H | No 2H, no off-hand items unless the item names class 6 (copper cross, red skull and golden chalice do) |
 | armour | 6 = Studded Rigid Leather | |
-| abilities | 103 Class Stealth, 37 Picklocks, 40 Find Traps, 31 Bash | **No Thievery** (unlike Bard/Gypsy) |
+| abilities | 103 Class Stealth, 37 Picklocks, 40 Find Traps, 31 Bash | **No Thievery** (unlike Bard/Gypsy); Meditate from **L23** via Dhelvanen 7:1008 (50 nanati black diamonds, `giveability 187` at minlevel 23, WCCTEXT 9046) [C] |
 
 Casting [C LJNUTIL.C:4924, 4952; LJNBKGND.C:1680]: mana = 2×(2×level+3) (+ items). Regen and
 MEDITATE = **Wil** × (level+20) × 4/1650. SC = 2×level + (3×Wil + Int)/6 + 10. Cast chance =
