@@ -2,7 +2,8 @@
   // The drawer's Parties panel (docs/plan/10-party-play.md §10): one box per party, its leader
   // picked and its followers ticked, with each member's live status; a new party; delete. It
   // only edits definitions: the brain forms the parties in the game. **re-sync** has the brain
-  // form a stuck party (or all of them) up again at once.
+  // form a stuck party (or all of them) up again at once. The **send** box types one line into
+  // every member at once ("go hole", "ask wounded annora").
   import {
     MAX_FOLLOWERS,
     activityLine,
@@ -30,9 +31,20 @@
     ondelete: (id: string) => void;
     /** Form party `id` (left out: every party) up again now. */
     onresync?: (id?: string) => void;
+    /** Type `text` into each of `sessions`, as if typed into each one's terminal. */
+    onsend?: (sessions: string[], text: string) => void;
   }
 
-  let { sessions, parties, attached, characters = {}, onsave, ondelete, onresync = () => {} }: Props = $props();
+  let {
+    sessions,
+    parties,
+    attached,
+    characters = {},
+    onsave,
+    ondelete,
+    onresync = () => {},
+    onsend = () => {},
+  }: Props = $props();
   const RESYNC_TITLE =
     "Stuck? Every member checks its party with par now, and the invites and follows go again at once";
 
@@ -67,6 +79,14 @@
     ondelete(id);
   }
   const fresh = $derived(drafts[""]);
+  /** The send box's text, by party id. */
+  let says = $state<Record<string, string>>({});
+  function send(p: PartyStatus) {
+    const text = (says[p.party.id] ?? "").trim();
+    if (!text) return;
+    onsend([p.party.leader, ...p.party.followers], text);
+    says = { ...says, [p.party.id]: "" };
+  }
 </script>
 
 {#snippet editor(d: Draft, status: PartyStatus | undefined)}
@@ -130,6 +150,22 @@
           {/if}
         </div>
         {@render editor(d, p)}
+        <form
+          class="say"
+          onsubmit={(e) => {
+            e.preventDefault();
+            send(p);
+          }}
+        >
+          <input
+            type="text"
+            aria-label="Command for {names[p.party.leader] ?? p.party.leader}'s party"
+            placeholder="every member sends…"
+            value={says[p.party.id] ?? ""}
+            oninput={(e) => (says = { ...says, [p.party.id]: (e.currentTarget as HTMLInputElement).value })}
+          />
+          <button type="submit" disabled={!(says[p.party.id] ?? "").trim()}>send</button>
+        </form>
         <div class="acts">
           {#if changed(p)}
             <button disabled={!!draftProblem(d)} title={draftProblem(d) ?? "Save the party"} onclick={() => save(d)}
@@ -248,6 +284,19 @@
     display: flex;
     gap: 1ch;
     padding: 2px 1ch;
+  }
+  .say {
+    display: flex;
+    gap: 1ch;
+    padding: 2px 0 0;
+  }
+  .say input {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    color: var(--vga-lightgray);
+    background: var(--vga-black, #000);
+    border: 1px solid var(--frame);
   }
   .party .acts {
     padding: 2px 0 0;

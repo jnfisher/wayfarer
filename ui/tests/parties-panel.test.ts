@@ -85,6 +85,30 @@ describe("PartiesPanel", () => {
     expect(onresync).toHaveBeenLastCalledWith();
   });
 
+  it("sends one command from every member of a party", async () => {
+    const onsend = vi.fn();
+    const parties: PartyStatus[] = [
+      {
+        party: { id: "party-1", leader: "penny", followers: ["lauren", "faye"] },
+        members: [
+          { session: "penny", state: "joined" },
+          { session: "lauren", state: "joined" },
+          { session: "faye", state: "joined" },
+        ],
+      },
+    ];
+    render(PartiesPanel, { sessions, parties, attached: true, onsave: vi.fn(), ondelete: vi.fn(), onsend });
+    const box = screen.getByLabelText("Command for Penny's party") as HTMLInputElement;
+    const send = screen.getByText("send") as HTMLButtonElement;
+    expect(send.disabled).toBe(true);
+    await fireEvent.input(box, { target: { value: "  go hole " } });
+    await fireEvent.submit(box.form!);
+    expect(onsend).toHaveBeenCalledWith(["penny", "lauren", "faye"], "go hole");
+    expect(box.value).toBe("");
+    await fireEvent.submit(box.form!);
+    expect(onsend).toHaveBeenCalledTimes(1);
+  });
+
   it("has nothing to re-sync with no parties", () => {
     render(PartiesPanel, { sessions, parties: [], attached: true, onsave: vi.fn(), ondelete: vi.fn() });
     expect(screen.queryByText("re-sync all")).toBeNull();
