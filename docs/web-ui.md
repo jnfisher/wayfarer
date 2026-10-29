@@ -28,11 +28,13 @@ tile's own buttons.
 
 - **Bars** are ten blocks: green above two thirds, yellow above one third, red below. HP and
   mana maxima come from the status screen, which the brain asks for when it re-syncs (the
-  game's prompt has none), so until then a bar is empty and its maximum shows `--`.
+  game's prompt has none), so until then a bar is empty and its maximum shows `--`. A character
+  with no mana (a Warrior, a Witchunter: its prompt is `[HP=..]:` alone) has no mana bar.
 - **Unknown values** show as `--`. Values update live as the brain reads the game; on leaving
   the realm (`x` to the menu) the last values stay and the badge changes.
-- **Narrow tiles**: the first row drops items from the right, exp first, then mana, HP and the
-  level, so the name always shows; the second row cuts the room title with `…` and drops the
+- **Narrow tiles**: the first row's bars shrink to five blocks first, so the exp keeps its
+  place; then it drops items from the right, exp first, then mana, HP and the level, so the
+  name always shows; the second row cuts the room title with `…` and drops the
   server before the room would get under 8 characters, so the badge and the buttons always
   show.
 - **No brain**: without a brain attached the header is just the number and name, and under it

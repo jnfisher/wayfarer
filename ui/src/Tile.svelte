@@ -6,7 +6,7 @@
   import "@xterm/xterm/css/xterm.css";
   import { botButtons, errandItems, linkButton, narrationLine } from "./lib/bot";
   import { keyBytes, type GatewayClient } from "./lib/gateway";
-  import { HEADER_CELL_PX, bar, expText, fitHeader, levelClass, roomText } from "./lib/header";
+  import { HEADER_CELL_PX, bar, barSize, expText, fitHeader, levelClass, roomText } from "./lib/header";
   import { InputHistory } from "./lib/input";
   import { HELP_KEY } from "./lib/keys";
   import { TERM_COLS, TERM_ROWS, fitFontSize } from "./lib/layout";
@@ -68,8 +68,12 @@
 
   let headerWidth = $state(0);
   const c = $derived(character);
-  const hp = $derived(bar(c?.hp, c?.hp_max));
-  const mana = $derived(bar(c?.mana, c?.mana_max));
+  const headerText = $derived({ number, name: info.name, server: info.server, state: info.state, character: c });
+  const headerCols = $derived(Math.floor(headerWidth / HEADER_CELL_PX));
+  /** The bars shrink before the header drops anything (`fitHeader`). */
+  const bars = $derived(barSize(headerText, headerCols));
+  const hp = $derived(bar(c?.hp, c?.hp_max, bars));
+  const mana = $derived(bar(c?.mana, c?.mana_max, bars));
   const buttons = $derived(botButtons(c?.bot));
   const narration = $derived(narrationLine(c?.bot));
   const link = $derived(linkButton(info.state));
@@ -85,11 +89,7 @@
   /** The spell plan is showing. */
   let planOpen = $state(false);
   const shown = $derived(
-    fitHeader(
-      { number, name: info.name, server: info.server, state: info.state, character: c },
-      Math.floor(headerWidth / HEADER_CELL_PX),
-      party ? party.text.length + 3 : 0,
-    ),
+    fitHeader(headerText, headerCols, party ? party.text.length + 3 : 0),
   );
 
   let host: HTMLDivElement;
