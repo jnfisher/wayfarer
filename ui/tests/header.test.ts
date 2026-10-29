@@ -1,7 +1,21 @@
 // @vitest-environment jsdom
 import { cleanup, render } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DROP_ORDER, ROOM_MIN, bar, controlsWidth, expText, fitHeader, fixedWidth, itemWidths, type HeaderText } from "../src/lib/header";
+import {
+  BAR_CELLS,
+  DROP_ORDER,
+  ROOM_MIN,
+  SHORT_BAR_CELLS,
+  bar,
+  barSize,
+  controlsWidth,
+  expText,
+  fitHeader,
+  fixedWidth,
+  itemWidths,
+  noMana,
+  type HeaderText,
+} from "../src/lib/header";
 import type { CharacterState } from "../src/proto";
 
 // xterm needs a real canvas; the header tests only look at the header.
@@ -62,6 +76,8 @@ describe("bar", () => {
     expect(bar(28, undefined)).toEqual({ full: "", empty: "░░░░░░░░░░", tone: "none", text: "28/--" });
     expect(bar(undefined, undefined).text).toBe("--/--");
     expect(bar(0, 0)).toMatchObject({ tone: "none", text: "0/0" });
+    // A short bar: five blocks.
+    expect(bar(28, 40, 5)).toMatchObject({ full: "████", empty: "░", text: "28/40" });
   });
 });
 
@@ -83,13 +99,39 @@ describe("fitHeader", () => {
     expect(fitHeader(h, 0).size).toBe(5);
   });
 
-  it("drops the first row from the right: exp, mana, hp, level", () => {
+  it("shortens the bars first, then drops the first row from the right: exp, mana, hp, level", () => {
     const cols = Math.max(first(), controlsWidth(h) + w.server!);
     expect([...fitHeader(h, cols)].sort()).toEqual(["exp", "hp", "level", "mana", "server"]);
-    const less = cols - (cols - first()) - 1;
-    expect(fitHeader(h, less).has("exp")).toBe(false);
-    expect([...fitHeader(h, fixedWidth(h) + w.level!)]).toEqual(["level"]);
+    expect(barSize(h, cols)).toBe(BAR_CELLS);
+    // A cell short: the bars shrink and the exp stays.
+    expect(barSize(h, first() - 1)).toBe(SHORT_BAR_CELLS);
+    expect(fitHeader(h, first() - 1).has("exp")).toBe(true);
+    // Short of the room the short bars leave: the exp goes.
+    const short = itemWidths(h, SHORT_BAR_CELLS);
+    const shortRow = fixedWidth(h) + DROP_ORDER.reduce((a, i) => a + (short[i] ?? 0), 0);
+    expect(shortRow).toBe(first() - 2 * (BAR_CELLS - SHORT_BAR_CELLS));
+    expect(fitHeader(h, shortRow).has("exp")).toBe(true);
+    expect(fitHeader(h, shortRow - 1).has("exp")).toBe(false);
+    expect([...fitHeader(h, fixedWidth(h) + short.level!)]).toEqual(["level"]);
     expect(fitHeader(h, 10).size).toBe(0);
+  });
+
+  it("has no mana bar for a character with no mana, so the exp fits", () => {
+    // Penny, a Witchunter: `[HP=177]:`, no mana known. The MA bar would only say `--/--`.
+    const penny: HeaderText = {
+      number: 1,
+      name: "Penny",
+      server: "127.0.0.1:2323",
+      state: "realm",
+      character: { class: "Witchunter", level: 15, hp: 177, hp_max: 196, exp: 2370120, exp_percent: 257, prompt_form: "hp" },
+    };
+    expect(noMana(penny.character!)).toBe(true);
+    expect(itemWidths(penny).mana).toBeUndefined();
+    expect([...fitHeader(penny, 80)].sort()).toEqual(["exp", "hp", "level", "server"]);
+    // A caster whose mana is not read yet keeps its bar.
+    expect(noMana({ prompt_form: "hp_mana" })).toBe(false);
+    expect(noMana({})).toBe(false);
+    expect(noMana({ prompt_form: "hp", mana_max: 40 })).toBe(false);
   });
 
   it("drops the server from the second row before the room gets under its least", () => {
