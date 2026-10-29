@@ -213,7 +213,9 @@ start_unit() {
       fi
     else
       [ "$(main_pid)" = "$main" ] || start_failed "the unit's process changed: it exited after starting"
-      [ $((SECONDS - held_at)) -lt "$steady" ] || break
+      # SECONDS counts whole seconds: one past the steady time is the least that is sure to
+      # be at least that long since the port was first held.
+      [ $((SECONDS - held_at)) -le "$steady" ] || break
       status "keeping an eye on it" $((SECONDS - held_at)) "$(journal_last 1)"
     fi
     sleep "$tick"
