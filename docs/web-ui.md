@@ -124,6 +124,7 @@ but no pause sign, so pause is `[║]`.
 | `F9`, or `[║]` and `[►]` in the tile's header | Pause the focused character's loop or Go to and go on with it; with neither, turn the bot off and on where it stands (fight what comes, rest when low) |
 | `Alt+S`, or the `stats` button | Open the drawer on the stats of the focused character's runs: exp per hour, kills, deaths and flees, now and for the last runs; or close it (on a Mac, `Option`) |
 | `Alt+T`, or the `settings` button | Open the drawer on the focused character's settings (the form, "The settings" below), or close it (on a Mac, `Option`) |
+| `Alt+A`, or the `accounts` button | Open the drawer on the accounts: servers, characters, BBS users and passwords. Save writes wayfarer.toml and credentials.toml: a new character connects (its BBS account is made if the BBS doesn't know it, and it stops at the MajorMUD menu for you to make the character), a changed one logs on again, the rest keep playing (on a Mac, `Option`) |
 | `Alt+D`, or the `dev` button | Open the drawer on the dev panel: the focused character's events, unclassified lines and the brain; or close it (on a Mac, `Option`) |
 
 The `?` overlay shows these keys, what the state badges mean and where the data files live. It
@@ -152,10 +153,10 @@ is per browser until settings arrive (`docs/plan/04-settings.md`); it is not wri
 
 ## The drawer
 
-The map, the parties, the blessings, the stats, the settings and the dev panel share one
-drawer on the right, a third of the window at most; the tiles refit beside it. Its tabs are
-the six buttons on the bar at the top, `map`, `parties`, `blessings`, `stats`, `settings` and
-`dev`, the open one lit, with the focused character's name before them while it is open; it
+The map, the parties, the blessings, the stats, the settings, the accounts and the dev panel
+share one drawer on the right, a third of the window at most; the tiles refit beside it. Its
+tabs are the seven buttons on the bar at the top, `map`, `parties`, `blessings`, `stats`,
+`settings`, `accounts` and `dev`, the open one lit, with the focused character's name before them while it is open; it
 has no title row of its own. `Alt+M` (on a Mac, `Option+M`) or the `map`
 button opens it on the map, and again closes it; `Alt+S` or the `stats` button and `Alt+D` or
 the `dev` button do the same for the stats and the dev panel, and each key switches tabs when
@@ -425,6 +426,40 @@ settings show with `all`.
   below shows through (the default, a preset, or another file).
 - A change made to the file by hand shows up too: the brain sends the form again when it
   reloads a file.
+
+## The accounts
+
+The servers and characters of `wayfarer.toml`, and each character's BBS user and password from
+`credentials.toml`, as a form ([gateway.md](gateway.md)), so a new character takes no file
+editing. `Alt+A` or the `accounts` button opens it.
+
+- **Servers**: id, host, port and logon preset (`mbbsemu`, `silvermere`, or none: log on by
+  hand). `+ Server` adds one; a server a character uses can't be deleted (its button says by
+  whom). A server with its own `[server.logon]` script says so; Save keeps that script.
+- **Characters**: name, id (made from the name, and fixed once saved: it names the logs and
+  the settings file), server, BBS user, password (dots until `show`), and whether it connects
+  when the gateway starts. Each row shows its session's state and, when there is one, why
+  (`bad credentials`, a sign-up the BBS refused, `account made`). `+ Character` adds one, up
+  to six; `remove` (twice) takes one out.
+- **E-mail and gender** show on a new row, and on one whose user changed: `h@h.com` and `F`
+  unless you change them. They are used only if the BBS doesn't know the user, to make the
+  account, and are never stored.
+- **Save** writes both files (the old `wayfarer.toml` is kept as `wayfarer.toml.bak`;
+  comments in the files are not kept) and applies them at once, with no restart:
+  - a new character's tile appears and it logs on. If the BBS answers `Invalid Credentials`,
+    the gateway makes the account (`NEW`, the user, the password twice, the e-mail, the
+    gender), goes on to the MajorMUD menu and stops there, with the reason "account made: type
+    E in the tile to make the character". You make the character in the tile. If the BBS
+    refuses an answer (a taken name, a password it won't take), the row shows what it said
+    and the session closes;
+  - a character whose server or login changed hangs up at once (no clean log-off) and, if it
+    was connected, logs on again; one that was removed hangs up and its tile goes (its logs
+    and settings stay on disk);
+  - a renamed character only shows its new name, and autostart counts from the next start;
+  - everyone else keeps playing, untouched.
+
+  When a save would hang anyone up, the button asks first (`really save?`) and says who:
+  *"Save: Faye and Manuel will hang up and log on again."* `revert` drops your edits.
 
 ## The gear planner
 

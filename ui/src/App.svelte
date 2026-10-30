@@ -7,6 +7,7 @@
   import MapPanel from "./MapPanel.svelte";
   import BlessingsPanel from "./BlessingsPanel.svelte";
   import PartiesPanel from "./PartiesPanel.svelte";
+  import AccountsPanel from "./AccountsPanel.svelte";
   import SettingsPanel from "./SettingsPanel.svelte";
   import StatsPanel from "./StatsPanel.svelte";
   import GearPlanner from "./GearPlanner.svelte";
@@ -16,6 +17,7 @@
   import { STATS_REFRESH_MS, type Stats } from "./lib/stats";
   import { PAUSE_KEY, START_KEY, botKeyAction } from "./lib/bot";
   import {
+    ACCOUNTS_PANEL_CODE,
     DEV_PANEL_CODE,
     FOCUS_TILE_CODE,
     GEAR_CODE,
@@ -63,7 +65,7 @@
     toggleDrawer,
     type DrawerPanel,
   } from "./lib/state";
-  import type { Blessings, PartyStatus, SessionInfo } from "./proto";
+  import type { Accounts, Blessings, PartyStatus, SessionInfo } from "./proto";
 
   let sessions = $state<SessionInfo[]>([]);
   const brain = $state(emptyBrainView());
@@ -97,6 +99,7 @@
     { panel: "blessings", title: "Blessings (Alt+B)" },
     { panel: "stats", title: "Stats (Alt+S)" },
     { panel: "settings", title: "Settings (Alt+T)" },
+    { panel: "accounts", title: "Accounts (Alt+A)" },
     { panel: "dev", title: "Dev panel (Alt+D)" },
   ];
 
@@ -133,6 +136,20 @@
     }
     client.requestParties();
     client.requestBlessings();
+  });
+  // The gateway's last `accounts`, and how the last save went, for the accounts tab.
+  let accounts = $state.raw<Accounts | undefined>(undefined);
+  let accountsResult = $state.raw<{ error?: string; at: number } | undefined>(undefined);
+  // Asked for when the tab opens, and again as sessions change while it is open (each row
+  // shows its session's reason).
+  $effect(() => {
+    if (status !== "open") {
+      accounts = undefined;
+      return;
+    }
+    if (!devPrefs.open || devPrefs.panel !== "accounts") return;
+    void sessions.map((s) => s.state).join();
+    client.requestAccounts();
   });
   /** Bumped by Alt+G: the map panel opens its go box and focuses it. */
   let goAsked = $state(0);
@@ -352,6 +369,12 @@
       parties: (list) => {
         parties = list;
       },
+      accounts: (list) => {
+        accounts = list;
+      },
+      accountsSaved: (error) => {
+        accountsResult = { error, at: (accountsResult?.at ?? 0) + 1 };
+      },
       blessings: (list) => {
         blessings = list;
       },
@@ -433,6 +456,8 @@
           ? "stats"
           : e.code === SETTINGS_PANEL_CODE
             ? "settings"
+            : e.code === ACCOUNTS_PANEL_CODE
+            ? "accounts"
             : e.code === DEV_PANEL_CODE
               ? "dev"
               : null;
@@ -541,7 +566,7 @@
         />
       {:else}
         <p class="empty">
-          {status === "open" ? "No characters are configured in wayfarer.toml." : offline}
+          {status === "open" ? "No characters yet: add them in the accounts tab (Alt+A)." : offline}
         </p>
       {/each}
       {#each weights.cols.slice(0, -1) as _, i}
@@ -611,6 +636,13 @@
             {blessings}
             attached={brain.attached}
             onsave={(session, spells) => client.saveBlessings(session, spells)}
+          />
+        {:else if devPrefs.panel === "accounts"}
+          <AccountsPanel
+            {accounts}
+            {sessions}
+            result={accountsResult}
+            onsave={(list) => client.saveAccounts(list)}
           />
         {:else if devPrefs.panel === "settings"}
           <SettingsPanel

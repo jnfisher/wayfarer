@@ -108,6 +108,26 @@ send. Live output carries on after the gap; the client fetches the gap with `his
 {"type":"session_control","session":"kasimir","action":"log_off"}
 ```
 
+## Accounts
+
+The web UI's Accounts panel reads and writes the servers, characters and BBS logins in
+`wayfarer.toml` and `credentials.toml` ([web-ui.md](web-ui.md) "Accounts"). Only a UI may send
+these; the brain gets an `error`.
+
+| Message | Direction | Meaning |
+|---|---|---|
+| `accounts_request` | UI → gateway | Ask for `accounts` |
+| `accounts {accounts}` | gateway → UI | Every server (`id`, `host`, `port`, `preset?`, `custom_logon`: it has its own `[server.logon]`, kept as it is; `can_sign_up`: its logon script can make BBS accounts), every character (`id`, `name`, `server`, `autostart`, `user`, `password`, `reason?`: why its session is as it is), and the logon `presets` there are. Passwords are sent as they are |
+| `accounts_save {accounts}` | UI → gateway | Write both files from `accounts` and apply them: a new character connects, a character whose server or login changed hangs up and, if it was open, logs on again, a removed one hangs up and its session goes (its logs stay), and the rest are left alone. A character with an empty `user` has no login. `email` and `gender` (default `h@h.com` and `F`) are used, never stored, when a new character's or a changed user's logon finds the BBS doesn't know the user: the gateway makes the account (`NEW`) and stops at the MajorMUD menu. At most six characters |
+| `accounts_saved {error?}` | gateway → UI | The save is done (`session_list` goes to every client, then `accounts` to this UI), or why nothing changed |
+
+```json
+{"type":"accounts_request"}
+{"type":"accounts_save","accounts":{"servers":[{"id":"home","host":"bbs.example.org","port":23,"preset":"mbbsemu","custom_logon":false,"can_sign_up":true}],"characters":[{"id":"kasimir","name":"Kasimir","server":"home","autostart":true,"user":"ACCOUNT","password":"PASSWORD","email":"h@h.com","gender":"F"}],"presets":[]}}
+{"type":"accounts","accounts":{"servers":[],"characters":[{"id":"kasimir","name":"Kasimir","server":"home","autostart":false,"user":"ACCOUNT","password":"PASSWORD","reason":"bad credentials"}],"presets":["mbbsemu","silvermere"]}}
+{"type":"accounts_saved"}
+```
+
 ## Input
 
 | Message | What it does |

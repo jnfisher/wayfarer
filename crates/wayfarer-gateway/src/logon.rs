@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use regex::Regex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// The presets compiled into the binary, by name.
 pub const PRESETS: [(&str, &str); 2] = [
@@ -33,61 +33,91 @@ const WINDOW_BYTES: usize = 16 << 10;
 
 /// A logon script as written in TOML: a preset file, or a server's `[server.logon]` table. Every
 /// field is optional so a server can replace parts of a preset; [`Script::build`] checks the
-/// result is whole.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+/// result is whole. It serializes back to the same table (the Accounts panel's save keeps a
+/// server's own `[server.logon]`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScriptSpec {
     /// The realm prompt: the script has succeeded.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub realm: Option<String>,
     /// Seconds to wait for the realm prompt after the last step.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub realm_timeout: Option<u64>,
-    #[serde(rename = "step")]
+    #[serde(rename = "step", skip_serializing_if = "Option::is_none")]
     pub steps: Option<Vec<StepSpec>>,
-    #[serde(rename = "failure")]
+    #[serde(rename = "failure", skip_serializing_if = "Option::is_none")]
     pub failures: Option<Vec<FailureSpec>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub logoff: Option<Vec<LogoffSpec>>,
+    /// Making a BBS account (`NEW`) for a user the BBS does not know.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signup: Option<SignupSpec>,
 }
 
 /// `[[step]]`: when `expect` shows, send `send`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StepSpec {
     pub expect: String,
     pub send: String,
     /// The step may not come; a later step's prompt passes it by.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub optional: bool,
     /// Seconds to wait for `expect`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u64>,
 }
 
 /// `[[failure]]`: text that means the logon has failed.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct FailureSpec {
     pub expect: String,
     /// Shown as the session's reason.
     pub reason: String,
     /// Reconnect with backoff (otherwise the session closes).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub retry: bool,
+    /// The failure may mean the BBS does not know the user: a character waiting for its
+    /// account to be made signs up instead ([`Script::signup`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub signup: bool,
 }
 
 /// `[[logoff]]`: at `at` (the realm for the first step), send `send`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LogoffSpec {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub at: Option<String>,
     pub send: String,
     /// Seconds to wait for the next step's `at` (or, after the last, for the server to close),
     /// from the step's first send: its retries included.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u64>,
     /// Texts that mean "not yet" (`meditation has been interrupted`): the step is sent again
     /// at its place's next prompt.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub retry_on: Vec<String>,
     /// How many times the step may be sent again (20 if not given).
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub retries: Option<u32>,
+}
+
+/// `[signup]`: the BBS's new-account dialogue, run instead of the logon steps for a character
+/// whose account is to be made. Its steps may also use `{email}` and `{gender}`. It ends at
+/// `stop_at` (the MajorMUD menu), where the session stops and sends nothing more, so the player
+/// makes the character. A question asked again means the BBS refused the answer.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SignupSpec {
+    pub stop_at: String,
+    /// Seconds to wait for `stop_at` after the last step.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop_timeout: Option<u64>,
+    #[serde(rename = "step")]
+    pub steps: Vec<StepSpec>,
 }
 
 impl ScriptSpec {
@@ -103,6 +133,7 @@ impl ScriptSpec {
         self.steps = over.steps.or(self.steps);
         self.failures = over.failures.or(self.failures);
         self.logoff = over.logoff.or(self.logoff);
+        self.signup = over.signup.or(self.signup);
         self
     }
 }
@@ -128,9 +159,14 @@ impl Pattern {
 
     /// Where the first match in `hay` ends.
     pub fn first_end(&self, hay: &str) -> Option<usize> {
+        self.first(hay).map(|(_, end)| end)
+    }
+
+    /// Where the first match in `hay` starts and ends.
+    pub fn first(&self, hay: &str) -> Option<(usize, usize)> {
         match self {
-            Self::Text(t) => hay.find(t.as_str()).map(|i| i + t.len()),
-            Self::Regex(r) => r.find(hay).map(|m| m.end()),
+            Self::Text(t) => hay.find(t.as_str()).map(|i| (i, i + t.len())),
+            Self::Regex(r) => r.find(hay).map(|m| (m.start(), m.end())),
         }
     }
 
@@ -156,6 +192,7 @@ pub struct Failure {
     pub expect: Pattern,
     pub reason: String,
     pub retry: bool,
+    pub signup: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -176,6 +213,10 @@ pub struct Script {
     pub realm_timeout: Duration,
     pub failures: Vec<Failure>,
     pub logoff: Vec<LogoffStep>,
+    /// The new-account dialogue (`[signup]`), as a script of its own: its steps, `stop_at` as
+    /// its realm, and this script's failures and log-off. `None`: this server's script can't
+    /// make accounts.
+    pub signup: Option<Arc<Script>>,
 }
 
 impl Script {
@@ -239,6 +280,7 @@ impl Script {
                     expect: Pattern::parse(&f.expect)?,
                     reason: f.reason.clone(),
                     retry: f.retry,
+                    signup: f.signup,
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
@@ -269,12 +311,29 @@ impl Script {
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
+        let signup = match &spec.signup {
+            None => None,
+            Some(s) => {
+                let inner = ScriptSpec {
+                    realm: Some(s.stop_at.clone()),
+                    realm_timeout: s.stop_timeout,
+                    steps: Some(s.steps.clone()),
+                    failures: spec.failures.clone(),
+                    logoff: spec.logoff.clone(),
+                    signup: None,
+                };
+                Some(Arc::new(
+                    Self::from_spec(&inner).map_err(|e| format!("[signup]: {e}"))?,
+                ))
+            }
+        };
         Ok(Self {
             steps,
             realm,
             realm_timeout: secs(spec.realm_timeout, STEP_TIMEOUT),
             failures,
             logoff,
+            signup,
         })
     }
 }
@@ -335,8 +394,12 @@ pub enum Action {
     Send { text: String, shown: String },
     /// The realm prompt: logged on.
     Realm,
-    /// The logon failed.
-    Failed { reason: String, retry: bool },
+    /// The logon failed. `signup`: the failure may mean the BBS does not know the user.
+    Failed {
+        reason: String,
+        retry: bool,
+        signup: bool,
+    },
 }
 
 /// Runs a script's logon steps over the text of one connection.
@@ -345,6 +408,9 @@ pub struct Runner {
     script: Arc<Script>,
     user: String,
     password: String,
+    /// The sign-up's `{email}` and `{gender}`; `Some` only for a sign-up, where a question
+    /// asked again is a refusal.
+    signup: Option<(String, String)>,
     /// The first step not yet sent.
     next: usize,
     window: Window,
@@ -357,10 +423,25 @@ impl Runner {
             script,
             user: user.to_owned(),
             password: password.to_owned(),
+            signup: None,
             next: 0,
             window: Window::default(),
             finished: false,
         }
+    }
+
+    /// Run `script`'s sign-up ([`Script::signup`]) instead of its logon: [`Action::Realm`]
+    /// then means it reached `stop_at`. `None` if the script has no sign-up.
+    pub fn signup(
+        script: &Script,
+        user: &str,
+        password: &str,
+        email: &str,
+        gender: &str,
+    ) -> Option<Self> {
+        let mut runner = Self::new(Arc::clone(script.signup.as_ref()?), user, password);
+        runner.signup = Some((email.to_owned(), gender.to_owned()));
+        Some(runner)
     }
 
     /// Feed decoded text; returns what to do, in order. Nothing more once it has reported
@@ -383,6 +464,7 @@ impl Runner {
                 actions.push(Action::Failed {
                     reason: f.reason.clone(),
                     retry: f.retry,
+                    signup: f.signup,
                 });
                 return actions;
             }
@@ -403,6 +485,24 @@ impl Runner {
                     break;
                 }
             }
+            // A sign-up question already answered, asked again before the next one: the BBS
+            // refused the answer, and says why on the line before.
+            if self.signup.is_some()
+                && let Some(start) = self.script.steps[..self.next]
+                    .iter()
+                    .filter_map(|s| s.expect.first(hay))
+                    .filter(|(_, e)| best.is_none_or(|(_, b)| *e < b))
+                    .map(|(start, _)| start)
+                    .min()
+            {
+                self.finished = true;
+                actions.push(Action::Failed {
+                    reason: refusal(&hay[..start]),
+                    retry: false,
+                    signup: false,
+                });
+                return actions;
+            }
             let Some((i, end)) = best else {
                 return actions;
             };
@@ -417,8 +517,14 @@ impl Runner {
     }
 
     fn fill(&self, send: &str, password: &str) -> String {
+        let (email, gender) = self
+            .signup
+            .as_ref()
+            .map_or(("", ""), |(e, g)| (e.as_str(), g.as_str()));
         send.replace("{user}", &self.user)
             .replace("{password}", password)
+            .replace("{email}", email)
+            .replace("{gender}", gender)
     }
 
     /// Every step that must come has been sent; only the realm prompt is awaited.
@@ -433,6 +539,15 @@ impl Runner {
             _ => self.script.realm_timeout,
         }
     }
+}
+
+/// What a BBS said before asking a sign-up question again: its last line that is not blank.
+fn refusal(before: &str) -> String {
+    before
+        .lines()
+        .map(str::trim)
+        .rfind(|l| !l.is_empty())
+        .map_or_else(|| "the BBS refused the sign-up".to_owned(), str::to_owned)
 }
 
 /// Where a session is, from the text: at the realm prompt, or at log-off step `n`'s place (a
@@ -759,7 +874,8 @@ mod tests {
                 got,
                 [Action::Failed {
                     reason: reason.into(),
-                    retry
+                    retry,
+                    signup: reason == "bad credentials",
                 }],
                 "{name}: {text:?}"
             );
@@ -989,6 +1105,140 @@ mod tests {
                 .unwrap_err()
                 .contains("empty")
         );
+    }
+
+    /// MBBSEmu's sign-up, as `thornwyn-early` shows it, from `NEW` to the MajorMUD menu
+    /// (silvermere's prompts are the same).
+    const SIGNUP: [&str; 8] = [
+        "\x1b[?7h banner \r\nEnter Username or enter \"NEW\" to create a new Account\r\nUsername: ",
+        "NEW\r\n\r\n  Creating an account in MBBSEmu is easy!\r\n  You will only need to provide a unique\r\n  Username, secure Password, Gender and\r\n\r\nPlease enter a unique Username (Max. 29 Characters):\r\n",
+        "Thornwyn\r\n\r\nNOTE: Passwords are stored in a local database hashed with SHA-512+unique salt.\r\n\r\nPlease enter a strong Password:\r\n",
+        "*********\r\n\r\nPlease re-enter your password to confirm:\r\n",
+        "*********\r\n\r\nPlease enter a valid e-Mail Address:\r\n",
+        "h@h.com\r\n\r\nPlease enter your gender 'M' or 'F' (can be changed later):\r\n",
+        "F\r\n\r\nFantasy awaits you in MajorMUD v1.11p-WG!\r\n\r\nMain Menu\r\nMake your selection (X to exit): ",
+        "M\r\n\r\n M A J O R  M U D\r\n[E] . Enter the Realm\r\n\r\n[MAJORMUD]: ",
+    ];
+
+    fn signup(name: &str) -> Runner {
+        Runner::signup(&preset(name), "Thornwyn", "secret1", "h@h.com", "F").unwrap()
+    }
+
+    #[test]
+    fn a_sign_up_makes_the_account_and_stops_at_the_menu() {
+        for name in ["mbbsemu", "silvermere"] {
+            let mut r = signup(name);
+            let got: Vec<_> = SIGNUP.iter().flat_map(|t| r.feed(t)).collect();
+            assert_eq!(
+                sends(&got),
+                ["NEW", "Thornwyn", "secret1", "secret1", "h@h.com", "F", "M"],
+                "{name}"
+            );
+            assert_eq!(
+                got.last(),
+                Some(&Action::Realm),
+                "{name}: stops at the menu, no E"
+            );
+            // The password is masked in what is shown.
+            assert_eq!(
+                got[2],
+                Action::Send {
+                    text: "secret1".into(),
+                    shown: "********".into()
+                }
+            );
+        }
+        // silvermere without its BBS menu shim goes straight to the MajorMUD menu.
+        let mut r = signup("silvermere");
+        let mut got: Vec<_> = SIGNUP[..6].iter().flat_map(|t| r.feed(t)).collect();
+        got.extend(r.feed("F\r\n\r\n[MAJORMUD]: "));
+        assert_eq!(sends(&got).len(), 6);
+        assert_eq!(got.last(), Some(&Action::Realm));
+    }
+
+    #[test]
+    fn a_question_asked_again_is_a_refusal() {
+        // silvermere's refusals (`silvermere-auth`'s login dialogue): a taken name, then a
+        // password and its confirmation that differ.
+        let cases = [
+            (
+                2,
+                "kasimir\r\nThat Username is unavailable, please choose another.\r\n\r\nPlease enter a unique Username (Max. 29 Characters):\r\n",
+                "That Username is unavailable, please choose another.",
+            ),
+            (
+                4,
+                "*****\r\nThe passwords do not match.\r\nPlease enter a strong Password:\r\n",
+                "The passwords do not match.",
+            ),
+            (
+                5,
+                "no address\r\n\r\nPlease enter a valid e-Mail Address:\r\n",
+                "no address",
+            ),
+        ];
+        for (answered, again, why) in cases {
+            let mut r = signup("silvermere");
+            let mut got: Vec<_> = SIGNUP[..answered].iter().flat_map(|t| r.feed(t)).collect();
+            got.extend(r.feed(again));
+            assert_eq!(
+                got.last(),
+                Some(&Action::Failed {
+                    reason: why.into(),
+                    retry: false,
+                    signup: false,
+                }),
+                "{again:?}"
+            );
+            assert!(r.feed(SIGNUP[answered]).is_empty(), "finished");
+        }
+        // silvermere with sign-up closed answers NEW and asks for the user again.
+        let mut r = signup("silvermere");
+        r.feed(SIGNUP[0]);
+        assert_eq!(
+            r.feed(
+                "NEW\r\n\r\nNew accounts are created by the sysop on this system.\r\nUsername: "
+            ),
+            [Action::Failed {
+                reason: "New accounts are created by the sysop on this system.".into(),
+                retry: false,
+                signup: false,
+            }]
+        );
+        // An ordinary logon never takes a prompt seen again for a refusal.
+        let mut r = Runner::new(preset("mbbsemu"), "u", "p");
+        r.feed("Username: ");
+        assert!(r.feed("Username: ").is_empty());
+    }
+
+    #[test]
+    fn only_a_script_with_a_sign_up_can_make_accounts() {
+        let spec = ScriptSpec::parse("realm = 'R>'\n[[step]]\nexpect = 'a'\nsend = '1'\n").unwrap();
+        let s = Script::build(None, Some(&spec)).unwrap().unwrap();
+        assert!(Runner::signup(&s, "u", "p", "e", "F").is_none());
+        // A server's own logon keeps the preset's sign-up unless it gives its own.
+        let s = Script::build(Some("mbbsemu"), Some(&spec))
+            .unwrap()
+            .unwrap();
+        assert!(s.signup.is_some());
+        let bad = ScriptSpec::parse(
+            "[signup]\nstop_at = ''\n[[signup.step]]\nexpect = 'a'\nsend = 'b'\n",
+        )
+        .unwrap();
+        assert!(
+            Script::build(Some("mbbsemu"), Some(&bad))
+                .unwrap_err()
+                .contains("[signup]")
+        );
+    }
+
+    #[test]
+    fn a_script_spec_writes_back_the_same() {
+        for (_, text) in PRESETS {
+            let spec = ScriptSpec::parse(text).unwrap();
+            let again = ScriptSpec::parse(&toml::to_string(&spec).unwrap()).unwrap();
+            assert_eq!(again, spec);
+        }
     }
 
     #[test]

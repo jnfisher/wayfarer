@@ -8,6 +8,7 @@
 
 import { PROTOCOL } from "../proto";
 import type {
+  Accounts,
   Blessings,
   BotAction,
   CharacterState,
@@ -109,6 +110,10 @@ export interface GatewayEvents {
   parties?(parties: PartyStatus[]): void;
   /** Each character's lasting spells, ticked and on, for the Blessings panel. */
   blessings?(characters: Blessings[]): void;
+  /** The servers, characters and logins, for the Accounts panel. */
+  accounts?(accounts: Accounts): void;
+  /** How a save from the Accounts panel went: `error` when nothing changed. */
+  accountsSaved?(error: string | undefined): void;
 }
 
 export interface GatewayOptions {
@@ -331,6 +336,16 @@ export class GatewayClient {
     return this.send({ type: "delete_loop", session, id });
   }
 
+  /** Ask for the servers, characters and logins (an `accounts` answer); false when not connected. */
+  requestAccounts(): boolean {
+    return this.send({ type: "accounts_request" });
+  }
+
+  /** Write the config files from `accounts` and apply them (an `accounts_saved` answer). */
+  saveAccounts(accounts: Accounts): boolean {
+    return this.send({ type: "accounts_save", accounts });
+  }
+
   /** Ask for the parties (a `parties` answer); false when not connected. */
   requestParties(): boolean {
     return this.send({ type: "parties_request" });
@@ -514,6 +529,12 @@ export class GatewayClient {
         break;
       case "found":
         this.opts.events.found?.(message);
+        break;
+      case "accounts":
+        this.opts.events.accounts?.(message.accounts);
+        break;
+      case "accounts_saved":
+        this.opts.events.accountsSaved?.(message.error);
         break;
       case "parties":
         this.opts.events.parties?.(message.parties);

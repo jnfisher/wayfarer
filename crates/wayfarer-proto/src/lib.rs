@@ -70,6 +70,65 @@ pub struct SessionInfo {
     pub last_seq: u64,
 }
 
+/// The servers, characters and BBS logins in `wayfarer.toml` and `credentials.toml`, as the
+/// Accounts panel shows and saves them (`accounts`, `accounts_save`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct Accounts {
+    pub servers: Vec<AccountServer>,
+    pub characters: Vec<AccountCharacter>,
+    /// The logon script presets a server may use (from the gateway; ignored in a save).
+    #[serde(default)]
+    pub presets: Vec<String>,
+}
+
+/// A game server (`[[server]]`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct AccountServer {
+    pub id: String,
+    pub host: String,
+    pub port: u16,
+    /// The logon script preset; left out, a server with no `[server.logon]` of its own has no
+    /// script and the player logs on by hand.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub preset: Option<String>,
+    /// The server has its own `[server.logon]` script, which a save keeps as it is (from the
+    /// gateway; ignored in a save).
+    #[serde(default)]
+    pub custom_logon: bool,
+    /// Its logon script can make BBS accounts (from the gateway; ignored in a save).
+    #[serde(default)]
+    pub can_sign_up: bool,
+}
+
+/// A character (`[[character]]`) and its BBS login. An empty `user` saves no login: the
+/// player logs on by hand.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct AccountCharacter {
+    pub id: SessionId,
+    pub name: String,
+    /// A server's `id`.
+    pub server: String,
+    #[serde(default)]
+    pub autostart: bool,
+    pub user: String,
+    pub password: String,
+    /// In a save: the e-mail for the BBS sign-up, should the account have to be made (a new
+    /// character, or a changed user). Never stored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub email: Option<String>,
+    /// In a save: the gender (`M` or `F`) for the sign-up, like `email`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub gender: Option<String>,
+    /// From the gateway: why the session is as it is, when there is more to say than its
+    /// state ("bad credentials", a sign-up refused, "account made").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub reason: Option<String>,
+}
+
 /// One piece of terminal output. `seq` starts at 1 per session and never resets for the life
 /// of the session's log.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -1718,6 +1777,18 @@ pub enum ToClient {
     KeysSent {
         session: SessionId,
     },
+    /// To a UI only: the servers, characters and logins (`accounts_request`, and after a save),
+    /// passwords included.
+    Accounts {
+        accounts: Accounts,
+    },
+    /// To a UI only: how an `accounts_save` went. Without `error` the files are written and the
+    /// sessions changed; a `session_list` follows.
+    AccountsSaved {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        error: Option<String>,
+    },
 }
 
 /// Client → gateway.
@@ -1769,6 +1840,15 @@ pub enum ToGateway {
     SessionControl {
         session: SessionId,
         action: SessionAction,
+    },
+    /// UI only: ask for the servers, characters and logins (`accounts`).
+    AccountsRequest,
+    /// UI only: write `wayfarer.toml` and `credentials.toml` from `accounts` and apply them:
+    /// new characters connect (making their BBS account if the BBS doesn't know the user),
+    /// changed ones hang up and log on again, removed ones hang up and go, the rest are left
+    /// alone. Answered with `accounts_saved`.
+    AccountsSave {
+        accounts: Accounts,
     },
 
     /// UI → brain: re-sync the character (`st`, `exp`, `i`, look).
@@ -2205,6 +2285,8 @@ impl ToClient {
         "logging_off",
         "user_input",
         "keys_sent",
+        "accounts",
+        "accounts_saved",
     ];
 
     /// This message's `type`.
@@ -2269,6 +2351,8 @@ impl ToClient {
             Self::LoggingOff { .. } => "logging_off",
             Self::UserInput { .. } => "user_input",
             Self::KeysSent { .. } => "keys_sent",
+            Self::Accounts { .. } => "accounts",
+            Self::AccountsSaved { .. } => "accounts_saved",
         }
     }
 
@@ -2327,6 +2411,8 @@ impl ToClient {
             | Self::BrainInfo { .. }
             | Self::BrainState { .. }
             | Self::BrainLagged { .. }
+            | Self::Accounts { .. }
+            | Self::AccountsSaved { .. }
             | Self::Parties { .. }
             | Self::Blessings { .. }
             | Self::PartiesRequest
@@ -2355,6 +2441,8 @@ impl ToGateway {
         "history_request",
         "subscribe",
         "session_control",
+        "accounts_request",
+        "accounts_save",
         "resync",
         "state_request",
         "walk_to",
@@ -2413,6 +2501,8 @@ impl ToGateway {
             Self::HistoryRequest { .. } => "history_request",
             Self::Subscribe { .. } => "subscribe",
             Self::SessionControl { .. } => "session_control",
+            Self::AccountsRequest => "accounts_request",
+            Self::AccountsSave { .. } => "accounts_save",
             Self::Resync { .. } => "resync",
             Self::StateRequest { .. } => "state_request",
             Self::WalkTo { .. } => "walk_to",
@@ -2471,7 +2561,9 @@ impl ToGateway {
             | Self::InputKeys { .. }
             | Self::HistoryRequest { .. }
             | Self::SessionControl { .. }
-            | Self::Subscribe { .. } => Family::Gateway,
+            | Self::Subscribe { .. }
+            | Self::AccountsRequest
+            | Self::AccountsSave { .. } => Family::Gateway,
             Self::Resync { .. }
             | Self::StateRequest { .. }
             | Self::WalkTo { .. }
@@ -2726,7 +2818,9 @@ impl ToGateway {
             | Self::Subscribe { .. }
             | Self::SessionControl { .. }
             | Self::ReadyToLeave { .. }
-            | Self::Arbitrate { .. } => return None,
+            | Self::Arbitrate { .. }
+            | Self::AccountsRequest
+            | Self::AccountsSave { .. } => return None,
         })
     }
 

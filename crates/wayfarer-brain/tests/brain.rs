@@ -702,6 +702,17 @@ async fn state_request_sends_the_snapshot_and_brain_info() {
     fake.close(run).await;
 }
 
+#[tokio::test(start_paused = true)]
+async fn a_session_taken_off_the_list_is_forgotten() {
+    let (fake, run, _) = attached(SessionState::Menu).await;
+    fake.send(ToClient::SessionList {
+        sessions: Vec::new(),
+    })
+    .await;
+    let (brain, _) = fake.close(run).await;
+    assert_eq!(brain.snapshot(ID), None);
+}
+
 #[tokio::test]
 async fn a_refused_brain_stops_with_the_reason() {
     let (mut fake, run) = start(None);

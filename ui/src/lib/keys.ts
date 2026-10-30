@@ -99,6 +99,12 @@ export const KEY_ROWS: KeyRow[] = [
     does: "Open the drawer on the focused character's settings (the form, \"The settings\" below), or close it (on a Mac, Option)",
   },
   {
+    group: "Accounts",
+    keys: "Alt+A, or the accounts button",
+    does:
+      "Open the drawer on the accounts: servers, characters, BBS users and passwords. Save writes wayfarer.toml and credentials.toml: a new character connects (its BBS account is made if the BBS doesn't know it, and it stops at the MajorMUD menu for you to make the character), a changed one logs on again, the rest keep playing (on a Mac, Option)",
+  },
+  {
     group: "Development",
     keys: "Alt+D, or the dev button",
     does: "Open the drawer on the dev panel: the focused character's events, unclassified lines and the brain; or close it (on a Mac, Option)",
@@ -134,6 +140,7 @@ export const BLESSINGS_PANEL_CODE = "KeyB";
 export const GO_CODE = "KeyG";
 export const STATS_PANEL_CODE = "KeyS";
 export const SETTINGS_PANEL_CODE = "KeyT";
+export const ACCOUNTS_PANEL_CODE = "KeyA";
 export const GEAR_CODE = "KeyE";
 export const ZOOM_IN_KEYS = ["+", "="];
 export const ZOOM_OUT_KEYS = ["-"];

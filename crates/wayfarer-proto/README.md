@@ -49,6 +49,8 @@ Gateway → client:
 {"type":"logging_off","session":"kasimir"}
 {"type":"user_input","session":"kasimir","text":"a rat","from":"ui-3"}
 {"type":"keys_sent","session":"kasimir"}
+{"type":"accounts","accounts":{"servers":[],"characters":[{"id":"kasimir","name":"Kasimir","server":"home","autostart":false,"user":"ACCOUNT","password":"PASSWORD","reason":"bad credentials"}],"presets":["mbbsemu","silvermere"]}}
+{"type":"accounts_saved"}
 ```
 
 Client → gateway:
@@ -60,6 +62,8 @@ Client → gateway:
 {"type":"history_request","session":"kasimir","after_seq":42,"max_chunks":2000}
 {"type":"subscribe","sessions":["kasimir"]}
 {"type":"session_control","session":"kasimir","action":"log_off"}
+{"type":"accounts_request"}
+{"type":"accounts_save","accounts":{"servers":[{"id":"home","host":"bbs.example.org","port":23,"preset":"mbbsemu","custom_logon":false,"can_sign_up":true}],"characters":[{"id":"kasimir","name":"Kasimir","server":"home","autostart":true,"user":"ACCOUNT","password":"PASSWORD","email":"h@h.com","gender":"F"}],"presets":[]}}
 {"type":"resync","session":"kasimir"}
 {"type":"state_request","session":"kasimir"}
 {"type":"walk_to","session":"kasimir","map":1,"room":2150}

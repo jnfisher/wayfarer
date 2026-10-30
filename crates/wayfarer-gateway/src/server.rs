@@ -32,7 +32,7 @@ use wayfarer_proto::{
 };
 
 use crate::session::{Origin, Output, Sent};
-use crate::{Gateway, GatewayError, HistoryQuery};
+use crate::{Gateway, GatewayError, HistoryQuery, accounts};
 
 /// How long a new connection may take to say hello.
 const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
@@ -489,6 +489,8 @@ struct Connection {
     out: mpsc::Sender<ToClient>,
     /// The sessions this connection receives, each with its output forwarding task.
     subscribed: Vec<(SessionId, JoinHandle<()>)>,
+    /// It receives every session (no `subscribe` naming them): sessions a save adds too.
+    all: bool,
     /// The same sessions, for the forwarders below.
     sessions: watch::Sender<Vec<SessionId>>,
     /// Forwarders for the life of the connection: relayed brain messages (a UI).
@@ -558,6 +560,7 @@ impl Connection {
 
         let gateway = hub.gateway().clone();
         let mut states = gateway.state_changes();
+        let mut roster = gateway.roster_changes();
         let mut brain = hub.inner.brain.subscribe();
         let mut conn = Connection {
             hub: hub.clone(),
@@ -566,6 +569,7 @@ impl Connection {
             brain_id: brain_guard.as_ref().map(|g| g.id),
             out,
             subscribed: Vec::new(),
+            all: true,
             sessions: watch::channel(Vec::new()).0,
             forwarders: Vec::new(),
         };
@@ -606,6 +610,13 @@ impl Connection {
                     }),
                     Err(broadcast::error::RecvError::Closed) => break,
                 },
+                Ok(()) = roster.changed() => {
+                    let sessions = gateway.sessions();
+                    if conn.all {
+                        conn.subscribe(sessions.iter().map(|s| s.id.clone()).collect());
+                    }
+                    Some(ToClient::SessionList { sessions })
+                }
                 Ok(()) = brain.changed(), if kind == ClientKind::Ui => Some(ToClient::BrainState {
                     attached: brain.borrow_and_update().is_some(),
                 }),
@@ -629,13 +640,21 @@ impl Connection {
         self.subscribed.iter().any(|(s, _)| s == id)
     }
 
-    /// Replace the subscription with `ids`, which must be known sessions.
+    /// Replace the subscription with `ids`, which must be known sessions. A session already
+    /// subscribed keeps its forwarder, so none of its output is missed.
     fn subscribe(&mut self, ids: Vec<SessionId>) {
-        for (_, task) in self.subscribed.drain(..) {
+        let (kept, dropped) = std::mem::take(&mut self.subscribed)
+            .into_iter()
+            .partition(|(id, _)| ids.contains(id));
+        self.subscribed = kept;
+        for (_, task) in dropped {
             task.abort();
         }
         self.sessions.send_replace(ids.clone());
         for id in ids {
+            if self.is_subscribed(&id) {
+                continue;
+            }
             let Ok(mut rx) = self.hub.gateway().subscribe(&id) else {
                 continue;
             };
@@ -852,13 +871,45 @@ impl Connection {
             }
             ToGateway::Subscribe { sessions } => {
                 let known: Vec<SessionId> = gateway.sessions().into_iter().map(|s| s.id).collect();
+                let all = sessions.is_none();
                 let wanted = sessions.unwrap_or_else(|| known.clone());
                 if let Some(bad) = wanted.iter().find(|id| !known.contains(id)) {
                     return Some(ToClient::Error {
                         message: format!("unknown session {bad:?}"),
                     });
                 }
+                self.all = all;
                 self.subscribe(wanted);
+                None
+            }
+            ToGateway::AccountsRequest | ToGateway::AccountsSave { .. }
+                if self.kind != ClientKind::Ui =>
+            {
+                Some(ToClient::Error {
+                    message: format!("only a UI may send {:?}", msg.type_name()),
+                })
+            }
+            ToGateway::AccountsRequest => Some(accounts_message(&gateway).await),
+            // Hanging sessions up and logging them on again: not on this loop.
+            ToGateway::AccountsSave { accounts } => {
+                let out = self.out.clone();
+                tokio::spawn(async move {
+                    let (old, _) = gateway.accounts().await;
+                    let (config, credentials, signups) = accounts::from_wire(&accounts, &old);
+                    let error = match gateway.save_accounts(config, credentials, signups).await {
+                        Ok(changes) => {
+                            tracing::info!(?changes, "accounts saved");
+                            None
+                        }
+                        Err(e) => {
+                            tracing::warn!("accounts not saved: {e}");
+                            Some(e.to_string())
+                        }
+                    };
+                    if out.send(ToClient::AccountsSaved { error }).await.is_ok() {
+                        let _ = out.send(accounts_message(&gateway).await).await;
+                    }
+                });
                 None
             }
             // The log-off takes a minute or so (and the brain's word first): not on this loop.
@@ -891,6 +942,17 @@ impl Connection {
             }
             relayed => unreachable!("{:?} is relayed", relayed.type_name()),
         }
+    }
+}
+
+/// The `accounts` message: the config and logins the gateway runs on, with each session's
+/// reason.
+async fn accounts_message(gateway: &Gateway) -> ToClient {
+    let (config, credentials) = gateway.accounts().await;
+    ToClient::Accounts {
+        accounts: accounts::to_wire(&config, &credentials, |id| {
+            gateway.reason(id).ok().flatten()
+        }),
     }
 }
 

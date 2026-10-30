@@ -394,6 +394,25 @@ passage and stays eight minutes; another player's light counts for everyone in t
 the stuck character's `search n` (step 1 above) finds the exit. Then the rescuer searches
 north by hand and walks back out.
 
+## Scenario "accounts" (C-062, the Accounts panel)
+
+```sh
+scripts/live-check.sh --scenario accounts
+```
+
+It claims no pool character. It starts a gateway with the server and no characters, then
+does what the web UI's Accounts panel does:
+
+1. **Save adds a character** (`accounts_request`, then `accounts_save`) whose BBS user is a
+   new random name (`Wfa...`) with a random password.
+2. **The account is made**: the first logon gets `Invalid Credentials`, the gateway connects
+   again and signs up (`NEW`, the user, the password twice, the e-mail, the gender), and the
+   session stops at `[MAJORMUD]:` in `menu`. It stays quiet there for 3 s, the row's reason
+   says "account made", and `sent.log` has `NEW` and no `E`.
+3. **Stop the gateway**: it logs off from the menu.
+
+Each run leaves one throwaway account on the server, with no character.
+
 ## The test-character pool
 
 `fixtures.toml` lists the characters: account, family name, race, class and the stat totals

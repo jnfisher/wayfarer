@@ -2,6 +2,9 @@
 
 export const PROTOCOL = 2;
 
+export type { AccountCharacter } from "./AccountCharacter";
+export type { AccountServer } from "./AccountServer";
+export type { Accounts } from "./Accounts";
 export type { BlessingSpell } from "./BlessingSpell";
 export type { Blessings } from "./Blessings";
 export type { BossLair } from "./BossLair";
