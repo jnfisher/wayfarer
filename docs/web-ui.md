@@ -439,8 +439,9 @@ editing. `Alt+A` or the `accounts` button opens it.
 - **Characters**: name, id (made from the name, and fixed once saved: it names the logs and
   the settings file), server, BBS user, password (dots until `show`), and whether it connects
   when the gateway starts. Each row shows its session's state and, when there is one, why
-  (`bad credentials`, a sign-up the BBS refused, `account made`). `+ Character` adds one, up
-  to six; `remove` (twice) takes one out.
+  (`bad credentials`, a sign-up the BBS refused, `account made`; a reason from the menu goes
+  once the character is in the realm). `+ Character` adds one, up to six; `remove` (twice)
+  takes one out of the list, and its tile goes when you save.
 - **E-mail and gender** show on a new row, and on one whose user changed: `h@h.com` and `F`
   unless you change them. They are used only if the BBS doesn't know the user, to make the
   account, and are never stored.
@@ -459,7 +460,9 @@ editing. `Alt+A` or the `accounts` button opens it.
   - everyone else keeps playing, untouched.
 
   When a save would hang anyone up, the button asks first (`really save?`) and says who:
-  *"Save: Faye and Manuel will hang up and log on again."* `revert` drops your edits.
+  *"Save: Faye and Manuel will hang up and log on again."* Until you save, edits are only in
+  the page (*"Not saved yet: nothing changes until you save."*, and the button turns yellow);
+  `revert` drops them, and so does reloading the page.
 
 ## The gear planner
 

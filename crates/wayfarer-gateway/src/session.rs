@@ -514,6 +514,10 @@ async fn connection(
                         Place::Realm => SessionState::Realm,
                         Place::Menu(_) => SessionState::Menu,
                     });
+                    // In the game: a reason from the menu ("account made", "no realm prompt") is over.
+                    if place == Place::Realm {
+                        slot.set_reason(None);
+                    }
                 }
                 for action in runner.as_mut().map(|r| r.feed(text)).unwrap_or_default() {
                     match action {
