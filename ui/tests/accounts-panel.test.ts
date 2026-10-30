@@ -72,6 +72,20 @@ describe("AccountsPanel", () => {
     expect(onsave).toHaveBeenCalledTimes(1);
   });
 
+  it("says a remove waits for the save, and the save button stands out until then", async () => {
+    const onsave = vi.fn();
+    render(AccountsPanel, { accounts, sessions, onsave });
+    expect(screen.queryByText(/Not saved yet/)).toBeNull();
+    await fireEvent.click(screen.getByText("remove"));
+    await fireEvent.click(screen.getByText("really remove?"));
+    expect(screen.getByText("Not saved yet: nothing changes until you save.")).toBeTruthy();
+    const save = screen.getByText("save") as HTMLButtonElement;
+    expect(save.classList.contains("pending")).toBe(true);
+    await fireEvent.click(screen.getByText("revert"));
+    expect(screen.queryByText(/Not saved yet/)).toBeNull();
+    expect(onsave).not.toHaveBeenCalled();
+  });
+
   it("won't delete a server a character uses", () => {
     render(AccountsPanel, { accounts, sessions, onsave: vi.fn() });
     const del = screen.getByText("delete") as HTMLButtonElement;

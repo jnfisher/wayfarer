@@ -315,6 +315,15 @@ async fn an_unknown_user_gets_an_account_and_stops_at_the_menu() {
         !String::from_utf8_lossy(&sent).contains("secret1"),
         "the password is masked in sent.bin"
     );
+
+    // The player makes the character and enters: the reason was the menu's, and goes.
+    gw.send_line("thornwyn", "E").await.unwrap();
+    assert_eq!(line(&mut sock).await, "E");
+    sock.write_all(b"\r\nTown Square\r\n[HP=12/12]:")
+        .await
+        .unwrap();
+    wait_for(&gw, "thornwyn", SessionState::Realm).await;
+    assert_eq!(gw.reason("thornwyn").unwrap(), None);
 }
 
 #[tokio::test]
@@ -429,16 +438,24 @@ async fn a_ui_reads_and_saves_the_accounts_and_every_client_hears_of_the_new_ses
     added.user = String::new();
     accounts.characters.push(added);
     ui.send(ToGateway::AccountsSave { accounts }).await.unwrap();
-    assert_eq!(
-        next_where(&mut ui_rx, |m| matches!(m, ToClient::AccountsSaved { .. })).await,
-        ToClient::AccountsSaved { error: None }
-    );
-    for rx in [&mut ui_rx, &mut brain_rx] {
-        let ToClient::SessionList { sessions } =
-            next_where(rx, |m| matches!(m, ToClient::SessionList { .. })).await
-        else {
-            unreachable!()
-        };
+    // The UI hears both, in either order: the new list comes from the roster, the answer from
+    // the save's own task.
+    let (mut saved, mut listed) = (None, None);
+    while saved.is_none() || listed.is_none() {
+        match next(&mut ui_rx).await {
+            m @ ToClient::AccountsSaved { .. } => saved = Some(m),
+            ToClient::SessionList { sessions } => listed = Some(sessions),
+            _ => {}
+        }
+    }
+    assert_eq!(saved, Some(ToClient::AccountsSaved { error: None }));
+    let ToClient::SessionList {
+        sessions: brain_list,
+    } = next_where(&mut brain_rx, |m| matches!(m, ToClient::SessionList { .. })).await
+    else {
+        unreachable!()
+    };
+    for sessions in [listed.unwrap(), brain_list] {
         assert_eq!(
             sessions.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(),
             ["a", "b"]

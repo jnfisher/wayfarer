@@ -277,10 +277,12 @@
     <div class="save">
       {#if wrong.all}<p class="problem">{wrong.all}</p>{/if}
       {#if confirming && impact}<p class="confirm">{confirmText(impact)}</p>{/if}
-      {#if result?.error && edits}<p class="problem">Not saved: {result.error}</p>{/if}
+      {#if result?.error && edits}<p class="problem">Not saved: {result.error}</p>
+      {:else if dirty && !confirming && !saving}<p class="confirm">Not saved yet: nothing changes until you save.</p>{/if}
       <div class="acts">
         <button
           class="primary"
+          class:pending={dirty && !saving}
           disabled={!dirty || saving || Object.keys(wrong).length > 0}
           title={Object.values(wrong)[0] ?? "Write wayfarer.toml and credentials.toml, and apply them"}
           onclick={save}>{saving ? "saving…" : confirming ? "really save?" : "save"}</button
@@ -416,6 +418,10 @@
   button:disabled {
     cursor: default;
     opacity: 0.5;
+  }
+  /* Edits waiting for the save. */
+  button.pending {
+    background: var(--vga-yellow);
   }
   .delete {
     margin-left: auto;
