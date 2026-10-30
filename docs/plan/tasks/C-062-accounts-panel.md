@@ -137,8 +137,10 @@ and going through the game's creation himself.
 
 - UI → gateway: one "get accounts" request.
 - Gateway → UI: an accounts message with the servers, the characters and their logins,
-  passwords included. Send it only to UI clients on a loopback bind, or on a bind that needs
-  the token. Never send it to the brain.
+  passwords included, to any UI client on any bind. John decided (2026-10-30) that the page
+  shows and edits passwords in plain text, even over the network: no friction for security
+  here, revisited only if that changes. Don't add masking-only APIs, re-entry prompts or
+  write-only passwords. The brain doesn't need the message and isn't sent it.
 - UI → gateway: "save accounts" with the whole edited set, and the gender and e-mail for new
   rows.
 - Gateway → UI: a reply with ok, or the error. The new session list goes to every client.
