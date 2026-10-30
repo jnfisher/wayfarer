@@ -77,6 +77,7 @@ Cards don't repeat these:
 | 8 | Combat statistics; no resting for mana by default | 2026-10-24, at John's request (the milestones after M3 were retired the same day) |
 | 9 | The gear planner: a combat model, the gear catalogue, the plan and its full-screen view | 2026-10-26, at John's request |
 | 10 | Releases: tagged Linux builds and `update.sh` for a server that never builds | 2026-10-26, at John's request |
+| 11 | The Accounts panel: servers, characters and logins edited in the page, BBS accounts made on Save (C-062) | 2026-10-30, at John's request |
 
 ## Index (wave 1, M0)
 
