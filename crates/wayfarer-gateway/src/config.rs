@@ -1,6 +1,7 @@
 //! The gateway's files: `wayfarer.toml` (servers and characters), `credentials.toml` (account
 //! names and passwords, kept apart so settings can be shared without them) and where the logs
-//! go.
+//! go. The Accounts panel writes the first two back ([`save`]), and [`diff`] says which
+//! sessions a save touches.
 
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
@@ -8,7 +9,7 @@ use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::logon::{Script, ScriptSpec};
 
@@ -50,7 +51,7 @@ impl Paths {
 }
 
 /// `wayfarer.toml`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     #[serde(default, rename = "server")]
@@ -60,18 +61,18 @@ pub struct Config {
 }
 
 /// A game server (`[[server]]`).
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Server {
     pub id: String,
     pub host: String,
     pub port: u16,
     /// The logon script preset, `"mbbsemu"` or `"silvermere"` ([`crate::logon`]).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preset: Option<String>,
     /// The server's own logon script, or the parts of the preset it replaces
     /// (`[server.logon]`).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logon: Option<ScriptSpec>,
 }
 
@@ -89,7 +90,7 @@ impl Server {
 }
 
 /// A character (`[[character]]`): one session.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Character {
     /// The session id: letters, digits, `-` and `_` (it names the log directory).
@@ -99,7 +100,7 @@ pub struct Character {
     /// A `[[server]]` id.
     pub server: String,
     /// Connect when the gateway starts.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub autostart: bool,
 }
 
@@ -164,7 +165,37 @@ impl Config {
     pub fn server(&self, id: &str) -> Option<&Server> {
         self.servers.iter().find(|s| s.id == id)
     }
+
+    pub fn character(&self, id: &str) -> Option<&Character> {
+        self.characters.iter().find(|c| c.id == id)
+    }
+
+    /// Check the config as [`Config::parse`] does.
+    pub fn validate(&self) -> Result<(), String> {
+        self.check()
+    }
+
+    /// The text of `wayfarer.toml` for this config, as the Accounts panel's save writes it.
+    pub fn to_toml(&self) -> String {
+        let body = toml::to_string(self).expect("a config always serializes");
+        format!("{CONFIG_HEADER}\n{body}")
+    }
 }
+
+/// What a saved `wayfarer.toml` starts with.
+const CONFIG_HEADER: &str = "\
+# wayfarer.toml: the game servers and the characters the gateway holds sessions for.
+# Passwords go in credentials.toml beside this file, never here.
+# Written by the web UI's Accounts panel: comments added by hand are not kept (the file before
+# the last save is wayfarer.toml.bak).
+";
+
+/// What a saved `credentials.toml` starts with.
+const CREDENTIALS_HEADER: &str = "\
+# wayfarer credentials: one table per character id from wayfarer.toml. Keep this file private;
+# it is separate from the settings so they can be shared without them.
+# Written by the web UI's Accounts panel: comments added by hand are not kept.
+";
 
 fn check_id(kind: &str, id: &str) -> Result<(), String> {
     let ok = !id.is_empty()
@@ -182,7 +213,7 @@ fn check_id(kind: &str, id: &str) -> Result<(), String> {
 }
 
 /// `credentials.toml`: `[character.<id>] user, password`.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Credentials {
     #[serde(default)]
@@ -190,7 +221,7 @@ pub struct Credentials {
 }
 
 /// One character's account. `Debug` never shows the password.
-#[derive(Clone, PartialEq, Eq, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Login {
     pub user: String,
@@ -219,6 +250,16 @@ const CREDENTIALS_TEMPLATE: &str = "\
 impl Credentials {
     pub fn get(&self, character: &str) -> Option<&Login> {
         self.character.get(character)
+    }
+
+    pub fn set(&mut self, character: &str, login: Login) {
+        self.character.insert(character.to_owned(), login);
+    }
+
+    /// The text of `credentials.toml`, as the Accounts panel's save writes it.
+    pub fn to_toml(&self) -> String {
+        let body = toml::to_string(self).expect("credentials always serialize");
+        format!("{CREDENTIALS_HEADER}\n{body}")
     }
 
     /// Parse `credentials.toml`'s text. The error never quotes the file, which holds
@@ -259,6 +300,120 @@ impl Credentials {
             message,
         })
     }
+}
+
+/// Write `config` and `credentials` to their files, each through a temporary file renamed over
+/// the old one; `credentials.toml` stays private (0600 on Unix). The old `wayfarer.toml` is
+/// copied to `wayfarer.toml.bak` first. Nothing is renamed until both are written, so a failed
+/// write leaves the old files as they were.
+pub fn save(paths: &Paths, config: &Config, credentials: &Credentials) -> Result<(), ConfigError> {
+    config.check().map_err(|message| ConfigError::Invalid {
+        path: paths.config.clone(),
+        message,
+    })?;
+    let err = |path: &Path| {
+        let path = path.to_path_buf();
+        move |source| ConfigError::Io { path, source }
+    };
+    if paths.config.exists() {
+        let bak = paths.config.with_extension("toml.bak");
+        std::fs::copy(&paths.config, &bak).map_err(err(&bak))?;
+    }
+    let config_tmp = temporary(&paths.config);
+    let credentials_tmp = temporary(&paths.credentials);
+    let written = write_new(&config_tmp, config.to_toml().as_bytes(), false)
+        .map_err(err(&paths.config))
+        .and_then(|()| {
+            write_new(&credentials_tmp, credentials.to_toml().as_bytes(), true)
+                .map_err(err(&paths.credentials))
+        });
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&config_tmp);
+        let _ = std::fs::remove_file(&credentials_tmp);
+        return Err(e);
+    }
+    std::fs::rename(&config_tmp, &paths.config).map_err(err(&paths.config))?;
+    std::fs::rename(&credentials_tmp, &paths.credentials).map_err(err(&paths.credentials))
+}
+
+/// `<file>.tmp` beside `path`.
+fn temporary(path: &Path) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".tmp");
+    path.with_file_name(name)
+}
+
+/// Write `contents` to `path`, replacing any leftover file there; `private`: 0600 on Unix.
+fn write_new(path: &Path, contents: &[u8], private: bool) -> io::Result<()> {
+    if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+        std::fs::create_dir_all(dir)?;
+    }
+    match std::fs::remove_file(path) {
+        Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e),
+        _ => {}
+    }
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    if private {
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    }
+    #[cfg(not(unix))]
+    let _ = private;
+    let mut file = options.open(path)?;
+    file.write_all(contents)?;
+    file.sync_all()
+}
+
+/// What a save changes, by character id ([`diff`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Changes {
+    /// New characters: a session to add and connect.
+    pub added: Vec<String>,
+    /// Gone from the config: hang up and drop the session.
+    pub removed: Vec<String>,
+    /// Their server (its address or logon script) or login changed: hang up and log on again.
+    pub reconnect: Vec<String>,
+    /// Only the name or autostart changed: no reconnect.
+    pub updated: Vec<String>,
+    /// New characters and those whose BBS user changed: the next logon may make the account.
+    pub new_user: Vec<String>,
+}
+
+/// What going from `old` to `new` changes for each character. Characters whose server and
+/// login are the same in both, and whose name and autostart are too, are in no list.
+pub fn diff(
+    old: &Config,
+    old_credentials: &Credentials,
+    new: &Config,
+    new_credentials: &Credentials,
+) -> Changes {
+    let mut changes = Changes::default();
+    for c in &old.characters {
+        if new.character(&c.id).is_none() {
+            changes.removed.push(c.id.clone());
+        }
+    }
+    for c in &new.characters {
+        let login = new_credentials.get(&c.id);
+        let Some(was) = old.character(&c.id) else {
+            changes.added.push(c.id.clone());
+            changes.new_user.push(c.id.clone());
+            continue;
+        };
+        let old_login = old_credentials.get(&c.id);
+        let server_changed =
+            was.server != c.server || old.server(&was.server) != new.server(&c.server);
+        if server_changed || old_login != login {
+            changes.reconnect.push(c.id.clone());
+            if old_login.map(|l| &l.user) != login.map(|l| &l.user) {
+                changes.new_user.push(c.id.clone());
+            }
+        } else if was != c {
+            changes.updated.push(c.id.clone());
+        }
+    }
+    changes
 }
 
 /// Create a new file only its owner can read and write (0600 on Unix).
@@ -424,6 +579,167 @@ mod tests {
         assert_eq!(p.credentials, Path::new("/data/w/credentials.toml"));
         assert_eq!(p.logs, Path::new("/data/w/logs"));
         assert_eq!(Paths::in_dir("/d").config, Path::new("/d/wayfarer.toml"));
+    }
+
+    fn login(user: &str, password: &str) -> Login {
+        Login {
+            user: user.into(),
+            password: password.into(),
+        }
+    }
+
+    fn two() -> (Config, Credentials) {
+        let config = Config::parse(
+            "[[server]]\nid = \"s\"\nhost = \"h\"\nport = 23\npreset = \"silvermere\"\n\
+             [[server]]\nid = \"t\"\nhost = \"h2\"\nport = 23\n\
+             [[character]]\nid = \"a\"\nname = \"A\"\nserver = \"s\"\nautostart = true\n\
+             [[character]]\nid = \"b\"\nname = \"B\"\nserver = \"s\"\n",
+        )
+        .unwrap();
+        let mut creds = Credentials::default();
+        creds.set("a", login("ua", "pa"));
+        creds.set("b", login("ub", "pb"));
+        (config, creds)
+    }
+
+    #[test]
+    fn what_a_save_changes() {
+        let (old, old_creds) = two();
+        let same = diff(&old, &old_creds, &old, &old_creds);
+        assert_eq!(same, Changes::default(), "untouched");
+
+        type Change = fn(&mut Config, &mut Credentials);
+        let cases: [(&str, Change, Changes); 7] = [
+            (
+                "rename",
+                |c, _| c.characters[0].name = "Al".into(),
+                Changes {
+                    updated: vec!["a".into()],
+                    ..Changes::default()
+                },
+            ),
+            (
+                "autostart",
+                |c, _| c.characters[1].autostart = true,
+                Changes {
+                    updated: vec!["b".into()],
+                    ..Changes::default()
+                },
+            ),
+            (
+                "password",
+                |_, k| k.set("a", login("ua", "new")),
+                Changes {
+                    reconnect: vec!["a".into()],
+                    ..Changes::default()
+                },
+            ),
+            (
+                "user",
+                |_, k| k.set("b", login("other", "pb")),
+                Changes {
+                    reconnect: vec!["b".into()],
+                    new_user: vec!["b".into()],
+                    ..Changes::default()
+                },
+            ),
+            (
+                "host",
+                |c, _| c.servers[0].host = "elsewhere".into(),
+                Changes {
+                    reconnect: vec!["a".into(), "b".into()],
+                    ..Changes::default()
+                },
+            ),
+            (
+                "moved",
+                |c, _| c.characters[0].server = "t".into(),
+                Changes {
+                    reconnect: vec!["a".into()],
+                    ..Changes::default()
+                },
+            ),
+            (
+                "added and removed",
+                |c, k| {
+                    c.characters.remove(0);
+                    c.characters.push(Character {
+                        id: "n".into(),
+                        name: "N".into(),
+                        server: "t".into(),
+                        autostart: false,
+                    });
+                    k.set("n", login("un", "pn"));
+                },
+                Changes {
+                    added: vec!["n".into()],
+                    removed: vec!["a".into()],
+                    new_user: vec!["n".into()],
+                    ..Changes::default()
+                },
+            ),
+        ];
+        for (what, change, want) in cases {
+            let (mut new, mut creds) = two();
+            change(&mut new, &mut creds);
+            assert_eq!(diff(&old, &old_creds, &new, &creds), want, "{what}");
+        }
+    }
+
+    #[test]
+    fn saved_files_read_back_the_same() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::in_dir(dir.path());
+        std::fs::write(&paths.config, "# old, by hand\n").unwrap();
+        let (mut config, creds) = two();
+        // A server's own logon script is kept.
+        config.servers[1].logon = Some(
+            toml::from_str("realm = 'R>'\n[[step]]\nexpect = 'Login:'\nsend = '{user}'\n").unwrap(),
+        );
+        save(&paths, &config, &creds).unwrap();
+        assert_eq!(Config::load(&paths.config).unwrap(), config);
+        assert_eq!(
+            Credentials::load_or_create(&paths.credentials).unwrap(),
+            creds
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("wayfarer.toml.bak")).unwrap(),
+            "# old, by hand\n"
+        );
+        assert!(!permissions_too_wide(&paths.credentials).unwrap());
+        assert!(!dir.path().join("wayfarer.toml.tmp").exists());
+
+        // A config that doesn't check is refused, and the files stay as they were.
+        let before = std::fs::read_to_string(&paths.config).unwrap();
+        let mut bad = config.clone();
+        bad.characters[0].server = "nope".into();
+        assert!(
+            save(&paths, &bad, &creds)
+                .unwrap_err()
+                .to_string()
+                .contains("not listed")
+        );
+        assert_eq!(std::fs::read_to_string(&paths.config).unwrap(), before);
+    }
+
+    #[test]
+    fn a_failed_write_leaves_the_old_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::in_dir(dir.path());
+        let (config, creds) = two();
+        save(&paths, &config, &creds).unwrap();
+        let before = std::fs::read_to_string(&paths.config).unwrap();
+        // credentials.toml's temporary file can't be made: a directory is in the way.
+        let blocked = Paths {
+            credentials: dir.path().join("sub"),
+            ..paths.clone()
+        };
+        std::fs::create_dir_all(dir.path().join("sub.tmp/x")).unwrap();
+        let mut changed = config.clone();
+        changed.characters[0].name = "Changed".into();
+        assert!(save(&blocked, &changed, &creds).is_err());
+        assert_eq!(std::fs::read_to_string(&paths.config).unwrap(), before);
+        assert!(!dir.path().join("wayfarer.toml.tmp").exists());
     }
 
     #[test]

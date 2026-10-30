@@ -122,12 +122,35 @@ pub(crate) enum Command {
     Hangup(oneshot::Sender<()>),
 }
 
-/// Everything about one character's session that outlives its connections.
-pub(crate) struct Slot {
-    pub id: SessionId,
+/// What a character's session connects with, from the config: the Accounts panel's save can
+/// change it while the session lives ([`Slot::set_setup`]). A connection reads it once, when
+/// it starts.
+#[derive(Clone)]
+pub(crate) struct Setup {
     pub name: String,
     pub host: String,
     pub port: u16,
+    /// The character's account: the logon script's `{user}` and `{password}`, and a line that
+    /// is exactly the password is masked in `sent.bin`.
+    pub login: Option<Login>,
+    pub script: Option<Arc<Script>>,
+}
+
+/// A BBS account to make if the BBS does not know the user: the sign-up's e-mail and gender.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Signup {
+    pub email: String,
+    pub gender: String,
+}
+
+/// Everything about one character's session that outlives its connections.
+pub(crate) struct Slot {
+    pub id: SessionId,
+    setup: Mutex<Setup>,
+    /// Set by the Accounts panel's save for a new character, or one whose user changed: the
+    /// next logon the BBS answers "unknown user" signs up instead. Cleared by the first logon
+    /// that gets in, or the sign-up.
+    signup: Mutex<Option<Signup>>,
     pub log: OutputLog,
     /// Every line written to the game, with who sent it.
     pub sent_log: LineLog,
@@ -137,10 +160,6 @@ pub(crate) struct Slot {
     /// said it was doing and why it stopped.
     pub notes_log: LineLog,
     pub output: broadcast::Sender<Output>,
-    /// The character's account: the logon script's `{user}` and `{password}`, and a line that
-    /// is exactly the password is masked in `sent.bin`.
-    pub login: Option<Login>,
-    pub script: Option<Arc<Script>>,
     pub read_buffer: usize,
     pub reconnect: bool,
     pub connector: Arc<dyn Connect>,
@@ -167,15 +186,11 @@ impl Running {
 
 pub(crate) struct SlotParts {
     pub id: SessionId,
-    pub name: String,
-    pub host: String,
-    pub port: u16,
+    pub setup: Setup,
     pub log: OutputLog,
     pub sent_log: LineLog,
     pub brain_log: LineLog,
     pub notes_log: LineLog,
-    pub login: Option<Login>,
-    pub script: Option<Arc<Script>>,
     pub read_buffer: usize,
     pub reconnect: bool,
     pub connector: Arc<dyn Connect>,
@@ -188,16 +203,13 @@ impl Slot {
     pub fn new(p: SlotParts) -> Self {
         Self {
             id: p.id,
-            name: p.name,
-            host: p.host,
-            port: p.port,
+            setup: Mutex::new(p.setup),
+            signup: Mutex::new(None),
             log: p.log,
             sent_log: p.sent_log,
             brain_log: p.brain_log,
             notes_log: p.notes_log,
             output: broadcast::channel(p.subscriber_capacity.max(1)).0,
-            login: p.login,
-            script: p.script,
             read_buffer: p.read_buffer.max(1),
             reconnect: p.reconnect,
             connector: p.connector,
@@ -208,6 +220,23 @@ impl Slot {
             reason: Mutex::new(None),
             running: Mutex::new(None),
         }
+    }
+
+    pub fn setup(&self) -> Setup {
+        self.setup.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// Connect with `setup` from the next connection on.
+    pub fn set_setup(&self, setup: Setup) {
+        *self.setup.lock().unwrap_or_else(|e| e.into_inner()) = setup;
+    }
+
+    pub fn set_signup(&self, signup: Option<Signup>) {
+        *self.signup.lock().unwrap_or_else(|e| e.into_inner()) = signup;
+    }
+
+    pub fn take_signup(&self) -> Option<Signup> {
+        self.signup.lock().unwrap_or_else(|e| e.into_inner()).take()
     }
 
     pub fn state(&self) -> SessionState {
@@ -263,10 +292,11 @@ impl Slot {
     }
 
     pub fn info(&self) -> SessionInfo {
+        let setup = self.setup();
         SessionInfo {
             id: self.id.clone(),
-            name: self.name.clone(),
-            server: format!("{}:{}", self.host, self.port),
+            name: setup.name,
+            server: format!("{}:{}", setup.host, setup.port),
             state: self.state(),
             last_seq: self.log.last_seq(),
         }
@@ -282,7 +312,7 @@ impl Slot {
         tracing::warn!(
             session = %self.id,
             "{} dropped in the realm: {why}; the game punishes it at the next entry",
-            self.name
+            self.setup().name
         );
         Some(format!("dropped in the realm: {why}"))
     }
@@ -298,13 +328,30 @@ pub(crate) async fn run(
 ) {
     // Failed attempts since the last good logon.
     let mut attempt = 0;
+    // The account to make on this connection: the last one's logon found the user unknown.
+    let mut signup = None;
     let (state, acks) = loop {
-        match connection(&slot, &mut commands, &mut capture, &mut attempt).await {
+        match connection(
+            &slot,
+            &mut commands,
+            &mut capture,
+            &mut attempt,
+            signup.take(),
+        )
+        .await
+        {
             End::Closed { acks, reason } => {
                 slot.set_reason(reason);
                 break (SessionState::Closed, acks);
             }
+            End::SignUp(account) => {
+                tracing::info!(session = %slot.id, "the BBS does not know the user: making the account");
+                signup = Some(account);
+            }
             End::Lost(why) => {
+                // A sign-up cut short is not tried again: the next logon finds out whether the
+                // account was made, and a BBS whose prompts the sign-up doesn't know can't
+                // keep it trying.
                 tracing::warn!(session = %slot.id, "connection lost: {why}");
                 slot.set_reason(Some(why));
                 if !slot.reconnect {
@@ -340,6 +387,9 @@ pub(crate) async fn run(
 enum End {
     /// Reconnect (unless that is off).
     Lost(String),
+    /// The BBS does not know the user and the account is to be made: reconnect at once and
+    /// sign up.
+    SignUp(Signup),
     /// On purpose, or a failure not to retry; `acks` are the closers waiting for it.
     Closed {
         acks: Vec<oneshot::Sender<()>>,
@@ -355,6 +405,13 @@ impl End {
 
 /// The session's reason while its logon waits at the realm's door for a brain.
 pub const WAITING_FOR_BRAIN: &str = "waiting for a brain to enter the realm";
+/// The session's reason once a sign-up has made the account and stopped at the menu.
+pub const ACCOUNT_MADE: &str = "account made: type E in the tile to make the character";
+/// The session's reason when the logon got no realm prompt after its last step (a character
+/// still being made, say).
+pub const NO_REALM: &str = "no realm prompt: finish making the character in the tile";
+/// The session's reason when the BBS doesn't know the user and the logon script can't sign up.
+pub const CANNOT_SIGN_UP: &str = "bad credentials (this server's logon script can't make accounts)";
 
 /// One connection, from connecting until it ends.
 async fn connection(
@@ -362,11 +419,13 @@ async fn connection(
     commands: &mut mpsc::Receiver<Command>,
     capture: &mut Capture,
     attempt: &mut u32,
+    signup: Option<Signup>,
 ) -> End {
+    let setup = slot.setup();
     slot.set_state(SessionState::Connecting);
-    let address = format!("{}:{}", slot.host, slot.port);
+    let address = format!("{}:{}", setup.host, setup.port);
     let stream = tokio::select! {
-        r = slot.connector.connect(&slot.host, slot.port) => match r {
+        r = slot.connector.connect(&setup.host, setup.port) => match r {
             Ok(s) => s,
             Err(e) => return End::Lost(format!("connecting to {address}: {e}")),
         },
@@ -380,9 +439,17 @@ async fn connection(
     let mut held: VecDeque<Recorded> = VecDeque::new();
     let mut read: u64 = 0;
 
-    let mut tracker = slot.script.clone().map(Tracker::new);
-    let mut runner = match (&slot.script, &slot.login) {
-        (Some(script), Some(login)) => Some(Runner::new(
+    let mut tracker = setup.script.clone().map(Tracker::new);
+    let signing_up = signup.is_some();
+    let mut runner = match (&setup.script, &setup.login, &signup) {
+        (Some(script), Some(login), Some(account)) => Runner::signup(
+            script,
+            &login.user,
+            &login.password,
+            &account.email,
+            &account.gender,
+        ),
+        (Some(script), Some(login), None) => Some(Runner::new(
             Arc::clone(script),
             &login.user,
             &login.password,
@@ -394,7 +461,7 @@ async fn connection(
         slot.set_state(SessionState::Logon);
         deadline = Some(Instant::now() + r.timeout());
     } else {
-        if slot.script.is_some() {
+        if setup.script.is_some() {
             tracing::warn!(session = %slot.id, "no credentials: the player logs on by hand");
         }
         // The player has the session.
@@ -451,7 +518,8 @@ async fn connection(
                 for action in runner.as_mut().map(|r| r.feed(text)).unwrap_or_default() {
                     match action {
                         Action::Send { text, shown } => {
-                            let enters = runner.as_ref().is_some_and(Runner::waiting_for_realm);
+                            // A sign-up stops at the menu: it never enters.
+                            let enters = !signing_up && runner.as_ref().is_some_and(Runner::waiting_for_realm);
                             if enters && brain.as_ref().is_some_and(|b| !*b.borrow()) {
                                 tracing::info!(session = %slot.id, "waiting for a brain to enter the realm");
                                 slot.set_reason(Some(WAITING_FOR_BRAIN.to_owned()));
@@ -467,19 +535,38 @@ async fn connection(
                             // The next step's timeout runs from here.
                             deadline = runner.as_ref().map(|r| Instant::now() + r.timeout());
                         }
+                        Action::Realm if signing_up => {
+                            // At the MajorMUD menu: the player makes the character.
+                            tracing::info!(session = %slot.id, "account made");
+                            slot.set_state(SessionState::Menu);
+                            slot.set_reason(Some(ACCOUNT_MADE.to_owned()));
+                            *attempt = 0;
+                            runner = None;
+                            deadline = None;
+                        }
                         Action::Realm => {
                             tracing::info!(session = %slot.id, "logged on");
+                            // The account was there all along.
+                            slot.set_signup(None);
                             slot.set_state(SessionState::Realm);
                             *attempt = 0;
                             runner = None;
                             deadline = None;
                         }
-                        Action::Failed { reason, retry } => {
+                        Action::Failed { reason, retry, signup } => {
                             let _ = writer.shutdown().await;
+                            if signup && let Some(account) = slot.take_signup() {
+                                if setup.script.as_ref().is_some_and(|s| s.signup.is_some()) {
+                                    return End::SignUp(account);
+                                }
+                                tracing::warn!(session = %slot.id, "logon failed: {CANNOT_SIGN_UP}");
+                                return End::Closed { acks, reason: Some(CANNOT_SIGN_UP.to_owned()) };
+                            }
                             if retry {
                                 return End::Lost(format!("logon failed: {reason}"));
                             }
-                            tracing::warn!(session = %slot.id, "logon failed: {reason}");
+                            let what = if signing_up { "sign-up refused" } else { "logon failed" };
+                            tracing::warn!(session = %slot.id, "{what}: {reason}");
                             return End::Closed { acks, reason: Some(reason) };
                         }
                     }
@@ -540,7 +627,7 @@ async fn connection(
                 let (bytes, record, line) = match cmd {
                     Some(Command::Line(text, origin)) => {
                         let bytes = telnet.encode_line(&text);
-                        let is_password = slot.login.as_ref().is_some_and(|l| l.password == text);
+                        let is_password = setup.login.as_ref().is_some_and(|l| l.password == text);
                         let shown = if is_password { MASK.to_owned() } else { text };
                         (bytes, telnet.encode_line(&shown), Some((shown, origin)))
                     }
@@ -558,7 +645,7 @@ async fn connection(
                             let _ = writer.shutdown().await;
                             return End::closed(acks);
                         }
-                        let start = slot.script.as_ref().zip(tracker.as_ref().and_then(Tracker::place));
+                        let start = setup.script.as_ref().zip(tracker.as_ref().and_then(Tracker::place));
                         let Some((l, first)) = start.and_then(|(s, place)| Logoff::start(Arc::clone(s), place)) else {
                             // Not in the game (or no log-off steps): nothing to log off from.
                             let _ = writer.shutdown().await;
@@ -602,6 +689,7 @@ async fn connection(
                         tracing::warn!(session = %slot.id, "no realm prompt: the player has the session");
                         runner = None;
                         slot.set_state(SessionState::Connected);
+                        slot.set_reason(Some(NO_REALM.to_owned()));
                     }
                     Some(_) => {
                         let _ = writer.shutdown().await;

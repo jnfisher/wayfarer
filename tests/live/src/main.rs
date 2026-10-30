@@ -15,6 +15,7 @@
 //! out of the Arena to rest and back; `--scenario typing` types beside the bot while it fights
 //! there (`st` goes without a pause, `u` pauses it and moves).
 
+mod accounts;
 mod brain;
 mod claim;
 mod fixtures;
@@ -102,12 +103,15 @@ enum Scenario {
     /// What `sneak` prints, raw, twice, and what the next command shows (C-048): whether a
     /// prompt follows the attempt.
     Sneak,
+    /// C-062: the Accounts panel's save adds a character whose BBS user is new: the gateway
+    /// makes the account and stops at the MajorMUD menu. Makes one throwaway account.
+    Accounts,
 }
 
 fn usage() -> ! {
     eprintln!(
         "usage: wayfarer-live --wayfarer BIN --out DIR [--addr HOST:PORT] [--pool FILE] \
-         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart|flee|typing|soak|goto|flee-from|hidden|rescue|sneak]\n\
+         [--credentials FILE] [--char ACCOUNT] [--scenario m0|brain|walk|fight|loop|under-attack|restart|flee|typing|soak|goto|flee-from|hidden|rescue|sneak|accounts]\n\
          soak: --char NAME --minutes N [--anchor MAP:ROOM] [--radius R] [--skip MAP:ROOM ...] [--loop ID] [--flee-from NAME ...] [--save-as NAME [--add-stop MAP:ROOM[@N] ...]]\n\
          flee-from: [--flee-from NAME ...]\n\
          (run it through scripts/live-check.sh)"
@@ -155,6 +159,7 @@ fn args() -> Args {
                     "hidden" => Scenario::Hidden,
                     "rescue" => Scenario::Rescue,
                     "sneak" => Scenario::Sneak,
+                    "accounts" => Scenario::Accounts,
                     _ => usage(),
                 }
             }
@@ -2750,9 +2755,12 @@ fn main() -> ExitCode {
         soak: None,
     };
     let started = Instant::now();
-    let result = tokio::runtime::Runtime::new()
-        .expect("a tokio runtime")
-        .block_on(run(&mut ctx, &pool));
+    let runtime = tokio::runtime::Runtime::new().expect("a tokio runtime");
+    let result = if ctx.args.scenario == Scenario::Accounts {
+        runtime.block_on(accounts::scenario(&mut ctx))
+    } else {
+        runtime.block_on(run(&mut ctx, &pool))
+    };
     let passed = result.is_ok() && ctx.steps.iter().all(|s| s.ok);
     print_summary(&ctx, &result, started.elapsed(), passed, &out);
     if passed {

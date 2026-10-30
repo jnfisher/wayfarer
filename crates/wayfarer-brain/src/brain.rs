@@ -463,9 +463,17 @@ impl Brain {
     }
 
     /// The gateway's list of sessions: new ones are caught up from their history; on an
-    /// attach, every one is.
+    /// attach, every one is. A session no longer listed (taken out of the config by the
+    /// Accounts panel) is forgotten; a party it was in just finds it missing.
     fn sessions_seen(&mut self, infos: &[SessionInfo], attach: bool, out: &mut Vec<ToGateway>) {
         let now = self.clock.instant();
+        self.sessions.retain(|id, _| {
+            let listed = infos.iter().any(|i| &i.id == id);
+            if !listed {
+                tracing::info!(session = %id, "no longer on the gateway's list: forgotten");
+            }
+            listed
+        });
         for info in infos {
             match self.sessions.get_mut(&info.id) {
                 Some(s) if attach => s.attach(info, now, out),

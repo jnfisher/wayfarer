@@ -38,6 +38,15 @@ gw.shutdown_on_signal().await?;                     // Ctrl-C/SIGTERM: everyone 
   timed out, or hung up on) logs a warning, "dropped in the realm", and sets the session's
   reason. Matching is on a
   rolling window of recent text with ANSI escapes removed, consumed to the end of each match.
+- **Accounts** (C-062): `save_accounts(config, credentials, signups)` writes `wayfarer.toml`
+  and `credentials.toml` (`config::save`) and applies `config::diff` to the live sessions:
+  new ones are added and opened, removed ones hung up and dropped, ones whose server or login
+  changed hung up and opened again, the rest left alone; `roster_changes()` tells the server
+  to send `session_list` and subscribe connections to new sessions. A new character, or a
+  changed user, carries a pending `Signup`: if its next logon fails with a `signup = true`
+  failure, the session reconnects and runs the script's `[signup]` (`Runner::signup`), which
+  stops at `[MAJORMUD]:`; a sign-up question asked again is a refusal, reported with the
+  line before it. `accounts.rs` converts to and from the wire's `Accounts`.
   The presets (`src/presets/*.toml`) are compiled in; `Server::script()` lays a server's
   `[server.logon]` table over its preset.
 - **States**: `closed` before the first `open` and after `close`, `connecting` while the

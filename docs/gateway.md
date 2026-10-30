@@ -4,6 +4,11 @@ The gateway holds one telnet session per character. It reads two files from your
 directory (the platform's per-user data directory: on macOS `~/Library/Application Support/wayfarer/`, on Linux `~/.local/share/wayfarer/`), or
 from the directory of the file given with `--config`.
 
+The web UI's **Accounts** panel edits both files ([web-ui.md](web-ui.md) "The accounts"): its
+Save writes them (each through a temporary file; the old `wayfarer.toml` is copied to
+`wayfarer.toml.bak` first) and applies them while the gateway runs. Save writes the files
+fresh, so comments added by hand are lost; a server's `[server.logon]` table is kept.
+
 ## `wayfarer.toml`
 
 The game servers and the characters. A full example is
@@ -100,7 +105,8 @@ so a player who leaves the realm by hand is shown at the `menu`. You can type in
 while the script runs. A session with no script, or no credentials, is `connected` and you log
 on by hand (the gateway still follows the text once you do). If the script has sent everything
 but the realm prompt never comes (a new account goes to character creation, say), it stops and
-the session is `connected`: carry on in the tile.
+the session is `connected`, with the reason "no realm prompt: finish making the character in
+the tile": carry on in the tile.
 
 **Entering the realm waits for a brain** (C-054). `wayfarer gateway` and `wayfarer serve` hold
 each logon's last step (`E`, Enter the Realm) at the MajorMUD menu until a brain is attached:
@@ -114,6 +120,16 @@ When a logon fails:
 
 - **Wrong password** (`Invalid Credentials`): the session is `closed` with the reason "bad
   credentials" and not retried; fix `credentials.toml` and open it again.
+- **Unknown user, just saved** in the Accounts panel (a new character, or a changed user):
+  the same `Invalid Credentials` means the BBS may not know the user, so the gateway connects
+  again and makes the account with the preset's `[signup]` steps: `NEW`, the user, the
+  password twice, the e-mail and the gender, then the BBS menu and no further than
+  `[MAJORMUD]:`, where the session stays at `menu` with the reason "account made: type E in
+  the tile to make the character". A question asked again means the BBS refused the answer:
+  the session closes, and its reason is the line the BBS gave. A server whose script has no
+  `[signup]` gets "bad credentials (this server's logon script can't make accounts)". This
+  happens once per save: a wrong password on an account that exists is never taken for a new
+  one.
 - **Already logged in**: the old connection may still be closing, so the gateway retries.
 - **A prompt doesn't come** within its step's timeout: it disconnects and retries.
 

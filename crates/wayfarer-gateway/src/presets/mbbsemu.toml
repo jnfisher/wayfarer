@@ -30,6 +30,8 @@ send = "E"
 expect = "Invalid Credentials"
 reason = "bad credentials"
 retry = false
+# Or the BBS doesn't know the user: a character whose account is to be made signs up.
+signup = true
 
 # `<user> is already logged in -- only 1 connection allowed per user.`: the old connection may
 # still be closing.
@@ -37,6 +39,43 @@ retry = false
 expect = "is already logged in"
 reason = "already logged in"
 retry = true
+
+# Making a BBS account for a user the BBS does not know (the Accounts panel, C-062): `NEW`, the
+# user, the password twice, the e-mail and the gender, then on to the MajorMUD menu and no
+# further, so the player makes the character. A question asked again means the BBS refused the
+# answer (a taken name, a password it won't take); the line before it says why. The prompts are
+# MBBSEmu's (`MenuRoutines.cs`, a capture of its sign-up), which silvermere copies.
+[signup]
+stop_at = "[MAJORMUD]:"
+
+[[signup.step]]
+expect = "Username:"
+send = "NEW"
+
+[[signup.step]]
+expect = "Please enter a unique Username"
+send = "{user}"
+
+[[signup.step]]
+expect = "Please enter a strong Password"
+send = "{password}"
+
+[[signup.step]]
+expect = "re-enter your password"
+send = "{password}"
+
+[[signup.step]]
+expect = "Please enter a valid e-Mail"
+send = "{email}"
+
+[[signup.step]]
+expect = "Please enter your gender"
+send = "{gender}"
+
+[[signup.step]]
+expect = "Make your selection"
+send = "M"
+optional = true
 
 # Log-off. Each step is a place the session can be (`at`; the first step's place is the realm)
 # and what it sends there; then the next step's `at` is waited for, up to `timeout` (20 s if

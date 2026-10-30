@@ -2,16 +2,17 @@
 //! examples in the README and `docs/protocol.md`.
 
 use wayfarer_proto::{
-    BlessingSpell, Blessings, Bot, BotAction, BotMode, BotState, CharacterState, Chunk, ClientKind,
-    CoinCount, Coins, CombatStats, DamageRow, DecodeError, Encumbrance, ExitKind, ExpSample,
-    Family, Found, FoundKind, FoundRoom, GearBuff, GearDetail, GearDetailMove, GearDetailRequest,
-    GearFilter, GearInputs, GearMonster, GearMonsterScore, GearMonsters, GearMove, GearMoveScore,
-    GearPlan, GearPlanRequest, GearRow, GearSource, GearSourceKind, GearStatus, GearWhatIf,
-    GeneratedLoop, Journey, LoopStop, MapExit, MapRoom, MegaMudLoop, MemberState, MemberStatus,
-    MonsterRuleEntry, MonsterRuleKind, PROTOCOL, ParseCounts, PartyDef, PartyRank, PartyStatus,
-    Position, RoomKey, RoomKind, RuleSource, RunSummary, SessionAction, SessionInfo, SessionState,
-    SettingChange, SettingKind, SettingRow, SettingValue, SettingsFile, SpellPlanItem, Stats,
-    StatsPart, TimeSpent, ToClient, ToGateway, Walking, WorldPackInfo, protocol_mismatch,
+    AccountCharacter, AccountServer, Accounts, BlessingSpell, Blessings, Bot, BotAction, BotMode,
+    BotState, CharacterState, Chunk, ClientKind, CoinCount, Coins, CombatStats, DamageRow,
+    DecodeError, Encumbrance, ExitKind, ExpSample, Family, Found, FoundKind, FoundRoom, GearBuff,
+    GearDetail, GearDetailMove, GearDetailRequest, GearFilter, GearInputs, GearMonster,
+    GearMonsterScore, GearMonsters, GearMove, GearMoveScore, GearPlan, GearPlanRequest, GearRow,
+    GearSource, GearSourceKind, GearStatus, GearWhatIf, GeneratedLoop, Journey, LoopStop, MapExit,
+    MapRoom, MegaMudLoop, MemberState, MemberStatus, MonsterRuleEntry, MonsterRuleKind, PROTOCOL,
+    ParseCounts, PartyDef, PartyRank, PartyStatus, Position, RoomKey, RoomKind, RuleSource,
+    RunSummary, SessionAction, SessionInfo, SessionState, SettingChange, SettingKind, SettingRow,
+    SettingValue, SettingsFile, SpellPlanItem, Stats, StatsPart, TimeSpent, ToClient, ToGateway,
+    Walking, WorldPackInfo, protocol_mismatch,
 };
 
 fn kasimir(state: SessionState, last_seq: u64) -> SessionInfo {
@@ -953,6 +954,30 @@ fn to_client() -> Vec<(ToClient, &'static str)> {
             },
             r#"{"type":"keys_sent","session":"kasimir"}"#,
         ),
+        (
+            ToClient::Accounts {
+                accounts: Accounts {
+                    servers: Vec::new(),
+                    characters: vec![AccountCharacter {
+                        id: "kasimir".into(),
+                        name: "Kasimir".into(),
+                        server: "home".into(),
+                        autostart: false,
+                        user: "ACCOUNT".into(),
+                        password: "PASSWORD".into(),
+                        email: None,
+                        gender: None,
+                        reason: Some("bad credentials".into()),
+                    }],
+                    presets: vec!["mbbsemu".into(), "silvermere".into()],
+                },
+            },
+            r#"{"type":"accounts","accounts":{"servers":[],"characters":[{"id":"kasimir","name":"Kasimir","server":"home","autostart":false,"user":"ACCOUNT","password":"PASSWORD","reason":"bad credentials"}],"presets":["mbbsemu","silvermere"]}}"#,
+        ),
+        (
+            ToClient::AccountsSaved { error: None },
+            r#"{"type":"accounts_saved"}"#,
+        ),
     ])
     .collect()
 }
@@ -1002,6 +1027,37 @@ fn to_gateway() -> Vec<(ToGateway, &'static str)> {
                 action: SessionAction::LogOff,
             },
             r#"{"type":"session_control","session":"kasimir","action":"log_off"}"#,
+        ),
+        (
+            ToGateway::AccountsRequest,
+            r#"{"type":"accounts_request"}"#,
+        ),
+        (
+            ToGateway::AccountsSave {
+                accounts: Accounts {
+                    servers: vec![AccountServer {
+                        id: "home".into(),
+                        host: "bbs.example.org".into(),
+                        port: 23,
+                        preset: Some("mbbsemu".into()),
+                        custom_logon: false,
+                        can_sign_up: true,
+                    }],
+                    characters: vec![AccountCharacter {
+                        id: "kasimir".into(),
+                        name: "Kasimir".into(),
+                        server: "home".into(),
+                        autostart: true,
+                        user: "ACCOUNT".into(),
+                        password: "PASSWORD".into(),
+                        email: Some("h@h.com".into()),
+                        gender: Some("F".into()),
+                        reason: None,
+                    }],
+                    presets: Vec::new(),
+                },
+            },
+            r#"{"type":"accounts_save","accounts":{"servers":[{"id":"home","host":"bbs.example.org","port":23,"preset":"mbbsemu","custom_logon":false,"can_sign_up":true}],"characters":[{"id":"kasimir","name":"Kasimir","server":"home","autostart":true,"user":"ACCOUNT","password":"PASSWORD","email":"h@h.com","gender":"F"}],"presets":[]}}"#,
         ),
     ]
     .into_iter()

@@ -64,6 +64,10 @@ pub struct Gateway {
     pub gaps: crate::soak::PromptGaps,
     /// Times the brain detached after it had attached.
     pub brain_drops: u32,
+    /// The last `accounts` (C-062).
+    pub accounts: Option<wayfarer_proto::Accounts>,
+    /// The last `accounts_saved`: its error, if any.
+    pub accounts_saved: Option<Option<String>>,
 }
 
 /// An event from the brain, as the check kept it.
@@ -192,6 +196,8 @@ impl Gateway {
             events: Vec::new(),
             gaps: crate::soak::PromptGaps::new(std::time::Instant::now()),
             brain_drops: 0,
+            accounts: None,
+            accounts_saved: None,
         };
         match gateway.next(Instant::now() + START_TIMEOUT).await {
             Some(ToClient::Welcome { sessions, .. }) => {
@@ -328,7 +334,7 @@ impl Gateway {
         .await
     }
 
-    async fn send(&mut self, msg: ToGateway) -> Result<(), String> {
+    pub async fn send(&mut self, msg: ToGateway) -> Result<(), String> {
         self.ws
             .send(Message::text(msg.to_json()))
             .await
@@ -437,6 +443,8 @@ impl Gateway {
                 ToClient::Stats { session, .. } if session == SESSION => {
                     self.stats = Some(msg.clone());
                 }
+                ToClient::Accounts { accounts } => self.accounts = Some(accounts.clone()),
+                ToClient::AccountsSaved { error } => self.accounts_saved = Some(error.clone()),
                 ToClient::SessionList { sessions } | ToClient::Welcome { sessions, .. } => {
                     if let Some(s) = sessions.iter().find(|s| s.id == SESSION) {
                         self.state = s.state;
