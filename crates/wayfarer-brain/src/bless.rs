@@ -58,6 +58,10 @@ pub(crate) struct Bless {
     screen: Option<Vec<String>>,
     /// Spells the last screen did not show, for the cast's narration.
     unseen: Vec<String>,
+    /// 1.20: the cast in flight only removed another tier of its regen family (the family's
+    /// end line came during it: the tiers share their lines, `docs/kb/quicksilver-1.20.md`):
+    /// it is cast again, and not taken as on.
+    cleared: bool,
 }
 
 impl Bless {
@@ -81,6 +85,15 @@ impl Bless {
                     })
             })
             .collect();
+    }
+
+    /// The regen tier believed on at `now` (1.20), what it adds to mana regeneration.
+    pub fn regen_on(&self, now: Instant) -> Option<i64> {
+        self.kept
+            .iter()
+            .filter(|k| k.on_until.is_some_and(|t| now < t))
+            .filter_map(|k| k.def.regen.map(|r| r.regen_pct))
+            .max()
     }
 
     /// Whether the spell `short` is believed on at `now`.
@@ -248,6 +261,41 @@ impl Mode for Bless {
                     k.on_until = None;
                 }
             }
+            // 1.20's regen line (C-067): its lines are typed, by family. Its end: the tier of
+            // that family is off; during a cast of it, the cast only removed the old tier.
+            GameEvent::RegenLine {
+                family,
+                kind,
+                who: None,
+            } if kind == "ends" => {
+                let casting = self.casting.as_ref().map(|(short, _, _)| short.clone());
+                for k in &mut self.kept {
+                    if k.def.regen.is_some_and(|r| r.family.as_str() == family) {
+                        k.on_until = None;
+                        k.retry_at = None;
+                        k.fails = 0;
+                        if casting.as_deref() == Some(k.def.short.as_str()) {
+                            self.cleared = true;
+                        }
+                    }
+                }
+            }
+            // How it shows on the status screen: one of the screen's spell lines.
+            GameEvent::RegenLine {
+                family,
+                kind,
+                who: None,
+            } if kind == "status" => {
+                if let (Some(screen), Some(k)) = (
+                    &mut self.screen,
+                    self.kept
+                        .iter()
+                        .find(|k| k.def.regen.is_some_and(|r| r.family.as_str() == family)),
+                ) && let Some(felt) = &k.def.felt
+                {
+                    screen.push(felt.clone());
+                }
+            }
             // The status screen's first row: its spell lines follow its last, up to the prompt.
             GameEvent::StatusName { .. } => {
                 self.screen = Some(Vec::new());
@@ -292,7 +340,13 @@ impl Mode for Bless {
         let Some((short, at, failed)) = self.casting.take() else {
             return;
         };
-        if failed || outcome == Outcome::TimedOut {
+        if std::mem::take(&mut self.cleared) && !failed {
+            // The old tier is gone; the new one goes on with a second cast, now.
+            if let Some(k) = self.kept.iter_mut().find(|k| k.def.short == short) {
+                k.on_until = None;
+                k.retry_at = None;
+            }
+        } else if failed || outcome == Outcome::TimedOut {
             self.failed(&short, at);
         } else {
             self.turn_on(&short, at);

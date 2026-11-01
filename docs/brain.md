@@ -507,6 +507,22 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
 - **A monster that attacks while resting** wakes the bot: Fight takes the character (in the
   quiet room, if it is there), then Recover carries on and walks home when rested. One that
   arrives and doesn't attack leaves the rest alone.
+- **On a Quicksilver 1.20 server** (C-067, "Rule sets"; `docs/kb/quicksilver-1.20.md` "Rest and
+  meditate") a rest also gives three times the standing mana, Meditate gives rest's HP and five
+  times the standing mana, and both end by themselves once HP and mana are full (a rest with no
+  line, the prompt just loses `(Resting)`; Meditate with `You awake from deep meditation feeling
+  stronger!`). So Recover sends `meditate` where it would send `rest`, whatever is missing; a
+  character without the ability gets no answer at all, and it rests from then on (for the
+  session). With HP and mana full it starts neither (a party's rest is waited out: "Recover:
+  full; waiting"). A rest that ended at full HP is over, not interrupted, and is not sent again;
+  one that ended short of the line is taken up again, as on 1.11p. The party's rest estimates
+  count the mana as 1.20 gives it: three times the standing rate resting, five meditating, the
+  regen tier on added first.
+- **The regen line** (1.20, `spells.keep_regen_buff`, on by default): a caster keeps the best
+  tier of its mana-regeneration line it knows on, as a blessing it chooses itself ("Blessings"),
+  and no other tier of the line, ticked or not (each removes the others). Moving up a tier takes
+  two casts: when the family's end line comes during the cast, the cast only removed the old
+  tier, and the new one is cast again at once. When it wears off it is cast again.
 - **The bot stops itself** when the character dies (`You have been killed!`) and when the
   session leaves the realm, with a warning (and when a log-off under attack finds no way out,
   "Flee", below). Auto-combat goes on in
