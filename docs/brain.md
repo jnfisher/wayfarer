@@ -1122,6 +1122,17 @@ weapon the character's class and race could ever use, and the rest greyed with t
 each scored for a plain attack, a bash and a smash against a set of monsters. It only reads:
 nothing is bought or walked, and the brain sends a plan only when asked. Solo play only.
 
+On a Quicksilver 1.20 server (C-069, "Rule sets"; `docs/kb/quicksilver-1.20.md` "Models") the
+blows are scored with 1.20's rules: the class's `class_melee_pct` at the character's level on the
+min and max damage of every move (a Witchunter 114%, a Ranger 60%, a Ninja 77% up to 40 rising to
+96% at 60), and a crit counting a third past 50 instead of 40. The plan's notes say so ("Quicksilver
+1.20 rules: Witchunter blows at 114% of their range, crits count a third past 50; openings and
+weaves not counted"): a Thief's openings and a hybrid's weaves need the stealth, the backstab
+bonus and the spells, which the plan does not have, so they are left out of the scores. The
+numbers and formulas are `wayfarer_world::balance`, from `crates/wayfarer-world/data/quicksilver-1.20/`
+(`balance.toml`, `class.toml`). The party's rest estimates on 1.20 add the race's regeneration
+(a Human +15% healing and mana, a Dwarf +15% healing, an Elf +15% mana, a Gaunt One +25% mana).
+
 - **The numbers** are the combat model's (`wayfarer_world::combat`, `crates/wayfarer-world`
   README "The combat model"): per weapon, move and monster a `Fight`, then averaged over the set
   with each monster weighted by how many of the set's rooms spawn it (a set of names weighs each

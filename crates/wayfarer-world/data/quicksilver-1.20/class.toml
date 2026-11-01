@@ -1,0 +1,53 @@
+# Quicksilver 1.20.0's per-class damage knobs (docs/plan/quicksilver-1.20/handoff.md sections 6.2
+# and 7.1, the final values of 2026-11-01). Each value is one number (every level) or a list of
+# [level, %] anchor points: a straight line between anchors, flat outside them, never falling as
+# level rises. A class not listed, or a knob a class leaves out, is 100.
+#
+# class_melee_pct  scales the min and max damage of a class's normal blows (not the stab)
+# class_spell_pct  scales its damage spells, after the casting-stat bonus, the weave included
+# class_weave_pct  scales a weaving hybrid's weave on top of class_spell_pct
+
+[Witchunter]
+class_melee_pct = 114
+
+[Paladin]
+class_melee_pct = 88
+
+[Cleric]
+class_melee_pct = 70
+class_weave_pct = 49
+
+[Priest]
+class_spell_pct = 67
+
+[Missionary]
+class_melee_pct = 70
+class_weave_pct = [[30, 70], [40, 86]]
+
+[Ninja]
+class_melee_pct = [[40, 77], [60, 96]]
+
+[Thief]
+class_melee_pct = 96
+
+[Bard]
+class_melee_pct = 70
+class_weave_pct = [[40, 35], [60, 38]]
+
+[Gypsy]
+class_melee_pct = 60
+class_weave_pct = [[30, 50], [40, 68], [60, 122]]
+
+[Warlock]
+class_melee_pct = 70
+class_weave_pct = [[40, 64], [60, 84]]
+
+[Mage]
+class_spell_pct = [[40, 87], [60, 93]]
+
+[Ranger]
+class_melee_pct = 60
+class_weave_pct = 50
+
+[Mystic]
+class_melee_pct = [[40, 50], [60, 77]]

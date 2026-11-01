@@ -326,6 +326,33 @@ pub struct Character<'a> {
     pub encumbrance: i64,
     pub max_energy: i64,
     pub buffs: Vec<Buff>,
+    /// On a Quicksilver 1.20 server, its changes to the blows (C-069); `None` plays 1.11p.
+    pub qs120: Option<Qs120Melee>,
+}
+
+/// Quicksilver 1.20's changes to a character's blows (`docs/kb/quicksilver-1.20.md`
+/// "Models"): its class's `class_melee_pct` on the min and max damage of every normal blow,
+/// the crit counting a third past 50 (1.11p: 40), and the expected extra damage a landed blow
+/// brings: a Thief's openings and a hybrid's weaves ([`crate::balance`]). The extra counts in a
+/// blow's [`Blow::expected_damage`], not in its damage distribution: the kill chances of a
+/// [`Fight`] are the blows' own.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Qs120Melee {
+    pub melee: crate::balance::Pct,
+    pub crit_knee: i64,
+    pub extra_per_hit: f64,
+}
+
+impl Qs120Melee {
+    /// For a character of `class` at `level`, with `extra_per_hit` from openings and weaves.
+    pub fn new(class: &str, level: i64, extra_per_hit: f64) -> Qs120Melee {
+        let b = crate::balance::Balance::qs120();
+        Qs120Melee {
+            melee: b.class(class, crate::balance::ClassKnob::Melee, level),
+            crit_knee: b.crit_knee,
+            extra_per_hit,
+        }
+    }
 }
 
 /// The bonus totals of `update_dynamic_stats` (LJNABIL.C:1230-1385) that combat reads.
@@ -418,8 +445,12 @@ pub struct Fighter {
     pub av: i64,
     /// `mabase` (LJNUTIL.C:4994-5002).
     pub mabase: i64,
-    /// `max(1, mabase + critbonus)` plus the fast-blow bonus, before the 40 rule.
+    /// `max(1, mabase + critbonus)` plus the fast-blow bonus, before the knee.
     pub crit: i64,
+    /// Past this a crit point counts a third: 40 on 1.11p, 50 on 1.20.
+    pub crit_knee: i64,
+    /// 1.20: the expected extra damage of a landed blow (openings, weaves), in thousandths.
+    pub extra_per_hit_milli: i64,
 }
 
 /// The whole square root (`root` in LJNCOMBT.C:719-725).
@@ -478,6 +509,11 @@ impl Fighter {
         }
         min = min.min(max).max(0);
         max = max.max(0) + bonus.damage;
+        // 1.20: the class's damage knob on the normal blows' range.
+        if let Some(q) = c.qs120 {
+            min = q.melee.apply(min);
+            max = q.melee.apply(max);
+        }
 
         // Attack value (LJNCOMBT.C:666-730, :778).
         let armour = c.worn.iter().filter(|i| i.item_type == ITEM_ARMOUR);
@@ -510,6 +546,10 @@ impl Fighter {
             av,
             mabase,
             crit,
+            crit_knee: c.qs120.map_or(CRIT_KNEE, |q| q.crit_knee),
+            extra_per_hit_milli: c
+                .qs120
+                .map_or(0, |q| (q.extra_per_hit * 1000.0).round() as i64),
         }
     }
 
@@ -602,10 +642,19 @@ pub fn dodge_chance(dodge: i64, av: i64) -> i64 {
     chance.min(95)
 }
 
-/// The critical chance after the "a third above 40" rule (LJNCOMBT.C:1346-1348).
+/// Past this a crit point counts a third (1.11p).
+pub const CRIT_KNEE: i64 = 40;
+
+/// The critical chance after the "a third above 40" rule (1.11p).
 pub fn crit_after_rule(crit: i64) -> i64 {
-    if crit > 40 {
-        (crit - 40) / 3 + 40
+    crit_after_knee(crit, CRIT_KNEE)
+}
+
+/// The critical chance after its knee: past `knee` a point counts a third (40 on 1.11p, 50 on
+/// Quicksilver 1.20).
+pub fn crit_after_knee(crit: i64, knee: i64) -> i64 {
+    if crit > knee {
+        (crit - knee) / 3 + knee
     } else {
         crit
     }
@@ -693,7 +742,7 @@ impl Blow {
         let (move_hitmod, bonus, mult) = mv.modifiers();
         let hitmod = move_hitmod + d.defmod;
         let crit = match mv {
-            Move::Attack => crit_after_rule(f.crit),
+            Move::Attack => crit_after_knee(f.crit, f.crit_knee),
             Move::Bash | Move::Smash => 0,
         };
         let (mut min, mut max) = (f.min_damage, f.max_damage);
@@ -750,7 +799,9 @@ impl Blow {
             p_hit,
             p_crit: p_hit * pc,
             p_dodge: p_hit * pd,
-            expected_damage: normal.mean(mult) + crit_part.mean(mult),
+            expected_damage: normal.mean(mult)
+                + crit_part.mean(mult)
+                + (1.0 - zero) * f.extra_per_hit_milli as f64 / 1000.0,
             dist,
         }
     }

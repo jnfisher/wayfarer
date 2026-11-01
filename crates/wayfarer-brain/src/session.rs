@@ -1360,6 +1360,7 @@ impl Session {
             buffs: req.buffs.clone().unwrap_or_default(),
             smash: req.smash.unwrap_or(false),
             filter: req.filter.unwrap_or_default(),
+            qs120: self.detect.rules().qs120(),
         };
         // The routes for the character as it is now (its level shuts the Newhaven gate).
         self.position
@@ -1418,6 +1419,7 @@ impl Session {
             buffs: req.buffs.clone().unwrap_or_default(),
             smash: req.smash.unwrap_or(false),
             filter: wayfarer_proto::GearFilter::All,
+            qs120: self.detect.rules().qs120(),
         };
         self.position
             .refresh(&atlas, &self.character.snapshot(), self.clock.instant());
@@ -3233,22 +3235,27 @@ impl Session {
                 let &(magery, magery_level) = a.class_magery.get(class)?;
                 crate::regen::mana_per_hour(magery, magery_level, level, &stats)
             });
+        let hp = stats
+            .health
+            .map(|h| crate::regen::hp_per_hour(level, i64::from(h)));
         // 1.20: rest gives three times the standing mana and meditate five, the regen tier on
-        // added to the rate first (C-067).
-        let mana = if self.detect.rules().qs120() {
+        // and the race's bonus added to the rate first (C-067, C-069); the race's healing
+        // bonus adds to the HP.
+        if self.detect.rules().qs120() {
+            let race = c
+                .race
+                .as_deref()
+                .map(|r| wayfarer_world::balance::Balance::qs120().race(r))
+                .unwrap_or_default();
             let tier = self.bot.regen_tier_on(self.clock.instant()).unwrap_or(0);
-            mana.map(|m| {
-                crate::regen::qs120_resting_mana(m, tier, self.bot.meditates() == Some(true))
-            })
-        } else {
-            mana
-        };
-        crate::regen::Regen {
-            hp: stats
-                .health
-                .map(|h| crate::regen::hp_per_hour(level, i64::from(h))),
-            mana,
+            let meditating = self.bot.meditates() == Some(true);
+            return crate::regen::Regen {
+                hp: hp.map(|h| h * (100 + race.heal) / 100),
+                mana: mana
+                    .map(|m| crate::regen::qs120_resting_mana(m, tier + race.mana, meditating)),
+            };
         }
+        crate::regen::Regen { hp, mana }
     }
 
     /// A word from the party coordinator for this character's tile (a rank it cannot have).
