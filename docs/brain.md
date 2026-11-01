@@ -123,7 +123,7 @@ server would send commands the server reads as speech.
   kept in the store by server and shown beside the rule set, never acted on by itself.
 - **`guard`** is only ever sent once the session is 1.20 (on 1.11p it is said aloud).
 - **On the wire**: the snapshot's `rule_set` (`rules`, `reason`, `remembered`, `probes`,
-  `help`). The tile header shows `1.20` after the class, `?` while unknown, nothing for 1.11p.
+  `help`). The tile header shows `1.20` after the class once 1.20 is detected, and nothing otherwise.
 
 ## Position and the map
 
