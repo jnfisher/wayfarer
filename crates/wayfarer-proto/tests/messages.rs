@@ -325,6 +325,10 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                     flees: 0,
                     lowest_hp: Some(50),
                     lowest_mana: None,
+                    weaves_resisted: 0,
+                    spell_kills: 0,
+                    intercepts: 0,
+                    no_weave: Vec::new(),
                 }),
                 time: Some(Box::new(TimeSpent {
                     fight_secs: 52,
@@ -337,7 +341,7 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                     away_secs: 0,
                 })),
             },
-            r#"{"type":"stats","session":"kasimir","runs":[{"started_at":"2026-10-19T12:00:00Z","minutes":2,"exp_per_hour":540,"kills":2,"deaths":0,"flees":0,"rests":1,"exp_gained":18}],"samples":[{"at":"2026-10-19T12:01:00Z","exp":355,"hp":30}],"combat":{"since":"2026-10-24T12:00:00Z","swings":4,"accuracy_per_mille":750,"crit_rate_per_mille":333,"rows":[{"kind":"hit","count":2,"per_mille":500,"min":21,"max":84,"avg_tenths":525}],"misses":1,"dodged":0,"glances":0,"backstab_tries":0,"backstab_crits":0,"cast_misses":0,"cast_accuracy_per_mille":0,"kills":1,"flees":0,"lowest_hp":50},"time":{"fight_secs":52,"flee_secs":0,"rest_secs":30,"walk_secs":25,"upkeep_secs":3,"wait_secs":10,"paused_secs":0,"away_secs":0}}"#,
+            r#"{"type":"stats","session":"kasimir","runs":[{"started_at":"2026-10-19T12:00:00Z","minutes":2,"exp_per_hour":540,"kills":2,"deaths":0,"flees":0,"rests":1,"exp_gained":18}],"samples":[{"at":"2026-10-19T12:01:00Z","exp":355,"hp":30}],"combat":{"since":"2026-10-24T12:00:00Z","swings":4,"accuracy_per_mille":750,"crit_rate_per_mille":333,"rows":[{"kind":"hit","count":2,"per_mille":500,"min":21,"max":84,"avg_tenths":525}],"misses":1,"dodged":0,"glances":0,"backstab_tries":0,"backstab_crits":0,"cast_misses":0,"cast_accuracy_per_mille":0,"kills":1,"flees":0,"lowest_hp":50,"weaves_resisted":0,"spell_kills":0,"intercepts":0,"no_weave":[]},"time":{"fight_secs":52,"flee_secs":0,"rest_secs":30,"walk_secs":25,"upkeep_secs":3,"wait_secs":10,"paused_secs":0,"away_secs":0}}"#,
         ),
         (
             ToGateway::SpellPlan {

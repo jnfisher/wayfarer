@@ -61,7 +61,15 @@ export interface CombatLine {
   note: string;
 }
 
-const LABELS: Record<string, string> = { hit: "hit", crit: "crit", backstab: "bs", cast: "cast", round: "round" };
+const LABELS: Record<string, string> = {
+  hit: "hit",
+  crit: "crit",
+  backstab: "bs",
+  cast: "cast",
+  opening: "opening",
+  weave: "weave",
+  round: "round",
+};
 
 function damageLine(r: DamageRow, share: string, note = ""): CombatLine {
   return {
@@ -97,6 +105,10 @@ export function combatLines(c: CombatStats): CombatLine[] {
     } else if (r.kind === "cast") {
       const note = c.cast_misses > 0 ? `${count(c.cast_misses)} failed` : "";
       lines.push(damageLine(r, perCent(c.cast_accuracy_per_mille), note));
+    } else if (r.kind === "opening" || r.kind === "weave") {
+      // Quicksilver 1.20: extra damage after a normal hit; the share is of normal hits.
+      const note = r.kind === "weave" && c.weaves_resisted > 0 ? `${count(c.weaves_resisted)} resisted` : "per hit";
+      lines.push(damageLine(r, perCent(r.per_mille), note));
     } else {
       lines.push(damageLine(r, perCent(r.per_mille)));
     }
@@ -106,6 +118,22 @@ export function combatLines(c: CombatStats): CombatLine[] {
   }
   if (c.round) lines.push(damageLine(c.round, ""));
   return lines;
+}
+
+/** The combat block's last line: kills (the spell kills among them), flees, the blows taken
+ * for a ward, the lowest HP and mana, and the monsters likely immune to the character's
+ * weaves. */
+export function combatSummary(c: CombatStats): string {
+  return [
+    `killed ${count(c.kills)}` + (c.spell_kills > 0 ? ` (${count(c.spell_kills)} by spell)` : ""),
+    `fled ${count(c.flees)}`,
+    c.intercepts > 0 && `took ${count(c.intercepts)} for the ward`,
+    c.lowest_hp !== undefined && `lowest hp ${c.lowest_hp}`,
+    c.lowest_mana !== undefined && `lowest mana ${c.lowest_mana}`,
+    c.no_weave.length > 0 && `never woven into: ${c.no_weave.join(", ")}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /** How long ago `rfc3339` was: "3h 12m", "45m", "2d 4h". */

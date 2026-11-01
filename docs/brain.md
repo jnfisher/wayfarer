@@ -948,6 +948,27 @@ first (half the game's 5 s round; one round's lines arrive together): its damage
 spells, is one round's, 0 for a round of misses. Kills, flees and the lowest HP and mana seen
 are counted too.
 
+On a Quicksilver 1.20 server (C-065, `docs/kb/quicksilver-1.20.md` "Lines") there is more:
+
+- **Openings**: a Thief's `You find an opening and slash rat for 31 damage!` after a normal hit.
+  Its damage counts in the round, but it is no blow: not a swing, a hit or a crit. Its share is
+  of normal hits (hits and crits), which it follows.
+- **Weaves**: a hybrid's `You weave meteor swarm into rat for 75 damage!` after a normal hit,
+  spell damage, `for 0 damage!` included (a landed weave resistance zeroed). `… but it is
+  resisted!` is one resisted weave, no damage, never a miss or a failed cast. Its share is of
+  normal hits too.
+- **Spell kills**: a kill whose last own line was a spell, a cast or a weave.
+- **Intercepts**: `You intercept the orc's attack on Mirelle!`, a blow taken for the ward the
+  character guards. The monster's hit or miss line after it names the guard; the ward's own
+  numbers never see it.
+- **Never woven into**: a monster the character has hit 10 times or more with normal blows and
+  never woven into, once it has woven into something else, is listed: a weave never picks a
+  spell the target is immune to, so the monster likely is. Nothing acts on the list yet.
+- **The round goes on after a stab**: the blows after a `surprise` line in the same round are
+  normal hits and crits.
+- Fight's stalemate counts an opening or a weave that did damage as damage dealt.
+- Another player's openings and weaves count on that player's own numbers, if wayfarer plays it.
+
 The numbers are kept per session in the store (`combat_stats`, as JSON), saved within 5 s of
 a change and when the session goes, so a brain restart loses a few seconds at most (and a
 round still going). Stop, Start, a death, a level-up and restarts leave them; only

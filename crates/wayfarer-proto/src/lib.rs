@@ -332,7 +332,8 @@ pub struct CombatStats {
     pub accuracy_per_mille: u32,
     /// Critical blows (backstabs that crit among them) of those landed.
     pub crit_rate_per_mille: u32,
-    /// `hit`, `crit`, `backstab` and `cast`, those with a count.
+    /// `hit`, `crit`, `backstab` and `cast`, then on a Quicksilver 1.20 server `opening` and
+    /// `weave` (their share is of normal hits, which they follow), those with a count.
     pub rows: Vec<DamageRow>,
     pub misses: u64,
     /// Misses the target dodged (counted in `misses`).
@@ -359,6 +360,19 @@ pub struct CombatStats {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub lowest_mana: Option<i64>,
+    /// Weaves the target resisted (1.20): no damage, not in the `weave` row.
+    #[serde(default)]
+    pub weaves_resisted: u64,
+    /// Kills whose last own line was a spell, a cast or a weave (counted in `kills`).
+    #[serde(default)]
+    pub spell_kills: u64,
+    /// Monster blows taken for the ward the character guards (1.20 `guard`).
+    #[serde(default)]
+    pub intercepts: u64,
+    /// Monsters hit often and never woven into, by a character that weaves into others: likely
+    /// immune to its spells (1.20).
+    #[serde(default)]
+    pub no_weave: Vec<String>,
 }
 
 /// One kind of damage in [`CombatStats`].
@@ -366,7 +380,7 @@ pub struct CombatStats {
 pub struct DamageRow {
     pub kind: String,
     pub count: u64,
-    /// Of all swings (0 for `round`).
+    /// Of all swings; of normal hits for `opening` and `weave`; 0 for `round`.
     pub per_mille: u32,
     pub min: i64,
     pub max: i64,

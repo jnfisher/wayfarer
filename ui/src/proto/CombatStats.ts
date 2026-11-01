@@ -23,7 +23,8 @@ accuracy_per_mille: number,
  */
 crit_rate_per_mille: number, 
 /**
- * `hit`, `crit`, `backstab` and `cast`, those with a count.
+ * `hit`, `crit`, `backstab` and `cast`, then on a Quicksilver 1.20 server `opening` and
+ * `weave` (their share is of normal hits, which they follow), those with a count.
  */
 rows: Array<DamageRow>, misses: number, 
 /**
@@ -53,4 +54,21 @@ cast_accuracy_per_mille: number,
 /**
  * The damage of a round, blows and spells: `kind` is `round`, `count` the rounds.
  */
-round?: DamageRow, kills: number, flees: number, lowest_hp?: number, lowest_mana?: number, };
+round?: DamageRow, kills: number, flees: number, lowest_hp?: number, lowest_mana?: number, 
+/**
+ * Weaves the target resisted (1.20): no damage, not in the `weave` row.
+ */
+weaves_resisted: number, 
+/**
+ * Kills whose last own line was a spell, a cast or a weave (counted in `kills`).
+ */
+spell_kills: number, 
+/**
+ * Monster blows taken for the ward the character guards (1.20 `guard`).
+ */
+intercepts: number, 
+/**
+ * Monsters hit often and never woven into, by a character that weaves into others: likely
+ * immune to its spells (1.20).
+ */
+no_weave: Array<string>, };

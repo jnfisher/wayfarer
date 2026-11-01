@@ -1,8 +1,11 @@
 //! The character's combat numbers (C-050, docs/brain.md "Combat statistics"), in the shape of
 //! MegaMud's Combat tab: its own blows by kind with their damage, its attack spells, the damage
-//! it does in a round, and the monsters block. They build up over every fight, whoever drives,
+//! it does in a round, and the monsters block. On a Quicksilver 1.20 server (C-065) also its
+//! openings and weaves, extra damage after a normal hit that is no blow of its own, the weaves
+//! resisted, the kills a spell made, and the blows it took for a ward it guards. They build up over every fight, whoever drives,
 //! until the player resets them; the [`Ledger`](crate::stats::Ledger) keeps them in the store.
 
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -84,7 +87,35 @@ pub struct Tally {
     pub flees: u64,
     pub lowest_hp: Option<i64>,
     pub lowest_mana: Option<i64>,
+    /// A Thief's openings (1.20): extra damage after a normal hit, not a blow.
+    #[serde(default)]
+    pub openings: Damage,
+    /// A hybrid's weaves that landed (1.20), 0 damage among them: spell damage, not a blow.
+    #[serde(default)]
+    pub weaves: Damage,
+    /// Weaves the target resisted: no damage.
+    #[serde(default)]
+    pub weaves_resisted: u64,
+    /// Kills whose last own line was a spell: a cast or a weave.
+    #[serde(default)]
+    pub spell_kills: u64,
+    /// Monster blows the character took for the ward it guards (1.20 `guard`).
+    #[serde(default)]
+    pub intercepts: u64,
+    /// By monster name: the character's normal hits on it and its weaves into it. A monster
+    /// that takes many hits and no weave from a weaver who weaves elsewhere is likely immune to
+    /// its spells (a weave never picks a spell the target is immune to).
+    #[serde(default)]
+    pub weave_targets: BTreeMap<String, (u64, u64)>,
+    /// The character's last own line was a spell (a cast or a weave): a death now is a spell
+    /// kill. Not kept.
+    #[serde(skip)]
+    last_spell: bool,
 }
+
+/// Normal hits on a monster with no weave into it, from a weaver who has woven elsewhere,
+/// before it is listed as likely immune to the weaver's spells.
+pub const NO_WEAVE_HITS: u64 = 10;
 
 impl Tally {
     fn landed(&self) -> u64 {
@@ -98,6 +129,10 @@ impl Tally {
     fn is_empty(&self) -> bool {
         self.swings() == 0
             && self.cast.count == 0
+            && self.openings.count == 0
+            && self.weaves.count == 0
+            && self.weaves_resisted == 0
+            && self.intercepts == 0
             && self.cast_misses == 0
             && self.backstab_tries == 0
             && self.kills == 0
@@ -198,11 +233,15 @@ impl CombatTally {
         let t = &mut self.tally;
         match ev {
             GameEvent::YouHit {
+                target,
                 damage,
                 crit,
                 backstab,
-                ..
             } => {
+                t.last_spell = false;
+                if !*backstab {
+                    t.weave_targets.entry(target.to_lowercase()).or_default().0 += 1;
+                }
                 if *backstab {
                     t.backstab.add(*damage);
                     if *crit {
@@ -216,6 +255,7 @@ impl CombatTally {
                 self.in_round(*damage, now);
             }
             GameEvent::YouMiss { dodged, .. } => {
+                t.last_spell = false;
                 t.misses += 1;
                 if *dodged {
                     t.dodged += 1;
@@ -223,12 +263,49 @@ impl CombatTally {
                 self.in_round(0, now);
             }
             GameEvent::SwingGlanced { .. } => {
+                t.last_spell = false;
                 t.glances += 1;
                 self.in_round(0, now);
             }
             GameEvent::SpellCast { damage, .. } => {
+                t.last_spell = true;
                 t.cast.add(*damage);
                 self.in_round(*damage, now);
+            }
+            // The character's own opening (1.20): damage on top of the hit before it, in the
+            // round, but no blow and no crit of its own.
+            GameEvent::Opening {
+                who: None,
+                target: Some(_),
+                damage,
+                ..
+            } => {
+                t.last_spell = false;
+                t.openings.add(*damage);
+                self.in_round(*damage, now);
+            }
+            // The character's own weave (1.20): spell damage after a hit, or one resist roll
+            // for the whole proc and no damage.
+            GameEvent::Weave {
+                who: None,
+                target: Some(target),
+                damage,
+                resisted,
+                ..
+            } => {
+                t.last_spell = true;
+                t.weave_targets.entry(target.to_lowercase()).or_default().1 += 1;
+                if *resisted {
+                    t.weaves_resisted += 1;
+                } else {
+                    t.weaves.add(*damage);
+                }
+                self.in_round(*damage, now);
+            }
+            // The character intercepted a blow meant for its ward (1.20 `guard`).
+            GameEvent::Intercept { guard: None, .. } => {
+                t.intercepts += 1;
+                self.dirty = true;
             }
             // A failed cast is an attack cast's miss only in a fight: out of one it is a heal
             // or a blessing.
@@ -264,9 +341,27 @@ impl CombatTally {
         }
     }
 
+    /// A monster died; a spell kill when the character's last own line was a spell.
     pub fn kill(&mut self) {
         self.tally.kills += 1;
+        if std::mem::take(&mut self.tally.last_spell) {
+            self.tally.spell_kills += 1;
+        }
         self.dirty = true;
+    }
+
+    /// The monsters likely immune to the character's spells: [`NO_WEAVE_HITS`] normal hits or
+    /// more and no weave, from a character that has woven into something else.
+    fn no_weave(&self) -> Vec<String> {
+        let t = &self.tally;
+        if t.weaves.count + t.weaves_resisted == 0 {
+            return Vec::new();
+        }
+        t.weave_targets
+            .iter()
+            .filter(|(_, (hits, weaves))| *hits >= NO_WEAVE_HITS && *weaves == 0)
+            .map(|(name, _)| name.clone())
+            .collect()
     }
 
     pub fn flee(&mut self) {
@@ -291,6 +386,13 @@ impl CombatTally {
         .into_iter()
         .filter(|(_, d)| d.count > 0)
         .map(|(k, d)| d.row(k, swings))
+        // Openings and weaves come after a normal hit: their share is of those.
+        .chain(
+            [("opening", &t.openings), ("weave", &t.weaves)]
+                .into_iter()
+                .filter(|(_, d)| d.count > 0)
+                .map(|(k, d)| d.row(k, t.hit.count + t.crit.count)),
+        )
         .collect();
         Some(CombatStats {
             since: crate::stats::rfc3339_at(t.since),
@@ -310,6 +412,10 @@ impl CombatTally {
             flees: t.flees,
             lowest_hp: t.lowest_hp,
             lowest_mana: t.lowest_mana,
+            weaves_resisted: t.weaves_resisted,
+            spell_kills: t.spell_kills,
+            intercepts: t.intercepts,
+            no_weave: self.no_weave(),
         })
     }
 }
@@ -461,5 +567,195 @@ mod tests {
         c.reset(500);
         assert_eq!(c.tally().since, 500);
         assert!(c.to_wire().is_none(), "nothing counted since the reset");
+    }
+
+    fn opening(who: Option<&str>, damage: i64) -> GameEvent {
+        GameEvent::Opening {
+            who: who.map(Into::into),
+            target: Some("giant rat".into()),
+            verb: "slash".into(),
+            damage,
+        }
+    }
+
+    fn weave(target: &str, damage: i64, resisted: bool) -> GameEvent {
+        GameEvent::Weave {
+            who: None,
+            target: Some(target.into()),
+            spell: "meteor swarm".into(),
+            damage,
+            resisted,
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_opening_is_damage_but_no_blow() {
+        let t0 = Instant::now();
+        let mut c = CombatTally::load(None, 0);
+        c.event(&hit(7), true, t0);
+        c.event(&opening(None, 31), true, t0);
+        // Another Thief's opening is not this character's.
+        c.event(&opening(Some("Thornwyn"), 23), true, t0);
+        c.close_round_if_due(t0 + ROUND_SPAN);
+        let t = c.tally();
+        assert_eq!((t.openings.count, t.openings.sum), (1, 31));
+        assert_eq!((t.hit.count, t.crit.count), (1, 0));
+        assert_eq!(t.round.sum, 38, "the round's damage has the opening");
+        let w = c.to_wire().unwrap();
+        assert_eq!(w.swings, 1, "an opening is no swing");
+        assert_eq!(w.crit_rate_per_mille, 0);
+        let opening = w.rows.iter().find(|r| r.kind == "opening").unwrap();
+        assert_eq!(
+            (opening.count, opening.per_mille),
+            (1, 1000),
+            "one per normal hit"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn weaves_resists_and_a_spell_kill() {
+        let t0 = Instant::now();
+        let mut c = CombatTally::load(None, 0);
+        c.event(&hit(10), true, t0);
+        c.event(&weave("giant rat", 75, false), true, t0);
+        c.event(&hit(10), true, t0 + Duration::from_secs(5));
+        c.event(
+            &weave("giant rat", 0, false),
+            true,
+            t0 + Duration::from_secs(5),
+        );
+        c.event(&hit(10), true, t0 + Duration::from_secs(10));
+        c.event(
+            &weave("giant rat", 0, true),
+            true,
+            t0 + Duration::from_secs(10),
+        );
+        c.event(&hit(10), true, t0 + Duration::from_secs(15));
+        c.event(
+            &weave("giant rat", 40, false),
+            true,
+            t0 + Duration::from_secs(15),
+        );
+        c.kill();
+        // A kill by a blow is no spell kill.
+        c.event(&hit(10), true, t0 + Duration::from_secs(20));
+        c.kill();
+        let t = c.tally();
+        assert_eq!((t.weaves.count, t.weaves.sum, t.weaves.min), (3, 115, 0));
+        assert_eq!(t.weaves_resisted, 1);
+        assert_eq!((t.kills, t.spell_kills), (2, 1));
+        let w = c.to_wire().unwrap();
+        assert_eq!(w.swings, 5, "weaves are no swings");
+        assert_eq!((w.weaves_resisted, w.spell_kills), (1, 1));
+        let row = w.rows.iter().find(|r| r.kind == "weave").unwrap();
+        assert_eq!((row.count, row.per_mille), (3, 600));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_round_goes_on_after_a_stab() {
+        let t0 = Instant::now();
+        let mut c = CombatTally::load(None, 0);
+        c.event(
+            &GameEvent::YouHit {
+                target: "giant rat".into(),
+                damage: 140,
+                crit: true,
+                backstab: true,
+            },
+            true,
+            t0,
+        );
+        c.event(&hit(8), true, t0 + Duration::from_millis(20));
+        c.event(
+            &GameEvent::YouHit {
+                target: "giant rat".into(),
+                damage: 30,
+                crit: true,
+                backstab: false,
+            },
+            true,
+            t0 + Duration::from_millis(40),
+        );
+        c.close_round_if_due(t0 + ROUND_SPAN);
+        let t = c.tally();
+        assert_eq!((t.backstab.count, t.backstab_crits), (1, 1));
+        assert_eq!((t.hit.count, t.crit.count), (1, 1));
+        assert_eq!((t.round.count, t.round.sum), (1, 178));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn intercepts_count_for_the_guard_only() {
+        let t0 = Instant::now();
+        let mut c = CombatTally::load(None, 0);
+        c.event(
+            &GameEvent::Intercept {
+                guard: None,
+                monster: "orc".into(),
+                ward: Some("Mirelle".into()),
+            },
+            true,
+            t0,
+        );
+        // The ward's view and the room's: not this character's blows.
+        c.event(
+            &GameEvent::Intercept {
+                guard: Some("Brannoc".into()),
+                monster: "orc".into(),
+                ward: None,
+            },
+            true,
+            t0,
+        );
+        c.event(
+            &GameEvent::Intercept {
+                guard: Some("Brannoc".into()),
+                monster: "orc".into(),
+                ward: Some("Mirelle".into()),
+            },
+            true,
+            t0,
+        );
+        assert_eq!(c.tally().intercepts, 1);
+        assert_eq!(c.to_wire().unwrap().intercepts, 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_monster_never_woven_into_is_listed() {
+        let t0 = Instant::now();
+        let mut c = CombatTally::load(None, 0);
+        for _ in 0..NO_WEAVE_HITS {
+            c.event(
+                &GameEvent::YouHit {
+                    target: "Ghost".into(),
+                    damage: 5,
+                    crit: false,
+                    backstab: false,
+                },
+                true,
+                t0,
+            );
+        }
+        assert!(
+            c.to_wire().unwrap().no_weave.is_empty(),
+            "no weave anywhere yet: not a weaver"
+        );
+        c.event(&hit(5), true, t0);
+        c.event(&weave("rat", 12, false), true, t0);
+        assert_eq!(c.to_wire().unwrap().no_weave, ["ghost"]);
+    }
+
+    #[test]
+    fn a_tally_kept_before_1_20_loads() {
+        let old = r#"{"since":5,"hit":{"count":1,"min":4,"max":4,"sum":4},
+            "crit":{"count":0,"min":0,"max":0,"sum":0},
+            "backstab":{"count":0,"min":0,"max":0,"sum":0},"backstab_crits":0,
+            "backstab_tries":0,"glances":0,"misses":0,"dodged":0,
+            "cast":{"count":0,"min":0,"max":0,"sum":0},"cast_misses":0,
+            "round":{"count":0,"min":0,"max":0,"sum":0},"kills":3,"flees":0,
+            "lowest_hp":null,"lowest_mana":null}"#;
+        let c = CombatTally::load(Some(old), 99);
+        let t = c.tally();
+        assert_eq!((t.since, t.hit.count, t.kills), (5, 1, 3));
+        assert_eq!((t.openings.count, t.weaves.count, t.intercepts), (0, 0, 0));
     }
 }
