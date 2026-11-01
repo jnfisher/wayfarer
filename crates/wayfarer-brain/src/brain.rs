@@ -59,10 +59,14 @@ pub struct Atlas {
     pub knowledge: PathKnowledge,
     /// Rooms, places and monsters by name (`find`), and the boss lairs.
     pub finder: Finder,
-    /// The attack and heal spells of the player classes.
+    /// The attack and heal spells of the player classes, as stock 1.11p has them.
     pub spells: Spells,
+    /// The same as a Quicksilver 1.20 server has them (C-066).
+    pub spells_qs120: Spells,
     /// The scrolls shops sell, and each class's (magery, magery level).
     pub scrolls: Vec<wayfarer_world::spellshop::ScrollOffer>,
+    /// The scrolls a Quicksilver 1.20 server's shops sell.
+    pub scrolls_qs120: Vec<wayfarer_world::spellshop::ScrollOffer>,
     pub class_magery: HashMap<String, (i64, i64)>,
     /// The Bank of Godfrey in Silvermere: where the spell shopping draws money, never another
     /// bank (John, 2026-10-22).
@@ -87,6 +91,28 @@ const SHOP_BANK: i64 = 7;
 const SHOP_TRAINING: i64 = 8;
 
 impl Atlas {
+    /// The spells as the server plays them: 1.20's only once it is known to play 1.20
+    /// (docs/brain.md "Rule sets").
+    pub fn spells_for(&self, rules: wayfarer_world::RuleSet) -> &Spells {
+        if rules.qs120() {
+            &self.spells_qs120
+        } else {
+            &self.spells
+        }
+    }
+
+    /// The scrolls for sale as the server plays them.
+    pub fn scrolls_for(
+        &self,
+        rules: wayfarer_world::RuleSet,
+    ) -> &[wayfarer_world::spellshop::ScrollOffer] {
+        if rules.qs120() {
+            &self.scrolls_qs120
+        } else {
+            &self.scrolls
+        }
+    }
+
     pub fn load(pack: &WorldPack) -> Result<Atlas, wayfarer_world::Error> {
         let mut graph = RoomGraph::load(pack)?;
         // What MegaMud's paths know: the phrases Text exits with a blank message take, and the
@@ -181,7 +207,9 @@ impl Atlas {
             mm_loops,
             knowledge,
             spells: Spells::load(pack)?,
+            spells_qs120: Spells::load_qs120(pack)?,
             scrolls: wayfarer_world::spellshop::load(pack)?,
+            scrolls_qs120: wayfarer_world::spellshop::load_qs120(pack)?,
             item_numbers: item_names
                 .iter()
                 .map(|(n, name)| (name.to_lowercase(), *n))

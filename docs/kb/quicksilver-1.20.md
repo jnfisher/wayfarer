@@ -72,3 +72,50 @@ forms, so they are tried before every stock pattern (50 and up) [Q].
   your target here`, `... is not in your gang`) [C, the stock package searched 2026-11-01].
   Wayfarer still counts them as 1.20 only right after a `guard` it sent, in case a sysop's own
   text matches.
+
+## Spells
+
+The data is wayfarer's `crates/wayfarer-world/data/quicksilver-1.20/` (its `PROVENANCE.md` says
+where each file comes from).
+
+- **Spell Mod v2.1.** The Mage, Priest and Druid player spells carry Spell Mod v2.1's values: 132
+  of the 219 spells in those books differ from 1.11p (damage minimums grow with level, caps
+  raised, the alignment nukes brought level, area spells up about 15-30% at their caps, buffs
+  longer, a few big heals raised; mana costs almost unchanged) [Q].
+- **Renamed.** Spell 24 detect magic is **protective aura** (Mage, level 5, 10 mana: magic
+  resistance +4+L/5 to +3+L/2 for 20+2L/3 rounds, cap 30); item 121, the scroll that taught it,
+  is `scroll of protective aura`. Spell 1056 dark plague is **dark binding** (Druid, level 50) [Q].
+- **Slow (59) and solid fog (282)** no longer add energy use from their strength, for players
+  and monsters alike [Q].
+- **Caps at 65.** Every Mage, Priest and Druid player spell that grows with level and whose cap
+  was above 65 or none is capped at 65, 825 (a Priest chant), 1379 ice shield and 1380 fire
+  shield among them [Q].
+- **Unchanged**: songs, kai and every other class's spells, but for the four regen songs [Q].
+- **The regen line** (6000-6020): each caster family gets fixed mana-regeneration self-buffs at
+  levels 5, 20, 35 and 50 (mana 4, 8, 12, 16; 120, 150, 180, 200 rounds; difficulty 0, -20, -40,
+  -60), adding a fixed amount to Alter Mana Regeneration, no roll, no growth, no energy. The full
+  casters get +50/+100/+150/+200%; the Gypsy and Warlock, the Cleric and Missionary, and the Bard
+  get +25/+50/+75/+100%; the Paladin and Ranger get none. The level-35 tiers are the stock spells
+  rewritten: mana flux (Mage, moved from level 16), nature tap (Druid, from 32), and serenity
+  (good) and profane link (evil) for the Priest, each now a fixed +150% for 180 rounds at 12
+  mana [Q].
+- **Tiers replace each other in two casts.** Each tier removes every other tier of its family
+  (full and half lines); a cast while another tier is up removes it and ends there, and a second
+  cast lands the new tier. Serenity and profane link don't remove each other: their alignment
+  gates keep them apart [Q].
+- **Scrolls and shops.** Items 5100-5120 teach 6000-6020 in order; 5121 mana flux, 5122 nature
+  tap, 5123 profane link; serenity keeps its stock scroll. The shops and prices are in
+  `regen.csv`; markups are the shops' own (Newhaven Spell Shop and Orfeo's Stuff none, the others
+  100%); stock is small high up (Nekojin 2, Very Powerful Spells 1, Jorah's 5), so a tier can be
+  sold out. A shop sells a scroll to anyone; a class that can't use it is told `You may not use
+  that item!` [Q].
+- **Texts.** The new tiers share four message sets, one per family (cast to the caster and the
+  room, the "when it ends" line, the status line), in `texts.csv`; mana flux, nature tap,
+  serenity and profane link keep their stock texts, and mana flux's old start text, `You draw
+  power from the mana surrounding you!`, is now its cast text [Q].
+- **The monster copies** (5000-5056): monsters cast their own copies of the player spells they
+  use, each its 1.11p original under the same name, so Spell Mod never reaches them. No player
+  learns, buys or casts one; whatever removes or negates the original removes the copy too [Q].
+- **Missing from the handoff's table:** the four regen songs' own rows (6017-6020). Wayfarer's
+  `songs.csv` builds them from the tier table: magery Bard, magery level 0, self, type 3; their
+  status lines are the song family's [Q, built; the rows asked for].

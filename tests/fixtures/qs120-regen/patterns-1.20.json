@@ -1,0 +1,150 @@
+{
+  "version": "1.20.0",
+  "source": "docs/plan/quicksilver-1.20/handoff.md, section 3.8",
+  "static": [
+    {
+      "name": "regen_attunement_cast",
+      "cat": "spell",
+      "rx": "You attune your mind to the flow of mana\\.",
+      "example": "You attune your mind to the flow of mana.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "regen_attunement_room",
+      "cat": "spell",
+      "rx": "(?P<who>[A-Z][A-Za-z]+) attunes to the flow of mana\\.",
+      "example": "Thornwyn attunes to the flow of mana.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "regen_attunement_ends",
+      "cat": "spell",
+      "rx": "Your attunement to the mana fades\\.",
+      "example": "Your attunement to the mana fades.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "regen_attunement_status",
+      "cat": "spell",
+      "rx": "You are attuned to the flow of mana\\.",
+      "example": "You are attuned to the flow of mana.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "regen_devotion_cast",
+      "cat": "spell",
+      "rx": "You bow your head in quiet devotion\\.",
+      "example": "You bow your head in quiet devotion.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "regen_devotion_room",
+      "cat": "spell",
+      "rx": "(?P<who>[A-Z][A-Za-z]+) bows their head in quiet devotion\\.",
+      "example": "Thornwyn bows their head in quiet devotion.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "regen_devotion_ends",
+      "cat": "spell",
+      "rx": "Your devotion wanes\\.",
+      "example": "Your devotion wanes.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "regen_devotion_status",
+      "cat": "spell",
+      "rx": "Your devotion renews your power\\.",
+      "example": "Your devotion renews your power.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "regen_communion_cast",
+      "cat": "spell",
+      "rx": "You commune with the living world around you\\.",
+      "example": "You commune with the living world around you.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "regen_communion_room",
+      "cat": "spell",
+      "rx": "(?P<who>[A-Z][A-Za-z]+) communes with the living world\\.",
+      "example": "Thornwyn communes with the living world.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "regen_communion_ends",
+      "cat": "spell",
+      "rx": "Your communion with nature ends\\.",
+      "example": "Your communion with nature ends.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "regen_communion_status",
+      "cat": "spell",
+      "rx": "You are in communion with nature\\.",
+      "example": "You are in communion with nature.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "regen_song_cast",
+      "cat": "spell",
+      "rx": "You hum a slow, dreaming melody\\.",
+      "example": "You hum a slow, dreaming melody.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "regen_song_room",
+      "cat": "spell",
+      "rx": "(?P<who>[A-Z][A-Za-z]+) hums a slow, dreaming melody\\.",
+      "example": "Thornwyn hums a slow, dreaming melody.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "regen_song_ends",
+      "cat": "spell",
+      "rx": "The melody in your mind fades\\.",
+      "example": "The melody in your mind fades.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "regen_song_status",
+      "cat": "spell",
+      "rx": "A dreaming melody fills your mind\\.",
+      "example": "A dreaming melody fills your mind.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    }
+  ]
+}

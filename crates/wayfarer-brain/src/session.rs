@@ -607,6 +607,7 @@ impl Session {
             self.synced = false;
             // A login: the server may have been rebuilt since the last.
             self.detect.new_login();
+            self.relearn();
         }
         if state == SessionState::Realm && !self.synced && self.resync == Resync::Off {
             self.request_resync();
@@ -1193,7 +1194,8 @@ impl Session {
             &self.position.traveller,
             &atlas.exit_items,
         );
-        let items = wayfarer_world::spellshop::plan(&atlas.scrolls, who, &known, cash, |rooms| {
+        let scrolls = atlas.scrolls_for(self.detect.rules());
+        let items = wayfarer_world::spellshop::plan(scrolls, who, &known, cash, |rooms| {
             rooms
                 .iter()
                 .filter_map(|k| dist.get(k).map(|d| (*d, *k)))
@@ -3375,7 +3377,7 @@ impl Session {
     /// How many re-sync commands this character sends: `spells` only if its class casts.
     fn resync_len(&self) -> usize {
         let casts = match (&self.atlas, &self.character.state().class) {
-            (Some(atlas), Some(class)) => atlas.spells.casts(class),
+            (Some(atlas), Some(class)) => atlas.spells_for(self.detect.rules()).casts(class),
             _ => false,
         };
         if casts {
@@ -3402,8 +3404,16 @@ impl Session {
                 .push((*level, *mana, short.clone(), name.clone())),
             _ => return,
         }
+        self.relearn();
+    }
+
+    /// The spellbook and the blessings again, from the `spells` screen, with the spells as the
+    /// server plays them: on a new screen, and when the rule set is decided (the screen often
+    /// comes before).
+    fn relearn(&mut self) {
         if let (Some(atlas), Some(class)) = (&self.atlas, &self.character.state().class) {
-            self.spellbook = Spellbook::learn(&atlas.spells, class, &self.spell_rows);
+            let spells = atlas.spells_for(self.detect.rules());
+            self.spellbook = Spellbook::learn(spells, class, &self.spell_rows);
         }
         self.refresh_blessings();
     }
@@ -3422,7 +3432,11 @@ impl Session {
         };
         self.spell_rows
             .iter()
-            .filter_map(|(_, _, short, name)| atlas.spells.buff(class, short, name))
+            .filter_map(|(_, _, short, name)| {
+                atlas
+                    .spells_for(self.detect.rules())
+                    .buff(class, short, name)
+            })
             .cloned()
             .collect()
     }
@@ -3662,6 +3676,8 @@ impl Session {
             return;
         };
         self.ledger.save_rule_set(&self.server, rules, &why);
+        // The spells the server has: 1.20's from now on.
+        self.relearn();
         // 1.11p is how every session plays until it knows: only 1.20 changes anything.
         if rules == RuleSet::Qs120 {
             out.push(self.notice(&format!("The server plays Quicksilver 1.20 ({why})")));

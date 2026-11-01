@@ -6,7 +6,8 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use crate::Error;
-use crate::pack::WorldPack;
+use crate::pack::{Spell, WorldPack};
+use crate::qs120;
 
 /// Ability numbers in a spell's `abilities` (`kb/spells.md`).
 const ABILITY_DAMAGE: i64 = 17;
@@ -14,6 +15,8 @@ const ABILITY_HEAL: i64 = 18;
 /// Descriptive Message: its value in `abilvals` is a message whose texts are the line shown
 /// when the spell ends, nothing, and the line its target sees when it is cast.
 const ABILITY_DESCRIPTIVE: i64 = 115;
+/// Remove Spell: its value is a spell the cast removes (a regen tier removes the others).
+const ABILITY_REMOVE_SPELL: i64 = 122;
 
 /// A lasting spell a character can keep on itself or its party (C-047): a general spell (type
 /// 3) with a duration, cast on the caster (target 1, 2, 6) or its party (10, 13).
@@ -32,8 +35,24 @@ pub struct BuffDef {
     /// The line shown when it ends ("The effects of bless wear off!"), when it has one with no
     /// `%s` in it.
     pub wear_off: Option<String>,
-    /// The line its target sees when it is cast ("You feel lucky!"), likewise.
+    /// The line its target sees when it is cast ("You feel lucky!"), likewise; for a 1.20
+    /// regen tier, the line the status screen shows while it is on.
     pub felt: Option<String>,
+    /// The spell's number.
+    pub number: i64,
+    /// The spells a cast of it removes (ability 122).
+    pub removes: Vec<i64>,
+    /// On a Quicksilver 1.20 server, a spell of the regen line: its family and what it adds to
+    /// mana regeneration.
+    pub regen: Option<RegenTier>,
+}
+
+/// A regen-line spell's place in its family (`docs/kb/quicksilver-1.20.md` "Spells").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RegenTier {
+    pub family: qs120::Family,
+    /// Added to Alter Mana Regeneration, per cent.
+    pub regen_pct: i64,
 }
 
 impl BuffDef {
@@ -70,7 +89,16 @@ impl BuffDef {
             level_cap: 0,
             wear_off: Some(format!("The effects of {name} wear off!")),
             felt: None,
+            number: 0,
+            removes: Vec::new(),
+            regen: None,
         }
+    }
+
+    /// Whether casting it removes `other` (1.20: a regen tier removes every other tier of its
+    /// family, and the cast that removed one ends there).
+    pub fn replaces(&self, other: &BuffDef) -> bool {
+        other.number != 0 && self.removes.contains(&other.number)
     }
 }
 
@@ -160,10 +188,21 @@ pub struct Spells {
 }
 
 impl Spells {
+    /// The pack's spells, as stock 1.11p has them.
     pub fn load(pack: &WorldPack) -> Result<Spells, Error> {
+        Self::from_rows(pack, pack.spells()?, false)
+    }
+
+    /// The spells as a Quicksilver 1.20 server has them ([`qs120::spells`]): Spell Mod v2.1,
+    /// protective aura and dark binding, the regen line; no monster copy.
+    pub fn load_qs120(pack: &WorldPack) -> Result<Spells, Error> {
+        Self::from_rows(pack, qs120::spells(pack)?, true)
+    }
+
+    fn from_rows(pack: &WorldPack, rows: Vec<Spell>, qs120: bool) -> Result<Spells, Error> {
         let mut spells = Vec::new();
         let mut buffs = Vec::new();
-        for s in pack.spells()? {
+        for s in rows {
             let Ok(v) = serde_json::from_str::<Value>(&s.raw) else {
                 continue;
             };
@@ -201,6 +240,20 @@ impl Spells {
                     let t = t.trim();
                     (!t.is_empty() && !t.contains('%')).then(|| t.to_owned())
                 };
+                let removes: Vec<i64> = ints("abilities")
+                    .iter()
+                    .zip(ints("abilvals"))
+                    .filter(|(a, _)| **a == ABILITY_REMOVE_SPELL)
+                    .map(|(_, v)| v)
+                    .filter(|&v| v > 0)
+                    .collect();
+                // A regen-line spell (1.20 only): its lines are 1.20's own, not the pack's.
+                let regen = qs120.then(|| qs120::regen_spell(s.number)).flatten();
+                // The new tiers have their family's texts; mana flux, nature tap, serenity and
+                // profane link keep their stock ones.
+                let texts = regen
+                    .filter(|r| r.number >= 6000)
+                    .and_then(|r| qs120::texts_of(r.family));
                 buffs.push(BuffDef {
                     name: s.name.clone(),
                     short: s.short_name.clone(),
@@ -216,8 +269,19 @@ impl Spells {
                         int("durlvl"),
                     ),
                     level_cap: int("levelcap"),
-                    wear_off: message.as_ref().and_then(|m| plain(&m[0])),
-                    felt: message.as_ref().and_then(|m| plain(&m[2])),
+                    wear_off: texts
+                        .map(|t| t.ends.clone())
+                        .or_else(|| message.as_ref().and_then(|m| plain(&m[0]))),
+                    // What the status screen shows while it is on (bless.rs reads it there).
+                    felt: texts
+                        .map(|t| t.status.clone())
+                        .or_else(|| message.as_ref().and_then(|m| plain(&m[2]))),
+                    number: s.number,
+                    removes,
+                    regen: regen.map(|r| RegenTier {
+                        family: r.family,
+                        regen_pct: r.regen_pct,
+                    }),
                 });
                 continue;
             }

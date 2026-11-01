@@ -1,0 +1,26 @@
+num,name,short,family,line,level,regen_pct,casters,scroll_item,scroll,shop,shop_name,cost,currency
+6000,lesser attunement,latt,attunement,full,5,50,Mage,5100,scroll of lesser attunement,48,Newhaven Spell Shop,20,2
+6001,arcane attunement,aatt,attunement,full,20,100,Mage,5101,scroll of arcane attunement,174,Jorah's Mage Spells,600,2
+406,mana flux,flux,attunement,full,35,150,Mage,5121,scroll of mana flux,111,Nekojin Village Store,3500,2
+6002,greater attunement,gatt,attunement,full,50,200,Mage,5102,scroll of greater attunement,111,Nekojin Village Store,5000,2
+6009,minor attunement,mnat,attunement,half,5,25,Gypsy/Warlock,5109,scroll of minor attunement,48,Newhaven Spell Shop,20,2
+6010,modest attunement,mdat,attunement,half,20,50,Gypsy/Warlock,5110,scroll of modest attunement,174,Jorah's Mage Spells,600,2
+6011,steady attunement,stat,attunement,half,35,75,Gypsy/Warlock,5111,scroll of steady attunement,174,Jorah's Mage Spells,3500,2
+6012,deep attunement,dpat,attunement,half,50,100,Gypsy/Warlock,5112,scroll of deep attunement,174,Jorah's Mage Spells,5000,2
+6003,lesser devotion,ldev,devotion,full,5,50,Priest,5103,scroll of lesser devotion,48,Newhaven Spell Shop,20,2
+6004,devotion,devo,devotion,full,20,100,Priest,5104,scroll of devotion,173,Jorah's Priest Spells,600,2
+1377,serenity,nity,devotion,full,35,150,Priest,,,75,Very Powerful Spells,2750,2
+1378,profane link,prfl,devotion,full,35,150,Priest,5123,scroll of profane link,75,Very Powerful Spells,2750,2
+6005,greater devotion,gdev,devotion,full,50,200,Priest,5105,scroll of greater devotion,111,Nekojin Village Store,5000,2
+6013,minor devotion,mndv,devotion,half,5,25,Cleric/Missionary,5113,scroll of minor devotion,48,Newhaven Spell Shop,20,2
+6014,modest devotion,mddv,devotion,half,20,50,Cleric/Missionary,5114,scroll of modest devotion,173,Jorah's Priest Spells,600,2
+6015,steady devotion,stdv,devotion,half,35,75,Cleric/Missionary,5115,scroll of steady devotion,173,Jorah's Priest Spells,2750,2
+6016,deep devotion,dpdv,devotion,half,50,100,Cleric/Missionary,5116,scroll of deep devotion,173,Jorah's Priest Spells,5000,2
+6006,lesser communion,lcom,communion,full,5,50,Druid,5106,scroll of lesser communion,48,Newhaven Spell Shop,20,2
+6007,communion,comm,communion,full,20,100,Druid,5107,scroll of communion,73,"Jorah's Tower, Druid Spells",700,2
+854,nature tap,ntap,communion,full,35,150,Druid,5122,scroll of nature tap,111,Nekojin Village Store,3500,2
+6008,greater communion,gcom,communion,full,50,200,Druid,5108,scroll of greater communion,111,Nekojin Village Store,5000,2
+6017,song of reverie,reve,song,song,5,25,Bard,5117,songsheet of reverie,37,Bard Song Store,20,2
+6018,song of rapture,rptr,song,song,20,50,Bard,5118,songsheet of rapture,93,Orfeo's Stuff,50,3
+6019,song of stillness,stil,song,song,35,75,Bard,5119,songsheet of stillness,93,Orfeo's Stuff,80,3
+6020,song of transcendence,tran,song,song,50,100,Bard,5120,songsheet of transcendence,93,Orfeo's Stuff,120,3

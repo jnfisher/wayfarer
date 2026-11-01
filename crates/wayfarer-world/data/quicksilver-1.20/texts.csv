@@ -1,0 +1,5 @@
+family,cast_you,cast_room,ends,status
+attunement,You attune your mind to the flow of mana.,%s attunes to the flow of mana.,Your attunement to the mana fades.,You are attuned to the flow of mana.
+devotion,You bow your head in quiet devotion.,%s bows their head in quiet devotion.,Your devotion wanes.,Your devotion renews your power.
+communion,You commune with the living world around you.,%s communes with the living world.,Your communion with nature ends.,You are in communion with nature.
+song,"You hum a slow, dreaming melody.","%s hums a slow, dreaming melody.",The melody in your mind fades.,A dreaming melody fills your mind.

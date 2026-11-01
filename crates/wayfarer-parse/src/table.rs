@@ -10,8 +10,11 @@ use serde::Deserialize;
 
 const PATTERNS_JSON: &str = include_str!("../../../tests/fixtures/parse-golden/patterns.json");
 const STATIC_ORDER: &str = include_str!("../../../tests/fixtures/parse-golden/static-order.txt");
-/// The lines Quicksilver 1.20 adds (`docs/plan/quicksilver-1.20/handoff.md` section 3).
+/// The lines Quicksilver 1.20 adds (`docs/plan/quicksilver-1.20/handoff.md` section 3), and
+/// its regen line's spell texts (section 3.8).
 const QS120_JSON: &str = include_str!("../../../tests/fixtures/qs120/patterns-1.20.json");
+const QS120_REGEN_JSON: &str =
+    include_str!("../../../tests/fixtures/qs120-regen/patterns-1.20.json");
 
 #[derive(Debug, Deserialize)]
 pub struct Table {
@@ -58,9 +61,14 @@ struct RulesTable {
 pub fn qs120() -> &'static [RulesStatic] {
     static QS120: OnceLock<Vec<RulesStatic>> = OnceLock::new();
     QS120.get_or_init(|| {
-        let t: RulesTable =
-            serde_json::from_str(QS120_JSON).expect("embedded patterns-1.20.json parses");
-        t.statics
+        [QS120_JSON, QS120_REGEN_JSON]
+            .into_iter()
+            .flat_map(|json| {
+                let t: RulesTable =
+                    serde_json::from_str(json).expect("embedded patterns-1.20.json parses");
+                t.statics
+            })
+            .collect()
     })
 }
 
