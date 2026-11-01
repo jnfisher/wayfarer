@@ -578,6 +578,14 @@ pub enum GameEvent {
         required: i64,
         have: i64,
     },
+    /// `regen_<family>_<kind>` (1.20): a regen-line spell's line. `family`: `attunement`,
+    /// `devotion`, `communion` or `song`; `kind`: `cast` (the caster's own), `room` (`who`
+    /// cast one), `ends` (the caster's wore off) or `status` (the status screen shows it on).
+    RegenLine {
+        family: String,
+        kind: String,
+        who: Option<String>,
+    },
 
     /// A line nothing recognised (category `unclassified`).
     Unknown {
@@ -911,6 +919,14 @@ impl GameEvent {
             "guard_not_party" => G::GuardRefused { why: "not_party" },
             "guard_self" => G::GuardRefused { why: "self" },
             "guard_resting" => G::GuardRefused { why: "resting" },
+            name if name.starts_with("regen_") => match name[6..].split_once('_') {
+                Some((family, kind)) => G::RegenLine {
+                    family: family.to_owned(),
+                    kind: kind.to_owned(),
+                    who: person(ev, "who"),
+                },
+                None => G::Other(ev.clone()),
+            },
             "look_weapon_strreq" => match (int(ev, "str"), int(ev, "have")) {
                 (Some(required), Some(have)) => G::StrRequirement { required, have },
                 _ => G::Other(ev.clone()),

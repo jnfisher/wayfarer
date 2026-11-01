@@ -1,0 +1,5 @@
+num,name,short,magery,mlvl,level,mana,energy,diff,target,type,resmode,element,min,min+/lvls,max,max+/lvls,cap,dur,dur+/lvls,abilities,change
+6017,song of reverie,reve,Bard,0,5,4,0,0,1,3,1,4,25,-,25,-,-,120,-,145:25 122:6018 122:6019 122:6020,new (regen line)
+6018,song of rapture,rptr,Bard,0,20,8,0,-20,1,3,1,4,50,-,50,-,-,150,-,145:50 122:6017 122:6019 122:6020,new (regen line)
+6019,song of stillness,stil,Bard,0,35,12,0,-40,1,3,1,4,75,-,75,-,-,180,-,145:75 122:6017 122:6018 122:6020,new (regen line)
+6020,song of transcendence,tran,Bard,0,50,16,0,-60,1,3,1,4,100,-,100,-,-,200,-,145:100 122:6017 122:6018 122:6019,new (regen line)

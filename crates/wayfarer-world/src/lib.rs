@@ -23,6 +23,7 @@ pub mod mm;
 pub mod monsters;
 pub mod nav;
 pub mod pack;
+pub mod qs120;
 pub mod route;
 pub mod rule_set;
 pub mod schema;
@@ -49,7 +50,7 @@ pub use route::{
     pocket_exits, route, route_buying, route_or_search, route_within, route_within_or_search,
 };
 pub use rule_set::RuleSet;
-pub use spells::{BuffDef, SpellDef, SpellKind, Spells};
+pub use spells::{BuffDef, RegenTier, SpellDef, SpellKind, Spells};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

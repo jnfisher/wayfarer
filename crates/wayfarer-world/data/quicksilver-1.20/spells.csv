@@ -1,0 +1,237 @@
+num,name,short,magery,mlvl,level,mana,energy,diff,target,type,resmode,element,min,min+/lvls,max,max+/lvls,cap,dur,dur+/lvls,abilities,change
+1,magic missile,mmis,Mage,1,1,1,1000,15,8,0,0,4,6,1/1,15,1/1,9,0,-,17:0,changed: min max cap maxlvls mininc minlvls
+2,illuminate,illu,Mage,1,2,4,0,5,1,3,0,4,4012,-,4012,-,-,0,-,148:0,""
+4,ethereal shield,shld,Mage,1,5,6,0,-5,1,3,0,4,3,1/2,3,1/2,18,60,3/1,10:0 115:8531 122:132 7:10 122:1046 122:1004 122:1041,removes the monster copy too
+5,frost jet,fjet,Mage,1,4,2,1000,5,8,0,0,0,8,1/1,17,1/1,13,0,-,17:0,changed: mana max cap mininc minlvls
+6,resist cold,rcol,Mage,1,4,6,0,0,2,3,1,0,6,1/1,6,1/2,18,70,-,3:0 115:8526 122:9 122:28 122:29 122:897 122:792,""
+7,smite,smit,Mage,1,3,4,0,5,2,3,1,4,1,1/10,1,1/10,30,60,2/1,4:0 115:8532,""
+8,lightning bolt,lbol,Mage,1,8,5,1000,0,8,0,0,3,12,1/1,20,2/1,18,0,-,17:0,changed: min max cap mininc minlvls
+9,resist fire,rfir,Mage,1,6,8,0,-5,2,3,1,4,4,1/1,4,1/2,22,70,-,5:0 115:8527 122:6 122:28 122:29 122:1013 122:897 122:792,""
+12,harm,harm,Priest,0,1,1,1000,15,8,0,2,4,4,1/1,13,1/1,9,0,0/1,17:0 108:0,changed: cap mininc minlvls
+13,minor healing,mihe,Priest,0,1,2,0,10,2,3,1,4,2,1/3,8,2/3,10,0,-,18:0 108:0,""
+14,bless,bles,Priest,0,2,4,0,5,2,3,1,4,3,-,3,-,20,40,5/1,22:0 115:8539 122:15 122:75 122:23 122:62 122:146 122:668,""
+15,curse,curs,Priest,0,2,4,0,5,8,3,2,4,-6,-,-6,-,20,40,5/1,22:0 52:5 115:8540 122:14 122:23,""
+16,spiritual hammer,hamm,Priest,0,4,3,1000,5,8,0,0,4,5,1/1,14,1/1,13,0,0/1,17:0,changed: min cap mininc minlvls
+17,major healing,mahe,Priest,0,8,6,0,-5,2,3,1,4,6,1/3,10,1/1,30,0,0/1,18:0 108:0,""
+18,turn undead,turn,Priest,0,3,4,1000,0,4,0,0,4,12,1/1,15,3/1,21,0,0/1,1:0 23:0,changed: desc cap
+19,cure poison,cure,Priest,0,7,8,0,-10,2,3,1,4,8,-,8,-,30,0,0/1,20:0 73:19 122:794 122:798,""
+20,holy aura,aura,Priest,3,9,15,0,-10,13,3,1,4,10,-,10,-,42,60,0/1,24:0 97:0 115:8541,changed: cap
+21,unholy aura,unho,Priest,3,9,15,0,-10,13,3,1,4,10,-,10,-,37,60,0/1,25:0 98:0 115:8542,changed: cap
+22,agony,agon,Priest,0,8,5,1000,0,8,0,0,4,8,1/1,14,2/1,18,0,-,17:0 108:0,changed: min max resmode cap maxinc mininc minlvls durlvls
+23,chant,chan,Priest,0,6,10,0,-5,13,3,1,4,3,-,3,-,65,40,5/1,22:0 115:8539 122:75 122:15 122:14,changed: abil cap
+24,protective aura,prot,Mage,1,5,10,1000,-15,1,3,0,4,4,1/5,3,1/2,30,20,2/3,36:0 115:158,changed: name short desc msg energy mana min max diff target dur magelvl cap maxinc maxlvls mininc minlvls durinc durlvls abil
+25,vine strike,vine,Druid,0,1,1,1000,15,8,0,0,4,5,1/1,14,1/1,9,0,-,17:0,changed: min max cap maxlvls mininc minlvls durlvls
+26,starlight,star,Druid,0,1,4,0,0,1,3,0,4,175,-,175,-,65,80,1/1,14:0 115:2092,changed: cap
+27,mend,mend,Druid,0,2,4,0,8,2,3,1,4,3,1/3,12,1/2,30,0,0/1,18:0 108:0,""
+28,resist fire,rfir,Druid,0,5,8,0,-5,2,3,1,4,0,1/1,0,1/1,20,70,0/1,5:0 115:8527 122:29 122:897 122:32 122:6 122:9,""
+29,resist cold,rcol,Druid,0,3,6,0,5,2,3,1,4,0,1/1,0,1/1,20,70,0/1,3:0 115:8526 122:9 122:28 122:6 122:897 122:792,""
+30,elemental chaos,chao,Druid,0,4,3,1000,5,8,0,0,4,7,1/1,15,1/1,13,0,0/1,17:0,changed: max cap mininc minlvls
+31,antidote,anti,Druid,0,6,8,0,-15,2,3,1,4,8,-,8,-,-,0,0/1,20:0 73:19 122:794 122:798,""
+32,resist lightning,rlit,Druid,0,9,10,0,0,2,3,1,4,1,1/1,1,1/1,20,60,0/1,66:0 115:8529 122:1013 122:897 122:792,""
+33,swarm,swar,Druid,0,12,28,1000,-10,12,0,0,4,17,1/2,28,3/1,20,0,-,17:0,changed: min max maxinc mininc minlvls durlvls
+34,barkskin,skin,Druid,0,7,15,0,-5,1,3,1,4,10,10/10,10,10/10,20,40,1/1,7:0 115:8528 2:5 122:422 122:289 122:1194 122:1381 122:1062 5:-25,""
+35,poison bolt,pbol,Druid,0,10,6,999,0,8,0,2,6,10,1/1,17,2/1,18,0,-,17:0 52:0 151:1366 108:0,changed: min max cap minlvls
+51,flash,flas,Mage,1,7,10,0,-5,12,3,2,4,9999,-,9999,-,20,5,1/2,107:0 2:-5 22:-8 52:0 115:8534,""
+52,magic armour,armr,Mage,3,6,6,0,-5,1,3,1,4,5,1/3,5,1/3,17,60,4/1,7:0 115:8533 2:5,changed: cap durinc
+54,vampiric touch,vamp,Mage,1,11,8,1000,-7,8,0,1,4,8,1/3,20,1/3,21,0,-,8:0 108:0,changed: cap maxinc maxlvls mininc minlvls durlvls
+55,enslave,ensl,Mage,2,18,12,0,-35,4,3,2,4,0,-,0,-,-,60,0/1,6:0 108:0,""
+56,sunbolt,sbol,Mage,1,13,8,1000,-14,8,0,0,1,30,1/2,18,7/2,25,0,0/1,17:0,changed: cap maxinc mininc minlvls
+57,speed,sped,Mage,1,12,12,0,-20,2,3,1,4,85,-,85,-,-,20,0/1,87:0 115:8537 122:59 122:271 122:282 122:256 122:396 122:106 122:168 122:183,""
+58,deathtouch,dtch,Mage,1,16,25,1000,-5,8,0,0,4,15,1/1,20,2/1,40,0,-,8:0 108:0 120:760,changed: min max cap mininc minlvls durlvls
+59,slow,slow,Mage,1,10,12,0,-20,8,3,2,4,125,-,125,-,-,10,0/1,52:0 115:8536 68:200 122:57 122:272 122:283 122:106 122:183 122:168,changed: abil
+61,greater curse,gcrs,Priest,0,9,8,0,-10,8,3,2,4,-10,-,-10,-,24,40,0/1,22:0 115:549 122:146 52:0,""
+62,divine favour,dfav,Priest,2,19,12,0,-35,2,3,1,4,10,-,10,-,-,30,0/1,22:0 122:67 115:550 122:14 122:15 122:23 122:61,""
+63,confusion,conf,Mage,1,14,12,0,-30,8,3,2,4,25,-,25,-,-,10,-,71:0 101:8489 52:0 115:8538,""
+64,shockshield,shok,Mage,1,9,12,0,-15,1,3,0,3,1,1/5,5,-,20,40,0/1,72:0 115:8535 137:1446 66:10,""
+66,hold person,hold,Priest,0,14,12,0,-30,8,3,2,4,100,-,100,-,-,4,0/1,74:0 52:0 115:8544,""
+67,divine disfavour,disf,Priest,2,19,12,0,-40,8,3,2,4,-15,-,-15,-,-,30,0/1,22:0 122:62 115:551 52:0,""
+68,mute,mute,Mage,3,10,8,0,-15,8,3,2,4,-40,-,-20,-,36,20,0/1,70:0 76:0 115:78 52:0,changed: cap
+70,freedom,free,Druid,0,16,10,0,-40,2,3,1,4,100,-,100,-,-,0,0/1,81:0,""
+71,burning aura,burn,Druid,0,13,10,0,-15,8,3,2,1,1,1/5,1,1/5,15,20,0/1,1:0 52:0 2:-5 120:621 115:8596 7:-30 22:-5,""
+73,black wind,wind,Priest,2,21,30,0,-40,12,3,2,4,1,-,1,-,-,10,0/1,107:0 52:0 108:0 115:8534 120:552 22:-10 2:-5,""
+74,remove curse,rcrs,Priest,3,14,20,0,-40,2,3,0,4,-1,1/7,-1,1/7,65,0,0/1,84:0,changed: cap
+75,blight,blit,Priest,0,6,10,0,-5,12,3,2,4,-6,-,-6,-,65,40,5/1,22:0 52:0 115:8540 122:23 122:14,changed: cap
+77,blind,blin,Priest,0,12,12,0,-25,8,3,2,4,1,-,1,-,20,10,-,107:0 2:-5 22:-8 52:0 115:8534 108:0,""
+87,cure blindness,site,Priest,0,12,12,0,-25,2,3,1,4,9999,-,9999,-,-,0,-,73:107,""
+88,control undead,cded,Priest,2,16,12,0,-25,4,3,2,4,100,-,100,-,-,80,-,6:0 23:0 98:0,""
+89,greater healing,grhe,Priest,2,15,12,0,-25,2,3,1,4,5,1/1,10,2/1,30,0,-,18:0 108:0,""
+91,alertness,aler,Druid,0,2,4,0,5,2,3,1,4,10,-,10,-,-,60,-,77:0 115:8525 122:137,""
+92,charm animal,char,Druid,0,5,10,0,-5,4,3,2,4,100,-,100,-,-,60,-,6:0 80:0,""
+93,entangle,enta,Druid,0,14,12,0,-30,8,3,2,4,100,-,100,-,-,4,-,74:0 52:0 115:8530,""
+94,stonestrike,strk,Druid,0,8,5,1000,0,8,0,0,2,10,1/1,17,2/1,18,0,-,17:0,changed: min max cap mininc minlvls
+95,acid jet,acid,Druid,0,13,8,1000,-14,8,0,0,5,26,1/2,18,6/2,25,0,-,17:0,changed: min cap maxinc mininc minlvls
+107,protection from evil,prev,Priest,0,5,6,0,0,2,3,1,4,10,-,10,-,-,50,-,24:0 111:0 115:8541,changed: abil
+108,protection from good,prgd,Priest,0,5,6,0,0,2,3,1,4,10,-,10,-,-,50,-,25:0 110:0 115:8542,changed: abil
+110,holy force,hfor,Priest,0,13,8,1000,-10,8,0,0,4,18,1/2,12,5/2,25,0,-,17:0 111:0,changed: max cap maxinc maxlvls mininc minlvls
+111,unholy force,ufor,Priest,0,13,8,1000,-10,8,0,0,4,26,1/2,24,5/2,25,0,-,17:0 110:0,changed: min cap maxinc maxlvls mininc minlvls
+120,fireball,fbal,Mage,1,15,34,1000,-20,12,0,0,1,26,1/1,40,4/1,28,0,-,17:0 120:100,changed: min max cap maxinc mininc minlvls
+121,godheal,gdhe,Priest,3,22,24,0,-50,2,3,1,4,35,1/2,30,2/1,65,0,-,18:0 108:0,changed: cap
+122,god's wrath,gwra,Priest,2,25,14,1000,-50,8,0,0,4,15,2/1,20,5/1,35,0,-,17:0,changed: min max maxinc mininc minlvls
+123,greater healing rain,grai,Priest,3,24,30,0,-55,13,3,1,4,15,1/2,35,1/1,46,0,-,18:0,changed: cap
+125,paralyze,para,Priest,3,25,30,0,-55,12,3,2,4,100,-,100,-,-,4,-,74:0 115:8544 52:0,""
+129,blur,blur,Mage,1,1,4,0,10,2,3,1,4,5,1/5,5,2/5,25,70,-,34:0 115:68,changed: cap maxinc maxlvls mininc minlvls abil
+130,shadowform,shad,Mage,1,7,8,0,-10,1,3,0,4,5,-,5,1/3,30,30,1/1,27:0 115:70 178:4157,changed: durinc durlvls
+131,stinking cloud,stnk,Mage,1,8,10,0,-5,12,3,2,4,5,-,5,1/2,20,20,-,71:0 105:-5 101:72 115:71 52:0,""
+132,mageshield,mshi,Mage,3,9,10,0,-15,1,3,0,4,7,1/2,7,1/2,25,60,2/1,2:0 115:73 122:4 7:10 122:1046 122:1004 122:1041,changed: cap durinc durlvls
+133,dancing blades,blad,Mage,1,11,26,1000,-10,12,0,0,4,21,1/2,38,3/1,20,0,-,17:0 120:102,changed: maxinc mininc minlvls
+134,vulnerability,vuln,Mage,1,14,6,0,-30,8,3,2,4,-8,-,-8,-,25,1,4/1,2:0 36:-10 52:0 115:81,""
+135,ice storm,isto,Mage,1,17,20,0,-25,12,3,1,0,3,-,3,-,22,15,-,1:0 106:-6 52:10 115:84 120:104 5:-10,""
+136,eldritch bolt,ebol,Mage,1,20,12,1000,-30,8,0,0,4,30,1/1,10,5/1,30,0,-,17:0,changed: min max cap maxinc mininc minlvls
+137,senselessness,sens,Druid,0,4,6,0,0,8,3,2,4,-10,-,-10,-,-,40,-,77:0 108:0 52:0 115:85 122:91,""
+138,rapid healing,rhel,Druid,0,11,8,0,-20,2,3,1,4,200,-,200,-,-,60,-,123:100 108:0 115:86 122:674 122:831 122:1056,changed: abil
+139,acid rain,rain,Druid,0,15,12,0,-25,12,3,2,5,1,1/5,1,1/5,15,20,-,1:0 2:-5 52:0 115:87 120:106,""
+140,chaos storm,csto,Druid,3,15,34,1000,-20,12,0,0,4,15,1/1,20,4/1,29,0,-,17:0 120:108,changed: resist min max magelvl cap maxinc mininc minlvls
+141,partial petrification,petr,Druid,3,16,12,0,0,8,3,2,4,150,-,150,-,-,20,-,87:0 2:5 7:10 36:5 52:0 115:88 70:-5 34:-15,changed: resist magelvl
+142,poison cloud,pclo,Druid,0,17,14,0,-35,12,3,2,4,3,1/5,3,1/5,20,40,-,19:0 115:8575 52:0 108:0 22:-6 4:-3 108:0,""
+143,rotting flesh,rott,Druid,0,18,16,0,-35,8,3,2,4,6,-,6,-,-,10,-,1:0 108:0 115:90 52:0 120:279,""
+144,iron faith,irfa,Priest,3,7,6,0,-10,1,3,0,4,2,1/2,2,1/2,35,30,1/2,36:0 115:91,changed: cap durinc durlvls
+145,healing rain,rain,Priest,0,10,5,0,-15,13,3,1,4,4,1/3,10,1/2,25,0,-,18:0 108:0,""
+146,greater bless,gbls,Priest,0,10,8,0,-15,2,3,1,4,6,-,6,-,30,30,2/1,22:0 115:93 122:61 122:14 122:15 122:23 122:62 122:668,changed: dur cap durinc durlvls
+147,glitterdust,glit,Priest,0,11,6,0,-15,0,3,0,4,-10,-,-10,-,-,30,-,27:0 52:0 115:94,""
+148,holy armour,armr,Priest,3,11,10,0,-20,1,3,0,4,2,1/2,2,1/2,40,60,-,2:0 111:0 115:95 122:149 122:1383 122:1384 7:0,changed: cap abil
+149,unholy armour,uarm,Priest,3,11,10,0,-20,1,3,0,4,2,1/2,2,1/2,40,60,-,2:0 98:0 115:96 122:148 122:1383 122:1384,changed: cap
+150,cure disease,cdes,Priest,2,13,12,0,-25,2,3,1,4,143,-,143,-,-,0,-,122:0 122:992 122:294 122:323 122:362 122:445 122:446 122:952 122:1024,""
+151,disrupt,disr,Priest,0,16,8,1000,-25,4,0,0,4,30,1/1,52,4/2,52,0,-,17:0 23:0,changed: cap
+152,major healing rain,mrai,Priest,2,17,15,0,-40,13,3,1,4,8,1/3,20,1/1,30,0,-,18:0,""
+153,godstrike,gstk,Priest,0,20,12,1000,-40,8,0,0,4,15,1/1,10,4/1,30,0,-,17:0,changed: min max cap maxinc mininc minlvls
+160,cure paralysis,curp,Priest,2,23,15,0,-50,2,3,0,4,100,-,100,-,-,0,-,81:0,""
+207,ember,embr,Druid,3,45,10,333,-90,8,0,0,1,0,2/1,-25,5/1,65,0,-,17:0 120:3088 151:210,changed: max cap maxinc mininc
+210,ember,embr,Druid,3,45,10,333,-90,8,0,0,1,0,2/1,-25,5/1,65,0,-,17:0,changed: max cap maxinc mininc
+211,soul rip,srip,Priest,3,45,30,1000,-100,8,0,0,4,25,5/1,-50,14/1,65,0,-,17:0 120:3086,changed: min max cap maxinc mininc
+216,sphere of implosion,simp,Mage,3,40,25,1000,-70,8,0,0,4,40,5/1,30,12/1,50,0,-,17:0 120:279,changed: min maxinc mininc
+239,summon fire elemental,fire,Druid,3,40,25,1000,-85,8,0,0,1,42,4/1,-24,12/1,50,0,-,17:0 120:552,changed: min max cap maxinc mininc
+240,summon ice elemental,icel,Druid,3,40,25,1000,-85,8,0,0,0,42,4/1,-24,12/1,50,0,-,17:0 120:552,changed: min max cap maxinc mininc
+241,summon lightning elemental,lite,Druid,3,37,25,1000,-80,8,0,0,3,42,4/1,-24,12/1,50,0,-,17:0 120:552,changed: min max cap maxinc mininc
+242,summon stone elemental,stne,Druid,3,37,25,1000,-80,8,0,0,2,42,4/1,-24,12/1,50,0,-,17:0 120:552,changed: min max cap maxinc mininc
+254,colour spray,colu,Mage,2,32,20,1000,-45,8,0,0,4,106,2/1,50,10/1,42,0,-,17:0,changed: min max cap maxinc
+267,divine fury,fury,Priest,2,30,16,1000,-60,8,0,0,4,60,2/1,20,9/1,40,0,-,17:0,changed: min max mininc minlvls
+268,divine mercy,dmer,Priest,3,30,50,0,-65,13,3,1,4,25,1/2,65,1/1,52,0,-,18:0,changed: cap maxinc maxlvls minlvls
+281,mana storm,msto,Mage,2,23,50,1000,-45,12,0,0,4,14,2/1,60,5/1,33,0,-,17:0 120:564,changed: min max cap mininc minlvls
+282,solid fog,sfog,Mage,3,19,30,0,-35,12,3,2,4,125,-,125,-,-,20,-,52:0 115:8536 120:566 122:57 122:272 122:283 122:106 68:200,changed: abil
+283,wind of haste,wind,Mage,3,22,30,0,-50,13,3,1,4,80,-,80,-,-,20,-,87:0 115:8537 122:59 122:282 122:271 120:568,""
+284,corrosion,corr,Mage,2,24,15,0,-55,12,3,2,4,-8,-,-8,-,40,1,4/1,2:0 36:-10 52:0 115:81 120:570 7:-50,""
+285,meteor swarm,mete,Mage,2,25,4,250,-50,8,0,0,4,10,1/2,10,4/3,35,0,-,17:0,changed: min maxinc maxlvls mininc minlvls
+286,mystic mist,mist,Mage,3,26,30,0,-55,12,3,2,4,25,-,25,-,40,10,1/4,71:0 101:8489 52:0 120:198 115:8538,""
+287,spirit horde,spir,Mage,3,28,60,1000,-60,12,0,0,4,55,2/1,55,9/1,45,0,-,17:0 120:572,changed: min cap maxinc mininc minlvls
+288,dragonfire,dfir,Mage,2,30,16,1000,-60,8,0,0,1,100,2/1,50,10/1,40,0,-,17:0 120:578,changed: max mininc minlvls
+289,stoneskin,ston,Druid,2,19,20,0,-35,1,3,0,2,60,10/10,60,10/10,40,30,1/1,7:0 2:10 36:5 115:579 122:422 122:34 122:1381 65:10 122:1062,""
+290,blaze,blaz,Druid,0,20,12,1000,-40,8,0,0,1,22,1/1,10,9/2,28,0,-,17:0,changed: min max maxinc maxlvls mininc minlvls
+291,creeping doom,doom,Druid,2,22,16,0,-50,8,3,2,4,4,-,4,1/10,35,30,3/5,1:0 22:-5 2:-5 115:580 52:0,""
+292,maelstrom,mael,Druid,2,24,50,1000,-45,12,0,0,4,0,2/1,60,4/1,33,0,-,17:0 120:552,changed: min max cap maxinc mininc minlvls
+293,plasma bolt,plas,Druid,2,23,14,1000,-50,8,0,0,4,24,2/1,30,5/1,35,0,-,17:0,changed: min max maxinc mininc minlvls
+294,plague,plag,Druid,3,26,40,0,-55,12,3,2,4,2,1/10,2,1/10,40,40,-,1:0 120:583 115:584 52:0 34:-5 4:-2 2:-5,""
+295,earthquake,quak,Druid,2,28,50,999,-50,12,0,0,2,40,2/1,55,7/1,45,0,-,17:0 120:586 151:927,changed: mana min max diff magelvl cap maxinc mininc minlvls
+296,earthfist,fist,Druid,3,30,16,1000,-60,8,0,0,2,80,2/1,35,19/2,40,0,-,17:0,changed: min max magelvl maxinc maxlvls mininc minlvls
+304,zeal,zeal,Priest,0,25,20,0,-30,1,3,0,4,0,1/10,0,1/10,50,10,1/2,4:0 36:0 58:0 22:0 115:816 122:347 122:816 122:1315,""
+345,frenzy,fren,Mage,1,15,18,0,-25,2,3,1,4,0,1/6,0,1/6,30,1,2/1,4:0 58:0 34:-5 2:-5 122:801 122:346 22:0 120:810 115:811 7:50,""
+346,mass frenzy,mfre,Mage,3,20,45,0,-40,13,3,1,4,0,1/7,0,1/7,46,10,1/2,4:0 58:0 34:-5 7:50 2:-5 122:345 122:801 115:811 120:814 22:0,changed: cap maxlvls minlvls
+347,righteousness,rite,Priest,3,15,24,0,-25,2,3,1,4,1,-,1,1/20,30,40,1/2,22:6 18:0 120:815 115:816 111:0 122:304 122:816 122:1315 122:348,changed: min max cap maxinc maxlvls durinc durlvls abil
+348,blood ritual,blud,Priest,3,15,24,0,-25,2,3,1,4,1,-,1,-,30,40,1/2,22:6 4:1 18:0 98:0 120:819 115:820 122:304 122:816 122:1315 122:347,changed: min max cap durinc durlvls abil
+349,regeneration,rgen,Druid,3,15,12,0,-25,2,3,1,4,2,1/20,4,1/10,50,7,1/4,18:0 120:822 115:823 122:1012,changed: dur magelvl cap durinc durlvls
+374,mass entangle,msen,Druid,3,25,30,0,-55,12,3,2,4,100,-,100,-,-,4,-,74:0 115:8530 52:0 120:570,""
+393,stone to flesh,ston,Priest,3,18,30,0,-25,0,3,1,4,100,-,100,-,-,0,-,122:392 122:141 122:289 120:1052 122:769,removes the monster copy too
+404,sacrifice,sacr,Priest,3,18,0,0,-25,0,3,1,4,-80,-,-40,-,-,0,-,8:0 120:1106 108:0,changed: mana min max
+405,chaos shield,chao,Mage,3,21,16,0,-35,2,3,1,4,-100,2/1,50,-,50,40,1/1,72:10 120:1108 115:1109 2:5 7:0,changed: min dur cap mininc minlvls durinc durlvls
+406,mana flux,flux,Mage,3,35,12,0,-40,1,3,1,4,150,-,150,-,75,180,-,145:150 115:1112 122:748 122:6000 122:6001 122:6002 122:6009 122:6010 122:6011 122:6012,rewritten (regen line L35)
+706,forked lightning,fork,Mage,3,35,10,500,-75,8,0,0,3,30,2/1,0,6/1,45,0,-,17:0 120:1999,changed: min cap maxinc mininc minlvls
+716,elemental fury,fury,Druid,2,35,5,250,-70,8,0,0,2,10,1/1,-5,3/1,45,0,-,17:0 120:2037 151:718,changed: min max cap maxinc mininc minlvls
+718,elemental lightning,"",Druid,2,35,5,250,-70,8,0,0,3,10,1/1,-5,3/1,45,0,-,17:0 151:719,changed: min max cap maxinc mininc minlvls
+719,elemental fire,"",Druid,2,35,5,250,-70,8,0,0,1,10,1/1,-5,3/1,45,0,-,17:0 151:720,changed: min max cap maxinc mininc minlvls
+720,elemental ice,"",Druid,2,35,5,250,-70,8,0,0,0,10,1/1,-5,3/1,45,0,-,17:0,changed: min max cap maxinc mininc minlvls
+721,soulstrike,soul,Priest,3,35,20,1000,-70,8,0,0,4,20,4/1,-45,12/1,50,0,-,17:0 120:2042,changed: min max maxinc mininc minlvls
+744,annointed hands,anno,Priest,2,10,1,0,-5,0,3,1,4,2,-,0,1/1,15,0,-,18:0 120:234,""
+748,chaos surge,chsu,Mage,3,47,0,0,-110,1,3,0,4,-1,1/13,0,1/8,65,80,-,150:0 123:-150 7:-50 36:20 122:406 120:570 115:3430 72:5 137:1446,changed: cap maxlvls minlvls
+749,eldritch fury,elfu,Mage,3,47,7,200,-115,8,0,0,4,25,1/1,5,3/1,65,0,-,17:0 120:621,changed: mana min max cap maxinc mininc minlvls
+750,wizard knock,knok,Mage,3,17,25,500,0,11,3,0,0,100,-,100,-,-,0,-,161:0 120:104,""
+771,blizzard,bliz,Mage,2,40,45,1000,-75,12,0,0,0,80,1/1,50,8/1,55,0,-,17:0 120:631 151:1015,changed: cap maxinc mininc minlvls
+774,thunderstun,"",Druid,3,45,0,1,200,12,3,0,4,60,-,50,1/1,60,3,1/15,71:0 52:0 101:56 115:57,""
+775,thunderclap,thdr,Druid,3,45,75,999,-125,12,0,0,3,-30,2/1,190,2/1,65,0,-,17:0 120:631 164:25 151:774,changed: min cap mininc minlvls
+802,magma blast,magm,Mage,3,45,5,166,-110,8,0,0,1,5,1/1,-7,5/2,55,0,-,17:0,changed: min max maxinc maxlvls minlvls
+804,merciful grace,mgra,Priest,3,40,35,0,-90,2,3,0,4,-25,2/1,25,4/1,65,0,-,18:0 20:100 120:2351 73:107,changed: cap maxinc
+805,acid tempest,atem,Druid,3,40,65,1000,-80,12,0,2,5,-40,4/1,-10,12/1,65,0,-,17:0 120:2305 151:934,changed: min max cap maxinc mininc minlvls
+816,divine courage,dcor,Priest,3,45,45,0,-90,13,3,0,4,3,-,3,-,65,40,2/5,18:0 22:15 4:3 115:2395 122:304 122:347 122:1315 122:348 111:0,changed: cap abil
+853,wrathful curse,wcur,Priest,2,40,25,0,-100,8,3,2,4,100,-,100,-,-,7,-,74:0 76:0 13:-999 22:-15 18:-2 115:8540 52:0,""
+854,nature tap,ntap,Druid,3,35,12,0,-40,1,3,1,4,150,-,150,-,50,180,-,145:150 120:2511 115:2512 122:6006 122:6007 122:6008,rewritten (regen line L35)
+897,globe of the elements,gele,Druid,3,29,25,0,-75,1,3,1,4,25,-,25,-,-,100,-,3:0 115:2604 122:1053 5:0 66:0 65:0 122:28 122:29 122:32,""
+927,earthquake hold,"",Druid,3,28,0,1,200,12,3,0,4,100,-,100,-,-,4,-,74:0 115:648 52:0,""
+934,drenched in acid,"",Druid,3,40,0,0,200,12,3,0,5,4,-,7,-,-,20,-,1:0 115:87 2:-10 22:-15 34:-5 52:0,""
+1003,frozen spike,fspk,Druid,3,50,45,1000,-110,8,0,0,0,-25,6/1,-20,15/1,65,0,-,17:0 120:621 97:0,changed: min max cap maxinc mininc
+1004,manashield,mans,Mage,3,50,25,0,-100,1,3,0,4,0,-,0,-,65,5,1/1,36:20 7:50 2:20 115:2804 97:0 34:15 122:132 122:4,changed: cap abil
+1005,exalted word,word,Priest,3,50,8,200,-110,8,0,0,4,5,1/1,-20,3/1,65,0,-,17:0 120:1046 151:1007 97:0,changed: min max cap maxinc minlvls
+1007,exalted word,"",Priest,3,50,8,200,-110,8,0,0,4,5,1/1,-20,3/1,65,0,-,17:0 97:0,changed: min max cap maxinc minlvls
+1008,necromantic bolt,nebo,Mage,3,50,50,999,-100,8,0,0,4,50,6/1,100,13/1,65,0,-,17:0 120:1046 98:0 108:0 151:1246,changed: min max cap maxinc mininc
+1012,rejuvinating field,reju,Druid,3,32,40,0,-65,13,3,1,4,1,1/10,0,2/10,40,10,-,18:0 115:823 120:570 122:349,removes the monster copy too
+1013,resist lightning,rlit,Mage,3,10,10,0,-15,2,3,0,4,0,1/1,0,1/1,15,70,-,66:0 115:8529 122:897 122:32 122:732,""
+1015,freezing,"",Mage,0,40,0,0,200,12,3,1,0,4,-,10,-,20,10,-,1:0 22:-15 115:84 52:0 2:-10,""
+1016,natural prowess,prow,Druid,0,25,20,0,-30,1,3,0,4,0,1/10,0,1/10,50,10,1/2,22:0 4:0 117:0 118:0 58:0 115:2513,""
+1018,chain lightning,chai,Mage,3,50,75,1000,-120,12,0,0,3,70,5/1,75,12/1,65,0,-,17:0 97:0 120:2802,changed: cap maxinc mininc
+1025,damnation,damn,Priest,3,42,30,0,-100,8,3,2,4,-20,-,-10,-,48,10,-,22:0 52:10 36:-11 4:-8 2:-10 58:-9 115:2830 120:2831 98:0,changed: cap
+1026,spore cloud,spor,Druid,3,50,60,0,-130,12,3,0,4,0,1/5,10,1/5,50,1,1/5,1:0 71:10 120:2801 115:2803 101:72 58:-5 68:100 4:-5 52:0 98:0,""
+1038,prismatic beam,prbe,Mage,3,50,50,900,-110,8,0,0,4,-20,7/1,90,15/1,65,0,-,17:0 120:570 151:1052 112:0,changed: min max cap maxinc mininc
+1041,bladed sphere,blsh,Mage,3,50,25,0,-100,1,3,0,4,0,-,0,-,65,5,1/1,36:10 137:2879 7:50 115:2881 72:15 98:0 2:20 122:132 122:4,changed: cap abil
+1042,glacial mist,gmst,Druid,3,50,60,0,-130,12,3,0,4,0,1/10,10,1/5,50,1,1/5,1:0 71:10 68:100 115:84 101:2871 58:-5 120:106 5:10 52:0 97:0,""
+1043,close wounds,clwo,Druid,3,50,25,0,-75,2,3,1,4,-30,1/1,-50,2/1,65,0,-,18:0 97:0,changed: min max cap maxinc minlvls
+1046,protective shell,prsl,Mage,3,50,25,0,-100,1,3,0,4,0,-,0,-,65,5,1/1,7:50 2:20 115:2876 112:0 122:132 36:30 122:4,changed: cap
+1047,boulder,boul,Druid,3,50,45,1000,-110,8,0,0,2,25,6/1,40,15/1,65,0,-,17:0 120:621 112:0,changed: min max cap maxinc mininc
+1048,inferno,infe,Druid,3,50,45,1000,-110,8,0,0,1,50,6/1,60,15/1,65,0,-,17:0 120:621 98:0,changed: min max cap maxinc mininc
+1052,pris effect,"",-,0,0,0,50,200,8,0,0,4,1064,-,1067,-,-,0,-,151:0,changed: max
+1056,dark binding,dbin,Druid,3,50,30,0,-90,1,3,0,4,50,-,0,2/1,65,30,1/1,123:-50 145:0 120:822 115:3132 98:0 122:138,changed: name short msg msgstyle mana min diff target dur cap maxinc maxlvls mininc minlvls durlvls abil
+1057,hellstorm,hsto,Mage,3,50,75,1000,-120,12,0,0,1,30,6/1,75,13/1,65,0,-,17:0 98:0 120:572,changed: cap maxinc mininc
+1058,eldritch storm,esto,Mage,3,40,70,1000,-90,12,0,0,4,-30,5/1,0,13/1,55,0,-,17:0 120:566,changed: maxinc mininc
+1059,divine healing,dihe,Priest,3,50,50,0,-140,2,3,0,4,0,3/1,0,5/1,65,0,-,18:0 120:2926 97:0,changed: min max target cap maxinc mininc
+1060,priestly benediction,prbe,Priest,3,50,50,0,-140,0,3,0,4,5,1/7,7,1/4,65,10,1/5,18:0 115:2927 112:0,changed: cap maxlvls minlvls durinc durlvls
+1061,dark transfusion,datr,Priest,3,50,50,0,-110,0,3,0,4,-200,-,-80,-,-,0,-,8:0 115:2927 98:0 18:200,changed: abil
+1062,barbskin,barb,Druid,3,50,35,0,-90,1,3,0,4,2,1/6,2,1/5,65,30,1/1,72:0 7:50 2:0 115:2878 122:422 122:34 122:289 137:2877 112:0 122:1381,changed: min abil
+1063,comet,come,Mage,3,50,16,333,-120,8,0,0,4,0,2/1,20,5/1,65,0,-,17:0 97:0 120:595,changed: max cap mininc
+1064,yellow beam,"",Mage,0,0,0,50,100,8,0,1,4,200,-,200,-,-,10,0/1,68:0 22:-10 115:8536,""
+1065,violet beam,"",Mage,0,0,0,50,100,8,0,1,4,15,-,15,-,-,10,-,71:0 101:8489 52:0 115:8538,""
+1066,black beam,"",Mage,0,0,0,50,100,8,0,1,4,-500,-,-100,-,20,10,-,13:0 2:-10 22:-15 52:0 115:8534 108:0,""
+1067,red beam,"",Mage,0,0,0,50,100,8,0,1,4,-5,-,-1,-,-,10,0/1,4:0 22:0 115:1172,""
+1069,yellow wave,"",Mage,0,50,0,200,100,12,0,1,4,200,-,200,-,-,5,0/1,68:0 22:-10 115:8536,""
+1070,violet wave,"",Mage,0,50,0,200,100,12,0,1,4,15,-,15,-,-,5,-,71:0 101:8489 52:0 115:8538,""
+1071,black wave,"",Mage,0,50,0,200,100,12,0,1,4,-500,-,-100,-,20,5,-,13:0 2:-10 22:-15 52:0 115:8534 108:0,""
+1072,red wave,"",Mage,0,50,0,200,100,12,0,1,4,-5,-,-1,-,-,5,0/1,4:0 22:0 115:1172,""
+1074,prismatic blast,pbla,Mage,3,50,75,800,-120,12,0,0,4,75,5/1,0,13/1,65,0,-,17:0 120:570 151:1075 112:0,changed: min max cap maxinc mininc
+1075,pris effect,"",-,0,0,0,0,200,12,0,0,4,1069,-,1072,-,-,0,-,151:0,changed: max
+1080,tainted word,"",Priest,3,50,8,200,-100,8,0,0,4,15,1/1,-10,3/1,65,0,-,17:0 98:0,changed: min max cap maxinc minlvls
+1081,tainted word,word,Priest,3,50,8,200,-100,8,0,0,4,15,1/1,-10,3/1,65,0,-,17:0 151:1080 120:1046 98:0,changed: min max cap maxinc minlvls
+1096,balanced word,word,Priest,3,50,8,200,-100,8,0,0,4,10,1/1,-15,3/1,65,0,-,17:0 151:1097 120:1046 112:0,changed: min max cap maxinc minlvls
+1097,balanced word,word,Priest,3,50,8,200,-100,8,0,0,4,10,1/1,-15,3/1,65,0,-,17:0 112:0,changed: min max cap maxinc minlvls
+1098,angelic halo,halo,Priest,3,50,45,0,-130,2,3,0,4,0,8/1,0,8/1,65,80,1/1,14:0 115:2923 97:0 24:10,changed: desc cap maxinc mininc abil
+1099,balanced sight,bals,Priest,3,50,45,0,-130,13,3,0,4,200,-,200,-,65,80,1/1,14:0 77:50 115:2924 112:0 24:5 25:5,changed: cap abil
+1102,infernal darkness,dark,Priest,3,50,45,0,-130,12,3,0,0,0,-,0,-,65,80,1/1,13:-9999 98:0 52:0 115:1322 22:-30 24:-10,changed: cap abil
+1110,sleep,slep,Mage,3,15,30,0,-50,8,3,2,4,100,-,100,-,30,1,1/30,71:0 115:958 101:960 52:0,""
+1112,earthbind,ebin,Druid,3,50,30,0,-90,1,3,0,4,0,1/2,-60,2/1,65,30,1/1,123:0 145:0 120:822 115:3132 112:0,changed: max dur cap maxinc durinc durlvls
+1246,nebo secondary,"",Mage,3,50,0,1,200,8,0,0,4,0,1/3,-20,3/1,65,0,-,8:0 108:0,changed: level
+1301,barbed tentacles,tent,Mage,3,37,23,1000,-80,8,0,0,4,72,4/1,6,12/1,47,0,-,17:0 120:552,changed: min max cap maxinc mininc
+1310,sandstorm,sand,Druid,2,38,70,0,-90,12,3,0,4,4,1/60,1,1/10,65,7,1/3,1:0 13:-9999 2:-5 22:-10 52:0 68:200 115:3406 120:595,changed: abil cap
+1311,glacial blades,glac,Mage,3,33,20,1000,-70,8,0,0,0,114,2/1,50,10/1,43,0,-,17:0 120:578,changed: min max cap mininc minlvls
+1314,camouflage,camo,Druid,1,7,10,0,-5,1,3,0,4,3,1/1,3,1/1,25,30,1/2,27:0 115:3422 116:10,""
+1315,unholy fanaticism,unfa,Priest,3,45,45,0,-90,13,3,0,4,0,-,0,-,65,40,2/5,4:5 58:4 18:1 122:348 122:304 122:347 98:0 115:2171 122:816,changed: cap abil
+1316,blessed vision,bevi,Priest,3,45,35,0,-95,2,3,1,4,0,-,0,-,65,0,-,122:440 122:443 120:2808 73:107 122:933 122:1102 122:1113 122:1310,changed: desc level resist msg resmode target cap abil
+1317,curing wind,curi,Priest,3,47,65,0,-110,13,3,0,4,-40,2/1,30,2/1,65,0,-,18:0 120:2351 20:100,changed: min max cap maxinc maxlvls mininc minlvls abil
+1366,poison bite,"",Druid,0,10,0,1,0,8,0,2,6,4,1/5,4,1/5,15,60,0/1,19:0 115:8575 108:0,""
+1367,exorcism,exor,Priest,3,47,35,1000,-110,4,0,0,4,100,5/1,200,10/1,65,0,-,17:0 23:0 120:3443,changed: max cap abil
+1377,serenity,nity,Priest,3,35,12,0,-40,1,3,0,0,150,-,150,-,50,180,-,145:150 115:3403 111:0 122:6003 122:6004 122:6005 122:6013 122:6014 122:6015 122:6016,rewritten (regen line L35)
+1378,profane link,prfl,Priest,3,35,12,0,-40,1,3,0,0,150,-,150,-,50,180,-,145:150 115:3404 98:0 122:6003 122:6004 122:6005 122:6013 122:6014 122:6015 122:6016,rewritten (regen line L35)
+1381,glacial skin,glac,Druid,3,48,35,0,-125,1,3,0,0,30,2/1,30,2/1,60,20,1/1,7:0 2:5 3:20 5:-50 115:3442 122:34 122:422 122:289 122:1062,""
+1382,shimmering mirage,mira,Mage,3,38,50,0,-85,13,3,0,4,5,1/4,5,1/4,60,40,1/1,34:0 115:3415,changed: cap maxlvls minlvls durinc durlvls
+1383,sacred bastion,bast,Priest,3,37,25,0,-80,1,3,0,4,10,1/2,10,1/2,65,25,1/1,2:0 111:0 120:2808 122:148 122:149 122:1384 115:158,changed: dur cap durinc durlvls abil
+1384,hellfire shield,hesh,Priest,3,37,25,0,-80,1,3,0,4,0,1/2,0,1/2,65,25,1/1,2:0 115:3421 98:0 122:148 122:149 122:1383 72:10 137:1145 120:2831,changed: dur cap durinc durlvls
+6000,lesser attunement,latt,Mage,3,5,4,0,0,1,3,1,4,50,-,50,-,-,120,-,145:50 115:5101 122:6001 122:406 122:6002 122:6009 122:6010 122:6011 122:6012,new (regen line)
+6001,arcane attunement,aatt,Mage,3,20,8,0,-20,1,3,1,4,100,-,100,-,-,150,-,145:100 115:5101 122:6000 122:406 122:6002 122:6009 122:6010 122:6011 122:6012,new (regen line)
+6002,greater attunement,gatt,Mage,3,50,16,0,-60,1,3,1,4,200,-,200,-,-,200,-,145:200 115:5101 122:6000 122:6001 122:406 122:6009 122:6010 122:6011 122:6012,new (regen line)
+6003,lesser devotion,ldev,Priest,3,5,4,0,0,1,3,0,0,50,-,50,-,-,120,-,145:50 115:5103 122:6004 122:1377 122:1378 122:6005 122:6013 122:6014 122:6015 122:6016,new (regen line)
+6004,devotion,devo,Priest,3,20,8,0,-20,1,3,0,0,100,-,100,-,-,150,-,145:100 115:5103 122:6003 122:1377 122:1378 122:6005 122:6013 122:6014 122:6015 122:6016,new (regen line)
+6005,greater devotion,gdev,Priest,3,50,16,0,-60,1,3,0,0,200,-,200,-,-,200,-,145:200 115:5103 122:6003 122:6004 122:1377 122:1378 122:6013 122:6014 122:6015 122:6016,new (regen line)
+6006,lesser communion,lcom,Druid,3,5,4,0,0,1,3,1,4,50,-,50,-,-,120,-,145:50 115:5105 122:6007 122:854 122:6008,new (regen line)
+6007,communion,comm,Druid,3,20,8,0,-20,1,3,1,4,100,-,100,-,-,150,-,145:100 115:5105 122:6006 122:854 122:6008,new (regen line)
+6008,greater communion,gcom,Druid,3,50,16,0,-60,1,3,1,4,200,-,200,-,-,200,-,145:200 115:5105 122:6006 122:6007 122:854,new (regen line)
+6009,minor attunement,mnat,Mage,2,5,4,0,0,1,3,1,4,25,-,25,-,-,120,-,145:25 115:5101 122:6000 122:6001 122:406 122:6002 122:6010 122:6011 122:6012,new (regen line)
+6010,modest attunement,mdat,Mage,2,20,8,0,-20,1,3,1,4,50,-,50,-,-,150,-,145:50 115:5101 122:6000 122:6001 122:406 122:6002 122:6009 122:6011 122:6012,new (regen line)
+6011,steady attunement,stat,Mage,2,35,12,0,-40,1,3,1,4,75,-,75,-,-,180,-,145:75 115:5101 122:6000 122:6001 122:406 122:6002 122:6009 122:6010 122:6012,new (regen line)
+6012,deep attunement,dpat,Mage,2,50,16,0,-60,1,3,1,4,100,-,100,-,-,200,-,145:100 115:5101 122:6000 122:6001 122:406 122:6002 122:6009 122:6010 122:6011,new (regen line)
+6013,minor devotion,mndv,Priest,2,5,4,0,0,1,3,0,0,25,-,25,-,-,120,-,145:25 115:5103 122:6003 122:6004 122:1377 122:1378 122:6005 122:6014 122:6015 122:6016,new (regen line)
+6014,modest devotion,mddv,Priest,2,20,8,0,-20,1,3,0,0,50,-,50,-,-,150,-,145:50 115:5103 122:6003 122:6004 122:1377 122:1378 122:6005 122:6013 122:6015 122:6016,new (regen line)
+6015,steady devotion,stdv,Priest,2,35,12,0,-40,1,3,0,0,75,-,75,-,-,180,-,145:75 115:5103 122:6003 122:6004 122:1377 122:1378 122:6005 122:6013 122:6014 122:6016,new (regen line)
+6016,deep devotion,dpdv,Priest,2,50,16,0,-60,1,3,0,0,100,-,100,-,-,200,-,145:100 115:5103 122:6003 122:6004 122:1377 122:1378 122:6005 122:6013 122:6014 122:6015,new (regen line)

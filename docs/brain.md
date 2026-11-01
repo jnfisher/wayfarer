@@ -1054,7 +1054,10 @@ or a re-sync that ends quietly does not leave it waiting.
 
 `spell_plan_request` is answered with a `spell_plan`: the spells the character's class could learn
 that it does not know, each at its best shop, and what they would cost. It only reads: nothing
-is bought or walked (the errand that does comes after the plan).
+is bought or walked (the errand that does comes after the plan). On a Quicksilver 1.20 server it
+plans with 1.20's spells and also offers the regen line's scrolls at their shops and prices
+(a Paladin or a Ranger gets none; a scroll a shop has sold out of is left with "not sold here
+now", and the errand goes on).
 
 - **Where the spells are**: a scroll is an item of type 9 with ability 42 ("Link to Spell"),
   whose value is the spell's number (`kb/spells.md` "Learning"). A shop sells it when the slot's
@@ -1229,6 +1232,14 @@ or 8, ability 17) and self-castable heals (type 3, target 1, 2 or 6, ability 18)
 spellbook; buffs, light and area spells are left out, and a Warrior's re-sync is unchanged. The
 mana cost is the game's own, from the screen. The list is read again at every re-sync, so a
 scroll read since is found the next time.
+
+On a Quicksilver 1.20 server (C-066, "Rule sets"; `docs/kb/quicksilver-1.20.md` "Spells") the
+spells are 1.20's: the Mage, Priest and Druid spells with Spell Mod v2.1's numbers, protective
+aura and dark binding for detect magic and dark plague, the caps at 65, mana flux at 35, and the
+regen line (6000-6020, a family of mana-regeneration self-buffs per caster line). The monsters'
+own copies (5000-5999) are never a player's. Until the server is known to play 1.20, the stock
+spells are used; the spellbook and the blessings are learned again when it is (the `spells`
+screen usually comes first). The data is `crates/wayfarer-world/data/quicksilver-1.20/`.
 
 - **Attacks.** Fight sends `<short> <word>` instead of `a <word>` when `spells.attack` is `auto`,
   the mana is above `spells.attack_mana_above` (15%) and an attack is affordable: the one with the

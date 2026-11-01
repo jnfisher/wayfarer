@@ -67,8 +67,78 @@ pub fn unit(currency: i64) -> u64 {
 
 /// Every scroll any shop sells, for the spells the pack knows. Built once from the pack.
 pub fn load(pack: &WorldPack) -> Result<Vec<ScrollOffer>, Error> {
-    let spells: HashMap<i64, (String, i64, i64, i64)> = pack
-        .spells()?
+    load_from(pack, pack.spells()?, false)
+}
+
+/// The same on a Quicksilver 1.20 server (C-066): the spells as 1.20 has them (mana flux at
+/// 35, protective aura), item 121 renamed `scroll of protective aura`, and the regen line's
+/// scrolls at their shops and prices (`docs/kb/quicksilver-1.20.md` "Spells"). Any class may
+/// buy one; [`plan`] offers each only to the classes that can learn it.
+pub fn load_qs120(pack: &WorldPack) -> Result<Vec<ScrollOffer>, Error> {
+    let mut out = load_from(pack, crate::qs120::spells(pack)?, true)?;
+    let shops: HashMap<i64, (String, i64, Vec<Key>)> = out
+        .iter()
+        .map(|o| (o.shop, (o.shop_name.clone(), o.markup, o.rooms.clone())))
+        .collect();
+    for r in crate::qs120::regen() {
+        let Some((_, scroll)) = &r.scroll else {
+            continue;
+        };
+        let Some(row) = crate::qs120::spell_rows()
+            .iter()
+            .find(|row| row.number == r.number)
+        else {
+            continue;
+        };
+        // The shop as the pack has it (name, markup, rooms); one the pack lacks, from the data.
+        let (shop_name, markup, rooms) = match shops.get(&r.shop) {
+            Some(s) => s.clone(),
+            None => {
+                let from_data = crate::qs120::regen_shops()
+                    .iter()
+                    .find(|s| s.shop == r.shop)
+                    .map_or(0, |s| s.markup_pct);
+                match pack.shop(r.shop)? {
+                    Some(shop) => (shop.name, shop.markup, rooms_of(pack, r.shop)?),
+                    None => (r.shop_name.clone(), from_data, Vec::new()),
+                }
+            }
+        };
+        out.retain(|o| !(o.shop == r.shop && o.spell == r.number));
+        out.push(ScrollOffer {
+            spell: r.number,
+            spell_name: r.name.clone(),
+            spell_level: r.level,
+            magery: row.magery,
+            magery_level: row.magery_level,
+            scroll: scroll.clone(),
+            cost: r.cost,
+            currency: r.currency,
+            shop: r.shop,
+            shop_name,
+            markup,
+            rooms,
+        });
+    }
+    Ok(out)
+}
+
+/// The rooms that are shop `number`.
+fn rooms_of(pack: &WorldPack, number: i64) -> Result<Vec<Key>, Error> {
+    Ok(pack
+        .all_rooms()?
+        .into_iter()
+        .filter(|r| r.room_type == ROOM_SHOP && r.shop_num == number)
+        .map(|r| (r.map, r.room))
+        .collect())
+}
+
+fn load_from(
+    pack: &WorldPack,
+    spell_rows: Vec<crate::pack::Spell>,
+    qs120: bool,
+) -> Result<Vec<ScrollOffer>, Error> {
+    let spells: HashMap<i64, (String, i64, i64, i64)> = spell_rows
         .into_iter()
         .map(|s| {
             let v: Value = serde_json::from_str(&s.raw).unwrap_or(Value::Null);
@@ -110,13 +180,17 @@ pub fn load(pack: &WorldPack) -> Result<Vec<ScrollOffer>, Error> {
             if !seen.insert((shop.number, spell)) {
                 continue;
             }
+            let scroll = match crate::qs120::PROTECTIVE_AURA_SCROLL {
+                (n, renamed) if qs120 && item.number == n => renamed.to_owned(),
+                _ => item.name,
+            };
             out.push(ScrollOffer {
                 spell,
                 spell_name: name.clone(),
                 spell_level: *level,
                 magery: *magery,
                 magery_level: *magery_level,
-                scroll: item.name,
+                scroll,
                 cost: item.cost,
                 currency: item.currency,
                 shop: shop.number,

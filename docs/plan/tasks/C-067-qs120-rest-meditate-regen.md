@@ -42,6 +42,9 @@ best regen tier up. On 1.11p and unknown, nothing changes.
   (`rest_mana_mult`, `meditate_mana_mult`), meditate also giving rest's HP; plus the known regen
   tier and race bonus to Alter Mana Regeneration (C-069 supplies the race numbers; until then
   race 0). The party rest (C-045) uses these estimates.
+- **The regen tier in the mana estimate** (moved here from C-066): on 1.20 the mana-per-hour
+  estimate adds the regen tier believed up (its `BuffDef::regen`) to Alter Mana Regeneration,
+  with the race bonus (C-069; until then 0).
 - **The regen buff.** On 1.20 a caster whose family has a tier it knows (C-066) keeps the highest
   one up, as a blessing the bot adds by itself (not one the player has to tick), cast at the mana
   and times `bless.rs` already uses. Re-cast on the family's "when it ends" line. Upgrading: the

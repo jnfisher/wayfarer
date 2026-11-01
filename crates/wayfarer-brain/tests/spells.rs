@@ -673,3 +673,47 @@ async fn no_blessing_in_a_fight_when_turned_off_or_short_of_mana() {
         assert_eq!(bles, usize::from(before), "{text}: {played:?}");
     }
 }
+
+/// The Blessings panel's view of the character: its lasting spells, by short name.
+async fn blessing_spells(g: &mut Game) -> Vec<String> {
+    g.send(ToClient::BlessingsRequest).await;
+    g.until(|m| match m {
+        ToGateway::Blessings { characters } => Some(
+            characters
+                .iter()
+                .flat_map(|c| c.spells.iter().map(|s| s.short.clone()))
+                .collect(),
+        ),
+        _ => None,
+    })
+    .await
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_1_20_spell_in_the_list_makes_the_server_1_20_and_the_book_is_1_20s() {
+    // C-066: arcane attunement is only on a Quicksilver 1.20 server; the `spells` screen that
+    // lists it decides the rule set, and the spellbook is learned again with 1.20's spells.
+    let (mut g, run) = in_arena(&[]).await;
+    start_caster(
+        &mut g,
+        "Mage",
+        &[
+            (1, 1, "mmis", "magic missile"),
+            (20, 8, "aatt", "arcane attunement"),
+        ],
+        &[],
+        35,
+        20,
+    )
+    .await;
+    // The re-sync's `exp` and `i` go unanswered here, five seconds each, before `spells`.
+    g.idle(Duration::from_secs(30)).await;
+    assert_eq!(blessing_spells(&mut g).await, ["aatt"]);
+    let (seen, _) = g.close(run).await;
+    let rules = as_ui_sees(&seen).rule_set.expect("the rule set");
+    assert_eq!(rules.rules, "1.20");
+    assert_eq!(
+        rules.reason.as_deref(),
+        Some("a 1.20 spell in the spell list: arcane attunement")
+    );
+}

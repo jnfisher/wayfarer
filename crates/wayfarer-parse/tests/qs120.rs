@@ -56,7 +56,8 @@ fn the_patterns_are_marked_and_rank_first() {
         .iter()
         .filter(|p| p.rules.is_some())
         .collect();
-    assert_eq!(qs.len(), 22);
+    // 22 lines of section 3, 16 regen-line texts of 3.8 (C-066).
+    assert_eq!(qs.len(), 38);
     for p in qs {
         assert_eq!(p.rules.as_deref(), Some("1.20"));
         let want = if p.name.ends_with("_victim") { 39 } else { 40 };
@@ -276,4 +277,45 @@ fn the_str_requirement() {
             have: 92
         }
     );
+}
+
+#[test]
+fn the_regen_line_texts() {
+    for (line, family, kind, who) in [
+        (
+            "You attune your mind to the flow of mana.",
+            "attunement",
+            "cast",
+            None,
+        ),
+        (
+            "Thornwyn bows their head in quiet devotion.",
+            "devotion",
+            "room",
+            Some("Thornwyn"),
+        ),
+        (
+            "Your communion with nature ends.",
+            "communion",
+            "ends",
+            None,
+        ),
+        ("A dreaming melody fills your mind.", "song", "status", None),
+        (
+            "Thornwyn hums a slow, dreaming melody.",
+            "song",
+            "room",
+            Some("Thornwyn"),
+        ),
+    ] {
+        assert_eq!(
+            typed(line),
+            GameEvent::RegenLine {
+                family: family.into(),
+                kind: kind.into(),
+                who: who.map(Into::into),
+            },
+            "{line}"
+        );
+    }
 }

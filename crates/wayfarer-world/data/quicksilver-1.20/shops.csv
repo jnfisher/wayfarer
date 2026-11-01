@@ -1,0 +1,9 @@
+shop,name,markup_pct,quantity,restock,chance_pct
+48,Newhaven Spell Shop,0,40,240,100
+37,Bard Song Store,100,30,24,100
+174,Jorah's Mage Spells,100,5,56,15
+173,Jorah's Priest Spells,100,5,56,15
+73,"Jorah's Tower, Druid Spells",100,5,56,15
+111,Nekojin Village Store,100,2,120,25
+75,Very Powerful Spells,100,1,252,5
+93,Orfeo's Stuff,0,2,640,25
