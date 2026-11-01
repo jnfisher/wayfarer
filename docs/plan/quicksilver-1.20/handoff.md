@@ -244,8 +244,9 @@ For tracking:
   the hit doesn't weave. So a monster that never takes a weave from a weaver who weaves elsewhere
   is likely immune to its spells.
 - Mages, Priests, Druids, Mystics, Warriors, Witchunters, Thieves and Ninjas never weave.
-- **Spell names** in the line use `.+?`, so a name with "into" in it still splits correctly on
-  the last ` into `; match the spell name against the character's known spells.
+- **Spell names** in the line use `.+?`, a lazy group, which stops at the **first** ` into `: a
+  spell whose name has ` into ` in it must be split again on the last ` into `, and the name
+  matched against the character's known spells.
 
 ### 3.3 Backstab lines
 
@@ -1034,7 +1035,9 @@ results. The casting-only classes are measured by sustained casting.
 `class_melee_pct` scales the **minimum and maximum damage** of a class's normal blows (every move
 but the stab, which keeps its own figures). `class_spell_pct` scales a class's damage spells
 (after the casting-stat bonus; the weave included). `class_weave_pct` scales a weaving hybrid's
-weave on top of `class_spell_pct`. Values are per level band: L1-29, L30-39, L40-49, L50 up.
+weave on top of `class_spell_pct`. Each value is one number (every level) or a list of `[level,
+%]` anchor points with straight lines between anchors and flat outside them, never falling as
+level rises (section 7.1).
 
 ### 6.3 Casting stat
 
@@ -1138,50 +1141,59 @@ Use these values.
 
 ### 7.1 Per-class tables
 
-One value applies at every level; four values are for L1-29, L30-39, L40-49 and L50 up. A class
-not listed is 100.
+The final 1.20.0 values (they replaced an earlier table of four level bands before 1.20.0 was
+tagged). Each value is either one number, for every level, or a list of `[level, %]` anchor
+points: a straight line between anchors and flat outside them. A value never falls as level
+rises. Interpolate in exact fractions, then apply the result to the range ends as the server does
+(whole numbers). A class not listed is 100.
 
 | Class | `class_melee_pct` | `class_spell_pct` | `class_weave_pct` |
 |---|---|---|---|
 | Warrior | 100 | 100 | 100 |
-| Witchunter | 109 | 100 | 100 |
-| Paladin | 95, 95, 71, 88 | 100 | 100 |
-| Cleric | 70, 70, 70, 60 | 100 | 87, 87, 49, 26 |
-| Priest | 100 | 78, 78, 55, 59 | 100 |
-| Missionary | 70 | 100 | 68, 68, 76, 73 |
-| Ninja | 78, 78, 69, 94 | 100 | 100 |
-| Thief | 100, 100, 77, 94 | 100 | 100 |
-| Bard | 70, 70, 60, 70 | 100 | 38, 38, 42, 38 |
-| Gypsy | 60, 60, 60, 68 | 100 | 42, 42, 38, 100 |
-| Warlock | 70, 70, 65, 65 | 100 | 70, 70, 50, 100 |
-| Mage | 100 | 93, 93, 76, 92 | 100 |
-| Druid | 100 | 107, 107, 89, 93 | 100 |
-| Ranger | 70, 70, 60, 51 | 100 | 50, 50, 40, 100 |
-| Mystic | 50, 50, 46, 77 | 100 | 100 |
+| Witchunter | 114 | 100 | 100 |
+| Paladin | 88 | 100 | 100 |
+| Cleric | 70 | 100 | 49 |
+| Priest | 100 | 67 | 100 |
+| Missionary | 70 | 100 | [[30, 70], [40, 86]] |
+| Ninja | [[40, 77], [60, 96]] | 100 | 100 |
+| Thief | 96 | 100 | 100 |
+| Bard | 70 | 100 | [[40, 35], [60, 38]] |
+| Gypsy | 60 | 100 | [[30, 50], [40, 68], [60, 122]] |
+| Warlock | 70 | 100 | [[40, 64], [60, 84]] |
+| Mage | 100 | [[40, 87], [60, 93]] | 100 |
+| Druid | 100 | 100 | 100 |
+| Ranger | 60 | 100 | 50 |
+| Mystic | [[40, 50], [60, 77]] | 100 | 100 |
 
 ### 7.2 Band targets and where 1.20.0 landed
 
 Steady-state damage a round as a percentage of the same race's Warrior at the same level. "Landed"
-is the median over the races of the server's balance model at L30 / L40 / L60 (the gate: within
-about 5 points of the band); L20 is reported only.
+is the median over the races of the server's balance model at L30 / L40 / L60, with the final
+values of 7.1.
 
-| Class | Group | Band, % of Warrior | L20 | L30 | L40 | L60 |
-|---|---|---|---:|---:|---:|---:|
-| Warrior | benchmark | 100 | 100 | 100 | 100 | 100 |
-| Witchunter | pure fighter | 115-125 (aim 120) | 93 | 116 | 121 | 122 |
-| Mystic | pure fighter | 115-125 (aim 120) | 135 | 118 | 120 | 120 |
-| Paladin | weave fighter | 100-110 | 105 | 105 | 103 | 105 |
-| Ranger | weave fighter | 100-110 | 100 | 103 | 107 | 105 |
-| Warlock | damage hybrid | 125-130 | 151 | 127 | 126 | 129 |
-| Gypsy | damage hybrid | 125-130 | 105 | 123 | 125 | 127 |
-| Thief | stealth melee | 105-120 (the opener is extra) | 191 | 113 | 110 | 112 |
-| Ninja | stealth melee | 105-120 (the opener is extra) | 152 | 112 | 111 | 110 |
-| Missionary | squishy healer hybrid | 100-110 | 78 | 104 | 106 | 101 |
-| Bard | squishy healer hybrid | 100-110 | 121 | 104 | 108 | 105 |
-| Cleric | defensive hybrid | 80-95 | 88 | 88 | 86 | 89 |
-| Mage | arcane caster | 130-150 | 82 | 140 | 138 | 139 |
-| Druid | nature caster | 130-150 | 79 | 139 | 139 | 140 |
-| Priest | divine caster | 75-90 | 71 | 81 | 82 | 82 |
+| Class | Group | Band, % of Warrior | L30 | L40 | L60 |
+|---|---|---|---:|---:|---:|
+| Warrior | benchmark | 100 | 100 | 100 | 100 |
+| Witchunter | pure fighter | 115-125 (aim 120) | 121 | 114 | 127 |
+| Mystic | pure fighter | 115-125 (aim 120) | 118 | 124 | 120 |
+| Paladin | weave fighter | 100-110 | 96 | 116 | 105 |
+| Ranger | weave fighter | 100-110 | 91 | 99 | 121 |
+| Warlock | damage hybrid | 125-130 | 124 | 132 | 128 |
+| Gypsy | damage hybrid | 125-130 | 128 | 128 | 128 |
+| Thief | stealth melee | 105-120 (the opener is extra) | 107 | 115 | 114 |
+| Ninja | stealth melee | 105-120 (the opener is extra) | 107 | 118 | 112 |
+| Missionary | squishy healer hybrid | 100-110 | 105 | 102 | 108 |
+| Bard | squishy healer hybrid | 100-110 | 102 | 108 | 105 |
+| Cleric | defensive hybrid | 80-95 | 67 | 77 | 107 |
+| Mage | arcane caster | 130-150 | 131 | 149 | 141 |
+| Druid | nature caster | 130-150 | 130 | 150 | 151 |
+| Priest | divine caster | 75-90 | 70 | 90 | 93 |
+
+- The Cleric and the Ranger at L30 and L60 are accepted exceptions: their late class weapons gain
+  on the Warrior.
+- The Paladin's L40 figure is an allowed stretch over the band.
+- No level-up loses damage to a per-class value. Some level-ups stay flat because of the game's
+  own rules (the energy floor, the hit cap, attack value rising only on even levels).
 
 For "where next?" advice: a 1.20 character of class C at level L deals roughly band(C) % of what a
 same-race Warrior of that level deals (the "landed" column at the nearest level), where 1.11p's
