@@ -693,6 +693,19 @@ pub struct PartyDef {
     pub id: String,
     pub leader: SessionId,
     pub followers: Vec<SessionId>,
+    /// Who guards whom (Quicksilver 1.20 `guard`, C-068): the player's choice, members of
+    /// this party. Left out when there are none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<GuardPair>>", optional)]
+    pub guards: Vec<GuardPair>,
+}
+
+/// One member of a party guarding another (Quicksilver 1.20): monster blows aimed at the ward
+/// may hit the guard instead.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct GuardPair {
+    pub guard: SessionId,
+    pub ward: SessionId,
 }
 
 /// Where one member of a party stands.
@@ -736,6 +749,14 @@ pub struct MemberStatus {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub rank: Option<PartyRank>,
+    /// The member it is guarding, as the game said (1.20 `guard`): the ward's in-game name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub guarding: Option<String>,
+    /// Who is guarding it, as the game said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub guarded_by: Option<String>,
 }
 
 /// A party and how each member stands.

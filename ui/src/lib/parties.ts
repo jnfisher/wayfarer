@@ -2,7 +2,7 @@
 // menu, the follower's locked controls, and the Parties panel's status lines and drafts. The
 // brain keeps the parties; this only reads its `parties` message and builds `party_save`.
 
-import type { CharacterState, MemberStatus, PartyDef, PartyStatus, SessionInfo } from "../proto";
+import type { CharacterState, GuardPair, MemberStatus, PartyDef, PartyStatus, SessionInfo } from "../proto";
 
 /** The most followers a party takes (the game's six members). */
 export const MAX_FOLLOWERS = 5;
@@ -107,10 +107,13 @@ export function followerErrands<T extends { action: string; disabled: boolean; t
   );
 }
 
-/** A member's line in the Parties panel. */
+/** A member's line in the Parties panel: its state, rank and guarding (1.20 `guard`). */
 export function memberLine(m: MemberStatus, leader: string): string {
-  const line = stateLine(m, leader);
-  return m.rank ? `${line}, ${RANK_WORD[m.rank]}` : line;
+  const parts = [stateLine(m, leader)];
+  if (m.rank) parts.push(RANK_WORD[m.rank]);
+  if (m.guarding) parts.push(`guarding ${m.guarding}`);
+  if (m.guarded_by) parts.push(`guarded by ${m.guarded_by}`);
+  return parts.join(", ");
 }
 
 /** A rank as a member's line says it (`joined, back rank`). */
@@ -159,29 +162,60 @@ export interface Draft {
   id: string;
   leader: string;
   followers: string[];
+  /** Who guards whom (Quicksilver 1.20 `guard`, C-068). */
+  guards: GuardPair[];
 }
 
 export function draftOf(p: PartyStatus): Draft {
-  return { id: p.party.id, leader: p.party.leader, followers: [...p.party.followers] };
+  return {
+    id: p.party.id,
+    leader: p.party.leader,
+    followers: [...p.party.followers],
+    guards: (p.party.guards ?? []).map((g) => ({ ...g })),
+  };
 }
 
 /** A new party: led by the first character in no party, else the first. */
 export function newDraft(sessions: SessionInfo[], parties: PartyStatus[]): Draft {
   const free = sessions.find((s) => !partyOf(parties, s.id));
-  return { id: "", leader: (free ?? sessions[0])?.id ?? "", followers: [] };
+  return { id: "", leader: (free ?? sessions[0])?.id ?? "", followers: [], guards: [] };
+}
+
+/** The guard pairs whose two are still in the party. */
+function keptGuards(d: Draft): Draft {
+  const members = new Set([d.leader, ...d.followers]);
+  return { ...d, guards: d.guards.filter((g) => members.has(g.guard) && members.has(g.ward)) };
 }
 
 /** Tick or untick a follower; the leader can't follow, and five is the most. */
 export function toggleFollower(d: Draft, session: string): Draft {
   if (session === d.leader) return d;
-  if (d.followers.includes(session)) return { ...d, followers: d.followers.filter((f) => f !== session) };
+  if (d.followers.includes(session)) return keptGuards({ ...d, followers: d.followers.filter((f) => f !== session) });
   if (d.followers.length >= MAX_FOLLOWERS) return d;
   return { ...d, followers: [...d.followers, session] };
 }
 
 /** A new leader: it stops being a follower. */
 export function setLeader(d: Draft, session: string): Draft {
-  return { ...d, leader: session, followers: d.followers.filter((f) => f !== session) };
+  return keptGuards({ ...d, leader: session, followers: d.followers.filter((f) => f !== session) });
+}
+
+/** `guard` guards `ward`, or nobody (null): one ward a guard. */
+export function setGuard(d: Draft, guard: string, ward: string | null): Draft {
+  const others = d.guards.filter((g) => g.guard !== guard);
+  return { ...d, guards: ward && ward !== guard ? [...others, { guard, ward }] : others };
+}
+
+/** Whom `guard` guards in the draft, or "". */
+export function wardOf(d: Draft, guard: string): string {
+  return d.guards.find((g) => g.guard === guard)?.ward ?? "";
+}
+
+/** Guards can be set when every member's server is known to play Quicksilver 1.20; else why
+ * not. */
+export function guardsOff(d: Draft, characters: Record<string, CharacterState | undefined>): string | null {
+  const all = [d.leader, ...d.followers];
+  return all.every((s) => characters[s]?.rule_set?.rules === "1.20") ? null : "1.20 servers only";
 }
 
 /** Why the draft can't be saved, or null. */
@@ -193,7 +227,9 @@ export function draftProblem(d: Draft): string | null {
 
 /** The draft as `party_save` takes it. */
 export function toDef(d: Draft): PartyDef {
-  return { id: d.id, leader: d.leader, followers: [...d.followers] };
+  const def: PartyDef = { id: d.id, leader: d.leader, followers: [...d.followers] };
+  if (d.guards.length) def.guards = d.guards.map((g) => ({ ...g }));
+  return def;
 }
 
 /** The other party a character is in, by its leader's name, for the panel's tick list. */

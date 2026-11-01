@@ -207,3 +207,4 @@
 - **2026-11-01**: `quicksilver-1.20.md` "Spells": Spell Mod v2.1, protective aura and dark binding, slow and solid fog, the caps at 65, the regen line (tiers, families, two-cast upgrades, scrolls, shops, prices, stock, texts) and the monster copies [Q]; the regen songs' rows are built from the tier table until the handoff's own come [Q, built] (wayfarer C-066).
 - **2026-11-01**: `quicksilver-1.20.md` "Rest and meditate": rest's mana (×3), Meditate's HP and mana (×5), both ending by themselves at full bars (rest silently), Meditate at full mana with HP missing, the standing rate and the regen tier [Q] (wayfarer C-067).
 - **2026-11-01**: `quicksilver-1.20.md` "Spells": the regen songs' rows, from the server's 1.20.0 records (no longer built from the tier table) [Q] (wayfarer C-067's PR).
+- **2026-11-01**: `quicksilver-1.20.md` "GUARD": the command, its refusals, the intercept chance, what it does not cover, and when it ends [Q] (wayfarer C-068).

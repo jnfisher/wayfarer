@@ -1339,6 +1339,21 @@ leader and one to five followers, by session id, made, changed and deleted with 
 store, so it survives a restart. A character is in one party at most: saving it into another
 moves it.
 
+**Guarding** (Quicksilver 1.20, C-068; `docs/kb/quicksilver-1.20.md` "GUARD"). A party
+definition may say who guards whom (`guards`, `[{guard, ward}]`, two members, one ward a
+guard): the player's choice, nothing is picked for them. The coordinator then has the guard
+send `guard <ward's first name>` once both are joined and in one room, the guard's bot running
+and it neither resting nor fighting, and only when its session is known to play 1.20 ("Rule
+sets"; on 1.11p `guard` is said aloud, so it is never sent). The game ends a guard by itself
+with its stop lines when the two part, either rests, meditates, leaves the party, logs off or
+dies, and nothing survives a reconnect: so after a move or a rest the guard is sent again, at
+most every 10 s, until the game says it guards. Its refusals (`You don't see that player
+here.`, `<Name> is not in your party.`, `You cannot guard while resting or meditating.`) count;
+three in a row hold it for five minutes and its tile is told once. A pair the player takes
+away (or a member leaving the party, or the party deleted) sends a plain `guard` once to stop;
+a `guard` the player typed with no pair is left alone. Each member's status carries what it
+guards and who guards it, as the game said.
+
 **The game's party.** Each session keeps its party as the game last showed it: whom it
 follows, the last whole `par` screen's rows (name, class, mana and HP per cent, the rest mark,
 the rank, or an invitation), when that screen came, the last invitation, and when the game
