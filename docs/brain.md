@@ -114,7 +114,7 @@ server would send commands the server reads as speech.
   as text (the dev panel shows them) and nothing else reads them.
 - **Lines only 1.20 prints** make an unknown or 1.11p session 1.20 whenever they come: an
   opening, a weave, an intercept, a guard start or stop, a weapon's Str requirement, a guard
-  refusal within 10 s of a `guard` (two of those lines may be stock), a critical backstab
+  refusal within 10 s of a `guard` (two of those lines read like stock ones), a critical backstab
   (`critically surprise`), a 1.20 spell or scroll in the spell list, a learned spell, an item
   bought, carried or on the floor (`protective aura`, `dark binding`, the regen line), and
   `You are now meditating.` with full mana and HP missing. 1.20 is never turned back to 1.11p

@@ -26,7 +26,8 @@ pub(crate) const RETRY_AFTER: Duration = Duration::from_secs(60);
 /// Probes a login, at most.
 pub(crate) const MAX_PROBES: u32 = 3;
 /// A guard refusal counts as a 1.20 line only this soon after a `guard` went: two of them
-/// (`You don't see that player here.`, `<Name> is not in your party.`) may be stock lines too.
+/// (`You don't see that player here.`, `<Name> is not in your party.`) read like stock lines.
+/// The stock package has neither, but a sysop's own text might.
 const GUARD_ANSWER: Duration = Duration::from_secs(10);
 
 /// The bars as the character model has them, for the meditate signal.

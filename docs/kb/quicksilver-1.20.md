@@ -66,6 +66,9 @@ forms, so they are tried before every stock pattern (50 and up) [Q].
 - **Not signals.** `version` prints `MajorMUD v 1.11p-WG (...)` on a 1.20 server too, and the
   login banner is the same. `guard` is not a command on 1.11p: it falls through and is said
   aloud to the room, so it is no probe [Q].
-- **Open.** Whether `You don't see that player here.` and `<Name> is not in your party.` are
-  also stock 1.11p lines (for other commands) is not known; wayfarer counts them as 1.20 only
-  right after a `guard` it sent [I].
+- **The two guard refusals that read like stock lines**, `You don't see that player here.` and
+  `<Name> is not in your party.`, are in no file of the stock 1.11p package (the module and its
+  message files); the nearest stock texts differ (`... don't see that anywhere`, `... don't see
+  your target here`, `... is not in your gang`) [C, the stock package searched 2026-11-01].
+  Wayfarer still counts them as 1.20 only right after a `guard` it sent, in case a sysop's own
+  text matches.
