@@ -395,6 +395,8 @@ pub(crate) struct Session {
     server: String,
     /// Which rules the server plays: 1.11p, 1.20 or not known yet (C-064).
     detect: Detector,
+    /// What the character knows of its guarding (1.20 `guard`, C-068).
+    guard: crate::guard::Guard,
 }
 
 /// The events of the character's own auto-combat: its engaging and its blows, hits, misses,
@@ -450,6 +452,7 @@ impl Session {
             sightings: Sightings::default(),
             server: info.server.clone(),
             detect,
+            guard: crate::guard::Guard::default(),
             ledger,
             clock,
             restore,
@@ -605,8 +608,9 @@ impl Session {
             self.flee_out_done(out);
         } else if was != SessionState::Realm {
             self.synced = false;
-            // A login: the server may have been rebuilt since the last.
+            // A login: the server may have been rebuilt since the last; no guard survives.
             self.detect.new_login();
+            self.guard.reset();
             self.relearn();
         }
         if state == SessionState::Realm && !self.synced && self.resync == Resync::Off {
@@ -734,6 +738,7 @@ impl Session {
                 }
             }
             self.spell_event(&typed);
+            self.guard.event(&typed, now);
             if !silent {
                 self.count_combat(&typed, now);
             }
@@ -3162,6 +3167,8 @@ impl Session {
                 || self.combat(self.clock.instant()) == Some(true)
                 || (self.bot.running()
                     && matches!(self.bot.mode(), BotMode::Fight | BotMode::Flee)),
+            rules: self.detect.rules(),
+            guard: self.guard.clone(),
         }
     }
 

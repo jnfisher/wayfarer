@@ -9,13 +9,16 @@
     activityLine,
     draftOf,
     draftProblem,
+    guardsOff,
     elsewhere,
     memberLine,
     namesOf,
     newDraft,
+    setGuard,
     setLeader,
     toDef,
     toggleFollower,
+    wardOf,
     type Draft,
   } from "./lib/parties";
   import type { CharacterState, PartyDef, PartyStatus, SessionInfo } from "./proto";
@@ -124,6 +127,29 @@
       </li>
     {/each}
   </ul>
+  {@const off = guardsOff(d, characters)}
+  {#if d.followers.length > 0}
+    <ul class="guards" title={off ?? "Quicksilver 1.20: a guard takes monster blows aimed at its ward"}>
+      {#each [d.leader, ...d.followers] as g (g)}
+        <li>
+          <label>
+            {names[g] ?? g} guards
+            <select
+              disabled={!!off}
+              value={wardOf(d, g)}
+              onchange={(e) => edit(setGuard(d, g, (e.currentTarget as HTMLSelectElement).value || null))}
+            >
+              <option value="">nobody</option>
+              {#each [d.leader, ...d.followers].filter((w) => w !== g) as w (w)}
+                <option value={w}>{names[w] ?? w}</option>
+              {/each}
+            </select>
+          </label>
+        </li>
+      {/each}
+      {#if off}<li class="dim">guards: {off}</li>{/if}
+    </ul>
+  {/if}
 {/snippet}
 
 <div class="parties">

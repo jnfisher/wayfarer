@@ -243,6 +243,10 @@ pub(crate) struct MemberInfo {
     pub rank: Option<Rank>,
     /// Resting or fighting: a rank command would end the rest, so it waits.
     pub busy: bool,
+    /// The rules its server plays: `guard` exists on Quicksilver 1.20 only.
+    pub rules: wayfarer_world::RuleSet,
+    /// What it knows of its guarding, from the game's lines (1.20, C-068).
+    pub guard: crate::guard::Guard,
 }
 
 /// One tick's plan: the lines to send, each session's role, and the parties for the UIs when
@@ -290,6 +294,12 @@ pub(crate) struct Parties {
     ranks: Ranks,
     /// Members a `party_resync` asked to check their party with `par`, until it goes.
     resync: BTreeSet<String>,
+    /// Guards' last `guard` (1.20, C-068).
+    guard_asked: HashMap<String, Instant>,
+    /// Guards whose pair the player took away: a plain `guard` stops them, once.
+    unguard: BTreeSet<String>,
+    /// Guards held for their refusals whose tile has been told.
+    guard_noted: BTreeSet<String>,
 }
 
 /// The rank commands sent and the ranks refused (`party.rank`).
@@ -464,6 +474,66 @@ impl Ranks {
 }
 
 /// The first word of a name: what the game's party lines and commands use.
+impl Parties {
+    /// `guard <ward>` for each of the player's pairs (1.20, C-068): both joined, in one room,
+    /// the guard's bot running and not resting or fighting, its server known to play 1.20,
+    /// and it not guarding the ward already; at most every [`ASK_EVERY`], and never while its
+    /// refusals hold it (its tile is told once). Each member's status shows its guarding.
+    #[allow(clippy::too_many_arguments)]
+    fn plan_guards(
+        def: &PartyDef,
+        m: &BTreeMap<String, MemberInfo>,
+        now: Instant,
+        asked: &HashMap<String, Instant>,
+        noted: &mut BTreeSet<String>,
+        plan: &mut Plan,
+        members: &mut [MemberStatus],
+    ) {
+        for ms in members.iter_mut() {
+            if let Some(i) = m.get(&ms.session) {
+                ms.guarding = i.guard.guarding.clone();
+                ms.guarded_by = i.guard.guarded_by.clone();
+            }
+        }
+        let joined = |s: &str| {
+            members
+                .iter()
+                .any(|ms| ms.session == s && ms.state == MemberState::Joined)
+        };
+        for p in &def.guards {
+            let (Some(g), Some(w)) = (m.get(&p.guard), m.get(&p.ward)) else {
+                continue;
+            };
+            if !g.guard.may_ask(now) {
+                if noted.insert(p.guard.clone()) {
+                    let why = g.guard.refused.unwrap_or("refused");
+                    plan.notes.push((
+                        p.guard.clone(),
+                        format!("guard refused three times ({why}): not asked again for 5 minutes"),
+                    ));
+                }
+                continue;
+            }
+            noted.remove(&p.guard);
+            let Some(ward) = w.name.as_deref().map(first) else {
+                continue;
+            };
+            let ready = g.realm
+                && g.running
+                && !g.busy
+                && !g.health.resting
+                && joined(&p.guard)
+                && joined(&p.ward)
+                && same_room(g, w)
+                && !g.guard.guards(ward)
+                && asked.get(&p.guard).is_none_or(|t| now >= *t + ASK_EVERY);
+            if ready && let Some(line) = crate::detect::guard_line(g.rules, Some(ward)) {
+                plan.lines.push((p.guard.clone(), line));
+            }
+        }
+    }
+}
+
 fn first(name: &str) -> &str {
     name.split_whitespace().next().unwrap_or(name)
 }
@@ -477,6 +547,11 @@ impl Parties {
                     id: r.id,
                     leader: r.leader,
                     followers: r.followers,
+                    guards: r
+                        .guards
+                        .into_iter()
+                        .map(|(guard, ward)| wayfarer_proto::GuardPair { guard, ward })
+                        .collect(),
                 })
                 .collect(),
             ..Parties::default()
@@ -526,10 +601,37 @@ impl Parties {
                 return Err(format!("{s} is in the party twice"));
             }
         }
+        // Guard pairs (1.20): two different members of this party, a guard guarding one.
+        let mut guards = BTreeSet::new();
+        for p in &def.guards {
+            for s in [&p.guard, &p.ward] {
+                if *s != def.leader && !def.followers.contains(s) {
+                    return Err(format!("{s} guards or is guarded but is not in the party"));
+                }
+            }
+            if p.guard == p.ward {
+                return Err(format!("{} cannot guard itself", p.guard));
+            }
+            if !guards.insert(&p.guard) {
+                return Err(format!("{} guards one member at most", p.guard));
+            }
+        }
         if def.id.is_empty() {
             def.id = self.new_id();
         }
         let before: BTreeSet<String> = self.members(&def.id).into_iter().collect();
+        // Guards the player took away: they stop.
+        let guarding_after: BTreeSet<&String> = def.guards.iter().map(|p| &p.guard).collect();
+        if let Some(old) = self.defs.iter().find(|d| d.id == def.id) {
+            for p in &old.guards {
+                if !guarding_after.contains(&p.guard) {
+                    self.unguard.insert(p.guard.clone());
+                }
+            }
+        }
+        for g in &guarding_after {
+            self.unguard.remove(*g);
+        }
         let members: BTreeSet<String> = std::iter::once(def.leader.clone())
             .chain(def.followers.iter().cloned())
             .collect();
@@ -543,6 +645,18 @@ impl Parties {
             }
             let n = other.followers.len();
             other.followers.retain(|f| !members.contains(f));
+            // A pair with a member moved out goes; its guard stops.
+            let still: BTreeSet<String> = std::iter::once(other.leader.clone())
+                .chain(other.followers.iter().cloned())
+                .collect();
+            for p in &other.guards {
+                if !(still.contains(&p.guard) && still.contains(&p.ward)) {
+                    self.unguard.insert(p.guard.clone());
+                }
+            }
+            other
+                .guards
+                .retain(|p| still.contains(&p.guard) && still.contains(&p.ward));
             if other.followers.len() != n {
                 if other.followers.is_empty() {
                     emptied.push(other.id.clone());
@@ -588,6 +702,8 @@ impl Parties {
         for f in &def.followers {
             self.forget(f);
         }
+        self.unguard
+            .extend(def.guards.iter().map(|p| p.guard.clone()));
         self.leaving.extend(def.followers);
         self.sent = None;
         true
@@ -608,6 +724,14 @@ impl Parties {
         self.forget(session);
         let d = &mut self.defs[i];
         d.followers.retain(|f| f != session);
+        for p in d
+            .guards
+            .iter()
+            .filter(|p| p.guard == session || p.ward == session)
+        {
+            self.unguard.insert(p.guard.clone());
+        }
+        d.guards.retain(|p| p.guard != session && p.ward != session);
         self.leaving.insert(session.to_owned());
         self.sent = None;
         if d.followers.is_empty() {
@@ -719,6 +843,12 @@ impl Parties {
             Some("frontrank" | "midrank" | "backrank") => {
                 self.ranks.sent.insert(session.to_owned(), now);
             }
+            Some("guard") => {
+                self.guard_asked.insert(session.to_owned(), now);
+                if line.split_whitespace().nth(1).is_none() {
+                    self.unguard.remove(session);
+                }
+            }
             _ => {}
         }
     }
@@ -766,6 +896,8 @@ impl Parties {
                 },
                 detail: None,
                 rank: None,
+                guarding: None,
+                guarded_by: None,
             }];
             // A whole `par` screen since every member's last join or drop.
             let fresh = |f: &MemberInfo| {
@@ -923,6 +1055,8 @@ impl Parties {
                     state,
                     detail,
                     rank: None,
+                    guarding: None,
+                    guarded_by: None,
                 });
             }
             if l.realm && counted > 0 && l.game.as_of.is_none_or(|t| now >= t + PAR_EVERY) {
@@ -1047,11 +1181,35 @@ impl Parties {
             // Ranks, once the leader's screen shows the party as it is.
             let ready = l.realm && l.game.as_of.is_some() && !l.game.stale && !owe_par;
             self.ranks.plan(def, m, ready, now, &mut plan, &mut members);
+            Self::plan_guards(
+                def,
+                m,
+                now,
+                &self.guard_asked,
+                &mut self.guard_noted,
+                &mut plan,
+                &mut members,
+            );
             statuses.push(PartyStatus {
                 party: def.clone(),
                 members,
             });
         }
+        // A guard whose pair the player took away stops, once (1.20). A guard the player typed
+        // without a pair is left alone.
+        for g in &self.unguard {
+            if let Some(i) = m.get(g)
+                && i.realm
+                && !i.busy
+                && i.guard.guarding.is_some()
+                && ago(self.guard_asked.get(g), ASK_EVERY)
+                && let Some(line) = crate::detect::guard_line(i.rules, None)
+            {
+                plan.lines.push((g.clone(), line));
+            }
+        }
+        self.unguard
+            .retain(|g| m.get(g).is_some_and(|i| i.guard.guarding.is_some()));
         // A `party_resync`: each member in the realm checks its party, once.
         let defs = &self.defs;
         self.resync.retain(|s| {
@@ -1077,6 +1235,7 @@ impl Parties {
 mod tests {
     use super::*;
     use crate::party_game::ParMember;
+    use wayfarer_parse::typed::GameEvent;
 
     fn known() -> BTreeSet<String> {
         ["penny", "lauren", "faye", "manuel"]
@@ -1090,6 +1249,7 @@ mod tests {
             id: String::new(),
             leader: leader.into(),
             followers: followers.iter().map(|f| (*f).to_owned()).collect(),
+            guards: Vec::new(),
         }
     }
 
@@ -1120,6 +1280,8 @@ mod tests {
             bashing: None,
             rank: None,
             busy: false,
+            rules: wayfarer_world::RuleSet::Unknown,
+            guard: crate::guard::Guard::default(),
         }
     }
 
@@ -1893,5 +2055,164 @@ mod tests {
         assert!(p.plan(&m, now()).statuses.is_none());
         p.resend();
         assert!(p.plan(&m, now()).statuses.is_some());
+    }
+
+    // GUARD (1.20, C-068).
+
+    fn guarded(
+        p: &mut Parties,
+        now: Instant,
+        rules: wayfarer_world::RuleSet,
+    ) -> BTreeMap<String, MemberInfo> {
+        let mut d = def("penny", &["lauren"]);
+        d.guards = vec![wayfarer_proto::GuardPair {
+            guard: "penny".into(),
+            ward: "lauren".into(),
+        }];
+        p.save(d, &known()).unwrap();
+        let mut m = two(now, &["Lauren Phillips"]);
+        m.get_mut("lauren").unwrap().game.following = Some("Penny".into());
+        for i in m.values_mut() {
+            i.rules = rules;
+        }
+        m
+    }
+
+    fn guard_lines(plan: &Plan) -> Vec<(&str, &str)> {
+        plan.lines
+            .iter()
+            .filter(|(_, l)| l.starts_with("guard"))
+            .map(|(s, l)| (s.as_str(), l.as_str()))
+            .collect()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_guard_pair_guards_on_1_20_only() {
+        use wayfarer_world::RuleSet;
+        let now = Instant::now();
+        for rules in [RuleSet::Unknown, RuleSet::Stock] {
+            let mut p = Parties::default();
+            let m = guarded(&mut p, now, rules);
+            assert!(guard_lines(&p.plan(&m, now)).is_empty(), "{rules:?}");
+        }
+        let mut p = Parties::default();
+        let mut m = guarded(&mut p, now, RuleSet::Qs120);
+        let plan = p.plan(&m, now);
+        assert_eq!(guard_lines(&plan), [("penny", "guard Lauren")]);
+        p.sent("penny", "guard Lauren", now);
+        // Not again at once; again after a while, while the game has not said it guards.
+        assert!(guard_lines(&p.plan(&m, now + Duration::from_secs(1))).is_empty());
+        let later = now + ASK_EVERY;
+        assert_eq!(guard_lines(&p.plan(&m, later)), [("penny", "guard Lauren")]);
+        // Guarding: nothing more, and the statuses say so.
+        let g = &mut m.get_mut("penny").unwrap().guard;
+        g.guarding = Some("Lauren".into());
+        m.get_mut("lauren").unwrap().guard.guarded_by = Some("Penny".into());
+        let plan = p.plan(&m, later + ASK_EVERY);
+        assert!(guard_lines(&plan).is_empty());
+        let st = plan.statuses.expect("the guarding changed");
+        let penny = st[0]
+            .members
+            .iter()
+            .find(|ms| ms.session == "penny")
+            .unwrap();
+        assert_eq!(penny.guarding.as_deref(), Some("Lauren"));
+        let lauren = st[0]
+            .members
+            .iter()
+            .find(|ms| ms.session == "lauren")
+            .unwrap();
+        assert_eq!(lauren.guarded_by.as_deref(), Some("Penny"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn no_guard_apart_resting_or_fighting() {
+        use wayfarer_world::RuleSet;
+        let now = Instant::now();
+        let mut p = Parties::default();
+        let m = guarded(&mut p, now, RuleSet::Qs120);
+        let mut apart = m.clone();
+        apart.get_mut("lauren").unwrap().room = Some((1, 2));
+        assert!(guard_lines(&p.plan(&apart, now)).is_empty());
+        let mut resting = m.clone();
+        resting.get_mut("penny").unwrap().health.resting = true;
+        assert!(guard_lines(&p.plan(&resting, now)).is_empty());
+        let mut busy = m.clone();
+        busy.get_mut("penny").unwrap().busy = true;
+        assert!(guard_lines(&p.plan(&busy, now)).is_empty());
+        // Not joined yet: no guard.
+        let mut out = m;
+        out.get_mut("lauren").unwrap().game.following = None;
+        assert!(guard_lines(&p.plan(&out, now)).is_empty());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn refusals_hold_the_guard_and_its_tile_is_told_once() {
+        use wayfarer_world::RuleSet;
+        let now = Instant::now();
+        let mut p = Parties::default();
+        let mut m = guarded(&mut p, now, RuleSet::Qs120);
+        let g = &mut m.get_mut("penny").unwrap().guard;
+        for _ in 0..crate::guard::REFUSALS {
+            g.event(&GameEvent::GuardRefused { why: "not_here" }, now);
+        }
+        let plan = p.plan(&m, now);
+        assert!(guard_lines(&plan).is_empty());
+        assert_eq!(plan.notes.len(), 1);
+        assert!(plan.notes[0].1.contains("not_here"), "{:?}", plan.notes);
+        assert!(p.plan(&m, now).notes.is_empty(), "told once");
+        let after = now + crate::guard::HOLD;
+        assert_eq!(guard_lines(&p.plan(&m, after)), [("penny", "guard Lauren")]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_pair_taken_away_stops_its_guard_once() {
+        use wayfarer_world::RuleSet;
+        let now = Instant::now();
+        let mut p = Parties::default();
+        let mut m = guarded(&mut p, now, RuleSet::Qs120);
+        m.get_mut("penny").unwrap().guard.guarding = Some("Lauren".into());
+        let id = p.defs()[0].id.clone();
+        let mut d = def("penny", &["lauren"]);
+        d.id = id;
+        p.save(d, &known()).unwrap();
+        let plan = p.plan(&m, now);
+        assert_eq!(guard_lines(&plan), [("penny", "guard")]);
+        p.sent("penny", "guard", now);
+        assert!(guard_lines(&p.plan(&m, now + ASK_EVERY)).is_empty());
+        // A guard the player typed, with no pair, is left alone.
+        let mut p = Parties::default();
+        let mut m = formed(&mut p, now);
+        for i in m.values_mut() {
+            i.rules = RuleSet::Qs120;
+        }
+        m.get_mut("penny").unwrap().guard.guarding = Some("Lauren".into());
+        assert!(guard_lines(&p.plan(&m, now)).is_empty());
+    }
+
+    #[test]
+    fn guard_pairs_are_checked() {
+        let mut p = Parties::default();
+        let pair = |g: &str, w: &str| wayfarer_proto::GuardPair {
+            guard: g.into(),
+            ward: w.into(),
+        };
+        let mut d = def("penny", &["lauren", "faye"]);
+        d.guards = vec![pair("penny", "manuel")];
+        assert!(
+            p.save(d.clone(), &known())
+                .unwrap_err()
+                .contains("not in the party")
+        );
+        d.guards = vec![pair("penny", "penny")];
+        assert!(p.save(d.clone(), &known()).unwrap_err().contains("itself"));
+        d.guards = vec![pair("penny", "lauren"), pair("penny", "faye")];
+        assert!(p.save(d.clone(), &known()).unwrap_err().contains("at most"));
+        d.guards = vec![pair("penny", "lauren"), pair("faye", "lauren")];
+        p.save(d, &known()).unwrap();
+        assert_eq!(p.defs()[0].guards.len(), 2);
+        // Lauren leaves: both pairs go.
+        p.leave("lauren").unwrap().unwrap();
+        assert!(p.defs()[0].guards.is_empty());
     }
 }

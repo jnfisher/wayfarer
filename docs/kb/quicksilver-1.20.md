@@ -119,3 +119,20 @@ where each file comes from).
 - **Missing from the handoff's table:** the four regen songs' own rows (6017-6020). Wayfarer's
   `songs.csv` builds them from the tier table: magery Bard, magery level 0, self, type 3; their
   status lines are the song family's [Q, built; the rows asked for].
+
+## GUARD
+
+- **The command**: `guard <player>` starts guarding a party member in the room; `guard` alone
+  stops. The ward must be in the guard's party and in the room; the name is matched as other
+  player-target commands match it (a prefix of the first name). Guarding someone new stops the
+  old ward first (the stop lines, then the start lines) [Q].
+- **Refusals**: `You don't see that player here.`, `<Name> is not in your party.`, `You cannot
+  guard yourself.`, `You cannot guard while resting or meditating.`, and for `guard` alone when
+  not guarding, `You are not guarding anyone.` [Q].
+- **What it does**: each monster melee blow aimed at the ward has `25 + 5 × combat`% (at most
+  95) to hit the guard instead, `combat` being the guard's class combat rating on the help scale
+  (the raw rating minus 2, at least 0: a Warrior 45%). Several guards on one ward roll in the
+  order they started. A guard at 0 HP or below rolls nothing but keeps the guard [Q].
+- **What it doesn't cover**: spells, robbery, PvP and room damage still reach the ward [Q].
+- **It ends by itself**, with the stop lines, when the two part: either moves away, leaves the
+  party, rests or meditates, logs off, hangs up or dies. No state survives a reconnect [Q].

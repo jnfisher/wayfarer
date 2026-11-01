@@ -292,9 +292,10 @@ anywhere), then the nearer, then places before monsters before room names.
 
 The parties ([brain.md](brain.md) "Parties"), sent to every UI when one changes and when a
 member's state does: `parties` is `[{party, members}]`, `party` as `party_save` takes it (with
-its `id`), `members` the leader first and then each follower, `{session, state, detail?, rank?}`.
-`rank` (`front`, `mid` or `back`) is where the leader's last `par` showed it, while it is in the
-party in the game.
+its `id`), `members` the leader first and then each follower, `{session, state, detail?, rank?,
+guarding?, guarded_by?}`. `rank` (`front`, `mid` or `back`) is where the leader's last `par`
+showed it, while it is in the party in the game. `guarding` and `guarded_by` are the in-game
+names the game's `guard` lines gave (Quicksilver 1.20 only).
 `state` is `joined` (in the leader's party in the game), `not_joined` (forming up when in the
 leader's room), `away` (logged off or its bot not running, or the leader not in the realm: not waited for),
 `separated`, `walking` (to the leader), `resting` or `unreachable` (`detail` says why).
@@ -335,7 +336,7 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 | `stats_reset {session, only?}` | Zero the combat numbers, and end the current run and start a new one now, its numbers (exp/hr, kills, deaths, flees, rests) at zero; the ended run stays in the history. With no run (the bot stopped) only the combat numbers are zeroed. `only`: `run` resets the run alone, `combat` the combat numbers alone (the stats panel's two **reset** buttons). A notice says which, and a `stats` message follows |
 | `find {session, query}` | Send a `found` message: the rooms, well-known places and monsters whose name holds `query` (two characters or more, any case) |
 | `parties_request` | Send a `parties` message |
-| `party_save {party}` | Make a party (`party.id` empty; the brain picks one, `party-1` and on) or replace one: `{id, leader, followers}`, by session id, one to five followers, the leader not among them ([brain.md](brain.md) "Parties"). A member already in another party is moved out of it (a leader takes its party with it); a party left with no followers is deleted. Refused with a warning otherwise; a `parties` message follows |
+| `party_save {party}` | Make a party (`party.id` empty; the brain picks one, `party-1` and on) or replace one: `{id, leader, followers, guards?}`, by session id, one to five followers, the leader not among them; `guards`, on a Quicksilver 1.20 server, `[{guard, ward}]`: two different members, one ward a guard (left out when none) ([brain.md](brain.md) "Parties"). A member already in another party is moved out of it (a leader takes its party with it); a party left with no followers is deleted. Refused with a warning otherwise; a `parties` message follows |
 | `party_delete {id}` | Delete a party; its members play on their own |
 | `party_leave {session}` | Take a follower out of its party: it sends `leave` in the game and plays on its own |
 | `party_join {session, party}` | Add `session` to party `party` as a follower; it joins in the game when it is in the leader's room |

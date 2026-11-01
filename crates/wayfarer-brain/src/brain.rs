@@ -836,6 +836,11 @@ impl Brain {
                 id: d.id.clone(),
                 leader: d.leader.clone(),
                 followers: d.followers.clone(),
+                guards: d
+                    .guards
+                    .iter()
+                    .map(|g| (g.guard.clone(), g.ward.clone()))
+                    .collect(),
             };
             if let Err(e) = store.save_party(&rec, at) {
                 tracing::warn!(party = %d.id, "the party could not be stored: {e}");
