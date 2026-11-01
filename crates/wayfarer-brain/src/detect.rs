@@ -245,7 +245,6 @@ impl Detector {
 /// The `guard` line to send, or `None`: never unless the server is known to play 1.20 (on
 /// 1.11p the word is not a command and is said aloud to the room). `ward` `None` stops
 /// guarding. Every `guard` the brain sends goes through here (`GUARD`, C-068).
-#[allow(dead_code)]
 pub(crate) fn guard_line(rules: RuleSet, ward: Option<&str>) -> Option<String> {
     if !rules.qs120() {
         return None;

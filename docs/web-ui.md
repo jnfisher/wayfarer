@@ -333,6 +333,11 @@ no reason), **re-sync** in its box, or **re-sync all** at the top, has every mem
 party with `par` at once and the invites and follows go again without waiting
 (`party_resync`, [brain.md](brain.md) "Parties").
 
+Under the members, **guards** (Quicksilver 1.20): for each member a list, `Penny guards
+nobody / Lauren / Faye`, one ward each; set it and save. It is greyed with "1.20 servers only"
+until every member's server is known to play 1.20. A member's state line then says
+`guarding Lauren` or `guarded by Penny`, as the game said.
+
 Under each follower is its state: `joined`, `not joined yet: forming up` (in the leader's
 room) or `: in another room`, `away: its bot is not running` (or not in the realm),
 `separated`, `walking to Penny (4 rooms)`, `resting 62%`, or `can't reach Penny: ...` with the

@@ -134,6 +134,8 @@ const MIGRATIONS: &[&str] = &[
          reason TEXT NOT NULL,
          updated_at INTEGER NOT NULL
      );",
+    // 11: who guards whom in each party (C-068), a `guard ward` pair a line.
+    "ALTER TABLE parties ADD COLUMN guards TEXT NOT NULL DEFAULT '';",
 ];
 
 /// The schema version this build writes.
@@ -325,6 +327,8 @@ pub struct PartyRecord {
     pub id: String,
     pub leader: String,
     pub followers: Vec<String>,
+    /// Who guards whom (Quicksilver 1.20): (guard, ward) by session id.
+    pub guards: Vec<(String, String)>,
 }
 
 /// What a run's events count.
@@ -677,9 +681,19 @@ impl Store {
     /// Keep a party, replacing the one with its id.
     pub fn save_party(&self, p: &PartyRecord, at: i64) -> Result<()> {
         self.conn.execute(
-            "INSERT OR REPLACE INTO parties (id, leader, followers, updated_at)
-             VALUES (?1, ?2, ?3, ?4)",
-            params![p.id, p.leader, p.followers.join("\n"), at],
+            "INSERT OR REPLACE INTO parties (id, leader, followers, guards, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                p.id,
+                p.leader,
+                p.followers.join("\n"),
+                p.guards
+                    .iter()
+                    .map(|(g, w)| format!("{g} {w}"))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                at
+            ],
         )?;
         Ok(())
     }
@@ -688,7 +702,7 @@ impl Store {
     pub fn parties(&self) -> Result<Vec<PartyRecord>> {
         let mut q = self
             .conn
-            .prepare("SELECT id, leader, followers FROM parties ORDER BY id")?;
+            .prepare("SELECT id, leader, followers, guards FROM parties ORDER BY id")?;
         let rows = q.query_map([], |r| {
             Ok(PartyRecord {
                 id: r.get(0)?,
@@ -698,6 +712,12 @@ impl Store {
                     .split('\n')
                     .filter(|f| !f.is_empty())
                     .map(str::to_owned)
+                    .collect(),
+                guards: r
+                    .get::<_, String>(3)?
+                    .split('\n')
+                    .filter_map(|l| l.split_once(' '))
+                    .map(|(g, w)| (g.to_owned(), w.to_owned()))
                     .collect(),
             })
         })?;

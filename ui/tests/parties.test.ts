@@ -9,8 +9,13 @@ import {
   memberLine,
   activityLine,
   newDraft,
+  guardsOff,
+  setGuard,
   setLeader,
+  toDef,
   toggleFollower,
+  wardOf,
+  type Draft,
 } from "../src/lib/parties";
 import type { PartyStatus, SessionInfo } from "../src/proto";
 
@@ -89,7 +94,7 @@ describe("the panel's lines", () => {
 describe("drafts", () => {
   it("starts a new party with a free leader and takes up to five followers", () => {
     const d = newDraft(sessions, party());
-    expect(d).toEqual({ id: "", leader: "penny", followers: [] });
+    expect(d).toEqual({ id: "", leader: "penny", followers: [], guards: [] });
     expect(draftProblem(d)).toBe("tick at least one follower");
     const one = toggleFollower(d, "lauren");
     expect(one.followers).toEqual(["lauren"]);
@@ -101,8 +106,39 @@ describe("drafts", () => {
   });
 
   it("a new leader stops following", () => {
-    const d = { id: "", leader: "penny", followers: ["lauren", "faye"] };
-    expect(setLeader(d, "lauren")).toEqual({ id: "", leader: "lauren", followers: ["faye"] });
+    const d = { id: "", leader: "penny", followers: ["lauren", "faye"], guards: [] };
+    expect(setLeader(d, "lauren")).toEqual({ id: "", leader: "lauren", followers: ["faye"], guards: [] });
+  });
+
+  it("guard pairs: one ward a guard, gone with a member, sent only when set (1.20)", () => {
+    let d: Draft = { id: "p", leader: "penny", followers: ["lauren", "faye"], guards: [] };
+    expect(toDef(d)).toEqual({ id: "p", leader: "penny", followers: ["lauren", "faye"] });
+    d = setGuard(d, "penny", "lauren");
+    d = setGuard(d, "faye", "lauren");
+    expect(wardOf(d, "penny")).toBe("lauren");
+    d = setGuard(d, "penny", "faye");
+    expect(d.guards).toEqual([
+      { guard: "faye", ward: "lauren" },
+      { guard: "penny", ward: "faye" },
+    ]);
+    expect(setGuard(d, "penny", "penny").guards).toEqual([{ guard: "faye", ward: "lauren" }]);
+    expect(toDef(d).guards).toHaveLength(2);
+    // Lauren leaves the draft: the pair guarding her goes.
+    expect(toggleFollower(d, "lauren").guards).toEqual([{ guard: "penny", ward: "faye" }]);
+    const q = { rule_set: { rules: "1.20", probes: 1, help: [] } };
+    const s = { rule_set: { rules: "1.11p", probes: 1, help: [] } };
+    expect(guardsOff(d, { penny: q, lauren: q, faye: q })).toBeNull();
+    expect(guardsOff(d, { penny: q, lauren: s, faye: q })).toBe("1.20 servers only");
+    expect(guardsOff(d, {})).toBe("1.20 servers only");
+  });
+
+  it("a member's line says what it guards and who guards it", () => {
+    expect(
+      memberLine({ session: "penny", state: "joined", rank: "front", guarding: "Lauren" }, "Penny"),
+    ).toBe("joined, front rank, guarding Lauren");
+    expect(memberLine({ session: "lauren", state: "joined", guarded_by: "Penny" }, "Penny")).toBe(
+      "joined, guarded by Penny",
+    );
   });
 });
 

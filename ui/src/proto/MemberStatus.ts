@@ -9,4 +9,12 @@ export type MemberStatus = { session: string, state: MemberState, detail?: strin
 /**
  * Its rank as the leader's last `par` showed it, while it is in the party in the game.
  */
-rank?: PartyRank, };
+rank?: PartyRank, 
+/**
+ * The member it is guarding, as the game said (1.20 `guard`): the ward's in-game name.
+ */
+guarding?: string, 
+/**
+ * Who is guarding it, as the game said.
+ */
+guarded_by?: string, };

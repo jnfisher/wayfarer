@@ -47,6 +47,8 @@ struct World {
     cleric: bool,
     /// Those whose prompts say `(Resting)`.
     resting: BTreeSet<String>,
+    /// The server plays Quicksilver 1.20: `help 1.20` has its topic and `guard` is a command.
+    qs120: bool,
 }
 
 impl World {
@@ -342,6 +344,25 @@ impl Gateway {
                     ),
                 ]
             }
+            "help 1.20" if self.world.qs120 => me(said(
+                "Quicksilver 1.20: how the rules differ from 1.11p\r\n\r\nBackstab",
+            )),
+            t if self.world.qs120 && t.starts_with("guard ") => {
+                let ward = t.split_whitespace().nth(1).unwrap_or_default();
+                if !first(other).eq_ignore_ascii_case(ward) {
+                    return me(said("You don't see that player here."));
+                }
+                vec![
+                    (
+                        session.to_owned(),
+                        said(&format!("You are now guarding {}.", first(other))),
+                    ),
+                    (
+                        other.to_owned(),
+                        said(&format!("{} is now guarding you.", first(session))),
+                    ),
+                ]
+            }
             "sneak" => me(said("Attempting to sneak...")),
             "leave" => {
                 self.world.following = false;
@@ -451,6 +472,7 @@ fn party() -> PartyDef {
         id: String::new(),
         leader: LEADER.into(),
         followers: vec![FOLLOWER.into()],
+        guards: Vec::new(),
     }
 }
 
@@ -954,4 +976,55 @@ async fn a_healer_heals_a_member_resting_on_its_own_up_to_its_rest_until_line() 
         "{:?}",
         g.seen
     );
+}
+
+/// GUARD (C-068): on a 1.20 server the leader guards the follower once the party is formed,
+/// and the parties message says who guards whom. On a 1.11p server nothing is sent.
+#[tokio::test(start_paused = true)]
+async fn on_1_20_the_leader_guards_the_follower_it_was_told_to() {
+    for qs120 in [true, false] {
+        let (mut g, _run) = Gateway::start(brain(None)).await;
+        g.world.qs120 = qs120;
+        let mut def = party();
+        def.guards = vec![wayfarer_proto::GuardPair {
+            guard: LEADER.into(),
+            ward: FOLLOWER.into(),
+        }];
+        for s in [LEADER, FOLLOWER] {
+            g.bot(s, BotAction::Start).await;
+        }
+        g.send(ToClient::PartySave { party: def }).await;
+        g.member(FOLLOWER, MemberState::Joined).await;
+        g.play(90).await;
+        let guards: Vec<_> = g
+            .lines
+            .iter()
+            .filter(|(_, l)| l.starts_with("guard"))
+            .map(|(s, l)| (s.as_str(), l.as_str()))
+            .collect();
+        if !qs120 {
+            assert!(guards.is_empty(), "1.11p: {guards:?}");
+            continue;
+        }
+        assert_eq!(guards, [(LEADER, "guard Lauren")]);
+        let status = g
+            .seen
+            .iter()
+            .rev()
+            .find_map(|m| match m {
+                ToGateway::Parties { parties } => Some(parties.clone()),
+                _ => None,
+            })
+            .expect("a parties message");
+        let ms = |s: &str| {
+            status[0]
+                .members
+                .iter()
+                .find(|m| m.session == s)
+                .cloned()
+                .unwrap()
+        };
+        assert_eq!(ms(LEADER).guarding.as_deref(), Some("Lauren"));
+        assert_eq!(ms(FOLLOWER).guarded_by.as_deref(), Some("Penny"));
+    }
 }

@@ -141,6 +141,23 @@ where each file comes from).
   1650`, then scaled by the total Alter Mana Regeneration (`× (100 + rate) / 100`), to which a
   regen tier adds its value; rest and meditate multiply the result [Q].
 
+## GUARD
+
+- **The command**: `guard <player>` starts guarding a party member in the room; `guard` alone
+  stops. The ward must be in the guard's party and in the room; the name is matched as other
+  player-target commands match it (a prefix of the first name). Guarding someone new stops the
+  old ward first (the stop lines, then the start lines) [Q].
+- **Refusals**: `You don't see that player here.`, `<Name> is not in your party.`, `You cannot
+  guard yourself.`, `You cannot guard while resting or meditating.`, and for `guard` alone when
+  not guarding, `You are not guarding anyone.` [Q].
+- **What it does**: each monster melee blow aimed at the ward has `25 + 5 × combat`% (at most
+  95) to hit the guard instead, `combat` being the guard's class combat rating on the help scale
+  (the raw rating minus 2, at least 0: a Warrior 45%). Several guards on one ward roll in the
+  order they started. A guard at 0 HP or below rolls nothing but keeps the guard [Q].
+- **What it doesn't cover**: spells, robbery, PvP and room damage still reach the ward [Q].
+- **It ends by itself**, with the stop lines, when the two part: either moves away, leaves the
+  party, rests or meditates, logs off, hangs up or dies. No state survives a reconnect [Q].
+
 ## Numbers
 
 The server's `[balance]` as frozen in 1.20.0, and the per-class knobs, are wayfarer's

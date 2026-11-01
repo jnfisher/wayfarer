@@ -45,6 +45,7 @@ export type { GearSourceKind } from "./GearSourceKind";
 export type { GearStatus } from "./GearStatus";
 export type { GearWhatIf } from "./GearWhatIf";
 export type { GeneratedLoop } from "./GeneratedLoop";
+export type { GuardPair } from "./GuardPair";
 export type { Journey } from "./Journey";
 export type { LoopStop } from "./LoopStop";
 export type { MapExit } from "./MapExit";
