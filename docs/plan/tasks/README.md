@@ -224,9 +224,10 @@ watches its characters from the laptop's browser.
 
 Wave 12 (2026-11-01) runs one card at a time in the order above, one pull request each. Every
 card leaves 1.11p exactly as it was: its 1.11p tests and fixtures give the same results. The class
-damage tables (handoff 6.2 and 7.1) are interim: the server is replacing its four level bands with
-anchor points before 1.20.0 is tagged, and C-069 reads them as anchor data so the final values
-drop in. **Wave 12 is done** when wayfarer behaves exactly as before against a 1.11p server, and
+damage tables (handoff 6.2 and 7.1) are final anchor points since 2026-11-01; C-069 reads them as
+data. The live server (silvermere) plays 1.11p and no 1.20 server can be reached: live checks
+prove the 1.11p path is unchanged, and the 1.20 path is covered by fixtures built from the
+handoff. **Wave 12 is done** when wayfarer behaves exactly as before against a 1.11p server, and
 against a 1.20 server detects 1.20 at login, classifies every line of the handoff's section 3,
 plans with the 1.20 spells, rests and meditates by the 1.20 rules, and can guard; with tests built
 from the handoff's fixtures for each.

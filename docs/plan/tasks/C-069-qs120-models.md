@@ -28,19 +28,17 @@ unknown, every estimate is as today.
 - `crates/wayfarer-world/src/combat.rs` and `combat/` (C-057's combat model: blows per round from
   the game's formulas), `crates/wayfarer-brain/src/gear_plan.rs` (C-059), `regen.rs`, `sneak.rs`
   (C-048, the opener).
-- **The class tables are changing** (the orchestrator, 2026-11-01): handoff 6.2 and 7.1
-  (`class_melee_pct`, `class_spell_pct`, `class_weave_pct` as four level bands) are being replaced
-  before 1.20.0 is tagged by **anchor points with straight-line values between them, never
-  falling as level rises**. The final values come later.
+- **The class tables** (handoff 6.2 and 7.1, final since 2026-11-01): each value is one number or
+  a list of `[level, %]` anchor points, a straight line between anchors and flat outside them,
+  never falling as level rises. They replaced an earlier table of four level bands.
 
 ## Behaviour
 
 - **`balance.toml`** holds every key of handoff section 7's table with its 1.20.0 value, and
-  `class.toml` the per-class knobs as **anchor points** `(level, value)` per class and knob,
-  interpolated in a straight line between anchors and held flat outside them. Until the final
-  values arrive, the 7.1 bands are written as anchors that reproduce them exactly at whole
-  levels (`(1,v1),(29,v1),(30,v2),(39,v2),(40,v3),(49,v3),(50,v4)`), with a comment saying they
-  are the interim values; a class not listed is 100. Nothing in the code assumes four bands.
+  `class.toml` the per-class knobs of 7.1 as they are written there: one number, or `[level, %]`
+  **anchor points**, interpolated in a straight line between anchors (in exact fractions, then
+  applied to the range ends in whole numbers, as the server does) and held flat outside them. A
+  class not listed is 100.
 - **The opener** (5.4): on 1.20 a stab costs 150% of the same character's normal blow's energy,
   at most the round's 1000, and the round goes on with normal blows: the opener estimate is the
   stab plus `(1000 − stab energy) / normal energy` normal blows. The stab's damage uses
@@ -73,11 +71,9 @@ unknown, every estimate is as today.
 - One `Balance` value (loaded from the TOML, embedded) passed into the model next to the rule set;
   1.11p's equivalents are a `Balance::stock()` so the same code paths run with 1.11p's numbers
   where that is exact, and keep today's code where it isn't.
-- Interpolation: integer arithmetic, rounding down. The interim 1.20.0 values fall with level for
-  some classes (Paladin 95 → 71 → 88), so the loader accepts any anchors; the test that the
-  shipped anchors never fall comes with the final values.
-- When the final class values arrive, they replace `class.toml` in a follow-up PR; nothing else
-  should need to change.
+- Interpolation: exact fractions (a numerator and a denominator, or `i64` scaled), then the
+  range ends rounded down as whole numbers; a test fails if any shipped anchor list falls as
+  level rises.
 
 ## Done when
 
@@ -85,19 +81,22 @@ unknown, every estimate is as today.
 - On 1.20, the handoff's worked numbers come out: a 400-energy normal blow gives a 600 stab and
   one more blow; a Warrior's guard chance is 45%; the casting stat gives +25% at 100, +30% at 130,
   +50.5% at 255; crit 80 counts as 60; MR 0 takes 150% of an armour-piercing nuke, MR 30 120%.
-- The class knob lookup reproduces the 7.1 table at L1, 29, 30, 39, 40, 49, 50, 60.
-- KB "Numbers" and "Models" sections ([Q]), noting the class tables are interim; changelog.
+- The class knob lookup reproduces the 7.1 table at its anchors, flat before the first and
+  after the last, and on the line between (the Gypsy's weave at 35 is 59, at 50 is 95).
+- KB "Numbers" and "Models" sections ([Q]); changelog.
 - fmt, clippy and nextest pass.
 
 ## Tests
 
 - Each formula above, at the handoff's examples and at L60/L61 (the scaling cap) and 65.
-- The anchor interpolation, flat outside anchors, and between two anchors a level apart.
+- The anchor interpolation, flat outside anchors, exact between them; the shipped anchors never
+  fall.
 - The opener estimate per rule set; the gear plan per rule set for one Thief and one Warlock.
 
 ## Notes for the agent
 
-- The band targets of 7.2 are a check on the model, not an input: a test may compare the model's
-  steady-state ratio for a class against its band loosely, but only if the model is close enough
-  to make it meaningful; otherwise leave it out and say so.
+- The band targets and landed figures of 7.2 are a check on the model, not an input: a test may
+  compare the model's steady-state ratio for a class against them loosely, but only if the model
+  is close enough to make it meaningful; otherwise leave it out and say so. The Cleric and the
+  Ranger at L30 and L60, and the Paladin at L40, are outside their bands on purpose.
 - "Where next?" isn't built yet; when it is, it reads these models.

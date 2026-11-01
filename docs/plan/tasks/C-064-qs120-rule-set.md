@@ -100,5 +100,6 @@ an unknown server plays as 1.11p.
 ## Notes for the agent
 
 - Don't use the version line or the banner: they are the same on both (handoff "Not signals").
-- **Ask before assuming** whether the live server the scripts point at plays 1.20 or 1.11p; the
-  live step should print whichever it finds and pass either way.
+- **The live server plays 1.11p** (silvermere, the orchestrator, 2026-11-01), and no 1.20 server
+  can be reached: the live step proves the 1.11p path is unchanged, and the 1.20 path is covered
+  by fixtures built from the handoff. The step prints whichever it finds and passes either way.
