@@ -232,6 +232,8 @@ pub(crate) struct View<'a> {
     pub coins: &'a [wayfarer_proto::CoinCount],
     /// How fast it gets HP and mana back (C-045).
     pub regen: crate::regen::Regen,
+    /// The server is known to play Quicksilver 1.20 (docs/brain.md "Rule sets").
+    pub qs120: bool,
 }
 
 /// Who a heal reaches, for [`View::heal_pays`].
@@ -945,6 +947,16 @@ impl Bot {
     }
 
     /// Whether the lasting spell `short` is believed on.
+    /// Whether the character has Meditate, as far as Recover has found out (1.20).
+    pub fn meditates(&self) -> Option<bool> {
+        self.recover.meditates()
+    }
+
+    /// The regen tier believed on now (1.20), what it adds to mana regeneration in per cent.
+    pub fn regen_tier_on(&self, now: Instant) -> Option<i64> {
+        self.bless.regen_on(now)
+    }
+
     pub fn blessed(&self, short: &str, now: Instant) -> bool {
         self.bless.is_on(short, now)
     }

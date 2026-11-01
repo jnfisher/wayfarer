@@ -44,6 +44,22 @@ pub(crate) fn mana_per_hour(
     Some(castval * (level + 20) * (magery_level + 2) / 1650 * HOUR / 30)
 }
 
+/// Rest multiplies the standing mana by this on a Quicksilver 1.20 server, meditate by
+/// [`QS120_MEDITATE_MANA`] (`rest_mana_mult`, `meditate_mana_mult`).
+pub(crate) const QS120_REST_MANA: i64 = 3;
+pub(crate) const QS120_MEDITATE_MANA: i64 = 5;
+
+/// 1.20: the mana per hour while resting (or meditating) from the standing rate `per_hour`,
+/// with `regen_pct` more Alter Mana Regeneration from a regen tier.
+pub(crate) fn qs120_resting_mana(per_hour: i64, regen_pct: i64, meditating: bool) -> i64 {
+    let mult = if meditating {
+        QS120_MEDITATE_MANA
+    } else {
+        QS120_REST_MANA
+    };
+    per_hour * (100 + regen_pct.max(0)) / 100 * mult
+}
+
 /// Seconds to get `short` points back at `per_hour`; `None` when it never comes back.
 pub(crate) fn wait_secs(short: i64, per_hour: i64) -> Option<i64> {
     if short <= 0 {
@@ -147,6 +163,16 @@ mod tests {
         assert_eq!(mana_per_hour(0, 0, 10, &stats), None);
         let unknown = wayfarer_proto::Stats::default();
         assert_eq!(mana_per_hour(1, 3, 10, &unknown), None);
+    }
+
+    #[test]
+    fn quicksilver_rest_and_meditate_mana() {
+        // A standing rate of 960 an hour: three times resting, five meditating.
+        assert_eq!(qs120_resting_mana(960, 0, false), 2880);
+        assert_eq!(qs120_resting_mana(960, 0, true), 4800);
+        // Arcane attunement (+100%) doubles the rate first.
+        assert_eq!(qs120_resting_mana(960, 100, false), 5760);
+        assert_eq!(qs120_resting_mana(960, 50, true), 7200);
     }
 
     #[test]

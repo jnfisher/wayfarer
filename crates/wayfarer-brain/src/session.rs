@@ -3078,6 +3078,7 @@ impl Session {
                 .and_then(|e| Some((u64::from(e.current?), u64::from(e.max?)))),
             coins: c.coins.as_ref().map_or(&[], |c| c.carried.as_slice()),
             regen,
+            qs120: self.detect.rules().qs120(),
         };
         let (act, says) = self.bot.tick(&view);
         self.say(says, out);
@@ -3225,6 +3226,16 @@ impl Session {
                 let &(magery, magery_level) = a.class_magery.get(class)?;
                 crate::regen::mana_per_hour(magery, magery_level, level, &stats)
             });
+        // 1.20: rest gives three times the standing mana and meditate five, the regen tier on
+        // added to the rate first (C-067).
+        let mana = if self.detect.rules().qs120() {
+            let tier = self.bot.regen_tier_on(self.clock.instant()).unwrap_or(0);
+            mana.map(|m| {
+                crate::regen::qs120_resting_mana(m, tier, self.bot.meditates() == Some(true))
+            })
+        } else {
+            mana
+        };
         crate::regen::Regen {
             hp: stats
                 .health
@@ -3441,13 +3452,26 @@ impl Session {
             .collect()
     }
 
-    /// The bot keeps on the ticked spells the character knows.
+    /// The bot keeps on the ticked spells the character knows; on 1.20 also the best regen
+    /// tier it knows (`spells.keep_regen_buff`, C-067), and no other tier of the line, ticked
+    /// or not (each removes the others).
     fn refresh_blessings(&mut self) {
-        let kept = self
-            .known_buffs()
+        let known = self.known_buffs();
+        let regen = (self.detect.rules().qs120() && self.settings.bool("spells.keep_regen_buff"))
+            .then(|| {
+                known
+                    .iter()
+                    .filter(|b| b.regen.is_some())
+                    .max_by_key(|b| (b.level, b.regen.map_or(0, |r| r.regen_pct)))
+                    .cloned()
+            })
+            .flatten();
+        let mut kept: Vec<wayfarer_world::BuffDef> = known
             .into_iter()
             .filter(|b| self.blessings.contains(&b.short))
+            .filter(|b| regen.is_none() || b.regen.is_none())
             .collect();
+        kept.extend(regen);
         self.bot.set_blessings(kept);
     }
 

@@ -693,7 +693,8 @@ async fn blessing_spells(g: &mut Game) -> Vec<String> {
 async fn a_1_20_spell_in_the_list_makes_the_server_1_20_and_the_book_is_1_20s() {
     // C-066: arcane attunement is only on a Quicksilver 1.20 server; the `spells` screen that
     // lists it decides the rule set, and the spellbook is learned again with 1.20's spells.
-    let (mut g, run) = in_arena(&[]).await;
+    // (Not kept up here: that is C-067's, below.)
+    let (mut g, run) = in_arena_with(&[], "[spells]\nkeep_regen_buff = false\n").await;
     start_caster(
         &mut g,
         "Mage",
@@ -716,4 +717,53 @@ async fn a_1_20_spell_in_the_list_makes_the_server_1_20_and_the_book_is_1_20s() 
         rules.reason.as_deref(),
         Some("a 1.20 spell in the spell list: arcane attunement")
     );
+}
+
+const REGEN_MAGE: [(i32, i32, &str, &str); 3] = [
+    (1, 1, "mmis", "magic missile"),
+    (5, 4, "latt", "lesser attunement"),
+    (20, 8, "aatt", "arcane attunement"),
+];
+
+/// On 1.20 (C-067) a caster keeps its best regen tier up by itself: arcane attunement, not
+/// the lesser tier. The first cast only removes the tier that was up (the family's end line
+/// comes): it is cast again. When it wears off, again.
+#[tokio::test(start_paused = true)]
+async fn on_1_20_the_best_regen_tier_is_kept_up_in_two_casts() {
+    let (mut g, run) = in_arena(&[]).await;
+    start_caster(&mut g, "Mage", &REGEN_MAGE, &[], 35, 20).await;
+    g.expect(
+        "aatt",
+        format!("Your attunement to the mana fades.\r\n{}", prompt(35)),
+    );
+    g.expect(
+        "aatt",
+        format!(
+            "You attune your mind to the flow of mana.\r\n{}",
+            prompt(35)
+        ),
+    );
+    g.idle(Duration::from_secs(60)).await;
+    // On: nothing more until it ends.
+    g.expect(
+        "aatt",
+        format!(
+            "You attune your mind to the flow of mana.\r\n{}",
+            prompt(35)
+        ),
+    );
+    g.output(&line("Your attunement to the mana fades.", 35))
+        .await;
+    g.idle(Duration::from_secs(10)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "spells", "aatt", "aatt", "aatt"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn with_the_setting_off_no_regen_tier_is_kept() {
+    let (mut g, run) = in_arena_with(&[], "[spells]\nkeep_regen_buff = false\n").await;
+    start_caster(&mut g, "Mage", &REGEN_MAGE, &[], 35, 20).await;
+    g.idle(Duration::from_secs(60)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "spells"]);
 }

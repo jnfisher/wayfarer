@@ -1077,3 +1077,71 @@ async fn a_go_to_with_the_bot_off_turns_it_on() {
     let b = bot(&seen);
     assert_eq!((b.state, b.journey), (BotState::Running, None));
 }
+
+/// A line only a Quicksilver 1.20 server prints: the session knows it plays 1.20 (C-064).
+const QS120_LINE: &str = "It requires 75 strength to wield well (you have 92).";
+
+fn meditating(hp: i32) -> String {
+    resting(hp).replace("(Resting)", "(Meditating)")
+}
+
+/// On 1.20 (C-067) the bot meditates where it would rest: Meditate gives rest's HP and five
+/// times the standing mana.
+#[tokio::test(start_paused = true)]
+async fn on_1_20_it_meditates_where_it_would_rest() {
+    let (mut g, run) = in_arena(&[]).await;
+    g.output(&line(QS120_LINE, 35)).await;
+    start(&mut g, &[], 20).await;
+    g.expect("u", at_hp(&room(NARROW_ROAD), 20));
+    g.expect(
+        "meditate",
+        format!("You are now meditating.\r\n{}", meditating(20)),
+    );
+    g.narrated("Recover: meditating to 85% in Newhaven, Narrow Road")
+        .await;
+    g.output(&meditating(26)).await;
+    g.idle(Duration::from_secs(10)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u", "meditate"]);
+}
+
+/// A character without Meditate gets no answer to `meditate`: it rests from then on.
+#[tokio::test(start_paused = true)]
+async fn on_1_20_without_meditate_it_rests() {
+    let (mut g, run) = in_arena(&[]).await;
+    g.output(&line(QS120_LINE, 35)).await;
+    start(&mut g, &[], 20).await;
+    g.expect("u", at_hp(&room(NARROW_ROAD), 20));
+    g.expect("meditate", prompt(20));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
+        .await;
+    g.idle(Duration::from_secs(10)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u", "meditate", "rest"]);
+}
+
+/// On 1.20 a rest that ends by itself at full HP (the prompt loses its mark, no line) is
+/// over, not interrupted: nothing is sent again. One that ends short of full is taken up again.
+#[tokio::test(start_paused = true)]
+async fn on_1_20_a_rest_that_ends_at_full_hp_is_not_sent_again() {
+    let (mut g, run) = in_arena(&[]).await;
+    g.output(&line(QS120_LINE, 35)).await;
+    start(&mut g, &[], 20).await;
+    g.expect("u", at_hp(&room(NARROW_ROAD), 20));
+    g.expect("meditate", prompt(20));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
+        .await;
+    g.idle(Duration::from_secs(5)).await;
+    // Something ends it at 24 of 35: rest again.
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(24)));
+    g.output(&prompt(24)).await;
+    g.idle(Duration::from_secs(10)).await;
+    // It ends by itself at 35 of 35: rested; it walks back down to the Arena.
+    g.expect("d", arena(&[], 35));
+    g.output(&prompt(35)).await;
+    g.idle(Duration::from_secs(10)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u", "meditate", "rest", "rest", "d"]);
+}

@@ -573,6 +573,17 @@ pub const CATALOGUE: &[Setting] = &[
         megamud: Some("Bless During Combat"),
     },
     Setting {
+        key: "spells.keep_regen_buff",
+        label: "Keep the regen spell up (Quicksilver 1.20)",
+        help: "On a Quicksilver 1.20 server, a caster keeps the best spell of its mana-regeneration line it knows (lesser attunement, devotion, song of reverie and the rest) on, as a blessing it chooses itself, and casts it again when it ends. Moving up a tier takes two casts: the first removes the old one. Nothing changes on other servers.",
+        kind: Kind::Bool,
+        default: Value::Bool(true),
+        unit: "",
+        tier: Tier::Standard,
+        group: Group::Spells,
+        megamud: None,
+    },
+    Setting {
         key: "spells.bless_mana_above",
         label: "Bless only above mana",
         help: "A blessing is cast, in a fight or out of one, only when the mana left after it is at least this per cent of the maximum, so it does not spend the mana a heal needs.",

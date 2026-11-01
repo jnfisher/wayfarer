@@ -24,6 +24,9 @@ pub const MONSTER_COPIES: std::ops::RangeInclusive<i64> = 5000..=5999;
 pub const CAPPED_ONLY: [i64; 3] = [825, 1379, 1380];
 /// The level cap of every Mage, Priest and Druid player spell that grows with level.
 pub const LEVEL_CAP: i64 = 65;
+/// The stock song the regen songs were made from: their type, resist mode and element, which
+/// their rows leave blank, are its.
+pub const SONG_TEMPLATE: i64 = 803;
 /// Item 121, the scroll that taught detect magic, renamed.
 pub const PROTECTIVE_AURA_SCROLL: (i64, &str) = (121, "scroll of protective aura");
 
@@ -76,6 +79,11 @@ fn num(s: &str) -> i64 {
     s.trim().parse().unwrap_or(0)
 }
 
+/// A number, or `None` for nothing.
+fn opt(s: &str) -> Option<i64> {
+    s.trim().parse().ok()
+}
+
 /// A magery's number, as the game stores it (`kb/spells.md`): Mage 1, Priest 2, Druid 3,
 /// Bard 4; anything else 0 (no magery: the monsters' and the items').
 pub fn magery(name: &str) -> i64 {
@@ -101,9 +109,12 @@ pub struct SpellRow {
     pub energy: i64,
     pub difficulty: i64,
     pub target: i64,
-    pub spell_type: i64,
-    pub resist_mode: i64,
-    pub element: i64,
+    /// `None` when the row leaves it blank (a regen song: [`SONG_TEMPLATE`]'s).
+    pub spell_type: Option<i64>,
+    /// `None` when the row leaves it blank (a regen song: [`SONG_TEMPLATE`]'s).
+    pub resist_mode: Option<i64>,
+    /// `None` when the row leaves it blank (a regen song: [`SONG_TEMPLATE`]'s).
+    pub element: Option<i64>,
     /// (base, increase, every so many levels).
     pub min: (i64, i64, i64),
     pub max: (i64, i64, i64),
@@ -133,9 +144,9 @@ impl SpellRow {
             energy: num(f("energy")),
             difficulty: num(f("diff")),
             target: num(f("target")),
-            spell_type: num(f("type")),
-            resist_mode: num(f("resmode")),
-            element: num(f("element")),
+            spell_type: opt(f("type")),
+            resist_mode: opt(f("resmode")),
+            element: opt(f("element")),
             min: (num(f("min")), mininc, minlvls),
             max: (num(f("max")), maxinc, maxlvls),
             level_cap: num(f("cap")),
@@ -153,9 +164,20 @@ impl SpellRow {
 
     /// The spell's record as the pack keeps it (its `raw` JSON), from the stock record when
     /// there is one: what the table gives replaces it, the rest (the per-level duration, the
-    /// message number, the flags) is kept.
-    fn raw(&self, stock: Option<&Value>) -> Value {
+    /// message number, the flags) is kept. A field the row leaves blank is the stock record's,
+    /// else `template`'s (a regen song's are [`SONG_TEMPLATE`]'s).
+    fn raw(&self, stock: Option<&Value>, template: Option<&Value>) -> Value {
         let mut v = stock.cloned().unwrap_or_else(|| json!({}));
+        let from = |k: &str, own: Option<i64>| {
+            own.or_else(|| stock.and_then(|s| s.get(k)).and_then(Value::as_i64))
+                .or_else(|| template.and_then(|t| t.get(k)).and_then(Value::as_i64))
+                .unwrap_or(0)
+        };
+        let (spell_type, resist_mode, element) = (
+            from("type", self.spell_type),
+            from("resmode", self.resist_mode),
+            from("element", self.element),
+        );
         let (abilities, abilvals): (Vec<i64>, Vec<i64>) = self.abilities.iter().copied().unzip();
         let set = [
             ("number", json!(self.number)),
@@ -168,9 +190,9 @@ impl SpellRow {
             ("energy", json!(self.energy)),
             ("diff", json!(self.difficulty)),
             ("target", json!(self.target)),
-            ("type", json!(self.spell_type)),
-            ("resmode", json!(self.resist_mode)),
-            ("element", json!(self.element)),
+            ("type", json!(spell_type)),
+            ("resmode", json!(resist_mode)),
+            ("element", json!(element)),
             ("minval", json!(self.min.0)),
             ("mininc", json!(self.min.1)),
             ("minlvls", json!(self.min.2)),
@@ -381,19 +403,23 @@ pub fn spells(pack: &WorldPack) -> Result<Vec<Spell>, Error> {
             }
         }
     }
+    let template = by_number
+        .get(&SONG_TEMPLATE)
+        .and_then(|&i| serde_json::from_str::<Value>(&stock[i].raw).ok());
     for row in spell_rows() {
         let old = by_number
             .get(&row.number)
             .and_then(|&i| serde_json::from_str::<Value>(&stock[i].raw).ok());
+        let raw = row.raw(old.as_ref(), template.as_ref());
         let spell = Spell {
             number: row.number,
             name: row.name.clone(),
             short_name: row.short.clone(),
             level: row.level,
             mana: row.mana,
-            spell_type: row.spell_type,
+            spell_type: raw.get("type").and_then(Value::as_i64).unwrap_or(0),
             target: row.target,
-            raw: row.raw(old.as_ref()).to_string(),
+            raw: raw.to_string(),
         };
         match by_number.get(&row.number) {
             Some(&i) => stock[i] = spell,
@@ -454,6 +480,8 @@ mod tests {
         assert!(rows.iter().all(|r| !MONSTER_COPIES.contains(&r.number)));
         let song = rows.iter().find(|r| r.number == 6020).unwrap();
         assert_eq!((song.magery, song.level, song.mana), (4, 50, 16));
+        assert_eq!(song.spell_type, None, "blank: the template song's");
+        assert!(song.abilities.contains(&(115, 5107)));
     }
 
     #[test]

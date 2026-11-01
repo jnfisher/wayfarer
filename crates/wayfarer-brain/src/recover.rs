@@ -1,6 +1,8 @@
 //! Recover (docs/brain.md "Fight here"): rest when HP is low, out of a room that spawns
 //! monsters if a quiet one is near (`kb/pitfalls.md` 20, 24), until HP is back; then walk back
-//! to where the bot was started. A monster that attacks wakes it: Fight has the character until
+//! to where the bot was started. On a Quicksilver 1.20 server (C-067) it meditates instead of
+//! resting when the character has Meditate (it gives HP as rest does and mana five times as
+//! fast), and with HP and mana full it starts neither (both end at once there). A monster that attacks wakes it: Fight has the character until
 //! that fight is over, then Recover carries on. It does not walk back into a room where a
 //! monster to avoid or flee from was last seen (`rules.rs`): it waits until that is forgotten.
 
@@ -41,6 +43,11 @@ pub(crate) struct Recover {
     heal_ready: Option<Instant>,
     /// The walk its last step asked for: out to rest (`true`) or back home.
     last_walk: Option<bool>,
+    /// Whether the character has Meditate (1.20): `None` until a `meditate` shows. Kept for the
+    /// session.
+    meditate: Option<bool>,
+    /// A `meditate` went and nothing has said it started, or why not.
+    meditate_asked: bool,
 }
 
 impl Recover {
@@ -103,8 +110,20 @@ impl Recover {
     }
 
     fn done(&mut self) {
-        let home = self.home;
+        let (home, meditate) = (self.home, self.meditate);
         *self = Recover::new(home);
+        self.meditate = meditate;
+    }
+
+    /// Whether the character has Meditate, as far as it has found out.
+    pub fn meditates(&self) -> Option<bool> {
+        self.meditate
+    }
+
+    /// HP full, and mana full or none (1.20: a rest or a meditation ends at once then).
+    fn full(v: &View) -> bool {
+        v.hp_points.is_some_and(|(hp, max)| hp >= max)
+            && v.mana.is_none_or(|(mana, max)| max <= 0 || mana >= max)
     }
 }
 
@@ -286,8 +305,22 @@ impl Mode for Recover {
             self.wait_until = Some(v.now + REST_WAIT);
             return Step::wait(format!("Recover: can't rest in {here}; waiting"));
         }
+        // 1.20: at full HP and mana a rest ends at once and meditate is refused, so a party
+        // rest is waited out instead of sent again and again.
+        if v.qs120 && Self::full(v) {
+            return Step::wait(format!("Recover: full; waiting in {here}"))
+                .doing("waiting for the party");
+        }
         self.rests += 1;
-        let rest = Action::new("rest", Expect::Prompt);
+        // 1.20: Meditate gives rest's HP and five times the standing mana (rest three): a
+        // character with it meditates whatever is missing; until one has shown, it is tried.
+        let word = if v.qs120 && self.meditate != Some(false) {
+            self.meditate_asked = true;
+            "meditate"
+        } else {
+            "rest"
+        };
+        let rest = Action::new(word, Expect::Prompt);
         if against_the_rule {
             self.warned = true;
             return Step::send(
@@ -299,10 +332,15 @@ impl Mode for Recover {
             )
             .warning();
         }
-        let why = if v.party.party_rest().is_some() && !Self::low(v) {
-            "Recover: resting with the party".to_owned()
+        let doing = if word == "meditate" {
+            "meditating"
         } else {
-            format!("Recover: resting to {}% in {here}", v.rest_until())
+            "resting"
+        };
+        let why = if v.party.party_rest().is_some() && !Self::low(v) {
+            format!("Recover: {doing} with the party")
+        } else {
+            format!("Recover: {doing} to {}% in {here}", v.rest_until())
         };
         Step::send(rest, why)
     }
@@ -314,6 +352,18 @@ impl Mode for Recover {
             GameEvent::TooSick => {
                 self.rests = 0;
                 self.wait_until = Some(now + REST_WAIT);
+                self.meditate_asked = false;
+            }
+            GameEvent::Resting { meditating: true } => {
+                self.rests = 0;
+                self.meditate = Some(true);
+                self.meditate_asked = false;
+            }
+            // `Meditation will not help at this time.`: the character has it; on 1.20 both bars
+            // are full.
+            GameEvent::Other(e) if e.name == "meditate_useless" => {
+                self.meditate = Some(true);
+                self.meditate_asked = false;
             }
             GameEvent::Prompt {
                 resting: Some(Rest::Resting | Rest::Meditating),
@@ -324,7 +374,14 @@ impl Mode for Recover {
         }
     }
 
-    fn outcome(&mut self, _action: &Action, _outcome: Outcome) {}
+    fn outcome(&mut self, action: &Action, _outcome: Outcome) {
+        // A `meditate` that came to its prompt with nothing said: a character without the
+        // ability gets no answer at all. It rests from now on.
+        if action.command == "meditate" && std::mem::take(&mut self.meditate_asked) {
+            tracing::info!("no answer to meditate: the character rests instead");
+            self.meditate = Some(false);
+        }
+    }
 }
 
 impl Recover {
