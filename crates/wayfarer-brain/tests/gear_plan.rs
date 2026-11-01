@@ -493,3 +493,46 @@ async fn a_detail_gives_every_monster_and_eight_rounds_of_blows() {
     }
     g.close(run).await;
 }
+
+/// C-069: on a Quicksilver 1.20 server the plan scores the blows with the class's melee knob
+/// and the crit knee at 50, and says so. A Witchunter (114%) deals more a round than on 1.11p;
+/// a Ranger (60%) less.
+#[test]
+fn on_1_20_the_class_knob_changes_the_scores_and_the_plan_says_so() {
+    for (class, race, v, more) in [
+        ("Witchunter", "Kang", WITCHUNTER_15, true),
+        ("Ranger", "Human", WITCHUNTER_15, false),
+    ] {
+        let who = subject(class, race);
+        let stock = plan(&who, &ask(v));
+        let q = plan(
+            &who,
+            &Ask {
+                qs120: true,
+                ..ask(v)
+            },
+        );
+        assert!(
+            q.notes
+                .iter()
+                .any(|n| n.starts_with(&format!("Quicksilver 1.20 rules: {class} blows at"))),
+            "{:?}",
+            q.notes
+        );
+        assert!(!stock.notes.iter().any(|n| n.contains("Quicksilver")));
+        // The same weapon's attack, round 1, on each.
+        let row = |p: &Plan| {
+            p.rows
+                .iter()
+                .find(|r| !r.moves.is_empty() && r.name == "quarterstaff")
+                .map(|r| r.moves[0].damage_round1)
+                .expect("the quarterstaff scored")
+        };
+        let (s, d) = (row(&stock), row(&q));
+        if more {
+            assert!(d > s, "{class}: {d} not above {s}");
+        } else {
+            assert!(d < s, "{class}: {d} not below {s}");
+        }
+    }
+}

@@ -1,0 +1,44 @@
+# Quicksilver 1.20.0's balance numbers (the server's `[balance]`, as frozen in 1.20.0), from
+# docs/plan/quicksilver-1.20/handoff.md section 7. A sysop can override them; a server that
+# does is not running 1.20.0, and wayfarer can't tell, so these are used.
+
+backstab_energy_pct = 150      # a stab costs this % of a normal blow's energy (1.11p: the round)
+backstab_stealth_div = 4       # stealth / this adds to a stab (1.11p: 10)
+backstab_level_pct = 200       # × (100 + 2L)% with L held to scalecap (1.11p: × (100 + L)%)
+backstab_crit_max_pct = 200    # a critical stab rolls max to this % of max (1.11p: no stab crit)
+opportunist_pct = 10           # a Thief's normal hit on a surviving target finds an opening
+opportunist_level_pct = 50     # × (100 + L × 50 / 100)%
+weave_pct = 20                 # Cleric, Missionary, Warlock, Gypsy, Bard
+weave_pct_magery1 = 10         # Paladin, Ranger
+weave_budget_per_level = 3     # a weave's expected damage is held to 3 × L
+weave_power_min_pct = 25
+weave_power_max_pct = 100
+weave_stat_bonus_pct = 50      # a weave takes half the casting-stat bonus
+spell_stat_permille = 5        # +0.5% per point of the casting stat over 50
+spell_stat_knee = 100          # the casting stat counts a third past this
+rest_mana_mult = 3
+meditate_mana_mult = 5
+crit_knee = 50                 # crit counts a third past this (1.11p: 40)
+mr_stat_knee = 110             # a player's (Int + 3 Wil) / 4 counts a third past this
+dodge_agi_knee = 150           # a player's Agility counts a third past this in the dodge term
+softcap_floor = 90
+softcap_floor_price = 10
+softcap_band_prices = [15, 25, 40]
+aoe_resist_cut_max_pct = 25    # an area spell's share on a resisting monster is cut by
+aoe_resist_cut_div = 4         # min(25, MR / 4)%
+guard_chance_base = 25         # guard: 25 + 5 × combat %, at most 95
+guard_chance_per_combat = 5
+guard_chance_max = 95
+scalecap = 60                  # the stab, the opening and the weave budget stop growing here
+
+[rank_weights]                 # a monster's pick of whom to attack, by party rank
+front = 3
+mid = 2
+back = 1
+solo = 2
+
+[race_regen]                   # added to Alter Healing Rate (heal) and Alter Mana Regeneration (mana)
+Human = { heal = 15, mana = 15 }
+Dwarf = { heal = 15 }
+Elf = { mana = 15 }
+"Gaunt One" = { mana = 25 }

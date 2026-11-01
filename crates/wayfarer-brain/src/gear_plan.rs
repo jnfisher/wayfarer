@@ -104,6 +104,9 @@ pub struct Ask {
     pub buffs: Vec<String>,
     pub smash: bool,
     pub filter: GearFilter,
+    /// The server is known to play Quicksilver 1.20 (C-069): the class's melee knob and the
+    /// crit knee of 50 apply.
+    pub qs120: bool,
 }
 
 /// A plan's answer, the session aside.
@@ -142,6 +145,8 @@ struct Values {
     worn: Vec<i64>,
     buffs: Vec<Buff>,
     smash: bool,
+    /// Quicksilver 1.20's changes to the blows, when the server plays it.
+    qs120: Option<combat::Qs120Melee>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -535,6 +540,18 @@ impl Gear {
             .iter()
             .filter_map(|n| records.by_name.get(&n.to_lowercase()).copied())
             .collect();
+        // 1.20: the class's knob on the blows' range and the crit knee at 50. The openings and
+        // weaves are left out: they need the stealth, the backstab bonus and the spells.
+        let qs120 = ask.qs120.then(|| {
+            let class_name = &records.classes[&class].name;
+            let q = combat::Qs120Melee::new(class_name, level, 0.0);
+            notes.push(format!(
+                "Quicksilver 1.20 rules: {class_name} blows at {}% of their range, crits count a \
+                 third past 50; openings and weaves not counted",
+                q.melee.value()
+            ));
+            q
+        });
         Ok(Values {
             class,
             race,
@@ -545,6 +562,7 @@ impl Gear {
             worn,
             buffs,
             smash,
+            qs120,
         })
     }
 
@@ -895,6 +913,7 @@ fn fighter(records: &Records, v: &Values, weapon: &ItemRecord, load: i64) -> Fig
         encumbrance: load,
         max_energy: STOCK_MAX_ENERGY,
         buffs: v.buffs.clone(),
+        qs120: v.qs120,
     })
 }
 

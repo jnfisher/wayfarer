@@ -90,6 +90,7 @@ fn fighter(
         encumbrance: load,
         max_energy: STOCK_MAX_ENERGY,
         buffs,
+        qs120: None,
     })
 }
 
@@ -275,6 +276,8 @@ fn a_blow_reports_its_ranges_and_chances() {
         av: 58,
         mabase: 1,
         crit: 70,
+        crit_knee: CRIT_KNEE,
+        extra_per_hit_milli: 0,
     };
     let d = Defender {
         level: 1,
@@ -505,6 +508,7 @@ fn light_load_adds_accuracy_and_worn_armour_counts() {
             encumbrance: 40,
             max_energy: 1000,
             buffs: Vec::new(),
+            qs120: None,
         })
     };
     assert_eq!(with(&helm).av - heavy.av, 6 / 2 * 2);
@@ -534,6 +538,8 @@ fn plain_fighter(min: i64, max: i64, crit: i64) -> Fighter {
         av: 200,
         mabase: 1,
         crit,
+        crit_knee: CRIT_KNEE,
+        extra_per_hit_milli: 0,
     }
 }
 
@@ -910,4 +916,64 @@ fn the_gear_planners_4500_fights_take_well_under_a_second() {
     let took = start.elapsed();
     assert!(kills >= 0.0);
     assert!(took.as_secs_f64() < 1.0, "4,500 fights took {took:?}");
+}
+
+// --- Quicksilver 1.20 (C-069) ----------------------------------------------------------------
+
+#[test]
+fn on_1_20_the_class_knob_scales_the_range_and_the_crit_knee_is_50() {
+    let world = World::load();
+    let (class, race, w) = (
+        world.class("Witchunter"),
+        world.race("Kang"),
+        world.item("quarterstaff"),
+    );
+    let stock = fighter(&class, &race, 16, stats(77, 42), Some(&w), 10, Vec::new());
+    let q = Fighter::new(&Character {
+        class: &class,
+        race: &race,
+        level: 16,
+        stats: stats(77, 42),
+        weapon: Some(&w),
+        worn: Vec::new(),
+        encumbrance: 10,
+        max_energy: STOCK_MAX_ENERGY,
+        buffs: Vec::new(),
+        qs120: Some(Qs120Melee {
+            melee: crate::balance::Pct::whole(60),
+            crit_knee: 50,
+            extra_per_hit: 2.5,
+        }),
+    });
+    assert_eq!(q.min_damage, stock.min_damage * 60 / 100);
+    assert_eq!(q.max_damage, stock.max_damage * 60 / 100);
+    assert_eq!((stock.crit_knee, q.crit_knee), (40, 50));
+    assert_eq!(q.extra_per_hit_milli, 2500);
+    // The knee: crit 70 is 50 on 1.11p, 56 on 1.20.
+    assert_eq!(crit_after_knee(70, 40), 50);
+    assert_eq!(crit_after_knee(70, 50), 56);
+    // The extra counts in the expected damage of a blow that does damage, not in its range.
+    let d = Defender {
+        level: 1,
+        magicres: 0,
+        maxhp: 100,
+        dv: 0,
+        dr: 0,
+        dodge: 0,
+        defmod: 0,
+    };
+    let no_extra = Fighter {
+        extra_per_hit_milli: 0,
+        ..q
+    };
+    let (a, b) = (
+        Blow::new(&q, &d, Move::Attack, false),
+        Blow::new(&no_extra, &d, Move::Attack, false),
+    );
+    assert_eq!(a.damage, b.damage);
+    // Every landed blow does damage here (no DR, no dodge): the extra is 2.5 a landed blow.
+    assert!(
+        (a.expected_damage - b.expected_damage - 2.5 * a.p_hit).abs() < 1e-9,
+        "{a:?} {b:?}"
+    );
 }

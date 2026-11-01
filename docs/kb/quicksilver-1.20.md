@@ -140,3 +140,74 @@ where each file comes from).
 - The standing mana a slow tick gives is, as in 1.11p, `castval × (level + 20) × (magelvl + 2) /
   1650`, then scaled by the total Alter Mana Regeneration (`× (100 + rate) / 100`), to which a
   regen tier adds its value; rest and meditate multiply the result [Q].
+
+## Numbers
+
+The server's `[balance]` as frozen in 1.20.0, and the per-class knobs, are wayfarer's
+`crates/wayfarer-world/data/quicksilver-1.20/balance.toml` and `class.toml`, as the handoff gives
+them (section 7; the class knobs final since 2026-11-01). A sysop can override them; a server
+that does is not running 1.20.0, and a client can't tell [Q].
+
+- **Class knobs.** `class_melee_pct` scales the min and max damage of a class's normal blows
+  (every move but the stab); `class_spell_pct` its damage spells after the casting-stat bonus,
+  the weave included; `class_weave_pct` a weaving hybrid's weave on top. Each is one number or
+  `[level, %]` anchors with straight lines between them, flat outside them, never falling as
+  level rises; interpolated in exact fractions, then applied to the range ends in whole numbers.
+  A class not listed is 100 [Q].
+- **Bands.** Each class's steady-state damage a round (a target that doesn't die, the opener left
+  out) is tuned to a band against the same race's Warrior at the same level; the landed figures
+  at L30, L40 and L60 are the handoff's 7.2 table. The Cleric and the Ranger at L30 and L60 and
+  the Paladin at L40 are outside their bands on purpose. The band is damage dealt only [Q].
+
+## Models
+
+- **The stab** costs 150% of the same character's normal blow's energy with the same weapon, at
+  most the round's 1000, and the round goes on with normal blows: a 400-energy blow makes a 600
+  stab and one more blow; a blow of 667 or more still takes the whole round with the stab. Its
+  damage adds `stealth / 4` (1.11p `/ 10`) and multiplies by `(100 + 2L)%` (1.11p `100 + L`),
+  L held to 60; it can crit at the normal crit chance (the knee applies, no fast-weapon bonus),
+  rolling from max to 2 × max. The same for the `backstab` command, auto-combat, the quest
+  backstab bonus and the Mystic's unarmed stab [Q].
+- **The opening**: a Thief's normal hit on a surviving target has 10% to add
+  `(2L + stealth/4 + a roll in Backstab Min..Max) × (100 + L × 50 / 100)% − DR/10`, L held to
+  60, the weapon playing no part; it never crits [Q].
+- **The weave**: 20% a normal hit on a surviving target for the Cleric, Missionary, Warlock,
+  Gypsy and Bard, 10% for the Paladin and Ranger. The volley's expected damage is held to
+  `3 × L` (L held to 60) by rolling the spell at 25% to 100% of its strength, then half the
+  casting-stat bonus, the class's spell and weave knobs, and the target's element and magic
+  resistance with one resist roll a proc. A Bard's is one hit of `3 × L`. Typical picks: the
+  Gypsy and Warlock eldritch bolt at 20, meteor swarm at 25, dragonfire at 30, colour spray from
+  35; the Cleric and Missionary godstrike at 20, god's wrath at 25, divine fury from 30 (agony at
+  10); the Paladin godstrike from 20; the Ranger blaze; the Bard song of pain at 20, song of
+  sonic blast from 25 [Q].
+- **Knees.** A crit point counts a third past 50 (`(crit − 50) / 3 + 50`; 1.11p's knee is 40;
+  crit damage, 2× to 4× max, unchanged). A player's magic-resistance stat part `(Int + 3 ×
+  Wil) / 4` counts a third past 110 (gear and spells after), and Agility a third past 150 in the
+  `(Agi − 50) / 3` dodge term; monsters unchanged [Q].
+- **The casting stat**: a player's damage spells (single-target, area and steal hit points; not
+  heals, buffs, monster casts, item casts or lasting drains) deal `amount × (1000 + max(0, stat'
+  − 50) × 5) / 1000`, stat' the casting stat counting a third past 100: +25% at 100, +30% at 130,
+  +50.5% at 255 [Q].
+- **Area spells**: every area damage spell rolls a resist for each monster it hits, whatever its
+  resist mode; a monster that resists has its share cut by `min(25, MR / 4)`%, never to zero, with
+  no line saying so. The resist chance is the stock one, capped at 98%. Players hit by monster
+  area spells are unchanged [Q].
+- **The magic-resistance fix**: a player under 50 MR takes `amount + amount × (50 − MR) / 100`
+  from "inflict damage on armour" spells (ability 17: 150% at MR 0, 120% at 30) instead of 1.11p's
+  half; from 50, and with Anti-Magic, as 1.11p [Q].
+- **Rank-weighted targeting**: a monster picking whom to attack weighs each candidate
+  `(50 − 5 × attackers) × weight / 2`, the weight front 3, mid 2, back 1, solo 2: a front/mid/back
+  party takes about 53/31/16% of first attacks [Q].
+- **Witchunters** don't roll to resist a resistable spell cast by themselves or their party
+  (decided at cast time; a potion or scroll they use counts as their own) [Q].
+- **Scaling**: the stab, the opening and the weave budget stop growing at level 60; normal blows,
+  hit chance, energy, HP and casting use the real level; player spells cap at 65 [Q].
+- **Race regeneration**: Human healing rate +15 and mana regeneration +15; Dwarf healing +15; Elf
+  mana +15; Gaunt One mana +25, each race's stock abilities kept; summed with the regen tier [Q].
+- **Stat-lowering spells** stop at 0 and give the stat back exactly when they end; energy is
+  clamped at 0; maximum HP no longer overflows [Q].
+- **Stat training** goes 30 past the soft cap `max(race maximum, 90)`: the stock price to the race
+  maximum, then 10 CP a point to 90, then 15, 25 and 40 a point for each ten past. Another
+  character's stat above its race maximum is normal on 1.20. Wayfarer never trains stats [Q].
+- **Death** plays as 1.11p unless the sysop changed it (coin and item drops, the life cost, the
+  deletion at zero lives), which a client can't see [Q].

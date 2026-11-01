@@ -260,7 +260,7 @@ plan").
 ```rust
 let fighter = Fighter::new(&Character { class: &witchunter, race: &human, level: 15,
     stats: Stats { str: 95, int: 50, agi: 56, cha: 50 }, weapon: Some(&magebane),
-    worn: vec![], encumbrance: 55, max_energy: 1000, buffs: vec![] });
+    worn: vec![], encumbrance: 55, max_energy: 1000, buffs: vec![], qs120: None });
 let monk = Defender::new(&dark_monk, &[]);           // + its weapon and worn item, if any
 let fight = Fight::new(&fighter, &monk, Move::Bash);  // cost 632, blows 1, 2, 1, 2, 1, 2, 2, 1
 fight.p_kill_by_round[1];                             // dead after round 2
@@ -282,3 +282,14 @@ fight.p_kill_by_round[1];                             // dead after round 2
   `RaceRecord` (`from_raw`). Left out: casting, backstab, martial arts, Protective Shield,
   light and blindness, Quickness and Slowness, rank, the alignment defences.
 
+
+### Quicksilver 1.20 (`balance.rs`, `qs120.rs`)
+
+`Character::qs120` (a `Qs120Melee`) plays a character's blows by Quicksilver 1.20's rules: its
+class's `class_melee_pct` at its level on every move's min and max, the crit knee at 50 instead
+of 40, and an expected extra damage a landed blow brings (openings, weaves), counted in
+`Blow::expected_damage` but not in the kill chances. `balance::Balance::qs120()` holds the
+1.20.0 numbers and the per-class knobs from `data/quicksilver-1.20/balance.toml` and
+`class.toml` (anchor points, interpolated exactly), and the formulas that use them: the stab and
+its round, openings, weaves, the knees, the casting stat, area resists, the MR fix, the guard
+chance, race regeneration. `qs120.rs` is 1.20's spell data (C-066).

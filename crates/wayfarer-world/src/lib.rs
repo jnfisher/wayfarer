@@ -9,6 +9,7 @@
 //! monsters by name for "go to", and knows the boss lairs. [`combat`] is the game's combat
 //! model: a character's blows against a monster, round by round, for the gear planner.
 
+pub mod balance;
 pub mod belief;
 pub mod build;
 pub mod combat;
@@ -36,7 +37,7 @@ use std::path::PathBuf;
 
 pub use belief::Belief;
 pub use build::{BuildReport, MegaMudReport, build};
-pub use combat::{Blow, Buff, Character, Defender, Fight, Fighter, Move, Stats};
+pub use combat::{Blow, Buff, Character, Defender, Fight, Fighter, Move, Qs120Melee, Stats};
 pub use exit_items::ExitItem;
 pub use find::{Finder, Found, FoundKind, FoundRoom, PlaceKind, Reach};
 pub use knowledge::{PathExit, PathKnowledge, Window};
