@@ -16,12 +16,17 @@ Each fact carries its provenance and status:
 - **[F] forum/web**: from community sources; verified against the data where marked.
 - **[M] MegaMud**: from MegaMud's own manual, resources or data (`reference/megamud/`): what
   MegaMud did, not what the game does.
+- **[Q] Quicksilver 1.20**: from the Quicksilver 1.20.0 handoff
+  (`docs/plan/quicksilver-1.20/handoff.md`, the server's frozen 1.20.0 release). **[Q live]**
+  when it has then been seen on a 1.20 server. Only in `quicksilver-1.20.md`, which keeps 1.20's
+  facts apart from 1.11p's.
 
 Scope: MajorMUD 1.11p (WCCMMUD.DLL), the stock "Realm of Legends" world data, played on
 MBBSEmu. Other versions and custom worlds differ in data, and sometimes in rules.
 
 | File | Covers |
 |---|---|
+| `quicksilver-1.20.md` | Quicksilver 1.20, a server that plays 1.11p with rule changes: its new lines, detection, spells and numbers. 1.20 facts only; every other page is 1.11p |
 | `architecture.md` | Recommended client architecture, and why it's data-driven |
 | `connection.md` | Telnet, MBBSEmu, login flow, entering the realm, encoding |
 | `screen-parsing.md` | Every text pattern a client must recognise (prompt, room, combat, loot, errors) |

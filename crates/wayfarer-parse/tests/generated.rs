@@ -17,7 +17,12 @@ fn registry_matches_the_prototype() {
             .iter()
             .map(|l| serde_json::from_str(l).unwrap())
             .collect();
-    let got = reg.patterns();
+    // Quicksilver 1.20's lines are wayfarer's own, after the prototype's (C-063).
+    let got: Vec<_> = reg
+        .patterns()
+        .iter()
+        .filter(|p| p.rules.is_none())
+        .collect();
     assert_eq!(got.len(), want.len());
     let mut generated = 0;
     for (p, w) in got.iter().zip(&want) {

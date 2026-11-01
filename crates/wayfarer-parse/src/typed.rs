@@ -530,6 +530,55 @@ pub enum GameEvent {
         percent: Option<i64>,
     },
 
+    /// Quicksilver 1.20 (`docs/kb/quicksilver-1.20.md` "Lines"). Each has a prefix no stock
+    /// line has, so these come only from a 1.20 server. `None` for a person is the character.
+    ///
+    /// `opportunist_you`/`_room`/`_victim`: a Thief's normal hit found an opening, for `damage`
+    /// more on top of the hit line just before it. Not a blow: no hit, swing or crit of its own.
+    /// `target` `None` is the character (PvP).
+    Opening {
+        who: Option<String>,
+        target: Option<String>,
+        verb: String,
+        damage: i64,
+    },
+    /// `weave_*` (1.20): a hybrid's normal hit wove its best attack spell into the target as a
+    /// free volley, `damage` summed (0 possible: resistance zeroed it). `resisted`: the
+    /// `weave_resisted_*` forms, one resist roll for the whole proc, no damage. Spell damage,
+    /// never a blow. `target` `None` is the character.
+    Weave {
+        who: Option<String>,
+        target: Option<String>,
+        spell: String,
+        damage: i64,
+        resisted: bool,
+    },
+    /// `guard_intercept_*` (1.20): a guard took a monster's melee blow meant for its ward; the
+    /// stock hit or miss line that follows names the guard. `guard` `None`: the character
+    /// intercepted; `ward` `None`: the blow was meant for the character.
+    Intercept {
+        guard: Option<String>,
+        monster: String,
+        ward: Option<String>,
+    },
+    /// `guard_start_*` and `guard_stop_*` (1.20): `on` started or stopped guarding. `guard`
+    /// `None`: the character guards `ward`; `ward` `None`: someone guards the character.
+    Guarding {
+        guard: Option<String>,
+        ward: Option<String>,
+        on: bool,
+    },
+    /// The game would not take `guard` (1.20): `not_guarding` (`guard` alone with no ward),
+    /// `not_here`, `not_party` (`<Name> is not in your party.`), `self` or `resting`.
+    GuardRefused {
+        why: &'static str,
+    },
+    /// `look_weapon_strreq` (1.20): `It requires 75 strength to wield well (you have 92).`
+    StrRequirement {
+        required: i64,
+        have: i64,
+    },
+
     /// A line nothing recognised (category `unclassified`).
     Unknown {
         line: String,
@@ -606,6 +655,14 @@ fn mana_kind(s: Option<&str>) -> Option<ManaKind> {
         "KAI" | "Kai" => Some(ManaKind::Kai),
         _ => None,
     }
+}
+
+/// A player named in a field, `None` when the line has no such field (the character itself).
+fn person(ev: &Event, field: &str) -> Option<String> {
+    ev.text(field)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
 }
 
 /// A monster's name as a line shows it, without the article a sentence starts with (`The
@@ -785,6 +842,78 @@ impl GameEvent {
                     backstab: !text(ev, "surprise").is_empty(),
                 },
                 None => G::Other(ev.clone()),
+            },
+            "opportunist_you" | "opportunist_room" | "opportunist_victim" => match int(ev, "dmg") {
+                Some(damage) => G::Opening {
+                    who: person(ev, "who"),
+                    target: (ev.name != "opportunist_victim").then(|| monster_name(ev, "target")),
+                    verb: text(ev, "verb"),
+                    damage,
+                },
+                None => G::Other(ev.clone()),
+            },
+            name @ ("weave_you"
+            | "weave_room"
+            | "weave_victim"
+            | "weave_resisted_you"
+            | "weave_resisted_room"
+            | "weave_resisted_victim") => {
+                let resisted = name.starts_with("weave_resisted");
+                let damage = if resisted { Some(0) } else { int(ev, "dmg") };
+                // The pattern's lazy spell group stops at the first ` into `; a spell whose name
+                // has ` into ` in it splits on the last (`docs/kb/quicksilver-1.20.md`).
+                let (spell, target) = match ev.text("target") {
+                    Some(t) => match t.rsplit_once(" into ") {
+                        Some((more, t)) => (
+                            format!("{} into {more}", text(ev, "spell")),
+                            Some(t.to_owned()),
+                        ),
+                        None => (text(ev, "spell"), Some(t.to_owned())),
+                    },
+                    None => (text(ev, "spell"), None),
+                };
+                let target = target.map(|t| {
+                    ["The ", "the ", "An ", "an ", "A ", "a "]
+                        .iter()
+                        .find_map(|a| t.trim().strip_prefix(a))
+                        .unwrap_or(t.trim())
+                        .to_owned()
+                });
+                match damage {
+                    Some(damage) => G::Weave {
+                        who: person(ev, "who"),
+                        target,
+                        spell,
+                        damage,
+                        resisted,
+                    },
+                    None => G::Other(ev.clone()),
+                }
+            }
+            "guard_intercept_you" | "guard_intercept_ward" | "guard_intercept_room" => {
+                G::Intercept {
+                    guard: person(ev, "guard"),
+                    monster: monster_name(ev, "mon"),
+                    ward: person(ev, "ward"),
+                }
+            }
+            "guard_start_you" | "guard_start_ward" | "guard_stop_you" | "guard_stop_ward" => {
+                G::Guarding {
+                    guard: person(ev, "guard"),
+                    ward: person(ev, "ward"),
+                    on: ev.name.starts_with("guard_start"),
+                }
+            }
+            "guard_not_guarding" => G::GuardRefused {
+                why: "not_guarding",
+            },
+            "guard_not_here" => G::GuardRefused { why: "not_here" },
+            "guard_not_party" => G::GuardRefused { why: "not_party" },
+            "guard_self" => G::GuardRefused { why: "self" },
+            "guard_resting" => G::GuardRefused { why: "resting" },
+            "look_weapon_strreq" => match (int(ev, "str"), int(ev, "have")) {
+                (Some(required), Some(have)) => G::StrRequirement { required, have },
+                _ => G::Other(ev.clone()),
             },
             "you_miss" | "you_dodged" => G::YouMiss {
                 target: monster_name(ev, "target"),

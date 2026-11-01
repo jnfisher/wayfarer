@@ -1,0 +1,34 @@
+Quicksilver 1.20: how the rules differ from 1.11p
+
+Backstab
+A backstab costs 1.5 blows of energy; the rest of the round is normal blows.
+A stab can crit (max to 2 x max damage); stealth and level add more to it.
+Thieves: 10% of normal hits find an opening and add a stab's bonus.
+Spells and mana
+Mage, Priest and Druid spells use Spell Mod v2.1. Detect magic is now
+protective aura, dark plague is dark binding.
+Spell damage +0.5% per point of your casting stat over 50 (a third past 100).
+Rest restores mana 3 x faster; meditate 5 x, and heals as rest does.
+Each caster family has a line of mana-regeneration spells, sold in shops.
+Area spells: a monster may resist, cutting its share by at most 25%.
+Witchunters never resist their own or their party's friendly spells.
+Races and Str
+LOOK at a weapon to see its Str requirement and yours.
+Humans, Dwarves, Elves and Gaunt Ones regenerate faster.
+Hybrids and class damage
+Paladins, Rangers, Clerics, Missionaries, Warlocks, Gypsies and Bards weave:
+some melee hits add a free attack spell. Paladins and Rangers weave less.
+Each class's damage is tuned to a band against the Warrior's.
+Stats
+TRAIN STATS goes past your race maximum: 10 CP a point up to 90, then
+15, 25 and 40 CP a point, up to 30 points over.
+Crit chance past 50, magic resistance past 110 and dodge Agility past 150
+count a third. A stat-lowering spell stops at 0.
+Groups
+Monsters attack the front rank most and the back rank least.
+GUARD <player>: take blows aimed at a party member. GUARD alone stops.
+Scaling
+Backstab, opportunist and weave stop growing at level 60; spells at 65.
+Smaller
+Below 50 magic resistance, armour-piercing spells hurt more, not less.
+Monsters cast their own copies of their spells.

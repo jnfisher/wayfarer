@@ -10,6 +10,8 @@ use serde::Deserialize;
 
 const PATTERNS_JSON: &str = include_str!("../../../tests/fixtures/parse-golden/patterns.json");
 const STATIC_ORDER: &str = include_str!("../../../tests/fixtures/parse-golden/static-order.txt");
+/// The lines Quicksilver 1.20 adds (`docs/plan/quicksilver-1.20/handoff.md` section 3).
+const QS120_JSON: &str = include_str!("../../../tests/fixtures/qs120/patterns-1.20.json");
 
 #[derive(Debug, Deserialize)]
 pub struct Table {
@@ -30,6 +32,36 @@ pub struct Static {
     pub example: String,
     pub seen: String,
     pub prio: i32,
+}
+
+/// A static pattern of a rule set other than stock 1.11p: one of Quicksilver 1.20's new lines.
+#[derive(Debug, Deserialize)]
+pub struct RulesStatic {
+    pub name: String,
+    pub cat: String,
+    pub rx: String,
+    pub example: String,
+    pub seen: String,
+    pub prio: i32,
+    /// The rule set whose server prints the line (`"1.20"`). A property of the data, never a
+    /// detection signal: the patterns are registered for every server.
+    pub rules: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RulesTable {
+    #[serde(rename = "static")]
+    statics: Vec<RulesStatic>,
+}
+
+/// Quicksilver 1.20's patterns, in the file's order.
+pub fn qs120() -> &'static [RulesStatic] {
+    static QS120: OnceLock<Vec<RulesStatic>> = OnceLock::new();
+    QS120.get_or_init(|| {
+        let t: RulesTable =
+            serde_json::from_str(QS120_JSON).expect("embedded patterns-1.20.json parses");
+        t.statics
+    })
 }
 
 #[derive(Debug, Deserialize)]

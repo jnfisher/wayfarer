@@ -9,7 +9,7 @@ use regex::{Captures, Regex, RegexBuilder, RegexSet, RegexSetBuilder};
 use crate::event::{Fields, Value};
 use crate::game_texts::GameTexts;
 use crate::pyre::{is_py_space, py_escape, py_split, py_strip, regex_tokens, spec, to_rust};
-use crate::table::table;
+use crate::table::{qs120, table};
 
 /// How a wrapped display continues on the next line (`patterns.JOIN`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,6 +50,10 @@ pub struct Pattern {
     pub key: Option<String>,
     /// For table rows: the most rows the table takes.
     pub max_rows: u32,
+    /// The rule set whose server prints the line: `None` for stock 1.11p, `Some("1.20")` for
+    /// Quicksilver 1.20's new lines. Every pattern is registered for every server; this only
+    /// tells the two apart (tools, the dev panel, tests).
+    pub rules: Option<String>,
     rx: OnceLock<Option<Regex>>,
 }
 
@@ -67,6 +71,7 @@ impl Pattern {
             msgnum: None,
             key: None,
             max_rows: 999,
+            rules: None,
             rx: OnceLock::new(),
         }
     }
@@ -521,6 +526,28 @@ impl Registry {
                 .filter(|w| w.chars().count() >= 2)
                 .min_by_key(|w| (freq[w.as_str()], std::cmp::Reverse(w.chars().count())))
                 .cloned();
+        }
+
+        // Quicksilver 1.20's lines, after the stock ones and keyed after them, so that every
+        // stock pattern keeps the index key the prototype gives it. Each has a prefix no stock
+        // line has and a priority below every stock one (40, 39 for the `_victim` forms).
+        for s in qs120() {
+            let mut p = Pattern::new(&s.name, &s.cat, s.prio, s.rx.clone());
+            p.example = s.example.clone();
+            p.seen = s.seen.clone();
+            p.rules = Some(s.rules.clone());
+            let ws = words(&p);
+            p.key = ws
+                .iter()
+                .filter(|w| w.chars().count() >= 2)
+                .min_by_key(|w| {
+                    (
+                        freq.get(w.as_str()).copied().unwrap_or(0),
+                        std::cmp::Reverse(w.chars().count()),
+                    )
+                })
+                .cloned();
+            patterns.push(p);
         }
 
         let mut order: Vec<u32> = (0..patterns.len() as u32).collect();
