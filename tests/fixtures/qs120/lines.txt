@@ -1,0 +1,35 @@
+# Quicksilver 1.20 lines and the pattern each must classify as (tab-separated).
+# From docs/plan/quicksilver-1.20/handoff.md section 3; see PROVENANCE.md.
+You find an opening and slash giant rat for 23 damage!	opportunist_you
+Thornwyn finds an opening and slashes giant rat for 23 damage!	opportunist_room
+Thornwyn finds an opening and slashes you for 23 damage!	opportunist_victim
+You weave meteor swarm into giant rat for 75 damage!	weave_you
+Thornwyn weaves meteor swarm into giant rat for 75 damage!	weave_room
+Thornwyn weaves meteor swarm into you for 75 damage!	weave_victim
+You weave meteor swarm into giant rat, but it is resisted!	weave_resisted_you
+Thornwyn weaves meteor swarm into giant rat, but it is resisted!	weave_resisted_room
+Thornwyn weaves meteor swarm into you, but you resist!	weave_resisted_victim
+You intercept the orc's attack on Mirelle!	guard_intercept_you
+Brannoc intercepts the orc's attack!	guard_intercept_ward
+Brannoc intercepts the orc's attack on Mirelle!	guard_intercept_room
+You are now guarding Mirelle.	guard_start_you
+Brannoc is now guarding you.	guard_start_ward
+You stop guarding Mirelle.	guard_stop_you
+Brannoc stops guarding you.	guard_stop_ward
+You are not guarding anyone.	guard_not_guarding
+You don't see that player here.	guard_not_here
+Mirelle is not in your party.	guard_not_party
+You cannot guard yourself.	guard_self
+You cannot guard while resting or meditating.	guard_resting
+It requires 75 strength to wield well (you have 92).	look_weapon_strreq
+You slash giant rat for 7 damage!	you_hit
+You find an opening and slash giant rat for 31 damage!	opportunist_you
+You weave meteor swarm into giant rat for 0 damage!	weave_you
+You surprise slash giant rat for 61 damage!	you_hit
+You critically surprise slash giant rat for 140 damage!	you_hit
+Thornwyn critically surprise slashes giant rat for 140 damage!	other_hits
+You are now resting.	rest_start
+You are now meditating.	meditate_start
+You awake from deep meditation feeling stronger!	meditate_done
+Meditation will not help at this time.	meditate_useless
+Sorry, no help is available for that topic!	help_none

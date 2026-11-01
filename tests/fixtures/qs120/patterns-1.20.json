@@ -1,0 +1,204 @@
+{
+  "version": "1.20.0",
+  "source": "docs/plan/quicksilver-1.20/handoff.md, section 3",
+  "static": [
+    {
+      "name": "opportunist_you",
+      "cat": "combat",
+      "rx": "You find an opening and (?P<verb>\\S+) (?P<target>.+) for (?P<dmg>\\d+) damage!",
+      "example": "You find an opening and slash giant rat for 23 damage!",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "opportunist_room",
+      "cat": "combat",
+      "rx": "(?P<who>[A-Z][A-Za-z]+) finds an opening and (?P<verb>\\S+) (?P<target>.+) for (?P<dmg>\\d+) damage!",
+      "example": "Thornwyn finds an opening and slashes giant rat for 23 damage!",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "opportunist_victim",
+      "cat": "combat",
+      "rx": "(?P<who>[A-Z][A-Za-z]+) finds an opening and (?P<verb>\\S+) you for (?P<dmg>\\d+) damage!",
+      "example": "Thornwyn finds an opening and slashes you for 23 damage!",
+      "seen": "Q",
+      "prio": 39,
+      "rules": "1.20"
+    },
+    {
+      "name": "weave_you",
+      "cat": "spell",
+      "rx": "You weave (?P<spell>.+?) into (?P<target>.+) for (?P<dmg>\\d+) damage!",
+      "example": "You weave meteor swarm into giant rat for 75 damage!",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "weave_room",
+      "cat": "spell",
+      "rx": "(?P<who>[A-Z][A-Za-z]+) weaves (?P<spell>.+?) into (?P<target>.+) for (?P<dmg>\\d+) damage!",
+      "example": "Thornwyn weaves meteor swarm into giant rat for 75 damage!",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "weave_victim",
+      "cat": "spell",
+      "rx": "(?P<who>[A-Z][A-Za-z]+) weaves (?P<spell>.+?) into you for (?P<dmg>\\d+) damage!",
+      "example": "Thornwyn weaves meteor swarm into you for 75 damage!",
+      "seen": "Q",
+      "prio": 39,
+      "rules": "1.20"
+    },
+    {
+      "name": "weave_resisted_you",
+      "cat": "spell",
+      "rx": "You weave (?P<spell>.+?) into (?P<target>.+), but it is resisted!",
+      "example": "You weave meteor swarm into giant rat, but it is resisted!",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "weave_resisted_room",
+      "cat": "spell",
+      "rx": "(?P<who>[A-Z][A-Za-z]+) weaves (?P<spell>.+?) into (?P<target>.+), but it is resisted!",
+      "example": "Thornwyn weaves meteor swarm into giant rat, but it is resisted!",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "weave_resisted_victim",
+      "cat": "spell",
+      "rx": "(?P<who>[A-Z][A-Za-z]+) weaves (?P<spell>.+?) into you, but you resist!",
+      "example": "Thornwyn weaves meteor swarm into you, but you resist!",
+      "seen": "Q",
+      "prio": 39,
+      "rules": "1.20"
+    },
+    {
+      "name": "guard_intercept_you",
+      "cat": "combat",
+      "rx": "You intercept (?:the )?(?P<mon>.+?)'s attack on (?P<ward>[A-Z][A-Za-z]+)!",
+      "example": "You intercept the orc's attack on Mirelle!",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "guard_intercept_ward",
+      "cat": "combat",
+      "rx": "(?P<guard>[A-Z][A-Za-z]+) intercepts (?:the )?(?P<mon>.+?)'s attack!",
+      "example": "Brannoc intercepts the orc's attack!",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "guard_intercept_room",
+      "cat": "combat",
+      "rx": "(?P<guard>[A-Z][A-Za-z]+) intercepts (?:the )?(?P<mon>.+?)'s attack on (?P<ward>[A-Z][A-Za-z]+)!",
+      "example": "Brannoc intercepts the orc's attack on Mirelle!",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "guard_start_you",
+      "cat": "party",
+      "rx": "You are now guarding (?P<ward>[A-Z][A-Za-z]+)\\.",
+      "example": "You are now guarding Mirelle.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "guard_start_ward",
+      "cat": "party",
+      "rx": "(?P<guard>[A-Z][A-Za-z]+) is now guarding you\\.",
+      "example": "Brannoc is now guarding you.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "guard_stop_you",
+      "cat": "party",
+      "rx": "You stop guarding (?P<ward>[A-Z][A-Za-z]+)\\.",
+      "example": "You stop guarding Mirelle.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "guard_stop_ward",
+      "cat": "party",
+      "rx": "(?P<guard>[A-Z][A-Za-z]+) stops guarding you\\.",
+      "example": "Brannoc stops guarding you.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "guard_not_guarding",
+      "cat": "party",
+      "rx": "You are not guarding anyone\\.",
+      "example": "You are not guarding anyone.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "guard_not_here",
+      "cat": "party",
+      "rx": "You don't see that player here\\.",
+      "example": "You don't see that player here.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "guard_not_party",
+      "cat": "party",
+      "rx": "(?P<who>[A-Z][A-Za-z]+) is not in your party\\.",
+      "example": "Mirelle is not in your party.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "guard_self",
+      "cat": "party",
+      "rx": "You cannot guard yourself\\.",
+      "example": "You cannot guard yourself.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "guard_resting",
+      "cat": "party",
+      "rx": "You cannot guard while resting or meditating\\.",
+      "example": "You cannot guard while resting or meditating.",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    },
+    {
+      "name": "look_weapon_strreq",
+      "cat": "room",
+      "rx": "It requires (?P<str>\\d+) strength to wield well \\(you have (?P<have>\\d+)\\)\\.",
+      "example": "It requires 75 strength to wield well (you have 92).",
+      "seen": "Q",
+      "prio": 40,
+      "rules": "1.20"
+    }
+  ]
+}

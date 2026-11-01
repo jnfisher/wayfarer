@@ -15,7 +15,11 @@ parser.sent("a rat");                                          // so its echo is
 - **Patterns**: the static table (`tests/fixtures/parse-golden/patterns.json`, embedded at
   compile time) and about 6,400 patterns generated at load time from the world's WCCMSG
   records: monster arrivals, deaths, hits and misses, weapon verbs, spell texts, and every
-  other game message (`wccmsg`). Room names make `room_title`.
+  other game message (`wccmsg`). Room names make `room_title`. Quicksilver 1.20's new lines
+  (`tests/fixtures/qs120/patterns-1.20.json`: openings, weaves, `guard`, a weapon's Str
+  requirement) are registered for every server at priority 40 (39 for the `_victim` forms),
+  marked `Pattern::rules == Some("1.20")`; no stock line matches them
+  (`docs/kb/quicksilver-1.20.md`).
 - **Matching**: each pattern is indexed by its rarest literal word; a line is tried only
   against the patterns keyed by one of its words, plus about a hundred always tried, best
   priority first. Regexes compile on first use.
