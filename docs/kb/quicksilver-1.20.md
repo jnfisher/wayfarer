@@ -119,3 +119,22 @@ where each file comes from).
 - **Missing from the handoff's table:** the four regen songs' own rows (6017-6020). Wayfarer's
   `songs.csv` builds them from the tier table: magery Bard, magery level 0, self, type 3; their
   status lines are the song family's [Q, built; the rows asked for].
+
+## Rest and meditate
+
+- **Rest** gives HP as in 1.11p plus mana at three times the standing rate (`rest_mana_mult`),
+  for any class with mana, from level 1 (the slow tick's mana plus the rest ticks' share; the
+  server keeps the remainder exact). In 1.11p a rest gives no extra mana [Q].
+- **Meditate** (still the stock ability from the stock quest; a class without it gets no output
+  at all, as in 1.11p) gives mana at five times the standing rate (`meditate_mana_mult`; 1.11p
+  about three) **and rest's HP**, and counts the regen tiers. A meditating character never needs
+  to rest [Q].
+- **Both end by themselves once HP and mana are full**: rest with no line (the `(Resting)` mark
+  leaves the next prompt), meditate with `You awake from deep meditation feeling stronger!`. A
+  class with no mana counts as full on mana. In 1.11p a rest never ends by itself [Q].
+- **Meditate starts at full mana if HP is missing**; `Meditation will not help at this time.`
+  only when both bars are full [Q].
+- Rest and meditate still end each other, and anything that broke them in 1.11p still does [Q].
+- The standing mana a slow tick gives is, as in 1.11p, `castval × (level + 20) × (magelvl + 2) /
+  1650`, then scaled by the total Alter Mana Regeneration (`× (100 + rate) / 100`), to which a
+  regen tier adds its value; rest and meditate multiply the result [Q].
