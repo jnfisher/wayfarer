@@ -394,8 +394,11 @@ Under the run, the **combat** numbers ([brain.md](brain.md) "Combat statistics")
 shape of MegaMud's Combat tab: `miss` (with the dodges), `hit`, `crit`, `bs` (with how many
 of the backstab tries landed and how many crit), `cast` (its accuracy, and the failed casts),
 `glance` and `round`, each with its count, its share of the swings, min-max and average
-damage. Rows with nothing counted are left out. Last, killed, fled, and the lowest HP and mana
-seen. They are kept across runs, stops and restarts until their own **Reset**, beside "combat
+damage; on a Quicksilver 1.20 server also `opening` and `weave` (their share is of normal hits,
+"per hit"; the weave's note says how many were resisted). Rows with nothing counted are left
+out. Last, killed (and how many by a spell), fled, the blows taken for a guarded ward, the
+lowest HP and mana seen, and the monsters never woven into (likely immune to the character's
+spells). They are kept across runs, stops and restarts until their own **Reset**, beside "combat
 since" (`only: "combat"`; the run goes on): press it after changing weapons or settings,
 starting a loop or a level-up.
 

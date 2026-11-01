@@ -432,6 +432,37 @@ async fn a_reset_with_no_run_zeroes_the_combat_numbers() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn quicksilver_openings_weaves_and_intercepts_are_counted() {
+    // C-065: the lines of a 1.20 server, read from the game's text.
+    let (mut g, run) = Game::start_with(SessionState::Realm, arena(&[], 35)).await;
+    g.idle(Duration::from_secs(20)).await;
+    g.output(&line("You slash large giant rat for 7 damage!", 35))
+        .await;
+    g.output(&line(
+        "You find an opening and slash large giant rat for 31 damage!",
+        35,
+    ))
+    .await;
+    g.idle(Duration::from_secs(5)).await;
+    g.output(&line("You slash large giant rat for 6 damage!", 35))
+        .await;
+    g.output(&line(
+        "You weave meteor swarm into large giant rat for 75 damage!",
+        35,
+    ))
+    .await;
+    g.output(&line("You intercept the orc's attack on Mirelle!", 35))
+        .await;
+    g.idle(Duration::from_secs(5)).await;
+    let c = g.combat().await.expect("combat numbers");
+    assert_eq!(c.swings, 2, "openings and weaves are no swings");
+    let kinds: Vec<_> = c.rows.iter().map(|r| (r.kind.as_str(), r.count)).collect();
+    assert_eq!(kinds, [("hit", 2), ("opening", 1), ("weave", 1)]);
+    assert_eq!(c.intercepts, 1);
+    g.close(run).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn the_run_and_the_combat_numbers_reset_apart() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");

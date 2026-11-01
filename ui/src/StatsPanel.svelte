@@ -2,6 +2,7 @@
   import {
     age,
     combatLines,
+    combatSummary,
     count,
     duration,
     efficiency,
@@ -176,16 +177,7 @@
             </div>
           {/each}
         </div>
-        <div class="monsters">
-          {[
-            `killed ${count(combat.kills)}`,
-            `fled ${count(combat.flees)}`,
-            combat.lowest_hp !== undefined && `lowest hp ${combat.lowest_hp}`,
-            combat.lowest_mana !== undefined && `lowest mana ${combat.lowest_mana}`,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </div>
+        <div class="monsters">{combatSummary(combat)}</div>
       {:else}
         <div class="dim">No combat numbers since the last reset.</div>
       {/if}

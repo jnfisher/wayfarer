@@ -5,6 +5,7 @@ import StatsPanel from "../src/StatsPanel.svelte";
 import {
   age,
   combatLines,
+  combatSummary,
   count,
   duration,
   efficiency,
@@ -157,6 +158,10 @@ describe("the combat numbers", () => {
     kills: 5,
     flees: 1,
     lowest_hp: 41,
+    weaves_resisted: 0,
+    spell_kills: 0,
+    intercepts: 0,
+    no_weave: [],
   };
 
   it("formats rates, tenths and ages", () => {
@@ -177,6 +182,29 @@ describe("the combat numbers", () => {
     expect(l[5]).toMatchObject({ count: "14", share: "", range: "0-150", avg: "48.1" });
     // No cast row without casts.
     expect(l.some((x) => x.label === "cast")).toBe(false);
+  });
+
+  it("adds Quicksilver 1.20's openings, weaves, spell kills and intercepts", () => {
+    const qs = {
+      ...combat,
+      rows: [
+        ...combat.rows,
+        { kind: "opening", count: 2, per_mille: 153, min: 23, max: 31, avg_tenths: 270 },
+        { kind: "weave", count: 3, per_mille: 230, min: 0, max: 75, avg_tenths: 383 },
+      ],
+      weaves_resisted: 1,
+      spell_kills: 2,
+      intercepts: 4,
+      no_weave: ["ghost"],
+    };
+    const l = combatLines(qs);
+    expect(l.map((x) => x.label)).toEqual(["miss", "hit", "crit", "bs", "opening", "weave", "glance", "round"]);
+    expect(l[4]).toMatchObject({ count: "2", share: "15.3%", range: "23-31", note: "per hit" });
+    expect(l[5]).toMatchObject({ count: "3", share: "23.0%", note: "1 resisted" });
+    expect(combatSummary(qs)).toBe(
+      "killed 5 (2 by spell) · fled 1 · took 4 for the ward · lowest hp 41 · never woven into: ghost",
+    );
+    expect(combatSummary(combat)).toBe("killed 5 · fled 1 · lowest hp 41");
   });
 
   it("shows the table under the run, and says when there is nothing yet", () => {

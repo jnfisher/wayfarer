@@ -5,6 +5,6 @@
  */
 export type DamageRow = { kind: string, count: number, 
 /**
- * Of all swings (0 for `round`).
+ * Of all swings; of normal hits for `opening` and `weave`; 0 for `round`.
  */
 per_mille: number, min: number, max: number, avg_tenths: number, };

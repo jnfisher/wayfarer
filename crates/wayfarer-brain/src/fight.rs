@@ -245,6 +245,20 @@ impl Mode for Fight {
                 self.stall = Stall::default();
             }
             GameEvent::YouHit { target, .. } => self.swing(target, true, false, now),
+            // 1.20: an opening or a weave that did damage is damage dealt in the round.
+            GameEvent::Opening {
+                who: None,
+                target: Some(target),
+                damage,
+                ..
+            }
+            | GameEvent::Weave {
+                who: None,
+                target: Some(target),
+                damage,
+                resisted: false,
+                ..
+            } if *damage > 0 => self.swing(target, true, false, now),
             GameEvent::YouMiss { target, .. } => self.swing(target, false, false, now),
             GameEvent::SwingGlanced { target } => self.swing(target, false, true, now),
             _ => {}
