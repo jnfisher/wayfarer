@@ -30,9 +30,10 @@ tile's own buttons.
   mana maxima come from the status screen, which the brain asks for when it re-syncs (the
   game's prompt has none), so until then a bar is empty and its maximum shows `--`. A character
   with no mana (a Warrior, a Witchunter: its prompt is `[HP=..]:` alone) has no mana bar.
-- **The rule set** follows the class: `L3 Warrior 1.20` on a Quicksilver 1.20 server, `L3
-  Warrior ?` while the brain is still finding out (it plays as 1.11p meanwhile), and nothing on
-  a stock 1.11p server (docs/brain.md "Rule sets").
+- **The rule set** follows the class once the brain knows the server plays Quicksilver 1.20:
+  `L3 Warrior 1.20`. Nothing shows on a stock 1.11p server or while the brain is still finding
+  out (it plays as 1.11p meanwhile; the dev panel's **rules** line says which) (docs/brain.md
+  "Rule sets").
 - **Unknown values** show as `--`. Values update live as the brain reads the game; on leaving
   the realm (`x` to the menu) the last values stay and the badge changes.
 - **Narrow tiles**: the first row's bars shrink to five blocks first, so the exp keeps its

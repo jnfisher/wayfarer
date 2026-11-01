@@ -92,7 +92,7 @@ describe("expText", () => {
 });
 
 describe("the rule-set badge", () => {
-  it("shows 1.20, a question mark while unknown, and nothing on 1.11p", () => {
+  it("shows 1.20 once detected, and nothing while unknown or on 1.11p", () => {
     const c = (rules?: string): CharacterState => ({
       level: 3,
       class: "Warrior",
@@ -100,7 +100,8 @@ describe("the rule-set badge", () => {
     });
     expect(rulesBadge(c("1.20"))).toBe("1.20");
     expect(levelClass(c("1.20"))).toBe("L3 Warrior 1.20");
-    expect(levelClass(c("unknown"))).toBe("L3 Warrior ?");
+    expect(rulesBadge(c("unknown"))).toBe("");
+    expect(levelClass(c("unknown"))).toBe("L3 Warrior");
     expect(levelClass(c("1.11p"))).toBe("L3 Warrior");
     expect(levelClass(c())).toBe("L3 Warrior");
   });

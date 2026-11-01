@@ -45,18 +45,10 @@ export function noMana(c: CharacterState): boolean {
   return c.prompt_form === "hp" && !c.mana_max;
 }
 
-/** The rule-set badge (docs/web-ui.md "The header"): `1.20` on a Quicksilver 1.20 server, `?`
- * while the brain does not know yet (it plays as 1.11p meanwhile), nothing on stock 1.11p or
- * without a brain. */
+/** The rule-set badge (docs/web-ui.md "The header"): `1.20` once the brain knows the server
+ * plays Quicksilver 1.20; nothing otherwise (stock 1.11p, not known yet, or no brain). */
 export function rulesBadge(c: CharacterState): string {
-  switch (c.rule_set?.rules) {
-    case "1.20":
-      return "1.20";
-    case "unknown":
-      return "?";
-    default:
-      return "";
-  }
+  return c.rule_set?.rules === "1.20" ? "1.20" : "";
 }
 
 /** `L3 Warrior`, with `--` for what is not known, and the rule-set badge after it. */
