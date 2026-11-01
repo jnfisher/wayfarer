@@ -13,7 +13,9 @@ import {
   fitHeader,
   fixedWidth,
   itemWidths,
+  levelClass,
   noMana,
+  rulesBadge,
   type HeaderText,
 } from "../src/lib/header";
 import type { CharacterState } from "../src/proto";
@@ -86,6 +88,32 @@ describe("expText", () => {
     expect(expText({ exp: 1230, exp_percent: 45 })).toBe("1,230 (45%)");
     expect(expText({ exp: 1230 })).toBe("1,230");
     expect(expText({})).toBe("--");
+  });
+});
+
+describe("the rule-set badge", () => {
+  it("shows 1.20, a question mark while unknown, and nothing on 1.11p", () => {
+    const c = (rules?: string): CharacterState => ({
+      level: 3,
+      class: "Warrior",
+      ...(rules ? { rule_set: { rules, probes: 1, help: [] } } : {}),
+    });
+    expect(rulesBadge(c("1.20"))).toBe("1.20");
+    expect(levelClass(c("1.20"))).toBe("L3 Warrior 1.20");
+    expect(levelClass(c("unknown"))).toBe("L3 Warrior ?");
+    expect(levelClass(c("1.11p"))).toBe("L3 Warrior");
+    expect(levelClass(c())).toBe("L3 Warrior");
+  });
+
+  it("counts in the header's widths", () => {
+    const h = (rules: string): HeaderText => ({
+      number: 1,
+      name: "Waydeva",
+      server: "s",
+      state: "realm",
+      character: { level: 3, class: "Warrior", rule_set: { rules, probes: 1, help: [] } },
+    });
+    expect(itemWidths(h("1.20")).level! - itemWidths(h("1.11p")).level!).toBe(5);
   });
 });
 

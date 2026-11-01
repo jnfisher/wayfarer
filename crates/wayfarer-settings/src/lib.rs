@@ -254,6 +254,17 @@ pub const CATALOGUE: &[Setting] = &[
         megamud: None,
     },
     Setting {
+        key: "bot.ask_rules",
+        label: "Ask the server which rules it plays",
+        help: "After logging on, at the first quiet prompt, the bot sends `help 1.20` to learn whether the server is stock MajorMUD 1.11p or Quicksilver 1.20 (a 1.11p server only says it has no such help). Off, it learns 1.20 only from lines a 1.20 server alone prints, and plays as 1.11p until then.",
+        kind: Kind::Bool,
+        default: Value::Bool(true),
+        unit: "",
+        tier: Tier::Advanced,
+        group: Group::Bot,
+        megamud: None,
+    },
+    Setting {
         key: "bot.leg_tries",
         label: "Tries to reach a stop",
         help: "Walks to one loop stop that end somewhere else, with no fight between, before the stop is passed by for now.",

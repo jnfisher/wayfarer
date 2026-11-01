@@ -154,6 +154,18 @@ impl Ledger {
         self.now()
     }
 
+    /// The rules `server` was found to play at an earlier login (C-064).
+    pub fn rule_set(&self, server: &str) -> Option<wayfarer_world::RuleSet> {
+        let (rules, _, _) = self.with(|s, _| s.rule_set(server)).flatten()?;
+        rules.parse().ok()
+    }
+
+    /// Keep the rules `server` was found to play, and why.
+    pub fn save_rule_set(&self, server: &str, rules: wayfarer_world::RuleSet, reason: &str) {
+        let at = self.now();
+        self.with(|s, _| s.save_rule_set(server, rules.as_str(), reason, at));
+    }
+
     /// The character killed the boss `name` just now (a run or not): kept for "should be up".
     pub fn boss_killed(&mut self, name: &str) {
         let at = self.now();

@@ -30,6 +30,9 @@ tile's own buttons.
   mana maxima come from the status screen, which the brain asks for when it re-syncs (the
   game's prompt has none), so until then a bar is empty and its maximum shows `--`. A character
   with no mana (a Warrior, a Witchunter: its prompt is `[HP=..]:` alone) has no mana bar.
+- **The rule set** follows the class: `L3 Warrior 1.20` on a Quicksilver 1.20 server, `L3
+  Warrior ?` while the brain is still finding out (it plays as 1.11p meanwhile), and nothing on
+  a stock 1.11p server (docs/brain.md "Rule sets").
 - **Unknown values** show as `--`. Values update live as the brain reads the game; on leaving
   the realm (`x` to the menu) the last values stay and the badge changes.
 - **Narrow tiles**: the first row's bars shrink to five blocks first, so the exp keeps its
@@ -536,7 +539,10 @@ For development: what the brain sees. It is the drawer's `dev` tab (above).
   the brain attaching and leaving, each new start, `brain_lagged` (after which the page asks
   for every snapshot again), and the brain's notices and warnings with their character and
   time. **Re-sync** asks the brain to re-sync the focused character (`st`, `exp`, `i`, look);
-  it is off with no brain attached.
+  it is off with no brain attached. **rules** shows which rules the focused character's
+  server plays (`1.11p`, `1.20` or `unknown`) and why; hover it for the server's `help 1.20`
+  topic, and while unknown it says how many times it asked and what the server played last
+  time.
 
 The panel keeps the last 2,000 events and 500 notices per character, and up to 1,000
 distinct unclassified lines, from when the page opened; a reload starts it empty.

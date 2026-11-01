@@ -36,6 +36,23 @@ const rows = (c: HTMLElement) =>
 describe("the dev panel", () => {
   afterEach(cleanup);
 
+  it("shows the rule set and why on the info tab", () => {
+    const r = render(DevPanel, {
+      session,
+      log: filled(),
+      tick: 0,
+      character: {
+        rule_set: { rules: "1.20", reason: "the server answered help 1.20", probes: 1, help: ["Quicksilver 1.20: how the rules differ from 1.11p"] },
+      },
+      attached: true,
+      tab: "brain",
+      onresync: vi.fn(),
+    });
+    const line = r.container.querySelector(".rules")!;
+    expect(line.textContent!.replace(/\s+/g, " ").trim()).toBe("rules 1.20 the server answered help 1.20");
+    expect(line.getAttribute("title")).toBe("Quicksilver 1.20: how the rules differ from 1.11p");
+  });
+
   it("lists the focused character's events with their seq, and filters them", async () => {
     const { container, rerender, log } = mount("events", true);
     expect(rows(container)).toEqual([

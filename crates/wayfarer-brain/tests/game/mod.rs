@@ -167,6 +167,8 @@ pub struct Game {
     /// The game has stopped answering (see [`Game::freeze`]): lines the brain sends are kept in
     /// `seen` and nothing more.
     pub frozen: bool,
+    /// The last prompt the game showed, for answers that end in the prompt as it stands.
+    last_prompt: String,
     /// The moves that went while another was in flight.
     pub ahead: Vec<String>,
 }
@@ -253,6 +255,7 @@ impl Game {
             played: Vec::new(),
             pipelining: false,
             frozen: false,
+            last_prompt: PROMPT.to_owned(),
             ahead: Vec::new(),
         };
         g.log.push(Chunk {
@@ -283,6 +286,10 @@ impl Game {
     }
 
     pub async fn output(&mut self, text: &str) {
+        let tail = text.rsplit("\r\n").next().unwrap_or(text);
+        if tail.contains("[HP=") {
+            self.last_prompt = tail.to_owned();
+        }
         let seq = self.log.len() as u64 + 1;
         self.log.push(Chunk {
             seq,
@@ -409,6 +416,11 @@ impl Game {
                         self.script.pop_front().unwrap().1
                     }
                     _ if RESYNC_COMMANDS.contains(&text.as_str()) => PROMPT.to_owned(),
+                    // The rule-set probe (C-064), answered as a stock 1.11p server answers it.
+                    _ if text == "help 1.20" => format!(
+                        "Sorry, no help is available for that topic!\r\n{}",
+                        self.last_prompt
+                    ),
                     other => {
                         let said: Vec<_> = self
                             .seen

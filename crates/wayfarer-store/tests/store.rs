@@ -469,3 +469,33 @@ fn combat_stats_round_trip_per_session() {
     );
     assert_eq!(store.combat_stats("faye").unwrap(), None);
 }
+
+#[test]
+fn rule_sets_round_trip_per_server() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let (store, _) = Store::open(&path).unwrap();
+    assert_eq!(store.rule_set("<server-host>:23").unwrap(), None);
+    store
+        .save_rule_set("<server-host>:23", "1.11p", "no help 1.20 topic", T0)
+        .unwrap();
+    store
+        .save_rule_set(
+            "<server-host>:23",
+            "1.20",
+            "the server answered help 1.20",
+            T0 + 1,
+        )
+        .unwrap();
+    drop(store);
+    let (store, _) = Store::open(&path).unwrap();
+    assert_eq!(
+        store.rule_set("<server-host>:23").unwrap(),
+        Some((
+            "1.20".to_owned(),
+            "the server answered help 1.20".to_owned(),
+            T0 + 1
+        ))
+    );
+    assert_eq!(store.rule_set("<server-host>:2323").unwrap(), None);
+}
