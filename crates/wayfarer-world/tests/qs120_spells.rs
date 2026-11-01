@@ -71,6 +71,17 @@ fn renamed_spells_and_the_monster_copies() {
     let by = |n: i64| rows.iter().find(|s| s.number == n).unwrap();
     assert_eq!(by(24).name, "protective aura");
     assert_eq!(by(1056).name, "dark binding");
+    // A regen song's blank type, resist mode and element are song 803's.
+    let song: serde_json::Value = serde_json::from_str(&by(6017).raw).unwrap();
+    assert_eq!(
+        (
+            song["type"].as_i64(),
+            song["resmode"].as_i64(),
+            song["element"].as_i64()
+        ),
+        (Some(3), Some(1), Some(4))
+    );
+    assert_eq!(by(6017).spell_type, 3);
     assert!(rows.iter().all(|s| !MONSTER_COPIES.contains(&s.number)));
     // The stock pack's view keeps the old names.
     let stock = pack.spells().unwrap();

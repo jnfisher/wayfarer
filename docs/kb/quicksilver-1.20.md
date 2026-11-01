@@ -116,9 +116,11 @@ where each file comes from).
 - **The monster copies** (5000-5056): monsters cast their own copies of the player spells they
   use, each its 1.11p original under the same name, so Spell Mod never reaches them. No player
   learns, buys or casts one; whatever removes or negates the original removes the copy too [Q].
-- **Missing from the handoff's table:** the four regen songs' own rows (6017-6020). Wayfarer's
-  `songs.csv` builds them from the tier table: magery Bard, magery level 0, self, type 3; their
-  status lines are the song family's [Q, built; the rows asked for].
+- **The regen songs** (6017-6020) are missing from the handoff's table; their rows come from
+  the server's 1.20.0 records: the Bard book (magery 4), magery level 0, self, flags 0, no cap,
+  no growth, record message 5106 and descriptive message 5107; type, resist mode and element
+  are those of the stock song 803 they were made from [Q, the server's records via the
+  orchestrator, 2026-11-01].
 
 ## Rest and meditate
 
