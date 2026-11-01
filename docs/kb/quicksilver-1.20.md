@@ -141,10 +141,6 @@ where each file comes from).
   1650`, then scaled by the total Alter Mana Regeneration (`× (100 + rate) / 100`), to which a
   regen tier adds its value; rest and meditate multiply the result [Q].
 
-- **Missing from the handoff's table:** the four regen songs' own rows (6017-6020). Wayfarer's
-  `songs.csv` builds them from the tier table: magery Bard, magery level 0, self, type 3; their
-  status lines are the song family's [Q, built; the rows asked for].
-
 ## GUARD
 
 - **The command**: `guard <player>` starts guarding a party member in the room; `guard` alone
