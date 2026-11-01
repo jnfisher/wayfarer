@@ -78,6 +78,7 @@ Cards don't repeat these:
 | 9 | The gear planner: a combat model, the gear catalogue, the plan and its full-screen view | 2026-10-26, at John's request |
 | 10 | Releases: tagged Linux builds and `update.sh` for a server that never builds | 2026-10-26, at John's request |
 | 11 | The Accounts panel: servers, characters and logins edited in the page, BBS accounts made on Save (C-062) | 2026-10-30, at John's request |
+| 12 | Quicksilver 1.20 beside stock 1.11p: detect the rule set, the 1.20 lines, spells, rests, `GUARD` and models (C-063 to C-069) | 2026-11-01, from the Quicksilver 1.20.0 handoff (`../quicksilver-1.20/handoff.md`) |
 
 ## Index (wave 1, M0)
 
@@ -208,6 +209,27 @@ Wave 10 (2026-10-26, at John's request): a server such as a Raspberry Pi runs re
 never builds. `scripts/dev/refresh.sh`, which refreshes the dev rig in tmux, came with the
 card's own PR. **Wave 10 is done** when John pushes a tag, runs `update.sh` on the Pi, and
 watches its characters from the laptop's browser.
+
+## Index (wave 12, Quicksilver 1.20)
+
+| Id | Title | Tier | Size | Depends | Review |
+|---|---|---|---|---|---|
+| [C-063](C-063-qs120-patterns.md) | The 1.20 lines: the 1.20 patterns as data, typed events, the critical stab; the KB's 1.20 page | B | M | — | |
+| [C-064](C-064-qs120-rule-set.md) | The rule set per connection: the `help 1.20` probe, the fallback signals, remembered per server; `guard` only on 1.20 | B | M | C-063 | review |
+| [C-065](C-065-qs120-tracking.md) | 1.20 tracking: openings, weaves and their resists, intercepts, the round after a stab | B | M | C-063 | |
+| [C-066](C-066-qs120-spell-data.md) | 1.20 spell data: the player-spell table, the regen line with scrolls and shops, the monster copies left out | B | M | C-064 | |
+| [C-067](C-067-qs120-rest-meditate-regen.md) | Rest and meditate by the 1.20 rules; the regen buff kept up | B | M | C-064, C-066 | |
+| [C-068](C-068-qs120-guard.md) | `GUARD`: a party's tank guards the member the player picks | B | M | C-063, C-064 | |
+| [C-069](C-069-qs120-models.md) | 1.20 numbers in the models: the opener, openings, weaves, knees, casting stat, area resists, class tables as data | B | L | C-064, C-066 | review |
+
+Wave 12 (2026-11-01) runs one card at a time in the order above, one pull request each. Every
+card leaves 1.11p exactly as it was: its 1.11p tests and fixtures give the same results. The class
+damage tables (handoff 6.2 and 7.1) are interim: the server is replacing its four level bands with
+anchor points before 1.20.0 is tagged, and C-069 reads them as anchor data so the final values
+drop in. **Wave 12 is done** when wayfarer behaves exactly as before against a 1.11p server, and
+against a 1.20 server detects 1.20 at login, classifies every line of the handoff's section 3,
+plans with the 1.20 spells, rests and meditates by the 1.20 rules, and can guard; with tests built
+from the handoff's fixtures for each.
 
 Tier: B Opus, C Sonnet. Size: S under half a day of agent time, M about a day, L two to three
 days.
