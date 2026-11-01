@@ -59,8 +59,8 @@ struct Args {
 enum Scenario {
     /// M0: log on, a command, a clean log-off, not punished.
     M0,
-    /// M1: the brain attaches, fills the snapshot, re-syncs, and stops with the character
-    /// still in the realm.
+    /// M1: the brain attaches, fills the snapshot, re-syncs, finds out which rules the server
+    /// plays (C-064), and stops with the character still in the realm.
     Brain,
     /// M2: the brain walks the character to a room and back, confirming each step.
     Walk,
@@ -921,6 +921,21 @@ async fn brain_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
         })
         .await;
     ctx.record("the brain re-syncs", started, &synced);
+
+    // 3b. It finds out which rules the server plays (`help 1.20`, C-064): 1.11p or 1.20, either
+    // passes; still unknown after the wait does not.
+    let started = Instant::now();
+    let rules = gw
+        .wait_for(Duration::from_secs(45), "a rule set decided", |g| {
+            let r = g.character.get("rule_set")?;
+            let rules = r.get("rules")?.as_str()?;
+            (rules != "unknown").then(|| {
+                let why = r.get("reason").and_then(|v| v.as_str()).unwrap_or("");
+                format!("{rules} ({why})")
+            })
+        })
+        .await;
+    ctx.record("the brain finds the rule set", started, &rules);
 
     // 4. A second brain is refused.
     let started = Instant::now();

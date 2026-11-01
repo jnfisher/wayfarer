@@ -49,3 +49,23 @@ forms, so they are tried before every stock pattern (50 and up) [Q].
   their spells) [Q].
 - **Unchanged**: every stock line not named here, the login, menus, version line and banner, the
   prompt and its `(Resting)` / `(Meditating)` markers [Q].
+
+## Detection
+
+- **`help 1.20`.** A 1.20 server answers the command with a topic whose first line, after ANSI
+  and trailing white space are stripped, is exactly `Quicksilver 1.20: how the rules differ from
+  1.11p`, whether or not the server has the stock help text installed. A 1.11p server has no
+  such topic and answers the stock `Sorry, no help is available for that topic!` [Q]. The whole
+  topic is in `tests/fixtures/qs120/help-1.20.txt`: 34 lines, one of them blank, each ending in
+  `\r` on the wire [Q].
+- **Lines only 1.20 prints**, each impossible on 1.11p: any line of the "Lines" section; a
+  backstab with both `critically` and `surprise` (in 1.11p a stab never crits); a 1.20 spell
+  name in the spell list, a shop list or a scroll name (`protective aura`, `dark binding`, the
+  regen line's names, `scroll of protective aura`); and `You are now meditating.` when mana is
+  full and HP is not, which 1.11p refuses with `Meditation will not help at this time.` [Q].
+- **Not signals.** `version` prints `MajorMUD v 1.11p-WG (...)` on a 1.20 server too, and the
+  login banner is the same. `guard` is not a command on 1.11p: it falls through and is said
+  aloud to the room, so it is no probe [Q].
+- **Open.** Whether `You don't see that player here.` and `<Name> is not in your party.` are
+  also stock 1.11p lines (for other commands) is not known; wayfarer counts them as 1.20 only
+  right after a `guard` it sent [I].

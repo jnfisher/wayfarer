@@ -229,6 +229,32 @@ pub struct CharacterState {
     /// none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub errand: Option<String>,
+    /// Which rules the server plays, as the brain found out (C-064).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule_set: Option<RuleSetView>,
+}
+
+/// Which rules a session's server plays (docs/brain.md "Rule sets"): stock MajorMUD 1.11p or
+/// Quicksilver 1.20, unknown until the brain knows (it then plays as 1.11p).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(optional_fields)]
+pub struct RuleSetView {
+    /// `unknown`, `1.11p` or `1.20`.
+    pub rules: String,
+    /// Why: `the server answered help 1.20`, `no help 1.20 topic`, or the 1.20-only line seen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// What the server was found to play at an earlier login. Shown only: the brain finds
+    /// out again at every login.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remembered: Option<String>,
+    /// How many times `help 1.20` was asked this login.
+    #[serde(default)]
+    pub probes: u32,
+    /// The server's `help 1.20` topic, line by line, when it answered with it (empty
+    /// otherwise).
+    #[serde(default)]
+    pub help: Vec<String>,
 }
 
 /// A room the character is remembered to have been in, and why (`CharacterState::places`).

@@ -94,6 +94,37 @@ They are the "talk and look" kind of command (`docs/plan/03-engine.md` section 6
   one cut short by leaving the realm starts again from `st`.
 - **Done**: a whole `character` with `synced_at`, and a `notice` "re-synced".
 
+## Rule sets
+
+Each session knows which rules its server plays (C-064, `docs/kb/quicksilver-1.20.md`
+"Detection"): stock MajorMUD **1.11p**, **Quicksilver 1.20** (a server that plays 1.11p with
+rule changes), or **unknown** until the brain finds out. While it is unknown the bot plays as
+1.11p: guessing 1.11p on a 1.20 server only plays a little worse, guessing 1.20 on a 1.11p
+server would send commands the server reads as speech.
+
+- **Asking.** At the first quiet prompt after the re-sync (in the realm, out of combat and not
+  resting, nothing in flight, not walking, no typed line waiting), the brain sends `help 1.20`.
+  A 1.20 server answers with its topic, `Quicksilver 1.20: how the rules differ from 1.11p`
+  and the rest: the session is 1.20, with the notice "The server plays Quicksilver 1.20 (the
+  server answered help 1.20)". A 1.11p server answers `Sorry, no help is available for that
+  topic!`: the session is 1.11p, quietly. Anything else, or nothing in 5 s, leaves it unknown;
+  it asks again a minute later, three times a login at most, then stays unknown.
+  `bot.ask_rules` (on by default) turns the asking off.
+- **The topic is not game events.** From its first line to the next prompt its lines are kept
+  as text (the dev panel shows them) and nothing else reads them.
+- **Lines only 1.20 prints** make an unknown or 1.11p session 1.20 whenever they come: an
+  opening, a weave, an intercept, a guard start or stop, a weapon's Str requirement, a guard
+  refusal within 10 s of a `guard` (two of those lines may be stock), a critical backstab
+  (`critically surprise`), a 1.20 spell or scroll in the spell list, a learned spell, an item
+  bought, carried or on the floor (`protective aura`, `dark binding`, the regen line), and
+  `You are now meditating.` with full mana and HP missing. 1.20 is never turned back to 1.11p
+  in a login.
+- **Every login asks again** (a server can be rebuilt). What the server was found to play is
+  kept in the store by server and shown beside the rule set, never acted on by itself.
+- **`guard`** is only ever sent once the session is 1.20 (on 1.11p it is said aloud).
+- **On the wire**: the snapshot's `rule_set` (`rules`, `reason`, `remembered`, `probes`,
+  `help`). The tile header shows `1.20` after the class, `?` while unknown, nothing for 1.11p.
+
 ## Position and the map
 
 With a world pack the brain keeps, per character, a **position belief**: the rooms the
@@ -871,6 +902,7 @@ nothing after a restart).
 | `runs` | Per session: each run, from Start to Stop or a death, and its loop |
 | `events` | Per run: kills (the monster and the exp it gave), exp gained with no kill, deaths, flees, rests and level-ups, each with the time and the room |
 | `samples` | Per run: the character's exp and HP, once a minute |
+| `rule_sets` | Per server (as the gateway names it): the rules it was last found to play (`1.11p` or `1.20`), why, and when (schema version 10; "Rule sets") |
 
 ### Restarts
 

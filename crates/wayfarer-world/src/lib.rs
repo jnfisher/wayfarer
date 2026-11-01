@@ -24,6 +24,7 @@ pub mod monsters;
 pub mod nav;
 pub mod pack;
 pub mod route;
+pub mod rule_set;
 pub mod schema;
 pub mod spells;
 pub mod spellshop;
@@ -47,6 +48,7 @@ pub use route::{
     Costs, Purchase, Route, Step, Traveller, distances, distances_any, distances_buying,
     pocket_exits, route, route_buying, route_or_search, route_within, route_within_or_search,
 };
+pub use rule_set::RuleSet;
 pub use spells::{BuffDef, SpellDef, SpellKind, Spells};
 
 #[derive(Debug, thiserror::Error)]

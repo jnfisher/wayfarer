@@ -94,10 +94,12 @@ async fn the_fight_recording_replays_to_the_same_commands() {
 }
 
 /// The HP lines the recordings were made with (flee below 30, rest below 80 to 95), before the
-/// defaults became bolder: a replay must decide as the recorded brain did.
+/// defaults became bolder, and no `help 1.20` (C-064 came after them): a replay must decide as
+/// the recorded brain did.
 fn recorded_policy() -> wayfarer_settings::Settings {
     let over = wayfarer_settings::Overrides::parse(
-        "[health]\nflee_below_hp = 30\nrest_below_hp = 80\nrest_until_hp = 95\n",
+        "[health]\nflee_below_hp = 30\nrest_below_hp = 80\nrest_until_hp = 95\n\
+         [bot]\nask_rules = false\n",
     )
     .unwrap();
     wayfarer_settings::Settings::resolve(&[(wayfarer_settings::Layer::Mine, &over)]).unwrap()

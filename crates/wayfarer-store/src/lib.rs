@@ -127,12 +127,19 @@ const MIGRATIONS: &[&str] = &[
          tally TEXT NOT NULL,
          updated_at INTEGER NOT NULL
      );",
+    // 10: the rules each server was last found to play (C-064): `1.11p` or `1.20`, and why.
+    "CREATE TABLE rule_sets (
+         server TEXT PRIMARY KEY,
+         rules TEXT NOT NULL,
+         reason TEXT NOT NULL,
+         updated_at INTEGER NOT NULL
+     );",
 ];
 
 /// The schema version this build writes.
 pub const SCHEMA_VERSION: u32 = MIGRATIONS.len() as u32;
 
-const TABLES: [&str; 12] = [
+const TABLES: [&str; 13] = [
     "bot_state",
     "runs",
     "events",
@@ -145,6 +152,7 @@ const TABLES: [&str; 12] = [
     "blessings",
     "combat_stats",
     "run_time",
+    "rule_sets",
 ];
 
 #[derive(Debug)]
@@ -718,6 +726,28 @@ impl Store {
             )?;
         }
         Ok(())
+    }
+
+    /// Keep the rules `server` was found to play (`1.11p`, `1.20`) and why, replacing its last.
+    pub fn save_rule_set(&self, server: &str, rules: &str, reason: &str, at: i64) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO rule_sets (server, rules, reason, updated_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![server, rules, reason, at],
+        )?;
+        Ok(())
+    }
+
+    /// The rules `server` was last found to play, why, and when (unix seconds).
+    pub fn rule_set(&self, server: &str) -> Result<Option<(String, String, i64)>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT rules, reason, updated_at FROM rule_sets WHERE server = ?1",
+                params![server],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?)
     }
 
     /// Keep `session`'s combat numbers (the brain's JSON), replacing its last.

@@ -30,6 +30,7 @@ use crate::character::{Character, merge_patch};
 use crate::clock::Clock;
 use crate::commands::{Kind, classify};
 use crate::custom;
+use crate::detect::{Bars, Detector};
 use crate::errand::{Active, Ctx, Errand, ErrandKind, ErrandNext};
 use crate::executor::{Action, Executor, Expect};
 use crate::journey::Journey;
@@ -44,6 +45,7 @@ use crate::stats::{Ledger, rfc3339_at, unix};
 use crate::task::{Task, TaskLoop, why_unreachable};
 use crate::time_stats::Activity;
 use crate::walker::{MAX_SEARCHES, Next, Say, Walker};
+use wayfarer_world::RuleSet;
 
 /// The rooms a `map_view` holds unless a `map_request` asks for another radius: those within
 /// this many steps.
@@ -389,6 +391,10 @@ pub(crate) struct Session {
     rules: RuleBook,
     /// Where the monsters to avoid were last seen: the router keeps out of those rooms.
     sightings: Sightings,
+    /// The game server, as the gateway names it: the rule set is remembered per server.
+    server: String,
+    /// Which rules the server plays: 1.11p, 1.20 or not known yet (C-064).
+    detect: Detector,
 }
 
 /// The events of the character's own auto-combat: its engaging and its blows, hits, misses,
@@ -438,9 +444,12 @@ impl Session {
         for name in flee_from {
             rules.set(name, Some(world::MonsterRule::FleeFrom), unix(clock.now()));
         }
+        let detect = Detector::new(ledger.rule_set(&info.server));
         Self {
             rules,
             sightings: Sightings::default(),
+            server: info.server.clone(),
+            detect,
             ledger,
             clock,
             restore,
@@ -596,6 +605,8 @@ impl Session {
             self.flee_out_done(out);
         } else if was != SessionState::Realm {
             self.synced = false;
+            // A login: the server may have been rebuilt since the last.
+            self.detect.new_login();
         }
         if state == SessionState::Realm && !self.synced && self.resync == Resync::Off {
             self.request_resync();
@@ -704,6 +715,11 @@ impl Session {
         let mut changed = false;
         let mut combat = false;
         for ev in &events {
+            let typed = GameEvent::from_event(ev);
+            // The `help 1.20` topic is text, not game events (C-064).
+            if self.detect.event(ev, &typed, self.bars(), now) {
+                continue;
+            }
             let level = self.character.state().level;
             let applied = self.character.apply_event(ev);
             changed |= applied;
@@ -716,7 +732,6 @@ impl Session {
                     self.give_way(out);
                 }
             }
-            let typed = GameEvent::from_event(ev);
             self.spell_event(&typed);
             if !silent {
                 self.count_combat(&typed, now);
@@ -806,6 +821,7 @@ impl Session {
             }
         }
         self.fed = chunk.seq;
+        self.rule_set_decided(out);
         match events.last() {
             Some(ev) => self.at_prompt = ev.name == "prompt",
             None if visible(&chunk.text) => self.at_prompt = false,
@@ -1592,6 +1608,7 @@ impl Session {
 
     /// A line went to the game (the gateway's `sent`).
     pub fn sent(&mut self, text: &str, now: Instant, out: &mut Vec<ToGateway>) {
+        self.detect.sent(text, now);
         while self
             .own
             .front()
@@ -3600,6 +3617,57 @@ impl Session {
         )
     }
 
+    /// Which rules the server plays: 1.11p, 1.20, or not known yet (play as 1.11p).
+    #[allow(dead_code)]
+    pub(crate) fn rule_set(&self) -> RuleSet {
+        self.detect.rules()
+    }
+
+    /// The bars as the character model has them.
+    fn bars(&self) -> Bars {
+        let c = self.character.state();
+        Bars {
+            hp: c.hp.map(i64::from),
+            hp_max: c.hp_max.map(i64::from),
+            mana: c.mana.map(i64::from),
+            mana_max: c.mana_max.map(i64::from),
+        }
+    }
+
+    /// Ask `help 1.20` at a quiet prompt (C-064): in the realm, re-synced, out of combat and
+    /// not resting, nothing in flight or waiting, not walking.
+    fn probe(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
+        if self.state == SessionState::Realm
+            && self.live()
+            && !self.leaving
+            && !self.flee_out
+            && self.at_prompt
+            && self.resync == Resync::Off
+            && !self.executor.busy()
+            && !self.walker.walking()
+            && self.typed.is_empty()
+            && self.combat(now) == Some(false)
+            && self.character.state().resting != Some(true)
+            && self.settings.bool("bot.ask_rules")
+            && self.detect.wants_probe(now)
+        {
+            self.detect.probe_sent(now);
+            self.send_own(wayfarer_world::rule_set::QS120_PROBE, now, out);
+        }
+    }
+
+    /// The rule set was just decided: remembered for the server, and told.
+    fn rule_set_decided(&mut self, out: &mut Vec<ToGateway>) {
+        let Some((rules, why)) = self.detect.take_decision() else {
+            return;
+        };
+        self.ledger.save_rule_set(&self.server, rules, &why);
+        // 1.11p is how every session plays until it knows: only 1.20 changes anything.
+        if rules == RuleSet::Qs120 {
+            out.push(self.notice(&format!("The server plays Quicksilver 1.20 ({why})")));
+        }
+    }
+
     fn drive(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
         self.refresh_settings(out);
         self.check_hangup(out);
@@ -3693,6 +3761,7 @@ impl Session {
             self.bot_walk = false;
             self.bot.forget();
         }
+        self.probe(now, out);
         self.bot_tick(now, out);
         self.errand_tick(out);
         self.flee_out_done(out);
@@ -3749,6 +3818,7 @@ impl Session {
             s.position = Some(self.position.snapshot());
         }
         s.walking = self.walker.snapshot();
+        s.rule_set = Some(self.detect.wire());
         if self.atlas.is_some() {
             let mut bot = self.bot.snapshot();
             bot.monster_rules = self.rules.wire();
@@ -3851,6 +3921,13 @@ impl Session {
             .chain(engaged)
             .chain(typed)
             .chain(self.ledger.deadline())
+            // An unanswered `help 1.20`, the next try, or the quiet it waits for.
+            .chain(self.detect.deadline().filter(|&t| t > now))
+            .chain(
+                lapse
+                    .filter(|&t| t > now && self.detect.wants_probe(now))
+                    .filter(|_| self.settings.bool("bot.ask_rules")),
+            )
             // An errand waits for a walk, a re-sync or the prompt: ask again soon, event or not.
             .chain(self.errand.as_ref().map(|_| now + ERRAND_POLL))
             .chain(
@@ -3881,6 +3958,7 @@ impl Session {
         );
         self.ledger.sample(exp, hp, now);
         self.check_settings(now, out);
+        self.detect.tick(now);
         if let Resync::Waiting {
             step,
             deadline,

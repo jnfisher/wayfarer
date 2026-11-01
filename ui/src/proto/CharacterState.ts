@@ -5,6 +5,7 @@ import type { Encumbrance } from "./Encumbrance";
 import type { ParseCounts } from "./ParseCounts";
 import type { Place } from "./Place";
 import type { Position } from "./Position";
+import type { RuleSetView } from "./RuleSetView";
 import type { RunStats } from "./RunStats";
 import type { Stats } from "./Stats";
 import type { Walking } from "./Walking";
@@ -84,4 +85,8 @@ places?: Array<Place>,
  * What the errand in progress is doing (`pick_up_all`, `equip_all`); absent when there is
  * none.
  */
-errand?: string, };
+errand?: string, 
+/**
+ * Which rules the server plays, as the brain found out (C-064).
+ */
+rule_set?: RuleSetView, };

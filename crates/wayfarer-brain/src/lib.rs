@@ -28,6 +28,7 @@ mod clock;
 mod combat_stats;
 pub mod commands;
 mod custom;
+mod detect;
 mod errand;
 pub mod executor;
 mod fight;

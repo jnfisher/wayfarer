@@ -62,6 +62,7 @@ export type { Place } from "./Place";
 export type { Position } from "./Position";
 export type { RoomKey } from "./RoomKey";
 export type { RoomKind } from "./RoomKind";
+export type { RuleSetView } from "./RuleSetView";
 export type { RuleSource } from "./RuleSource";
 export type { RunStats } from "./RunStats";
 export type { RunSummary } from "./RunSummary";

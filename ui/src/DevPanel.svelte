@@ -170,6 +170,14 @@
           {/if}
         </div>
       {/if}
+      {#if character?.rule_set}
+        {@const r = character.rule_set}
+        <div class="rules" title={r.help.length ? r.help.join("\n") : undefined}>
+          rules <span class="val">{r.rules}</span>
+          {#if r.reason}<span class="dim">{r.reason}</span>{/if}
+          {#if r.rules === "unknown"}<span class="dim">asked {r.probes}×{r.remembered ? `, ${r.remembered} last time` : ""}</span>{/if}
+        </div>
+      {/if}
       <div class="tools">
         <button disabled={!attached || !session} onclick={() => session && onresync(session.id)}>
           Re-sync {session?.name ?? ""}

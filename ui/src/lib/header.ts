@@ -45,9 +45,24 @@ export function noMana(c: CharacterState): boolean {
   return c.prompt_form === "hp" && !c.mana_max;
 }
 
-/** `L3 Warrior`, with `--` for what is not known. */
+/** The rule-set badge (docs/web-ui.md "The header"): `1.20` on a Quicksilver 1.20 server, `?`
+ * while the brain does not know yet (it plays as 1.11p meanwhile), nothing on stock 1.11p or
+ * without a brain. */
+export function rulesBadge(c: CharacterState): string {
+  switch (c.rule_set?.rules) {
+    case "1.20":
+      return "1.20";
+    case "unknown":
+      return "?";
+    default:
+      return "";
+  }
+}
+
+/** `L3 Warrior`, with `--` for what is not known, and the rule-set badge after it. */
 export function levelClass(c: CharacterState): string {
-  return `L${num(c.level)} ${c.class ?? UNKNOWN}`;
+  const badge = rulesBadge(c);
+  return `L${num(c.level)} ${c.class ?? UNKNOWN}${badge ? ` ${badge}` : ""}`;
 }
 
 /** `1,230 (45%)`, `1,230` without the percent, `--` without the exp. */
