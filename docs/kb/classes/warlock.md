@@ -98,7 +98,7 @@ gear early (runed wrist guard SC +10 at L20).
 | 30 | legs/head/hands | adamantite chainmail leggings / coif / chain gauntlets | ac 8.5 / 7 / 6, L30 | 80p / 50p / 60p | 6:1337 |
 | 30 | off-hand | adamantite wrist guard | ac 3.5 dr .4, L30 | 20p | 6:1337 |
 | 45 | set | lunar chainmail hauberk/leggings/coif | ac 27/10/8, Mana +10/+5/+2, L45 | 206p/169p/56p | 1:2328 |
-| 20 | off-hand drop | arcane tome (Mage/Warlock) SC +10 Mana +20 | | no source found | |
+| 20 | off-hand | arcane tome (Gypsy/Warlock/Mage, limit 1) SC +10 Mana +20 | | not sold | Royal Treasure Vault silver casket (8:707): 20% per roll, four rolls, about 59% for at least one; the sleazy dark-elf shop (8:486) only resells it [C data] |
 
 ## 7. Grinding spots by level band
 | Band | Single-target / melee | AoE |
@@ -117,7 +117,7 @@ gear early (runed wrist guard SC +10 at L20).
 | 10 | **Crypt class quest** | Large Tomb **1:2301** (`w` from Marble Passage 1:2297): placed **flametongue** (limit 1) + Super Warlock Trainer (shop 61, L11 only, markup 500). Shared crypt route: `test/play/notes/quests.md` §1 [C rooms/items; F t=28]. |
 | 23 | Meditate | Dhelvanen 7:1008, 50 nanati black diamonds, return sigil at **L23** for a Warlock (WCCTEXT 9046) [C]. |
 | 27 | Smash allowed | how to obtain is unknown in this data set (`notes/combat.md`) [I]. |
-| — | Warlock-only items | flametongue, tails of battle (L40 back, +50 HP, +2 dmg, no source), L50 good/neutral/evil quest blades (Solarblade, Windblade, Demontongue, Soulwaste…) [C]. |
+| — | Warlock-only items | flametongue, tails of battle (L40 back, +50 HP, +2 dmg; the alignment quest line's L40 class cloak: ask Chancellor Annora (1:1333) about `foe` (good), The Grey Lord (1:160) about `destroyed` (neutral) or Balthazar (2:2577) about `news` (evil); `cloak` to the same NPC replaces a lost one. Recycler 6 (1:516) only resells it [C data]), L50 good/neutral/evil quest blades (Solarblade, Windblade, Demontongue, Soulwaste…) [C]. |
 
 ## Group role
 AoE plus melee in chainmail. Survives its share of hits better than a Mage, so it fits Warrior + Cleric + Warlock lair clears. See `kb/grouping.md`.

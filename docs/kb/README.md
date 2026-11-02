@@ -24,6 +24,19 @@ Each fact carries its provenance and status:
 Scope: MajorMUD 1.11p (WCCMMUD.DLL), the stock "Realm of Legends" world data, played on
 MBBSEmu. Other versions and custom worlds differ in data, and sometimes in rules.
 
+## Item sources
+
+Where an item drops, is placed, sold or given. Three things to know when reading or writing one:
+
+- **A shop whose stock lists an item with `maxqty` 0 only resells it**: it holds a copy only if
+  a player sold one to it. The Recyclers and many specialist shops are like this. Such a shop is
+  not a source; the item's real source is a drop, a placed item, a chest or a quest [C data].
+- **A room's minimum and maximum level are the level range of its spawns** (a `genindex`
+  range), not a gate on who may enter [C data].
+- **Item sources in this KB were checked against the stock data on 2026-11-02** with
+  mmud-exploration's `test/play/kbq.py` (`kbq item NAME`); the data wins where they disagree.
+  Rows fixed then are tagged `[C data]`.
+
 | File | Covers |
 |---|---|
 | `quicksilver-1.20.md` | Quicksilver 1.20, a server that plays 1.11p with rule changes: its new lines, detection, spells and numbers. 1.20 facts only; every other page is 1.11p |

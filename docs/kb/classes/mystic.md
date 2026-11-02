@@ -92,7 +92,7 @@ Start (100 CP): **Dark-Elf Str 58, Int 50, Wil 30, Agi 75, Hea 46, Cha 46 (99)**
 | L15-20 | adamantite bracers ac2 dr0.5 L15 70p (6:1337) | | cat's-eye pendant (crit+2, dmg+1) 100p (1:332) |
 | L20-30 | **demonhide bracers** (Punch AV+5 DMG+2, L20) 18.75p (Jorah 1:3306) or chimera drop 3:583 (10%); **demonhide sandals** (Kick/Jk DMG+3, Kick AV+4, L20, chimera 10%) | **black silk robes ac9 dodge+5 L20** 7.5p, black silk pants/slippers L20 (Jorah 1:3303) | **tiger-claw necklace dodge+15 L25** 187.5p (1:3307); belt of might dmg+1 112.5p (1:3307) |
 | L30-40 | sapphire bracers (Punch AV/DMG+5, L40, Kai Master 1%); curved fang (Punch DMG+2, L35) | prismatic robes ac10 dodge+5 L30 20p / astral robes ac12 L35 60p (Curio 1:332); silversilk tunic ac15 dodge+10 L40 625p (Elven 3:541) | peasant cloak (crit+2 dmg+2, L40) |
-| L50 | enigma gloves/sandals (Enigma Lord 5%), Kai battle-staff (no source traced) | | |
+| L50 | enigma gloves/sandals (Enigma Lord 5%), Kai battle-staff (limit 15, no source in the stock data [C data]) | | |
 
 ## 6. Grinding by level band [C corpus leveling.md / I fit]
 Mystic fit = many-blow DPS with dodge, low AC: prefer monsters with low AC (your AV is modest) and hits ≤ 20% of HP; magic level ≤ 5.

@@ -112,7 +112,7 @@ the second round of hits more often.
 | 1-10 | weapon | quarterstaff / mace / morning-star | 2-12 free / 3-12 8g / 3-15 12g | | Newhaven 1:2141 / Blunt Weapons 1:354 |
 | 1-10 | torso | rigid leather tunic | ac 13 dr 1.3 | 16g | Leatherworks 1:310 |
 | 1-10 | legs / hands / head / feet | rigid leather pants / hard leather gauntlets / hard leather helm / hardened leather boots | ac 3 each | 4g/2g/4g/4g | 1:310, 1:2154 |
-| 1-10 | off-hand (1H weapon) | buckler / copper cross is Priest-only | ac 1 | 2g | Shield Shop 1:2153 |
+| 1-10 | off-hand (1H weapon) | buckler (the copper cross is Paladin/Cleric/Priest/Missionary only) | ac 1 | 2g | Shield Shop 1:2153 |
 | 8+ | weapon | **astral staff** (Mage/Druid/Priest) | 5-16, Mana +10, SC +10, regen +5% | drop | astral shade 5%, Strange Mansion 1:63 |
 | 10 | weapon | **darkwood staff** (Druid) | 5-17 2H blunt, SC +5, regen +15%, hold-person charges | quest | Large Tomb 1:2303 (§8) |
 | 10 | torso | ogre-skin shirt / gianthair vest | ac 15 dr 1.5 L10 / ac 14 | 14p / 5p | Dwarven Leatherworks 6:1343 |
@@ -144,7 +144,7 @@ the second round of hits more often.
 | 10 | **Crypt class quest** | Large Tomb **1:2303** (`e` from Marble Passage 1:2299): placed **darkwood staff** (limit 1) + Super Druid Trainer (shop 63, L11 only, markup 500). Route: `test/play/notes/quests.md` §1 [C rooms/items; F t=28]. |
 | 20 | Meditate | Dhelvanen 7:1008 (50 nanati black diamonds; return the sigil at L20) [C WCCTEXT 9046]. |
 | 20 | woodland robes | placed in Inside The Broken Willow 3:214 [C]; how to reach/claim it untested [I]. |
-| — | Druid-only items | darkwood staff, antlered helm, woodland robes, ironwood shield, turquoise ring, silverwood/copperwood/burning/ice crystal/runed petrified staves, leafwoven cloak (L40, Mana +35, regen +15%, no source found) [C]. |
+| — | Druid-only items | darkwood staff, antlered helm, woodland robes, ironwood shield, turquoise ring, silverwood/copperwood/burning/ice crystal/runed petrified staves, leafwoven cloak (L40, Mana +35, regen +15%; the alignment quest line's L40 class cloak: ask Chancellor Annora (1:1333) about `foe` (good), The Grey Lord (1:160) about `destroyed` (neutral) or Balthazar (2:2577) about `news` (evil); `cloak` to the same NPC replaces a lost one. Recycler 6 (1:516) only resells it [C data]). |
 
 ## Group role
 Second AoE line (swarm → earthquake) plus secondary healing (mend, regeneration on others; rejuvinating field party HoT L32). Can be both caster and backup healer in a 3-party. See `kb/grouping.md`.

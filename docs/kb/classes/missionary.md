@@ -112,18 +112,52 @@ Weapons (1H, Str ~60):
 | **10** | **jeweled scimitar** (quest) | **5-18**, speed 1200, acc +10, ac2, BS AV +15, SC +2, mana regen +10% | 40 | quest | placed in 1:2262 Large Tomb | Class 6 only, Magical 2, L10, **limit 1** |
 | 20+ | runic warhammer | 10-18 | 60 | 40p | 6:1344 (L20) | |
 | 30+ | starsteel mace / etched adamant warhammer | 11-26 / 10-25 | 60 / 70 | 188p / 169p | 1:2329 (L30) | |
-| 40 | azure shamshir | 8-25 | 60 | not sold | class 6, L40 | |
-| 50 | Darkbane 16-45 (good, classes 1/3/6) 1600p at Arlysia 17:2438; rod of might 17-42 (classes 3-6); diamond scimitar, Solarblade, moonstone rod (classes 6/8/9/10/11) | | | | drops/quests | |
+| 40 | azure shamshir | 8-25 | 60 | not sold | class 6, L40 quest | [C data] Not sold. The class-6 level-40 quest gives it: ask a nomad about `letter` for the small vial, then ask the feline prisoner (12:2257 Dank Cell, limited 1, respawn 12 h) about `return` with the vial; it also gives cobra earrings. Otherwise a 1% feline prisoner drop. |
+| 50 | Darkbane 16-45 (good, classes 1/3/6, limit 1); rod of might 17-42 (L55, neutral only, classes 3-6, limit 1); diamond scimitar, Solarblade, moonstone rod (classes 6/8/9/10/11) | | | | quests/chests | [C data] **Darkbane** comes from the level-50 good-aligned class 1/3/6 quest: ask the Ghost of Justice Darkbane (17:1746 Pristine Shrine) about `return` carrying the silver signet ring (death minion, 17:347, 100%). Arlysia Weapons (17:2438) only resells it. The **rod of might** is a 0.4-3% roll in the bloodwood and burnt iron chests of the late bosses (hanging tree, colossal midnight dragon, Darken Beast Lord, Ozrinom). Diamond scimitar, Solarblade and moonstone rod are the class quest's level-50 rewards from Chancellor Annora (1:1333, `knowledge`), one of them by a 33/33/34% roll. |
 
 **Off-hand caster items (class 6 is named, so the off-hand ban doesn't apply):**
 | Item | Effect | Min L | Price | Where |
 |---|---|---|---|---|
 | **copper cross** | ac.5, **SC +5, mana +5**; good-aligned | – | **20g** | Holy Item Shop 1:525 (9 steps). **Buy at L1.** |
 | red skull | ac.5 dr.5, SC +10, mana regen +10%; evil-aligned | – | 2.2p | Dreary Shop 7:1136 |
-| golden chalice | +2 dmg, def vs evil +5, mana +10, mana regen +10%; good | 10 | not sold | drop/quest |
-| large silvery cross | acc +10, SC +10, mana +20, +3 dmg | 25 | 180p (Recycler 4 1:39) / 1530p | |
-Neck: silver holy amulet SC +1 30g (1:290, Magical); holy medallion ac3 SC +3 mana +10 (Recycler 1:168, only if a player sold one). Back (L40): faith keeper (class 6, BS +10/+20, mana regen +10%, Recycler 6 1:516).
-Armour (type ≤6, same kit as Bard): rigid leather tunic 16g → ogre-skin shirt L10 14p (6:1343) → wyvernhide tunic L20 105p (1:2328). Leather pants 4g, hard leather helm 4g, gauntlets 2g, boots 4g, travelers cloak 4g, golden armbands 2.4p, adamantite bracers L15 70p (6:1337), ogre-skin baldric L20 50p, golden amulet 1p, amethyst ring 20g. Dwarf NV 75: no light source needed.
+| golden chalice | +2 dmg, def vs evil +5, mana +10, mana regen +10%; good | 10 | not sold | greater hellion 100% (Champion of Blood chain, `corpus/bosses.md`; the stock data has no room or text that spawns it) [C data] |
+| large silvery cross | acc +10, SC +10, mana +20, +3 dmg; limit 1 | 25 | not sold | [C data] The large chest in the Royal Treasure Vault (8:707): four 25% rolls, about 68% for at least one. Recycler 4 (1:39) and the sleazy dark-elf shop (8:486) only resell it. |
+Neck: silver holy amulet SC +1 30g (1:290, Magical); holy medallion ac3 SC +3 mana +10 (limit 1): a 5% guardian golem drop (1:1797, respawn 100 h; the Recycler at 1:168 only resells it) [C data], see the level-20 kit below. Back (L40): faith keeper (class 6, BS +10/+20, mana regen +10%): the class-6 level-40 class quest (Chancellor Annora 1:1333, The Grey Lord 1:160 or Balthazar 2:2577, by alignment); Recycler 6 (1:516) only resells it [C data].
+Armour (type ≤6, same kit as Bard): rigid leather tunic 16g → ogre-skin shirt L10 14p (6:1343) → wyvernhide tunic L20 105p (1:2328). Rigid leather pants 4g (1:310), hard leather helm 4g, gauntlets 2g, boots 4g, travelers cloak 4g, golden armbands 2.4p, adamantite bracers L15 70p (6:1337), ogre-skin baldric L20 50p, golden amulet 1p, amethyst ring 20g. Dwarf NV 75: no light source needed.
+
+### Level-20 kit: the limited items [C data, checked with kbq 2026-11-02]
+The shop kit above is what anyone can buy. These are the best limited items a level-20
+Missionary can wear, and where each one really comes from:
+
+| Slot | Item | Effect | Min L | Limit | Source |
+|---|---|---|---|---|---|
+| Neck | **holy medallion** | ac3, SC +3, mana +10, acc +1 (classes 3/4/5/6) | – | 1 | guardian golem 5% |
+| Neck (alt) | ruby necklace | ac2, MR +5, crit +1, dmg +2, acc +5 | 10 | 1 | guardian golem 5% |
+| Arms | **platinum bracers** | ac1.5 dr.5, **mana regen +15%**, crit +4 | 10 | 1 | guardian golem 5% |
+| Torso | black leather tunic (Soft Leather) | ac16 dr1.6, stealth +10, BS +5/+2 | 15 | 1 | guardian golem 5% |
+| Finger | **platinum ring** | ac2, **SC +5, MR +5, HP +10**, dmg +1 | – | 1 | guardian golem 5% |
+| Finger | **pearl ring** | ac1, **SC +10, mana +10**, crit −5 | 15 | 3 | placed in Inside The Broken Willow (3:214, very dark) |
+| Waist | **golden belt** (Thrag's) | ac1, acc +2, dmg +2, light +25 | 10 | 1 | Thrag 10% (1:1810, respawn 48 h) |
+| Torso (stretch) | mithril-runed tunic (Rigid Leather) | ac19 dr2, stealth +3, light +50 | 15 | 1 | Royal Treasure Vault large chest (8:707): 25% per roll, four rolls, about 68% for at least one |
+
+- **The guardian golem** (1:1797 Small Room, a hidden exit down from Thrag's Gigantic Cavern
+  1:1810; 320 HP, AC 35, DR 10, MR 65, hits 12-25 or 24-50) carries all five of its items.
+  A limited monster that has never been killed carries every item it has, so **on a fresh
+  realm the first kill drops all five**. After that each is a 5% roll on a golem that comes
+  back 100 h after its kill (`progression.md`, "Boss loot"). It is NonLiving and not undead:
+  harm, agony, turn undead and disrupt do nothing to it; holy force, godstrike and spiritual
+  hammer do (§1). Thrag next door is the same story for the golden belt: never killed, he
+  carries it.
+- The way in is gated (toll, two keys, Huge Cave monsters that hit 45-66, −175 light):
+  `progression.md` has the route. At level 20 it is a party job.
+- **Choices this changes:** the platinum ring and pearl ring beat the amethyst ring; the
+  platinum bracers beat the adamantite bracers for a caster (mana regen +15%); the holy
+  medallion beats the silver holy amulet. The black leather tunic matches the wyvernhide tunic's
+  ac16 at level 15 instead of 20 and adds stealth; take the mithril-runed tunic over both if the
+  vault chest gives it.
+- The Royal Treasure Vault is a lair whose spawns (dark-elf royal guards) are level 25; that is
+  the level of the monsters, not a gate on entering (`../README.md`, "Item sources"). Its door
+  is locked.
 
 ## 6. Grinding progression [C data; F t51; I fit]
 | Band | Area | Monsters hp/exp/maxhit | Access | Fit |

@@ -62,7 +62,7 @@ Damage:
 | nuke | divine fury `fury` | 30 | 16 | single | 50-200 | 50-290 @L40 | 10.7 | 85% | P2 | Very Powerful Spells 10:273, 2500g |
 | nuke | soulstrike `soul` | 35 | 20 | single | 90-250 | 90-370 @L50 | 11.5 | 85% | P3 (Priest only) | Nekojin 12:49 3500g; saracen high priest 100% |
 | nuke | soul rip `srip` | 45 | 30 | single | 100-440 | 120-540 | 11.0 | 75% | P3 | fallen angel 40% |
-| undead | exorcism `exor` | 47 | 35 | monster, undead only, Good casters | 335-470 | 400-600 @L60 | 14.3 | ~80% | P3 | "white scroll": no source found |
+| undead | exorcism `exor` | 47 | 35 | monster, undead only, Good casters | 335-470 | 400-600 @L60 | 14.3 | ~80% | P3 | "white scroll": only a class-5 text gives it, at level 47 (text 9630), and nothing in the stock data triggers that text [C data] |
 
 Heals, buffs, control:
 | Spell `cmd` | Lvl | Mana | Effect | Magelvl | Source |
@@ -104,10 +104,10 @@ Heals, buffs, control:
 | 10 | weapon | **platinum mace** (Priest) | 6-15 1H, SC +3, regen +15%, self-heal charges 1-25 | quest | Large Tomb 1:2256 (§8) |
 | any | head (alt) | silvery skullcap | ac 3, SC +15, MR +10 | 70p | Curio 1:332 |
 | 15-20 | hands / arms | silver gloves / silver bracers | mana +5 regen +5% / regen +10% | 9.4p / 11.25p | Jorah's Robes 1:3303 |
-| 15 | off-hand drop | **golden chalice** (Priest/Cleric, Good) | +2 dmg, Mana +10, regen +10%, L10 | drop | greater hellion 100% (Champion of Blood chain, `corpus/bosses.md`) |
-| 20 | neck drop | holy medallion | SC +3, Mana +10 | drop | guardian golem 5% |
-| 20 | torso drop | shimmering white robes | ac 12, SC +3, Mana +5 | drop | "chest" monster 25% |
-| 25+ | off-hand | large silvery cross (L25, SC +10 Mana +20 +3 dmg) | | no source found | |
+| 15 | off-hand drop | **golden chalice** (Paladin/Cleric/Priest/Missionary, Good) | +2 dmg, Mana +10, regen +10%, L10 | drop | greater hellion 100% (Champion of Blood chain, `corpus/bosses.md`) |
+| 20 | neck drop | holy medallion | SC +3, Mana +10, limit 1 | drop | guardian golem 5% (1:1797, respawn 100 h; never killed, it carries all five of its items: `missionary.md` §5 level-20 kit) [C data] |
+| 20 | torso drop | shimmering white robes | ac 12, SC +3, Mana +5, limit 3 | drop | "chest" monster 25% (1:2123, respawn 150 h; Recycler 5 1:40 only resells it) [C data] |
+| 25+ | off-hand | large silvery cross (L25, SC +10 Mana +20 +3 dmg, limit 1) | | not sold | Royal Treasure Vault large chest (8:707): 25% per roll, four rolls, about 68% for at least one. Recycler 4 (1:39) and the sleazy dark-elf shop (8:486) only resell it [C data] |
 | 30+ | waist | fur-lined pouch | SC +20, MR +10, Mana +10 | 5p | Lost City 16:329 (no walk path found [I]) |
 
 ## 7. Grinding spots by level band
