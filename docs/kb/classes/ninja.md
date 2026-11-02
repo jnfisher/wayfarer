@@ -32,7 +32,7 @@ kobolds/bandits → wolves → Ancestral Tomb. Perfect Stealth at L20.
 | Stealth | `Agi/4 + min(L,15)×2 + max(0,L−15) + Cha/6 + Int/8 + 20`; **+10 with class AND race stealth**, −15 with race stealth only; + "Stealth" item/spell abilities | LJNUTIL.C:4760-4800 |
 | Sneak chance | `stealth` (−5 at >33% load, −10 at >66%; ×2/3 if spotted), **−1 per other player and per monster in the room**, cap 95. Perfect Stealth = 100%. Failed sneaks look like success unless a perception roll catches it ("You don't think you're sneaking.") | LJNSUPP.C:1483; LJNCMDA.C:2863 |
 | Monsters vs a sneaker | A sneaking player is **not seen** by monsters (no aggro, no follow) unless the monster has **See Hidden (57)** and you did not just arrive | LJNCMDB.C:5195 `monster_can_see_user`; LJNBKGND.C:1445 |
-| Backstab allowed | `bs <mob>` / `backstab <mob>` while hidden or sneaking. Weapon must carry ability 116 (most 1H weapons do, even with a negative value); else it is a normal blow but still costs a full round. **Unarmed backstab is allowed** (Mystic). Repeats from autocombat only while still hidden: in practice **one backstab per fight, as the opener** | LJNCMDA.C:484-540; LJNACMB.C:486-510 |
+| Backstab allowed | `bs <mob>` / `backstab <mob>` while hidden or sneaking. Weapon must carry ability 116 (most 1H weapons do, even with a negative value); else "You cannot backstab with this weapon." and the attack is an **ordinary attack round** (several swings, normal AV, crits possible, not struck first): the queued entry takes `atkmove`, which is normal, and the blows come only in that round, so the backstab damage that `atktype` would add never applies; hiding ends at once (LJNCMDA.C:500-507, :369-372; LJNACMB.C:844, :736-737; LJNCOMBT.C:2290-2298). The recovery comment at LJNCOMBT.C:790-800 says the damage bonus and whole-round cost still apply; that holds only for a call made with the command's globals, never for a fought blow. **Unarmed backstab is allowed** (Mystic). Repeats from autocombat only while still hidden: in practice **one backstab per fight, as the opener** | LJNCMDA.C:484-540; LJNACMB.C:486-510 |
 | Backstab AV | `(stealth+Agi)/2` **+5 if class+race stealth** (−15 race only) `+ weapon/item BS-AV/2 + avbonus`; −10 if spotted | LJNCOMBT.C:719-731 |
 | Monster DV vs backstab | `(ac/2 + 2×bsdefense)/2` | LJNCOMBT.C:1128 |
 | Hit chance | **AV − DV** directly (clamp 10-99); target's dodge chance ÷5 | LJNCOMBT.C:1316, 1370 |
@@ -43,6 +43,22 @@ kobolds/bandits → wolves → Ancestral Tomb. Perfect Stealth at L20.
 - Locked doors you can pick instead of keying (exit bonus): bone-key door 1:1309 n (0), copper-key door 1:2271 w (−20), black serpent doors 2:176 s (−80), black star door 1:1224 e (−99) [C exitpar3]. The last two need picklocks ~100+ (≈ L25 with +15 from items).
 
 Worked example [I]: Dark-Elf Ninja L10, Agi 85 Cha 46 Int 55 Str 60, ebony ninjato (5-18, BS+10, stealth+5) + robes/tabi/mask (+5): stealth ≈ 94, BS AV ≈ 99. Kobold warrior (ac35, bsdef0): DV 8 → **91% hit**. Damage (10+20+9 .. 38+20+9)×1.10 = **42-73** → one-shots everything ≤ 50 hp, 2/3 of a wolf.
+
+### Race stealth on a class without Class Stealth [C]
+Any class can hide, sneak and backstab if its race has Race Stealth (102), e.g. Dark-Elf, Goblin, Halfling, Nekojin (§2). Nothing checks the class: stealth is set by either ability (LJNUTIL.C:4757-4807), and `cmd_hide`, `cmd_sneak`, `calc_hide_sneak_chance` and `cmd_backstab` test only the stealth value, hidden/sneaking and the weapon (LJNCMDB.C:3646, LJNCMDA.C:2863, LJNSUPP.C:1483, LJNCMDA.C:484). With neither ability stealth is 0, so hide and sneak never work (Perfect Stealth aside). Race stealth alone costs three times over:
+- **Stealth −15** against class stealth alone, −25 against both (LJNUTIL.C:4783-4795): a lower sneak/hide chance too.
+- **Backstab AV −15 more** (LJNCOMBT.C:718-729), so about **−22 AV** against class stealth alone at equal stats. Backstab hit is `AV − DV`, so that is −22 points of hit chance.
+- **Damage ×75%** before the `(100+L)%` scaling (LJNCOMBT.C:803-808), and none of the Backstab Min/Max class bonuses (the alignment-quest +6/+10 goes only to classes 6-10 and 14, LJNUTIL.C:504-516; a Warrior gets Damage +1).
+
+Example [C formulas, I stats]: L10, Agi 60 Cha 50 Int 50, dagger 1-5 with BS AV +10, Str bonus left out, monster ac 40 bsdef 0 (backstab DV 10):
+
+| Stealth from | Stealth | BS AV | Hit | Damage |
+|---|---|---|---|---|
+| race only (e.g. a Dark-Elf Warrior) | 54 | 47 | ~37% | 22-28 |
+| class only (e.g. a Human Thief, no quest bonus) | 69 | 69 | ~59% | 30-39 |
+| both (e.g. a Dark-Elf Thief) | 79 | 79 | ~69% | 31-40 |
+
+The race-only opener is still one blow worth a few normal swings, struck before everyone else, but it misses about two times in three early on and costs the whole round's energy. A backstab cannot crit (LJNCOMBT.C:1283-1287).
 
 ### Defence (why padded works) [C LJNCOMBT.C:410-418, 1378-1404]
 Dodge = 25 + (Cha−50)/5 + L/5 + (Agi−50)/3 (+ up to 10 under 33% load). Monster's blow is dodged with `dodge×10/(AV/8)`%, cap 95. Dark-Elf L10 Agi 85, unencumbered: dodge ≈ 47 → **~50% of landed blows dodged** by an AV-75 monster. Keep encumbrance < 33% always.

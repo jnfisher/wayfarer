@@ -119,6 +119,7 @@ LJNSPELL.C:48). Every timer runs 11 rounds.
   account's next character, or all of them if the last death was today (LJNEVIL.C:728-733).
 
 ## Attack modes
+- `bs <target>` (BACKSTAB) from hiding or sneaking: one blow from a stealth-based AV that opens the round. Who can use it (any class with race or class stealth), its formulas and the cost of race stealth alone: `classes/ninja.md` §1. [C]
 - `a <target>` is a normal attack. `bash <target>` is BASH: ×1.1, then ×3 damage, monster DR
   subtracted before the ×3, −15 to-hit, no crits, double energy capped at a full round. Typing
   it once keeps auto-combat bashing. [C] `notes/combat.md §2`
