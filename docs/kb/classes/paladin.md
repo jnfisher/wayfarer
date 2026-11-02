@@ -94,7 +94,7 @@ Starting 100 CP: **Dwarf Str 78, Int 30, Wil 65, Agi 42, Hea 60, Cha 31 (99 CP)*
 | L10 quest | **shimmering greatsword** 9-28, 2H sharp, s45, acc 8, Magical 2, 40% chance to cast spell 170 (1-3 dmg ignoring armour) on hit, Paladin-only, limit 1 | | The best weapon a Paladin can get before L15: max 28 at Str 45 (greataxe is 22 at Str 80). |
 | L15-20 | three-headed flail 9-23 (4p, 1:354) or keep the greatsword; massive wooden club 10-30 s100 | full plate corselet ac23 dr10 5p, full plate leggings, visored greathelm | copper cross off-hand (SC+5, Good) 20g 1:525 if 1H; *holy force* 3p |
 | L20-30 | etched adamant greatsword 10-34 L20 206p (1:3305) | adamantite platemail L30 375p (1:3302) | red skull (evil only) – skip |
-| L40-50 | Paladin-only: Caladbolg 15-60 1H (crit+10, no source traced), firebrand cape (back, +4 dmg, L40), star helm (L50, Dreadlord of Blood 17:979), platinum knight set (L50, cls 1/3/4) | | |
+| L40-50 | Paladin-only: Caladbolg 15-60 1H (crit+10, limit 1, no source in the stock data [C data]), firebrand cape (back, +4 dmg, L40; the alignment quest line's L40 class cloak: ask Chancellor Annora (1:1333) about `foe` (good), The Grey Lord (1:160) about `destroyed` (neutral) or Balthazar (2:2577) about `news` (evil); `cloak` to the same NPC replaces a lost one. Recycler 6 (1:516) only resells it [C data]), star helm (L50, Dreadlord of Blood 17:979), platinum knight set (L50, cls 1/3/4) | | |
 
 ## 6. Grinding by level band [C areas from corpus leveling.md / I fit]
 Paladin = Warrior table (warrior.md §6) plus these adjustments:

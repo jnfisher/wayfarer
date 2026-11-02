@@ -98,8 +98,8 @@ Weapons (1H; Int-built Str ~55 → prefer Str ≤ 55):
 | **10** | **silver rapier** (quest) | **10-17**, speed 1300, acc +10, ac1, BS AV +20, crit +4, SC +2, mana regen +10% | 40 | quest | placed in 1:2300 Large Tomb | Class 10 only, Magical 2, L10, **limit 1**, procs spell 776 |
 | 15+ | fine throwing knife | 3-10, acc +10 | 0 | 7.5p | Gypsy Man 6:124 | throwing |
 | 30+ | starsteel shortsword | 6-23 | 60 | 150p | Jorah 1H Sharp 1:3304 (L30) | |
-| 40 | midnight glare | 9-28, BS +20/+10/+20 | 0 | not sold | class 10, L40 | drop/quest |
-| 50 | soulblighter 14-35 (evil 210), Solarblade, Windblade, acid slasher … | | | 110p / not sold | 17:776 / drops | |
+| 40 | midnight glare | 9-28, BS +20/+10/+20 | 0 | not sold | class 10, L40 quest | [C data] Ask the old gypsy woman (Gypsy Encampment 6:124) about `glare` carrying a catoblepas eye (catoblepas 5%, Misty Swamp 6:238 area, respawn 10 h). |
+| 50 | soulblighter 14-35 (evil 210, limit 1), Solarblade, Windblade, acid slasher … | | | not sold | drops / quests | [C data] Soulblighter is a 10% Banished One drop (17:632 area, respawn 12 h); the old lady shawl shop 17:776 only resells it. Solarblade, Windblade and acid slasher are the class quest's L50 rewards (Chancellor Annora, The Grey Lord or Balthazar, `knowledge`). |
 
 Gypsy Man shop 6:124 (82 steps: 5g toll at 1:1381, then **rope and grapple** Item exits): class-10 gear [C]:
 | Item | Slot | Stats | Min L | Price |
@@ -112,8 +112,8 @@ Gypsy Man shop 6:124 (82 steps: 5g toll at 1:1381, then **rope and grapple** Ite
 | brass zills | off-hand | acc +5, +2 dmg, BS min +10 | 30 | 3p |
 | swamp boots | feet | ac1, stealth −10 | 30 | 2.2p |
 
-Armour otherwise (type ≤6): rigid leather tunic ac13 16g (1:310) → ogre-skin shirt ac15 L10 14p (6:1343) → mirrored choli L20. Rigid leather pants 4g, hard leather helm 4g (or skullcap 6g, wt50), hard leather gauntlets 2g, hardened leather boots 4g, travelers cloak 4g (avoid greatcloak, stealth −10), golden armbands 2.4p, golden amulet 1p, amethyst ring 20g. L20+: wyvernhide head/hands/feet 56-75p (1:2328). L40: shawl of fortune (class 10 cloak, ac3, BS +10/+15, mana regen +10%; only from Recycler 6 1:516 if a player sold one).
-Other class-10 items: arcane tome (off-hand, SC +10, mana +20, L20, 5100p at the sleazy dark-elf shop 8:486); thief's pouch (wrist, thievery/picklocks +5, L20, 600p at Lost City 16:317); deck of cards (L35, no source).
+Armour otherwise (type ≤6): rigid leather tunic ac13 16g (1:310) → ogre-skin shirt ac15 L10 14p (6:1343) → mirrored choli L20. Rigid leather pants 4g, hard leather helm 4g (or skullcap 6g, wt50), hard leather gauntlets 2g, hardened leather boots 4g, travelers cloak 4g (avoid greatcloak, stealth −10), golden armbands 2.4p, golden amulet 1p, amethyst ring 20g. L20+: wyvernhide head/hands/feet 56-75p (1:2328). L40: shawl of fortune (class 10 cloak, ac3, BS +10/+15, mana regen +10%; the alignment quest line's L40 class cloak: ask Chancellor Annora (1:1333) about `foe` (good), The Grey Lord (1:160) about `destroyed` (neutral) or Balthazar (2:2577) about `news` (evil); `cloak` to the same NPC replaces a lost one. Recycler 6 (1:516) only resells it [C data]).
+Other class-10 items: arcane tome (off-hand, SC +10, mana +20, L20, limit 1: the Royal Treasure Vault silver casket 8:707, 20% per roll, four rolls, about 59% for at least one; the sleazy dark-elf shop 8:486 only resells it [C data]); thief's pouch (wrist, thievery/picklocks +5, L20, 600p at Lost City 16:317); deck of cards (L35: ask the ancient gypsy woman in the Gypsy Wagon 17:776 about `deck`, class 10, level 35 [C data]).
 Light: NV 25 covers −175. A lantern (2g, 1:334) covers −200.
 
 ## 6. Grinding progression [C data; I fit]

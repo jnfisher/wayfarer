@@ -156,7 +156,7 @@ Armour (non-magical, type ≤6). Kit ≈ 850 weight, under 33% at Str 60:
 | Head | hard leather helm ac3 4g (1:2154) | — | wyvernhide helm ac4 L20 56p |
 | Hands | hard leather gauntlets ac3 2g (1:310) | — | wyvernhide gauntlets ac4 L20 75p |
 | Feet | hardened leather boots ac3 4g (1:2154) | padded black boots ac1 stealth +3 1.5p (Rhudaur Thieves 2:2561) | wyvernhide boots ac4 L20 75p |
-| Back | travelers cloak ac1 4g (1:312). **Not greatcloak** (stealth −10). | crimson cloak ac2 45p (1:3307) | lyrist's companion ac3, BS +15, mana regen +20%, L40 (class 9; Recycler 6 1:516, only if a player sold one) |
+| Back | travelers cloak ac1 4g (1:312). **Not greatcloak** (stealth −10). | crimson cloak ac2 45p (1:3307) | lyrist's companion ac3, BS +15, mana regen +20%, L40 (class 9; the alignment quest line's L40 class cloak: ask Chancellor Annora (1:1333) about `foe` (good), The Grey Lord (1:160) about `destroyed` (neutral) or Balthazar (2:2577) about `news` (evil); `cloak` to the same NPC replaces a lost one. Recycler 6 (1:516) only resells it [C data]) |
 | Arms | — | golden armbands ac.7 2.4p (1:290) | adamantite bracers ac2 L15 70p (6:1337) |
 | Waist | leather belt 2s (1:310) | — | ogre-skin baldric ac1.5 L20 50p (3:541) / 60p (2:2566); shimmering sash (class 9, SC +3, dodge +10, mana +10, stealth −2, no level req) 60p at Lost City 16:318 |
 | Neck | golden amulet ac.2 acc +1 1p (1:290) | | |
@@ -194,8 +194,8 @@ Avoid: Slum HO streets before L9 (half-ogre bodyguard hit 36); Ancient Crypt (sk
 4. 1:2271 Marble Chamber: **owlbear 93/225/28** (ac20) drops the **copper key** 100%. `use copper key w` → 1:2272, then `se` (class exit) → 1:2277 `se` → **1:2278 Large Tomb**: bard spirit (Lawful Good, **don't attack**), the **jeweled main-gauche** (limit 1) and the Super Bard Trainer (shop 59, markup 500, trains L11 only). `go portal` (blue portal) to leave.
 5. Bring ~30g for the L11 training fee (5 silver × level × 6) [C markup 500].
 
-Class-only items [C item.classes]: jeweled main-gauche (L10 quest), the instruments (flute/harp/lute, Orfeo's), silverwood lute and shimmering sash (Lost City), lyrist's companion (L40 cloak), elven harp (SC +10, mana regen +10, L20), blackwood harp (evil-only, SC +15, dodge +10, L45), battlehorn (L25, +2 dmg). The last three have no shop source (drop/quest) [C].
-Also open to Bard: soulblighter (14-35 1H, evil 210, L50, old lady shawl shop 17:776), the L50 class-group weapons above, and thief's pouch.
+Class-only items [C item.classes]: jeweled main-gauche (L10 quest), the instruments (flute/harp/lute, Orfeo's), silverwood lute and shimmering sash (Lost City), lyrist's companion (L40 cloak, alignment quest line, §5), elven harp (SC +10, mana regen +10, L20), blackwood harp (evil-only, SC +15, dodge +10, L45), battlehorn (L25, +2 dmg). None of the last three is sold [C data]: the elven harp has no source in the stock data; the blackwood harp is a 0.5-5% roll in the late bosses' bloodwood and burnt iron chests; the battlehorn is Orfeo's (6:126) reward for `give minotaur horn to orfeo`.
+Also open to Bard: soulblighter (14-35 1H, evil 210, L50, limit 1: a 10% Banished One drop, 17:632 area, respawn 12 h; the old lady shawl shop 17:776 only resells it [C data]), the L50 class-group weapons above, and thief's pouch.
 Shared quests: alignment quests L10/L20, Ice Sorceress (+1 AC), Phoenix Feather, Sunstone Wristband. See `test/play/corpus/bosses.md`.
 
 ## 8. Group role (brief)

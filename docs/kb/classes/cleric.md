@@ -115,7 +115,7 @@ undead/disrupt against undead (they out-damage the weapon from ~L12).
 | 10 | weapon | **black flail** (Cleric) | 9-20 1H blunt, SC +2, regen +10%, MR self-buff charges | quest | Large Tomb 1:2258 (§8) |
 | 10-20 | weapon | three-headed flail (2H) | 9-23, L15 | 4p | 1:354 |
 | 15 | waist drop | belt of faith (Cleric) | +2 dmg, SC +5, Mana +10, L15 | drop | gigantic black ooze 1% (2500 hp: don't) |
-| 15 | off-hand drop | golden chalice (Priest/Cleric, Good) | +2 dmg, Mana +10, regen +10% | drop | greater hellion 100% |
+| 15 | off-hand drop | golden chalice (Paladin/Cleric/Priest/Missionary, Good) | +2 dmg, Mana +10, regen +10% | drop | greater hellion 100% |
 | 20 | torso | spiked plate corselet / crystal platemail | ac 25 dr 12 (damaging shield 5) 9.4p / ac 26.5 dr 9 75p, L20 | | Jorah 1:3302 |
 | 20 | head | crested war helm | ac 8 dr 3, L20 | 41p | 1:3302 |
 | 20-30 | off-hand | long battle shield | ac 7 dr 1.5, L20 | 80p | Dwarven Armoury 6:1337 |
@@ -142,7 +142,7 @@ Keep weight under 33% of Str×48 (×1.2 Dwarf) for the light-load bonus (`notes/
 | 23 | Meditate | Dhelvanen 7:1008 (50 nanati black diamonds; return the sigil at **L23**) [C WCCTEXT 9046]. |
 | 27 | Smash allowed | how to obtain is unknown in this data set [I]. |
 | 50 | Alignment weapon quest | Cleric L50 hammers: spiritual warhammer / white gold flail / great mithril battle-hammer (Good), Frosthand / stone warhammer / hammers of balance (Neutral), AngelCrusher / netherworld hammer / flail of oblivion (Evil) [C items; F t=6 for the quest chain]. |
-| — | Cleric-only items | black flail, belt of faith, cloak of faith (L40, no source), platinum plate set (Good) [C]. |
+| — | Cleric-only items | black flail, belt of faith, cloak of faith (L40, the alignment quest line's L40 class cloak: ask Chancellor Annora (1:1333) about `foe` (good), The Grey Lord (1:160) about `destroyed` (neutral) or Balthazar (2:2577) about `news` (evil); `cloak` to the same NPC replaces a lost one. Recycler 6 (1:516) only resells it [C data]), platinum plate set (Good) [C]. |
 
 ## Group role
 **The party's main healer that survives being targeted** (plate): healing rain L10, major healing rain L17, greater healing, divine favour; black wind debuff. The core of Cleric + Mage and Warrior + Cleric + Mage. Re-`attack` after each heal (casting ends autocombat and with it the exp share). See `kb/grouping.md`.

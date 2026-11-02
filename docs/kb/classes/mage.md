@@ -134,7 +134,7 @@ Mage weapon slot: quarterstaff (2H: no off-hand) or dagger (1H: allows off-hand)
 | 10-20 | torso | runed robes | ac 8, SC +5, L10 | 37.5p | 1:3303 |
 | 15-20 | hands / arms | silver gloves / silver bracers | mana +5 regen +5% / regen +10% (−2 dmg) | 9.4p / 11.25p | 1:3303 |
 | 20 | torso | black silk robes | ac 9, dodge 5 | 7.5p | 1:3303 |
-| 20+ | off-hand (dagger users) | arcane tome (Mage/Warlock) | SC +10, Mana +20, L20 | no shop/drop found [I: quest] | — |
+| 20+ | off-hand (dagger users) | arcane tome (Gypsy/Warlock/Mage, limit 1) | SC +10, Mana +20, L20 | not sold | Royal Treasure Vault silver casket (8:707): 20% per roll, four rolls, about 59% for at least one; the sleazy dark-elf shop (8:486) only resells it [C data] |
 | 25-30 | neck / waist | bone necklace / **fur-lined pouch** | Mana +20 regen +10% / **SC +20, MR +10, Mana +10** | 75p / 5p | Lost City 16:434 / 16:329 (no walk path found from TS [I]) |
 | 30+ | torso / ring | astral robes / opal ring (Mage, Evil) | ac 12 dodge 5 / regen +5%, 25-48 nuke charge | 60p / 120p | Curio 1:332 / Gnome Jeweler 6:567 |
 | 20+ | weapon drops | dragonclaw staff (Goru-Nezar 5%) mana +5 regen +20%; rosewood staff (drop from "chest" monster #69, 20%) SC +5 mana +2; vortex staff L40 (mind flayer magus 5%) SC +20 mana +50 regen +20% | | | |
@@ -158,7 +158,7 @@ Light: Half-Elf light 25 is not enough for −175 rooms: carry a lantern (2g, 1:
 | 10 | **Crypt class quest** | Graveyard crypt levels 1-3 → mummy (bone key) → Shadowed Hall → Marble Passage → **Large Tomb 1:2302** (`s` from Marble Passage 1:2298): placed **obsidian runestaff** (limit 1) + **Super Mage Trainer** (shop 62, trains L11 only, markup 500). Route details: `test/play/notes/quests.md` §1 (Witchunter path; the Mage room is a different branch of the same hub) [C rooms/items; F route t=28]. |
 | 20 | **Meditate** | Dhelvanen, Luxurious Room 7:1008 (227 steps, search): bring 50 nanati black diamonds (his portal), get a sigil (item 1351), return at L20+: `giveability 187` (WCCTEXT 9024-9046) [C]. |
 | 10/20 | Alignment quests | ring at L10, more at L20 [F t=6, t=10] |
-| — | Mage-only items | obsidian runestaff, rosewood staff, frost sceptre (ice sorceress 5%), dragonclaw staff, opal ring (Evil), twisted bone staff (L25, dark-elf archmage 5%), skull-capped staff (L50, Zanthus 100%), staff of power (L50, regen +99%), runed cape (L40, Mana +50, regen +15%, no source found) [C]. |
+| — | Mage-only items | obsidian runestaff, rosewood staff, frost sceptre (ice sorceress 5%), dragonclaw staff, opal ring (Evil), twisted bone staff (L25, dark-elf archmage 5%), skull-capped staff (L50, Zanthus 100%), staff of power (L50, regen +99%), runed cape (L40, Mana +50, regen +15%; the alignment quest line's L40 class cloak: ask Chancellor Annora (1:1333) about `foe` (good), The Grey Lord (1:160) about `destroyed` (neutral) or Balthazar (2:2577) about `news` (evil); `cloak` to the same NPC replaces a lost one. Recycler 6 (1:516) only resells it [C data]). |
 
 ## Group role
 Primary AoE (fireball L15, mana storm L23, spirit horde L28) plus party haste/frenzy. AoE in no-target autocombat shares **every** kill in the room. Party members are never hit by its attack-area spells. Robes: back rank, healed first. Best partner: Cleric. See `kb/grouping.md`.
