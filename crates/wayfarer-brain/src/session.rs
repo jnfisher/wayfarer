@@ -1792,6 +1792,7 @@ impl Session {
             return false;
         }
         let line = self.typed.pop_front().expect("a typed line");
+        self.send_own(&line.text, now, out);
         if self
             .atlas
             .as_ref()
@@ -1799,7 +1800,6 @@ impl Session {
         {
             self.hand_moving = true;
         }
-        self.send_own(&line.text, now, out);
         // A re-sync command after it waits for an idle prompt, as after any typed line.
         if let Resync::Want { idle, .. } = &mut self.resync {
             *idle = true;
@@ -1836,6 +1836,16 @@ impl Session {
 
     /// Send one of the brain's own lines to the game.
     fn send_own(&mut self, cmd: &str, now: Instant, out: &mut Vec<ToGateway>) {
+        // A move of the brain's own: the room seen next is not the player's move's (a typed
+        // one sets it again after this, C-072).
+        if self.hand_moving
+            && self
+                .atlas
+                .as_ref()
+                .is_some_and(|a| self.position.is_move(a, cmd))
+        {
+            self.hand_moving = false;
+        }
         self.parser.sent(cmd);
         self.ledger.combat(now).sent(cmd);
         if let Some(atlas) = &self.atlas {
