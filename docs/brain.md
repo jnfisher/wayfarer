@@ -1468,12 +1468,20 @@ own, one at a time:
   then the rest goes on. After `party.wait_rest_minutes` (Party, 10 by default) the leader's
   loop stops with a warning naming who has not recovered. Afterwards the leader walks back to
   its loop as after any rest.
-- **Party flees.** A follower with the leader never flees on its own (that would break the
-  party): when it goes under its own flee line, the leader runs, once for each time it goes
-  under ("Fleeing with the party: Lauren at 20%"), by its own Flee and `health.flee_rooms`,
-  and the game's follow takes the others out behind it. The leader under its own line flees as
-  ever, and the party with it. Afterwards, anyone the game left behind is separated (above),
-  and the party rests. A follower away from the leader flees on its own.
+- **Party flees.** One flee per party, the leader's. A follower in the leader's party in the
+  game (joined, by `par`) never flees on its own, wherever the beliefs put it (C-074: around a
+  move the two characters' rooms disagree for a moment, and on the Thrag run a follower that
+  counted as "away" then ran off alone and split the party). When it goes under its own flee
+  line it says so ("Under my flee line: asking Penny to run") and fights on; the leader, in its
+  room, runs, once for each time it goes under ("Fleeing with the party: Lauren at 20%"), by its
+  own Flee and `health.flee_rooms`, and the game's follow takes the others out behind it. With
+  the follower in another room the leader does not run, and says so once ("Lauren is under its
+  flee line but not here: not running"). A follower's stalemate gives the target up (*ignored*)
+  and does not leave ("...; ignoring it, staying with the party"). The leader under its own line
+  flees as ever, and the party with it; so does a stalemate of the leader's. Afterwards, anyone
+  the game left behind is separated (above), and the party rests. A follower the game dropped
+  from the party (separated, not joined) flees on its own, as a character alone does: nothing
+  else would take it out. The hang-up line (`health.hangup`) stays for everyone.
 - **Assist.** A follower with the leader, with nothing attacking it, goes for the monster the
   leader fights (if its own monster rules would fight it): the game shares exp only among
   those fighting the monster that dies (`kb/grouping.md` §9). Attacked by another, it fights

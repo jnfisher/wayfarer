@@ -714,6 +714,8 @@ pub(crate) struct Bot {
     journey: Option<Journey>,
     /// The player's move by hand landed here: its home becomes this room (C-072).
     rehome: Option<Key>,
+    /// A follower in its leader's party: a stalemate does not make it leave (C-074).
+    in_party: bool,
     /// Monsters a stalemate gave up, for the session to make *ignored*.
     learned: Vec<String>,
 }
@@ -1077,15 +1079,30 @@ impl Bot {
         std::mem::take(&mut self.learned)
     }
 
-    /// Fight gave up `name`: say so, and leave as Flee does.
+    /// A follower in its leader's party (`true`), or not: its own Flee is the party's then.
+    pub fn set_in_party(&mut self, in_party: bool) {
+        self.in_party = in_party;
+    }
+
+    /// Fight gave up `name`: say so, and leave as Flee does; a follower in a party gives it up
+    /// and stays with the party, fighting what else attacks (C-074).
     fn stalemate(&mut self, name: String, says: &mut Vec<Say>) {
-        self.narrate(
-            format!("Stalemate: my swings do nothing to {name}; leaving"),
-            says,
-        );
-        if self.running() {
-            self.flee
-                .run_from(format!("Fleeing: stalemate with {name}"));
+        if self.in_party {
+            self.narrate(
+                format!(
+                    "Stalemate: my swings do nothing to {name}; ignoring it, staying with the party"
+                ),
+                says,
+            );
+        } else {
+            self.narrate(
+                format!("Stalemate: my swings do nothing to {name}; leaving"),
+                says,
+            );
+            if self.running() {
+                self.flee
+                    .run_from(format!("Fleeing: stalemate with {name}"));
+            }
         }
         self.learned.push(name);
     }

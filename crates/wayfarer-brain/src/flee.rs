@@ -287,9 +287,11 @@ impl Mode for Flee {
         if let Some(why) = &self.forced {
             return Some(why.clone());
         }
-        // With its party's leader, it runs when the leader runs: the game's follow takes it
-        // out behind the leader, and a flee of its own would break the party (C-042).
-        if v.party.with_leader() {
+        // In its leader's party it runs only when the leader runs: the game's follow takes it
+        // out behind the leader, and a flee of its own would break the party (C-042). Joined is
+        // the test, not the room: the room beliefs of two characters disagree for a moment
+        // around a move, and a follower that fled then split the party (C-074).
+        if v.party.joined_follower() {
             return None;
         }
         let hp = v.hp.filter(|&hp| hp < self.below)?;

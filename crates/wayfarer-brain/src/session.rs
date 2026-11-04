@@ -352,6 +352,8 @@ pub(crate) struct Session {
     party_stuck: Option<(Key, String, Instant)>,
     /// The walk in progress is the bot's.
     bot_walk: bool,
+    /// A follower in a party under its flee line has said it asks the leader to run (C-074).
+    asked_to_run: bool,
     /// A move the player made by hand has gone to the game and the room it leads to has not
     /// been seen yet: the room seen next becomes the bot's home (C-072). A refusal clears it.
     hand_moving: bool,
@@ -485,6 +487,7 @@ impl Session {
             party_role: PartyRole::None,
             party_stuck: None,
             bot_walk: false,
+            asked_to_run: false,
             hand_moving: false,
             walk_halted: false,
             walk_after: None,
@@ -735,8 +738,13 @@ impl Session {
                 // Every HP value, not only those the bot sees at its ticks: a walk or an
                 // action in flight does not hold Flee back.
                 let c = self.character.state();
-                // A follower with its leader runs when the leader does (the coordinator).
-                if !self.party_role.with_leader() && self.bot.hp(hp_percent(c.hp, c.hp_max)) {
+                // A follower in its leader's party runs when the leader does (the
+                // coordinator), wherever it believes the leader is (C-074).
+                let hp = hp_percent(c.hp, c.hp_max);
+                if self.party_role.joined_follower() {
+                    self.bot.hp(hp);
+                    self.ask_to_run(hp, out);
+                } else if self.bot.hp(hp) {
                     self.give_way(out);
                 }
             }
@@ -3323,7 +3331,25 @@ impl Session {
 
     /// The coordinator's role for this session. Made a follower, it stops the loop it ran:
     /// it goes where the party goes.
+    /// A follower in its leader's party under its flee line: it says once, each time it goes
+    /// under, that it asks the leader to run (the coordinator's party flee does it) (C-074).
+    fn ask_to_run(&mut self, hp: Option<i32>, out: &mut Vec<ToGateway>) {
+        let under = self.bot.active() && hp.is_some_and(|h| h < self.bot.flee_below());
+        if !under {
+            self.asked_to_run = false;
+            return;
+        }
+        if std::mem::replace(&mut self.asked_to_run, true) {
+            return;
+        }
+        if let Some(leader) = self.party_role.joined_leader() {
+            let text = format!("Under my flee line: asking {leader} to run");
+            out.push(self.notice(&text));
+        }
+    }
+
     pub(crate) fn set_party_role(&mut self, role: PartyRole, out: &mut Vec<ToGateway>) {
+        self.bot.set_in_party(role.joined_follower());
         // A walk back that found no way is tried again later, or when the leader moves.
         let now = self.clock.instant();
         if self.party_stuck.as_ref().is_some_and(|(to, _, at)| {
