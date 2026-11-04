@@ -25,7 +25,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: lts/*
+          # 22, not lts/*: lts/* became Node 26 at the end of October 2026, whose own Web
+          # Storage global (since Node 25) hides jsdom's `localStorage` in the tests.
+          node-version: 22
           cache: npm
           cache-dependency-path: ui/package-lock.json
       - run: npm ci
