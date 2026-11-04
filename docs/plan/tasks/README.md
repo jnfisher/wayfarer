@@ -80,6 +80,7 @@ Cards don't repeat these:
 | 11 | The Accounts panel: servers, characters and logins edited in the page, BBS accounts made on Save (C-062) | 2026-10-30, at John's request |
 | 12 | Quicksilver 1.20 beside stock 1.11p: detect the rule set, the 1.20 lines, spells, rests, `GUARD` and models (C-063 to C-069) | 2026-11-01, from the Quicksilver 1.20.0 handoff (`../quicksilver-1.20/handoff.md`) |
 | 13 | KB corrections from the data lookup tool (C-070) | 2026-11-02, from mmud-exploration KQ-001 |
+| 15 | Fixes from the Thrag run: typed moves re-home, ignore replaces flee-from, one flee per party, bosses first, the Labyrinth's blank exit (C-072 to C-076) | 2026-11-04, at John's request after the run |
 
 ## Index (wave 1, M0)
 
@@ -233,6 +234,23 @@ handoff. **Wave 12 is done** when wayfarer behaves exactly as before against a 1
 against a 1.20 server detects 1.20 at login, classifies every line of the handoff's section 3,
 plans with the 1.20 spells, rests and meditates by the 1.20 rules, and can guard; with tests built
 from the handoff's fixtures for each.
+
+## Index (wave 15, the Thrag run)
+
+| Id | Title | Tier | Size | Depends | Review |
+|---|---|---|---|---|---|
+| [C-072](C-072-typed-move-rehomes.md) | A typed move re-homes the bot where the character arrives, not where it was | B | S | | |
+| [C-073](C-073-ignore-list.md) | Monster rules: "ignore" replaces "flee from"; every rule, defaults included, can be removed in the page | B | M | | review |
+| [C-074](C-074-party-never-flees-apart.md) | In a party only the leader flees, and it takes the party: a follower never runs on its own | B | M | C-073 | review |
+| [C-075](C-075-bosses-first.md) | Bosses first: a boss in the room is the target before its guards, for every member | B | M | C-073 | |
+| [C-076](C-076-blank-exit-names.md) | An opened Hidden exit with a blank name: the Labyrinth's `river` east exit is read as there | B | S | | |
+
+Wave 15 (2026-11-04) comes from John's party run to Thrag on the server. C-072, C-073 and C-076 can
+run together. C-074 and C-075 come after C-073, one at a time, since both change `fight.rs` or
+`flee.rs` and the rules. **Wave 15 is done** when the party walks the Labyrinth past the ooze
+without anyone leaving, a follower under its flee line waits for the leader's party flee, John
+walks the leader into a room by hand and it stays there after a rest, in Thrag's room
+everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's east exit is there.
 
 Tier: B Opus, C Sonnet. Size: S under half a day of agent time, M about a day, L two to three
 days.
