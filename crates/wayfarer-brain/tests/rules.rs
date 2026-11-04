@@ -400,3 +400,65 @@ async fn a_default_rule_is_switched_off_and_put_back() {
         )]
     );
 }
+
+/// C-075, the Thrag run: a boss in the room is the target before anything else, though the
+/// room lists it last; its default shows in the rules list once seen.
+#[tokio::test(start_paused = true)]
+async fn a_boss_is_attacked_first() {
+    let brain = Brain::new(world(), clock(), None);
+    let (mut g, run) = arena_with(brain, &[RAT, "Thrag"]).await;
+    start(&mut g, &[RAT, "Thrag"], 35).await;
+    g.expect("a Thrag", line(ENGAGED, 35));
+    g.narrated("Fight: Thrag").await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a Thrag"]);
+    let rules = rules_of(&seen);
+    let thrag = rules.iter().find(|e| e.pattern == "thrag");
+    assert!(
+        thrag.is_some_and(|e| e.rule == MonsterRuleKind::First
+            && e.source == RuleSource::Default
+            && e.reason.as_deref().is_some_and(|r| r.starts_with("a boss"))),
+        "{rules:?}"
+    );
+}
+
+/// A boss that comes in mid-fight is switched to at once, and only once.
+#[tokio::test(start_paused = true)]
+async fn a_boss_coming_in_mid_fight_is_switched_to_once() {
+    let brain = Brain::new(world(), clock(), None);
+    let (mut g, run) = arena_with(brain, &[RAT]).await;
+    start(&mut g, &[RAT], 35).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    g.expect("a Thrag", line(ENGAGED, 34));
+    g.output(&line("Thrag moves into the room from the north.", 34))
+        .await;
+    g.narrated("Fight: Thrag is here: switching from large giant rat")
+        .await;
+    // A round with Thrag still here: no second switch.
+    g.round("You slam Thrag for 5 damage!", 30).await;
+    g.idle(Duration::from_secs(2)).await;
+    g.freeze();
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "a Thrag"]);
+}
+
+/// The player switches a boss's default off: it is attacked as any monster is, in the room's
+/// order.
+#[tokio::test(start_paused = true)]
+async fn a_boss_switched_off_is_not_attacked_first() {
+    let brain = Brain::new(world(), clock(), None);
+    let (mut g, run) = arena_with(brain, &[RAT, "Thrag"]).await;
+    g.set_rule("thrag", None).await;
+    g.narrated("Monster rule removed: thrag").await;
+    start(&mut g, &[RAT, "Thrag"], 35).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat"]);
+    assert!(
+        rules_of(&seen).contains(&entry("thrag", MonsterRuleKind::Off, RuleSource::Player)),
+        "{:?}",
+        rules_of(&seen)
+    );
+}

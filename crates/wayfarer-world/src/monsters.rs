@@ -180,6 +180,9 @@ pub enum MonsterRule {
     Ignore,
     /// Do not walk through the room it was last seen in when there is another way.
     Avoid,
+    /// Attack it before anything else in the room, attackers included (C-075). Every boss is
+    /// this by default, unless a rule names it.
+    First,
     /// No rule: the player switched off a default (or learned) rule for the pattern. It wins
     /// over a shorter pattern's rule as any rule does, and [`MonsterRules::rule_for`] reads it
     /// as none.
@@ -241,6 +244,16 @@ impl MonsterRules {
             .find(|(p, _)| name.contains(p.as_str()))
             .map(|&(_, r)| r)
             .filter(|r| *r != MonsterRule::Off)
+    }
+
+    /// The rule a pattern for `name` sets, [`MonsterRule::Off`] included: whether anything
+    /// names it, for a default that applies only when nothing does (a boss is *first*).
+    pub fn explicit(&self, name: &str) -> Option<MonsterRule> {
+        let name = name.to_lowercase();
+        self.list
+            .iter()
+            .find(|(p, _)| name.contains(p.as_str()))
+            .map(|&(_, r)| r)
     }
 
     /// The patterns and their rules, longest first.

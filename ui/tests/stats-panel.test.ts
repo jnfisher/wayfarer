@@ -378,7 +378,8 @@ describe("the monster rules", () => {
     expect(onrule).toHaveBeenLastCalledWith("a", "fierce kobold thief", "ignore");
     expect((screen.getByRole("textbox", { name: "monster name" }) as HTMLInputElement).value).toBe("");
     const options = [...screen.getByRole("combobox", { name: "rule" }).querySelectorAll("option")].map((o) => o.value);
-    expect(options).toEqual(["ignore", "avoid"]);
+    expect(options).toEqual(["ignore", "avoid", "first"]);
+    expect(screen.getByRole("combobox", { name: "rule" }).textContent).toContain("attack first");
   });
 
   it("shows a default switched off struck through, with a button to put it back", async () => {

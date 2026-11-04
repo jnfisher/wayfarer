@@ -489,7 +489,7 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
   |---|---|---|
   | Flee | HP below 25% (`health.flee_below_hp`) while running, whether or not engaged, with something to run from (a fight, an attacker, or a room that spawns); a stalemate, whatever the HP; until it is done | Leaves by a confirmed exit toward a room that spawns nothing, keeps running if followed, then hands over to Recover ("Flee", below) |
   | Recover | HP below 60% (`health.rest_below_hp`) and not fighting (poison alone is no reason: it lasts until a cure, resting does not end it, and its damage counts against the HP lines); or a rest it began is not finished. A rest starts only when the fight is over: not while a monster Fight would attack is in the room (one the party still fights, say), nor before the `look` after a kill, nor again after the walk to a quiet room, a flee, a cast or anything else ended it with such a monster here (a rest Recover took on but the prompt does not show as `(Resting)` waits for the fight like a new one: Faye kept typing `rest` beside a bandit her party fought, 2026-10-26); a rest under way (`(Resting)`) is woken only by an attack, and under the flee line Flee goes first | Rests where it stands (a lair or an arena too: spawns are slow enough, John, 2026-10-24). With `health.rest_quiet_room` on: in this room if nothing spawns here; else walks (through the walker, each step confirmed) to the nearest room within 5 steps where nothing spawns, never a player's house (a room the pack has no name for), and rests there; else rests here anyway. `rest` again when the next prompt lacks `(Resting)` (three times, then a 30 s wait; `You are too sick to rest!` waits 30 s too). Rested at 95%, it walks back home. Each walk is tried twice (a fight can stop one): after two walks out that were stopped it rests where it is, against the quiet-room rule, and says so with a warning ("Recover: resting in Newhaven, Arena though it spawns: 2 walks to a quiet room were stopped"); after two walks home that were stopped it waits where it rested: "Rested; could not walk home, waiting here" |
-  | Fight | Engaged; or a monster worth fighting is here | Picks one that is attacking the character first, else the first listed, by the monster rules ("Monster rules", below: never one it *ignores* unless it attacks); sends `a <its last word>` once and lets auto-combat run. After `*Combat Off*` or a kill it looks (`look`) and picks the next. A target the game refuses (`You do not see rat here!`, `Your weapon has no effect`) is left alone for the rest of the session. Four rounds of the character's swings with no damage dealt, one of them glancing off the target's armour at least, are a stalemate: it gives the target up and the bot leaves ("Monster rules"). Never leaves the room itself |
+  | Fight | Engaged; or a monster worth fighting is here | Picks one that is attacking the character first, else the first listed, by the monster rules ("Monster rules", below: one to *attack first*, a boss by default, before anything, attackers included; never one it *ignores* unless it attacks); sends `a <its last word>` once and lets auto-combat run. After `*Combat Off*` or a kill it looks (`look`) and picks the next. A target the game refuses (`You do not see rat here!`, `Your weapon has no effect`) is left alone for the rest of the session. Four rounds of the character's swings with no damage dealt, one of them glancing off the target's armour at least, are a stalemate: it gives the target up and the bot leaves ("Monster rules"). Never leaves the room itself |
   | Idle | Otherwise | Sends nothing: "Waiting here" |
 
 - **Worth fighting**: every record the name finds (adjectives stripped: `fat giant rat` is a
@@ -622,6 +622,7 @@ stayed):
 |---|---|
 | *ignore* | never attacks it and never leaves because of it; fights back if it attacks (the flee line still applies). A stop where only ignored monsters are left is cleared once the bot's own combat has been quiet `bot.stop_quiet_seconds` |
 | *avoid* | does not walk through the room it was last seen in when there is another way |
+| *attack first* | attacks it before anything else in the room, attackers included, in the order the room lists them; switches to it at once when it comes in mid-fight ("Fight: Thrag is here: switching from dire wolf", once each time it comes). Not one the game refused or a stalemate gave up. Every **boss** (one alive at a time, back hours after a kill) is this by default, unless a rule names it (C-075) |
 | *off* | the player's only: switches a default or learned rule off for the pattern |
 
 *Never fight* and *flee from* (C-035) became *ignore* on 2026-11-04 (C-073): a stored rule of
@@ -637,7 +638,10 @@ either kind, a `set_monster_rule` with either name and `--flee-from` are read as
   (`set_monster_rule` from the stats tab, or `wayfarer brain --ignore NAME`, repeatable).
   The session's and the player's are kept with the bot's record (the store's `monster_rules`)
   and survive a brain restart. The snapshot's `bot.monster_rules` lists all three, a default
-  with its reason.
+  with its reason. The bosses' defaults (*attack first*) are not a list of their own: a boss
+  no rule names is *attack first*, matched by the game data's names (not as a pattern, so
+  `dark mage` does not catch a dark mage apprentice); one is listed once the character has seen
+  it this session, so the page can switch it off.
 - **Removing** (the stats tab's `x`, `set_monster_rule` with `null`) takes off the top rule for
   the pattern: the player's own; else a learned one, forgotten; else the default, switched off
   for this character by a player *off* (kept, shown struck through with **put back**, which
@@ -1485,7 +1489,8 @@ own, one at a time:
 - **Assist.** A follower with the leader, with nothing attacking it, goes for the monster the
   leader fights (if its own monster rules would fight it): the game shares exp only among
   those fighting the monster that dies (`kb/grouping.md` §9). Attacked by another, it fights
-  that one.
+  that one. A monster to *attack first* (a boss) comes before both: each member goes for it,
+  attacked or not, by its own rules (C-075).
 - **Helping bash a door.** While the leader's walk bashes a locked door, a follower in its
   room, out of a fight, bashes the same door (`bash <dir>`, "Helping Penny bash the door
   north") until it gives way, by *Help the leader bash doors* (`party.help_bash`, Party, on by

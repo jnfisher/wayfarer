@@ -36,6 +36,7 @@ fn rule_str(r: MonsterRule) -> &'static str {
     match r {
         MonsterRule::Ignore => "ignore",
         MonsterRule::Avoid => "avoid",
+        MonsterRule::First => "first",
         MonsterRule::Off => "off",
     }
 }
@@ -45,6 +46,7 @@ fn parse_rule(s: &str) -> Option<MonsterRule> {
     Some(match s {
         "ignore" | "never_fight" | "flee_from" => MonsterRule::Ignore,
         "avoid" => MonsterRule::Avoid,
+        "first" => MonsterRule::First,
         "off" => MonsterRule::Off,
         _ => return None,
     })
@@ -55,6 +57,7 @@ pub fn wire_rule(r: MonsterRule) -> MonsterRuleKind {
     match r {
         MonsterRule::Ignore => MonsterRuleKind::Ignore,
         MonsterRule::Avoid => MonsterRuleKind::Avoid,
+        MonsterRule::First => MonsterRuleKind::First,
         MonsterRule::Off => MonsterRuleKind::Off,
     }
 }
@@ -64,15 +67,17 @@ pub fn from_wire(r: MonsterRuleKind) -> MonsterRule {
     match r {
         MonsterRuleKind::Ignore => MonsterRule::Ignore,
         MonsterRuleKind::Avoid => MonsterRule::Avoid,
+        MonsterRuleKind::First => MonsterRule::First,
         MonsterRuleKind::Off => MonsterRule::Off,
     }
 }
 
-/// A few words for a rule: "ignore", "avoid", "off".
+/// A few words for a rule: "ignore", "avoid", "attack first", "off".
 pub fn describe(r: MonsterRule) -> &'static str {
     match r {
         MonsterRule::Ignore => "ignore",
         MonsterRule::Avoid => "avoid",
+        MonsterRule::First => "attack first",
         MonsterRule::Off => "off",
     }
 }
@@ -92,6 +97,9 @@ struct Entry {
 pub(crate) struct RuleBook {
     entries: Vec<Entry>,
     rules: MonsterRules,
+    /// The bosses seen this session, by lower-cased name, with their name and hours back: each
+    /// is *attack first* by default (C-075), listed on the wire so the page can switch it off.
+    bosses: std::collections::BTreeMap<String, (String, Option<i64>)>,
 }
 
 impl Default for RuleBook {
@@ -122,6 +130,7 @@ impl RuleBook {
         let mut book = RuleBook {
             entries,
             rules: MonsterRules::default(),
+            bosses: std::collections::BTreeMap::new(),
         };
         book.compile();
         book
@@ -195,6 +204,17 @@ impl RuleBook {
         true
     }
 
+    /// A boss was seen (`name` as the game data has it, back `hours` after a kill): its default,
+    /// *attack first*, is listed from now on. Whether that is new.
+    pub fn saw_boss(&mut self, name: &str, hours: Option<i64>) -> bool {
+        let key = name.trim().to_lowercase();
+        if self.bosses.contains_key(&key) {
+            return false;
+        }
+        self.bosses.insert(key, (name.trim().to_owned(), hours));
+        true
+    }
+
     /// Remove the top rule for `pattern` (the page's `x`): the player's own (an `off` among
     /// them, which puts back what it switched off), else a learned one, else the default is
     /// switched off by a player `off`. Whether anything changed.
@@ -212,7 +232,8 @@ impl RuleBook {
         }
         let default = DEFAULT_RULES
             .iter()
-            .any(|(p, _, _)| p.eq_ignore_ascii_case(pattern));
+            .any(|(p, _, _)| p.eq_ignore_ascii_case(pattern))
+            || self.bosses.contains_key(&pattern.to_lowercase());
         default && self.set(pattern, Some(MonsterRule::Off), at)
     }
 
@@ -237,6 +258,15 @@ impl RuleBook {
             source: RuleSource::Default,
             reason: Some(why.to_owned()),
         });
+        let bosses = self.bosses.values().map(|(name, hours)| MonsterRuleEntry {
+            pattern: name.to_lowercase(),
+            rule: MonsterRuleKind::First,
+            source: RuleSource::Default,
+            reason: Some(match hours {
+                Some(h) => format!("a boss: one alive at a time, back {h} h after a kill"),
+                None => "a boss: one alive at a time".to_owned(),
+            }),
+        });
         let kept = |s: Source| {
             self.entries
                 .iter()
@@ -252,6 +282,7 @@ impl RuleBook {
                 })
         };
         defaults
+            .chain(bosses)
             .chain(kept(Source::Session))
             .chain(kept(Source::Player))
             .collect()

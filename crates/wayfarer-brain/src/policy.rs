@@ -75,9 +75,22 @@ pub fn is_one_of(monsters: &Monsters, seen: &str, names: &[String]) -> bool {
         .any(|m| names.iter().any(|n| n.eq_ignore_ascii_case(&m.name)))
 }
 
-/// What to attack: a hostile monster that is attacking the character first, else the first
-/// hostile one listed here; never one on the skip list. The monster rules (`rules`): one the
-/// bot *ignores* is attacked only when it attacks.
+/// A monster to attack first (C-075): a rule says *attack first*, or no rule names it and it
+/// is a boss (one alive at a time, back hours after a kill). A boss the player ignores, or one
+/// the player switched the default off for, is not.
+pub fn is_first(monsters: &Monsters, rules: &MonsterRules, name: &str) -> bool {
+    match rules.explicit(name) {
+        Some(MonsterRule::First) => true,
+        None => monsters.boss_named(name),
+        Some(_) => false,
+    }
+}
+
+/// What to attack: a hostile monster to attack first ([`is_first`]: a boss, by default), in the
+/// order the room lists them, whatever else attacks; else one that is attacking the character;
+/// else the first hostile one listed here. Never one on the skip list (the game refused it, or
+/// its attacks went unanswered). The monster rules (`rules`): one the bot *ignores* is attacked
+/// only when it attacks.
 pub fn target<'a>(
     monsters: &Monsters,
     rules: &MonsterRules,
@@ -86,8 +99,14 @@ pub fn target<'a>(
     skip: &BTreeSet<String>,
 ) -> Option<&'a str> {
     let fightable = |n: &&str| !skip.contains(*n) && hostile(monsters, n);
-    let attacker = attackers.iter().map(String::as_str).find(fightable);
-    attacker.or_else(|| {
+    let first = here
+        .iter()
+        .chain(attackers)
+        .map(String::as_str)
+        .filter(fightable)
+        .find(|n| is_first(monsters, rules, n));
+    let attacker = || attackers.iter().map(String::as_str).find(fightable);
+    first.or_else(attacker).or_else(|| {
         here.iter()
             .map(String::as_str)
             .filter(fightable)
@@ -294,6 +313,72 @@ mod tests {
         assert_eq!(
             target(&monsters, &rules, &here[1..2], &orc, &none),
             Some("orc")
+        );
+    }
+
+    #[test]
+    fn a_boss_is_attacked_first_whatever_else_attacks() {
+        let mk = |n: i64, name: &str, raw: &str| wayfarer_world::pack::Monster {
+            number: n,
+            name: name.into(),
+            level: 1,
+            exp: 9,
+            max_hp: 5,
+            mon_type: 6,
+            gen_index: 1,
+            alignment: 2,
+            raw: raw.into(),
+        };
+        let boss = r#"{"maxalive":1,"regenhrs":48}"#;
+        let monsters = Monsters::new(vec![
+            mk(1, "dire wolf", "{}"),
+            mk(2, "Thrag", boss),
+            mk(3, "Leo the Quick", boss),
+        ]);
+        let none = BTreeSet::new();
+        let s = |v: &[&str]| v.iter().map(|n| (*n).to_owned()).collect::<Vec<_>>();
+        // Thrag's room on the run: the wolves attack, Thrag is listed last.
+        let here = s(&["dire wolf", "large dire wolf", "Thrag"]);
+        let wolves = s(&["dire wolf", "large dire wolf"]);
+        let rules = MonsterRules::default();
+        assert!(is_first(&monsters, &rules, "Thrag"));
+        assert!(!is_first(&monsters, &rules, "dire wolf"));
+        assert_eq!(
+            target(&monsters, &rules, &here, &wolves, &none),
+            Some("Thrag")
+        );
+        // Two to attack first: the room's order.
+        let both = s(&["Leo the Quick", "dire wolf", "Thrag"]);
+        assert_eq!(
+            target(&monsters, &rules, &both, &wolves, &none),
+            Some("Leo the Quick")
+        );
+        // One the game refused is skipped: the next first one, then the attackers.
+        let refused: BTreeSet<String> = ["Thrag".to_owned()].into();
+        assert_eq!(
+            target(&monsters, &rules, &here, &wolves, &refused),
+            Some("dire wolf")
+        );
+        // The player's rule wins over the default: ignored, or switched off.
+        for rule in [MonsterRule::Ignore, MonsterRule::Off] {
+            let rules = MonsterRules::new([("thrag", rule)]);
+            assert!(!is_first(&monsters, &rules, "Thrag"), "{rule:?}");
+            assert_eq!(
+                target(&monsters, &rules, &here, &wolves, &none),
+                Some("dire wolf")
+            );
+        }
+        // Any monster may be set to attack first.
+        let rules = MonsterRules::new([("large dire wolf", MonsterRule::First)]);
+        assert_eq!(
+            target(
+                &monsters,
+                &rules,
+                &s(&["dire wolf", "large dire wolf"]),
+                &[],
+                &none
+            ),
+            Some("large dire wolf")
         );
     }
 

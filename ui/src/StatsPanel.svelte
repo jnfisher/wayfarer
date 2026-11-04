@@ -38,6 +38,7 @@
   const RULES: { rule: MonsterRuleKind; label: string }[] = [
     { rule: "ignore", label: "ignore" },
     { rule: "avoid", label: "avoid" },
+    { rule: "first", label: "attack first" },
   ];
   const ruleLabel = (r: MonsterRuleKind) => RULES.find((x) => x.rule === r)?.label ?? r;
   /** Patterns the player switched off (a player `off`): the rule under it is shown struck. */
@@ -421,7 +422,7 @@
     text-decoration: line-through;
   }
   .r-rule {
-    width: 11ch;
+    width: 13ch;
     color: var(--vga-yellow);
   }
   .r-pattern {

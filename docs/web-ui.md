@@ -409,7 +409,7 @@ since" (`only: "combat"`; the run goes on): press it after changing weapons or s
 starting a loop or a level-up.
 
 Between the two, the **monster rules** the bot plays by ([brain.md](brain.md) "Monster
-rules"): each rule (*ignore*, *avoid*), its pattern and where it comes from (`default`, dim,
+rules"): each rule (*ignore*, *avoid*, *attack first*: every boss seen, by default), its pattern and where it comes from (`default`, dim,
 its reason as the tooltip; `session`, learned from a stalemate; `player`). Every rule has an `x`:
 the player's is removed, a learned one forgotten, and a default switched off for this character,
 shown struck through with an *off* row whose **put back** restores it. The line under the list

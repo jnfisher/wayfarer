@@ -904,6 +904,16 @@ impl Session {
         if !shown {
             return;
         }
+        // A boss seen: its default, *attack first*, shows in the rules list (C-075).
+        if let Some(atlas) = &self.atlas {
+            for name in self.presence.here.iter().chain(&self.presence.attackers) {
+                let records = atlas.monsters.by_name(name);
+                if let Some(boss) = records.iter().find(|m| atlas.monsters.is_boss(m.number)) {
+                    let hours = atlas.monsters.regen_hours(boss.number);
+                    self.rules.saw_boss(&boss.name, hours);
+                }
+            }
+        }
         let room = self.position.best();
         if let Some(room) = room.filter(|_| self.position.belief.certain())
             && self

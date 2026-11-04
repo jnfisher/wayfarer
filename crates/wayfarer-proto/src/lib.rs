@@ -484,6 +484,9 @@ pub enum MonsterRuleKind {
     Ignore,
     /// Keep out of the room it was last seen in when there is another way.
     Avoid,
+    /// Attack it before anything else in the room, attackers included; every boss by default
+    /// (C-075).
+    First,
     /// The player switched a default or learned rule off for this pattern.
     Off,
 }
@@ -495,11 +498,12 @@ impl<'de> Deserialize<'de> for MonsterRuleKind {
         Ok(match s.as_str() {
             "ignore" | "never_fight" | "flee_from" => MonsterRuleKind::Ignore,
             "avoid" => MonsterRuleKind::Avoid,
+            "first" => MonsterRuleKind::First,
             "off" => MonsterRuleKind::Off,
             other => {
                 return Err(serde::de::Error::unknown_variant(
                     other,
-                    &["ignore", "avoid", "off"],
+                    &["ignore", "avoid", "first", "off"],
                 ));
             }
         })

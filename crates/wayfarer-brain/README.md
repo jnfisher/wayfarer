@@ -7,7 +7,7 @@ each character's position, serves the map panel (`map_view`), walks a character 
 (`walk_to`, one room short of a boss lair by default), finds rooms, places and monsters by
 name (`find`), lists the loops of an area and walks one once (`loops_request`, `walk_loop`),
 plays it where it stands (`bot_control`: "fight here"), and runs a loop (`run_loop`: Task
-mode), by the monster rules (`rules.rs`: *ignore*, *avoid* and the player's *off*, a stalemate
+mode), by the monster rules (`rules.rs`: *ignore*, *avoid*, *attack first* (every boss by default) and the player's *off*, a stalemate
 making a monster *ignored*; `set_monster_rule`, `Brain::with_ignore`). When the gateway is about to log a
 character off (`logging_off`) it stops that character's bot, sends it nothing more and answers
 `ready_to_leave`, saying whether to exit cleanly or hang up (`bot.log_off`). With a store (`Brain::with_store`) it saves each bot's state and counts each
