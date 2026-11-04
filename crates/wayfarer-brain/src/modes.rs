@@ -712,8 +712,8 @@ pub(crate) struct Bot {
     task: Option<Task>,
     /// The Go to or loop walk it is on (Task mode too); never with a loop.
     journey: Option<Journey>,
-    /// The player moved the character by hand: its home becomes where it is.
-    rehome: bool,
+    /// The player's move by hand landed here: its home becomes this room (C-072).
+    rehome: Option<Key>,
     /// Monsters a stalemate gave up, for the session to make *never fight*.
     learned: Vec<String>,
 }
@@ -886,7 +886,6 @@ impl Bot {
         if self.state != BotState::Running {
             return says;
         }
-        self.rehome = true;
         if self.has_route() {
             let what = match (self.task.take(), self.journey.take()) {
                 (Some(t), _) => format!("loop {}", t.snapshot().loop_name),
@@ -899,6 +898,16 @@ impl Bot {
             );
         }
         says
+    }
+
+    /// A move the player made by hand landed in `here`: a running bot plays there from now
+    /// on, and a rest walks back there. Told when the room is seen, not when the move is typed:
+    /// a typed move may wait behind the bot's own action, and the character is still in the
+    /// old room until it goes (C-072).
+    pub fn arrived_by_hand(&mut self, here: Key) {
+        if self.state == BotState::Running {
+            self.rehome = Some(here);
+        }
     }
 
     /// The walker ended a leg of the bot's at `at`.
@@ -1370,9 +1379,13 @@ impl Bot {
             self.recover.set_home(t.home());
         }
         // Moved by hand: the bot plays where the player took it.
-        if std::mem::take(&mut self.rehome)
-            && let Some(here) = v.room
-        {
+        if let Some(here) = self.rehome.take() {
+            if self.recover.home() != Some(here) {
+                self.narrate(
+                    format!("You moved: playing in {}", v.room_name(Some(here))),
+                    &mut says,
+                );
+            }
             self.recover.set_home(here);
         }
         if let Some(j) = &mut self.journey {

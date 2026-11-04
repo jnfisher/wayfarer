@@ -461,7 +461,11 @@ doesn't make sense"):
 - **A Go to arriving** ends the journey: the bot stays on and plays there, that room its home.
 - **A move the player makes** (a typed move, keys) while the bot is on drops the route, and the
   bot plays on wherever the player takes the character; any other typed line pauses nothing
-  ("Typing beside the bot").
+  ("Typing beside the bot"). The room the move lands in becomes its home ("You moved: playing
+  in Newhaven, Narrow Road"), so a rest there walks nowhere afterwards. That happens when the
+  room shows, not when the move is typed: a typed move waits behind the bot's action in flight,
+  and until it goes the character is still in the old room. A refused move leaves home where it
+  was; a follower taken along by its leader is not moved by hand.
 - **A death, a hang-up, the realm left, logging off** turn it off and drop the route, as before.
 - A journey is not stored: a brain restarted on one puts the bot back on (or paused) with no
   route.

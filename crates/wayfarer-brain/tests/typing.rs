@@ -151,6 +151,55 @@ async fn a_typed_move_keeps_the_bot_on_where_the_character_goes() {
     );
 }
 
+/// C-072, Lexi on the Thrag run: a move typed while the bot's action is in flight waits behind
+/// it, so the character is still in the old room when the bot next decides. Home must become the
+/// room the move lands in, not the room it left: after a rest there, it stays.
+#[tokio::test(start_paused = true)]
+async fn a_typed_move_rehomes_where_it_lands_and_a_rest_there_walks_nowhere() {
+    let (mut g, run) = in_arena(&["large giant rat"]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.after_cmd = Some(("a rat".into(), user_input("u")));
+    // 20 of 35 is 57%: a rest is due where it lands (the Narrow Road is quiet).
+    g.expect("u", at_hp(&room(NARROW_ROAD), 20));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
+    g.narrated("Fight: large giant rat").await;
+    g.narrated("You moved: playing in Newhaven, Narrow Road")
+        .await;
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
+        .await;
+    for hp in [24, 28, 31] {
+        g.output(&resting(hp)).await;
+        g.idle(Duration::from_secs(20)).await;
+    }
+    g.freeze();
+    let (seen, played) = g.close(run).await;
+    // No walk back down to the Arena it was started in.
+    assert_eq!(played, ["st", "look", "a rat", "u", "rest"]);
+    assert_eq!(bot(&seen).state, BotState::Running);
+    let said = notices(&seen);
+    assert!(!said.iter().any(|n| n.contains("walking back")), "{said:?}");
+}
+
+/// A typed move the game refuses leaves home where it was: the bot plays on in its room.
+#[tokio::test(start_paused = true)]
+async fn a_refused_typed_move_leaves_home_alone() {
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 35).await;
+    g.narrated("Waiting here").await;
+    g.expect("w", line("There is no exit in that direction!", 35));
+    g.user_input("w").await;
+    g.idle(Duration::from_secs(5)).await;
+    g.freeze();
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "w"]);
+    let said = notices(&seen);
+    assert!(
+        !said.iter().any(|n| n.starts_with("You moved: playing in")),
+        "{said:?}"
+    );
+}
+
 #[tokio::test(start_paused = true)]
 async fn an_attack_typed_while_engaged_goes_and_the_bot_stays_on() {
     let (mut g, run) = in_arena(&["large giant rat", "fat giant rat"]).await;

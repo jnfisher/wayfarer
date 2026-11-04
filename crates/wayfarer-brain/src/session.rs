@@ -352,6 +352,9 @@ pub(crate) struct Session {
     party_stuck: Option<(Key, String, Instant)>,
     /// The walk in progress is the bot's.
     bot_walk: bool,
+    /// A move the player made by hand has gone to the game and the room it leads to has not
+    /// been seen yet: the room seen next becomes the bot's home (C-072). A refusal clears it.
+    hand_moving: bool,
     /// The session stopped the walk in progress (`stop_walk`): its end is no give-up.
     walk_halted: bool,
     /// A walk asked for while the bot's action was in flight: it starts once that is answered.
@@ -483,6 +486,7 @@ impl Session {
             party_role: PartyRole::None,
             party_stuck: None,
             bot_walk: false,
+            hand_moving: false,
             walk_halted: false,
             walk_after: None,
             loops: HashMap::new(),
@@ -752,10 +756,23 @@ impl Session {
                 *answered = true;
             }
             if let Some(atlas) = &self.atlas
-                && self.position.event(atlas, &typed, now).is_some()
+                && let Some(seen) = self.position.event(atlas, &typed, now)
             {
                 self.executor
                     .room_seen_in(Some(self.position.belief.clone()));
+                if self.hand_moving
+                    && seen.title.is_some()
+                    && let Some(here) = self.position.best()
+                {
+                    self.hand_moving = false;
+                    self.bot.arrived_by_hand(here);
+                }
+            }
+            if matches!(
+                typed,
+                GameEvent::MoveRefused { .. } | GameEvent::DoorClosed { .. }
+            ) {
+                self.hand_moving = false;
             }
             self.executor.event(&typed);
             combat |= typed == GameEvent::CombatEngaged;
@@ -1647,6 +1664,7 @@ impl Session {
             .is_some_and(|a| self.position.is_move(a, text))
         {
             self.hand_move(out);
+            self.hand_moving = true;
         } else if self.walker.walking() && !self.bot_walk {
             // The player comes first (docs/plan/02-architecture.md "Input arbitration").
             self.stop_walk("you typed a line", out);
@@ -1707,6 +1725,7 @@ impl Session {
             self.stop_walk("you pressed a key", out);
         }
         self.hand_move(out);
+        self.hand_moving = true;
         self.flush_views(out);
     }
 
@@ -1760,6 +1779,13 @@ impl Session {
             return false;
         }
         let line = self.typed.pop_front().expect("a typed line");
+        if self
+            .atlas
+            .as_ref()
+            .is_some_and(|a| self.position.is_move(a, &line.text))
+        {
+            self.hand_moving = true;
+        }
         self.send_own(&line.text, now, out);
         // A re-sync command after it waits for an idle prompt, as after any typed line.
         if let Resync::Want { idle, .. } = &mut self.resync {
