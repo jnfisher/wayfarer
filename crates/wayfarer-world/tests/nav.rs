@@ -632,6 +632,37 @@ fn a_blocked_hidden_exit_is_opened_by_the_phrases_of_its_rooms_remote_actions() 
 }
 
 #[test]
+fn opened_hidden_exits_whose_name_is_blank_are_marked() {
+    let (_, g) = graph();
+    // An opened Hidden exit is listed by its name message (`exitpar4`); these five name message
+    // 1, which is blank, so the game prints an empty slot: `north, , west` (C-076).
+    let marked: BTreeSet<(Key, u8)> = g
+        .all_edges()
+        .iter()
+        .filter(|e| e.lists_blank)
+        .map(|e| (e.from, e.dir))
+        .collect();
+    let want: BTreeSet<(Key, u8)> = [
+        ((1, 1972), 2),
+        ((1, 2100), 3),
+        ((1, 2103), 2),
+        ((12, 2383), 3),
+        ((1, 2441), 8),
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(marked, want);
+    // The Labyrinth Passage with the brass plaque: east opens at `river`, and a Go to (which
+    // takes Hidden exits as a last resort) says it before the move.
+    let east = g.edge((1, 1972), 2).unwrap();
+    assert_eq!(east.unblock, ["river"]);
+    let r =
+        wayfarer_world::route_or_search(&g, (1, 1972), (1, 1983), &Traveller::default()).unwrap();
+    assert_eq!(commands(&r), ["e"]);
+    assert_eq!(r[0].unblock, ["river"]);
+}
+
+#[test]
 fn a_key_exit_is_taken_with_its_key_and_a_hidden_one_as_a_last_resort() {
     use wayfarer_world::{distances, distances_any, route_or_search};
     let (_pack, g) = graph();

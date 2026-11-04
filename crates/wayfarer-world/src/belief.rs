@@ -59,6 +59,15 @@ impl Belief {
         self.cands.contains(&key)
     }
 
+    /// Keep only the candidates `keep` accepts, when any are left; else the belief stays as it
+    /// was (a clue that rules out every candidate is not trusted over the room seen).
+    pub fn narrow(&mut self, keep: impl Fn(Key) -> bool) {
+        let kept: BTreeSet<Key> = self.cands.iter().copied().filter(|k| keep(*k)).collect();
+        if !kept.is_empty() {
+            self.set(kept);
+        }
+    }
+
     fn set(&mut self, cands: BTreeSet<Key>) {
         if !cands.is_empty() {
             self.last = cands.clone();

@@ -298,6 +298,7 @@ fn step_edge(graph: &RoomGraph, at: Key, to: Key, base: &str) -> Option<Edge> {
             command: ph.clone(),
             phrases: vec![ph],
             unblock: Vec::new(),
+            lists_blank: false,
             gate: Gate::None,
             door: None,
             params: [0; 4],
