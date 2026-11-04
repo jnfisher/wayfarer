@@ -6,7 +6,7 @@
 //! A fight can be a stalemate: the target's armour takes every blow (`glances off its
 //! armour`) and it never dies. After [`STALEMATE_ROUNDS`] rounds of the character's swings with
 //! no damage dealt, at least one of them a glance, Fight gives the target up: the bot leaves
-//! as Flee does and the monster becomes *never fight* for the session.
+//! as Flee does and the monster becomes *ignored* for the session.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
@@ -65,9 +65,6 @@ pub(crate) struct Fight {
     skip: BTreeSet<String>,
     /// The attacks on each monster that timed out.
     timeouts: BTreeMap<String, u32>,
-    /// Flee could not get the character out of a monster to flee from: it is fought if it
-    /// attacks.
-    cornered: bool,
     stall: Stall,
     /// A stalemate with this monster, for the bot to act on.
     stalemate: Option<String>,
@@ -392,7 +389,6 @@ impl Fight {
                 std::slice::from_ref(name),
                 &[],
                 &self.skip,
-                self.cornered,
             )
             .is_some()
         {
@@ -413,7 +409,6 @@ impl Fight {
             &presence.here,
             &presence.attackers,
             &self.skip,
-            self.cornered,
         )
     }
 
@@ -431,11 +426,6 @@ impl Fight {
     /// The monster it fights or last went for.
     pub fn target(&self) -> Option<&str> {
         self.target.as_deref()
-    }
-
-    /// Flee could not leave a monster to flee from (`true`): fight it if it attacks.
-    pub fn set_cornered(&mut self, cornered: bool) {
-        self.cornered = cornered;
     }
 
     /// Open the next fight with `bs` (a sneaker, C-048); `sneaking`, it goes before a spell.

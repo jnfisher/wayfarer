@@ -300,7 +300,7 @@ impl BotRecord {
     }
 }
 
-/// A monster rule as stored: the brain's words for the rule and its source (`never_fight`,
+/// A monster rule as stored: the brain's words for the rule and its source (`ignore`,
 /// `session`); the store does not read them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuleRecord {

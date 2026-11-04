@@ -241,10 +241,10 @@ describe("handshake", () => {
     r.last().open();
     r.last().receive(welcome(session("kasimir", 0)));
     expect(r.client.setMonsterRule("kasimir", " x ", "avoid")).toBe(false);
-    expect(r.client.setMonsterRule("kasimir", " giant rat ", "never_fight")).toBe(true);
+    expect(r.client.setMonsterRule("kasimir", " giant rat ", "ignore")).toBe(true);
     expect(r.client.setMonsterRule("kasimir", "giant rat", null)).toBe(true);
     expect(r.last().sent.slice(-2)).toEqual([
-      { type: "set_monster_rule", session: "kasimir", pattern: "giant rat", rule: "never_fight" },
+      { type: "set_monster_rule", session: "kasimir", pattern: "giant rat", rule: "ignore" },
       { type: "set_monster_rule", session: "kasimir", pattern: "giant rat", rule: null },
     ]);
   });

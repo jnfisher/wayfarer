@@ -64,7 +64,7 @@ pub fn hostile(monsters: &Monsters, name: &str) -> bool {
 
 /// Nothing in the room the bot would go for (`here` as the room showed it): between fights.
 pub fn quiet(monsters: &Monsters, rules: &MonsterRules, here: &[String]) -> bool {
-    target(monsters, rules, here, &[], &BTreeSet::new(), false).is_none()
+    target(monsters, rules, here, &[], &BTreeSet::new()).is_none()
 }
 
 /// Whether the name seen (`fat giant rat`) is one of the monsters `names` (`giant rat`).
@@ -77,37 +77,22 @@ pub fn is_one_of(monsters: &Monsters, seen: &str, names: &[String]) -> bool {
 
 /// What to attack: a hostile monster that is attacking the character first, else the first
 /// hostile one listed here; never one on the skip list. The monster rules (`rules`): one the
-/// bot must *never fight* is attacked only when it attacks, and one to *flee from* only when
-/// it attacks and the bot is `cornered` (there was no way out).
+/// bot *ignores* is attacked only when it attacks.
 pub fn target<'a>(
     monsters: &Monsters,
     rules: &MonsterRules,
     here: &'a [String],
     attackers: &'a [String],
     skip: &BTreeSet<String>,
-    cornered: bool,
 ) -> Option<&'a str> {
     let fightable = |n: &&str| !skip.contains(*n) && hostile(monsters, n);
-    let attacker = attackers
-        .iter()
-        .map(String::as_str)
-        .filter(fightable)
-        .find(|n| cornered || rules.rule_for(n) != Some(MonsterRule::FleeFrom));
+    let attacker = attackers.iter().map(String::as_str).find(fightable);
     attacker.or_else(|| {
-        here.iter().map(String::as_str).filter(fightable).find(|n| {
-            !matches!(
-                rules.rule_for(n),
-                Some(MonsterRule::NeverFight | MonsterRule::FleeFrom)
-            )
-        })
+        here.iter()
+            .map(String::as_str)
+            .filter(fightable)
+            .find(|n| rules.rule_for(n) != Some(MonsterRule::Ignore))
     })
-}
-
-/// The first monster here the bot must *flee from*, if any.
-pub fn flee_from<'a>(rules: &MonsterRules, here: &'a [String]) -> Option<&'a str> {
-    here.iter()
-        .map(String::as_str)
-        .find(|n| rules.rule_for(n) == Some(MonsterRule::FleeFrom))
 }
 
 /// Monsters come to the room: the spawn pass makes some there, or it holds a monster worth
@@ -266,11 +251,11 @@ mod tests {
         };
         let monsters = Monsters::new(vec![mk(1, "giant rat")]);
         let none = MonsterRules::default();
-        let never = MonsterRules::new([("giant rat", MonsterRule::NeverFight)]);
+        let never = MonsterRules::new([("giant rat", MonsterRule::Ignore)]);
         let here = vec!["fat giant rat".to_owned()];
         assert!(quiet(&monsters, &none, &[]));
         assert!(!quiet(&monsters, &none, &here));
-        // A rat it never fights leaves the room quiet.
+        // A rat it ignores leaves the room quiet.
         assert!(quiet(&monsters, &never, &here));
     }
 
@@ -289,35 +274,27 @@ mod tests {
         };
         let monsters = Monsters::new(vec![mk(1, "giant rat"), mk(2, "kobold"), mk(3, "orc")]);
         let rules = MonsterRules::new([
-            ("giant rat", MonsterRule::NeverFight),
-            ("orc", MonsterRule::FleeFrom),
+            ("giant rat", MonsterRule::Ignore),
+            ("orc", MonsterRule::Ignore),
             ("kobold", MonsterRule::Avoid),
         ]);
         let none = BTreeSet::new();
         let s = |v: &[&str]| v.iter().map(|n| (*n).to_owned()).collect::<Vec<_>>();
         let here = s(&["fat giant rat", "orc", "kobold"]);
-        // Never fight and flee from are passed over; avoid is fought.
-        assert_eq!(
-            target(&monsters, &rules, &here, &[], &none, false),
-            Some("kobold")
-        );
-        // A never-fight monster that attacks is fought back; a flee-from one only cornered.
+        // Ignored monsters are passed over; avoid is fought.
+        assert_eq!(target(&monsters, &rules, &here, &[], &none), Some("kobold"));
+        assert_eq!(target(&monsters, &rules, &here[..2], &[], &none), None);
+        // An ignored monster that attacks is fought back.
         let rat = s(&["fat giant rat"]);
         assert_eq!(
-            target(&monsters, &rules, &here[..1], &rat, &none, false),
+            target(&monsters, &rules, &here[..1], &rat, &none),
             Some("fat giant rat")
         );
         let orc = s(&["orc"]);
         assert_eq!(
-            target(&monsters, &rules, &here[1..2], &orc, &none, false),
-            None
-        );
-        assert_eq!(
-            target(&monsters, &rules, &here[1..2], &orc, &none, true),
+            target(&monsters, &rules, &here[1..2], &orc, &none),
             Some("orc")
         );
-        assert_eq!(flee_from(&rules, &here), Some("orc"));
-        assert_eq!(flee_from(&rules, &rat), None);
     }
 
     #[test]

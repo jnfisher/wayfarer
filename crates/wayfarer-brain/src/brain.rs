@@ -336,8 +336,8 @@ pub struct Brain {
     blessings_sent: Option<Vec<wayfarer_proto::Blessings>>,
     /// The bots' flee line, per cent of the maximum HP.
     flee_below: Option<i32>,
-    /// Monsters every bot flees from, as the player's rules (`--flee-from`).
-    flee_from: Vec<String>,
+    /// Monsters every bot ignores, as the player's rules (`--ignore`).
+    ignore: Vec<String>,
     /// The settings every session starts with when there is no settings directory.
     settings: Arc<Settings>,
     /// Where the settings files are: each session gets its own layers (`settings.toml`,
@@ -361,7 +361,7 @@ impl Brain {
             blessings: BTreeMap::new(),
             blessings_sent: None,
             flee_below: None,
-            flee_from: Vec::new(),
+            ignore: Vec::new(),
             settings: Arc::new(Settings::default()),
             settings_dir: None,
         }
@@ -390,11 +390,10 @@ impl Brain {
         self
     }
 
-    /// Every bot flees from monsters whose name holds one of `names`, as if the player had set
-    /// *flee from* for each (`wayfarer brain --flee-from`, the live check's way to name one
-    /// without a UI). Kept with the bot's record like any rule of the player's.
-    pub fn with_flee_from(mut self, names: Vec<String>) -> Self {
-        self.flee_from = names;
+    /// Every bot ignores the monsters whose name holds one of `names`, as if the player had
+    /// set *ignore* for each (`wayfarer brain --ignore`, the live check's way to name them).
+    pub fn with_ignore(mut self, names: Vec<String>) -> Self {
+        self.ignore = names;
         self
     }
 
@@ -519,7 +518,7 @@ impl Brain {
                             self.settings.clone(),
                             self.flee_below,
                         ),
-                        &self.flee_from,
+                        &self.ignore,
                         now,
                     );
                     s.set_blessings(self.blessings.get(&info.id).cloned().unwrap_or_default());

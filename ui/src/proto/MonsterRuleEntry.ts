@@ -5,4 +5,8 @@ import type { RuleSource } from "./RuleSource";
 /**
  * One monster rule: a pattern matches a name that holds it, in any case.
  */
-export type MonsterRuleEntry = { pattern: string, rule: MonsterRuleKind, source: RuleSource, };
+export type MonsterRuleEntry = { pattern: string, rule: MonsterRuleKind, source: RuleSource, 
+/**
+ * Why wayfarer has it, for a default rule (the page's tooltip).
+ */
+reason?: string, };

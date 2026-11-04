@@ -1,8 +1,9 @@
-//! The monster rules (docs/brain.md "Monster rules"): *never fight*, *flee from* and *avoid*
-//! by name, in three layers: wayfarer's defaults ([`DEFAULT_RULES`]), what the bot learned this
-//! session (a stalemate makes a monster *never fight*) and what the player set
-//! (`set_monster_rule`, `wayfarer brain --flee-from`). The last two are kept with the bot's
-//! record. And where the monsters to avoid were last seen, for the router.
+//! The monster rules (docs/brain.md "Monster rules"): *ignore* and *avoid* by name, in three
+//! layers: wayfarer's defaults ([`DEFAULT_RULES`]), what the bot learned this session (a
+//! stalemate makes a monster *ignored*) and what the player set (`set_monster_rule`,
+//! `wayfarer brain --ignore`), which may also switch a rule below it *off*. The last two are kept
+//! with the bot's record; the old *never fight* and *flee from* are read as *ignore* (C-073).
+//! And where the monsters to avoid were last seen, for the router.
 
 use std::collections::{BTreeSet, HashMap};
 use std::time::Duration;
@@ -12,7 +13,7 @@ use wayfarer_proto::{MonsterRuleEntry, MonsterRuleKind, RuleSource};
 use wayfarer_store::RuleRecord;
 use wayfarer_world::{DEFAULT_RULES, Key, MonsterRule, MonsterRules};
 
-/// How long a sighting of a monster to avoid or flee from keeps its room avoided.
+/// How long a sighting of a monster to avoid keeps its room avoided.
 pub const AVOID_MEMORY: Duration = Duration::from_secs(30 * 60);
 
 /// Where a rule the bot keeps came from.
@@ -33,17 +34,18 @@ impl Source {
 
 fn rule_str(r: MonsterRule) -> &'static str {
     match r {
-        MonsterRule::NeverFight => "never_fight",
-        MonsterRule::FleeFrom => "flee_from",
+        MonsterRule::Ignore => "ignore",
         MonsterRule::Avoid => "avoid",
+        MonsterRule::Off => "off",
     }
 }
 
+/// A stored rule: the old `never_fight` and `flee_from` are *ignore* now (C-073).
 fn parse_rule(s: &str) -> Option<MonsterRule> {
     Some(match s {
-        "never_fight" => MonsterRule::NeverFight,
-        "flee_from" => MonsterRule::FleeFrom,
+        "ignore" | "never_fight" | "flee_from" => MonsterRule::Ignore,
         "avoid" => MonsterRule::Avoid,
+        "off" => MonsterRule::Off,
         _ => return None,
     })
 }
@@ -51,27 +53,27 @@ fn parse_rule(s: &str) -> Option<MonsterRule> {
 /// The wire's rule.
 pub fn wire_rule(r: MonsterRule) -> MonsterRuleKind {
     match r {
-        MonsterRule::NeverFight => MonsterRuleKind::NeverFight,
-        MonsterRule::FleeFrom => MonsterRuleKind::FleeFrom,
+        MonsterRule::Ignore => MonsterRuleKind::Ignore,
         MonsterRule::Avoid => MonsterRuleKind::Avoid,
+        MonsterRule::Off => MonsterRuleKind::Off,
     }
 }
 
 /// A rule from the wire.
 pub fn from_wire(r: MonsterRuleKind) -> MonsterRule {
     match r {
-        MonsterRuleKind::NeverFight => MonsterRule::NeverFight,
-        MonsterRuleKind::FleeFrom => MonsterRule::FleeFrom,
+        MonsterRuleKind::Ignore => MonsterRule::Ignore,
         MonsterRuleKind::Avoid => MonsterRule::Avoid,
+        MonsterRuleKind::Off => MonsterRule::Off,
     }
 }
 
-/// A few words for a rule: "never fight", "flee from", "avoid".
+/// A few words for a rule: "ignore", "avoid", "off".
 pub fn describe(r: MonsterRule) -> &'static str {
     match r {
-        MonsterRule::NeverFight => "never fight",
-        MonsterRule::FleeFrom => "flee from",
+        MonsterRule::Ignore => "ignore",
         MonsterRule::Avoid => "avoid",
+        MonsterRule::Off => "off",
     }
 }
 
@@ -148,13 +150,10 @@ impl RuleBook {
         self.rules.rule_for(name)
     }
 
-    /// A stalemate with `name`: *never fight* it from now on, unless a rule already keeps the
-    /// bot from attacking it. Whether that added a rule.
+    /// A stalemate with `name`: *ignore* it from now on, unless a rule already does. Whether
+    /// that added a rule.
     pub fn learn(&mut self, name: &str, at: i64) -> bool {
-        if matches!(
-            self.rule_for(name),
-            Some(MonsterRule::NeverFight | MonsterRule::FleeFrom)
-        ) {
+        if self.rule_for(name) == Some(MonsterRule::Ignore) {
             return false;
         }
         let pattern = name.trim().to_lowercase();
@@ -162,7 +161,7 @@ impl RuleBook {
             .retain(|e| !(e.source == Source::Session && e.pattern.eq_ignore_ascii_case(&pattern)));
         self.entries.push(Entry {
             pattern,
-            rule: MonsterRule::NeverFight,
+            rule: MonsterRule::Ignore,
             source: Source::Session,
             at,
         });
@@ -196,6 +195,27 @@ impl RuleBook {
         true
     }
 
+    /// Remove the top rule for `pattern` (the page's `x`): the player's own (an `off` among
+    /// them, which puts back what it switched off), else a learned one, else the default is
+    /// switched off by a player `off`. Whether anything changed.
+    pub fn remove(&mut self, pattern: &str, at: i64) -> bool {
+        let pattern = pattern.trim();
+        let find = |s: Source| {
+            self.entries
+                .iter()
+                .position(|e| e.source == s && e.pattern.eq_ignore_ascii_case(pattern))
+        };
+        if let Some(i) = find(Source::Player).or_else(|| find(Source::Session)) {
+            self.entries.remove(i);
+            self.compile();
+            return true;
+        }
+        let default = DEFAULT_RULES
+            .iter()
+            .any(|(p, _, _)| p.eq_ignore_ascii_case(pattern));
+        default && self.set(pattern, Some(MonsterRule::Off), at)
+    }
+
     /// What the store keeps: the session's rules and the player's.
     pub fn stored(&self) -> Vec<RuleRecord> {
         self.entries
@@ -211,10 +231,11 @@ impl RuleBook {
 
     /// The wire's `monster_rules`: the defaults, then the session's, then the player's.
     pub fn wire(&self) -> Vec<MonsterRuleEntry> {
-        let defaults = DEFAULT_RULES.iter().map(|&(p, r, _)| MonsterRuleEntry {
+        let defaults = DEFAULT_RULES.iter().map(|&(p, r, why)| MonsterRuleEntry {
             pattern: p.to_owned(),
             rule: wire_rule(r),
             source: RuleSource::Default,
+            reason: Some(why.to_owned()),
         });
         let kept = |s: Source| {
             self.entries
@@ -227,6 +248,7 @@ impl RuleBook {
                         Source::Session => RuleSource::Session,
                         Source::Player => RuleSource::Player,
                     },
+                    reason: None,
                 })
         };
         defaults
@@ -236,7 +258,7 @@ impl RuleBook {
     }
 }
 
-/// A sighting: where a monster to avoid or flee from was last seen, and when.
+/// A sighting: where a monster to avoid was last seen, and when.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Sighting {
     room: Key,
@@ -245,7 +267,7 @@ struct Sighting {
     name: String,
 }
 
-/// Where the monsters to avoid (or flee from) were last seen this session, for
+/// Where the monsters to avoid were last seen this session, for
 /// [`AVOID_MEMORY`]: their rooms are costly to walk through.
 #[derive(Debug, Default)]
 pub(crate) struct Sightings {
@@ -262,10 +284,7 @@ impl Sightings {
         self.last
             .retain(|name, s| s.room != room || names.contains(name));
         for name in here {
-            if matches!(
-                rules.rule_for(name),
-                Some(MonsterRule::Avoid | MonsterRule::FleeFrom)
-            ) {
+            if rules.rule_for(name) == Some(MonsterRule::Avoid) {
                 self.last.insert(
                     name.to_lowercase(),
                     Sighting {
@@ -334,16 +353,16 @@ mod tests {
         let mut book = RuleBook::default();
         assert_eq!(
             book.rule_for("gigantic black ooze"),
-            Some(MonsterRule::FleeFrom)
+            Some(MonsterRule::Ignore)
         );
-        // Already kept off: a stalemate adds nothing.
+        // Already ignored: a stalemate adds nothing.
         assert!(!book.learn("gigantic black ooze", 10));
         assert!(book.learn("Stone Golem", 10));
         assert!(!book.learn("stone golem", 11));
-        assert_eq!(book.rule_for("stone golem"), Some(MonsterRule::NeverFight));
+        assert_eq!(book.rule_for("stone golem"), Some(MonsterRule::Ignore));
         // The player's rule for the same pattern wins over the session's and the default.
-        assert!(book.set("stone golem", Some(MonsterRule::FleeFrom), 12));
-        assert_eq!(book.rule_for("stone golem"), Some(MonsterRule::FleeFrom));
+        assert!(book.set("stone golem", Some(MonsterRule::Avoid), 12));
+        assert_eq!(book.rule_for("stone golem"), Some(MonsterRule::Avoid));
         assert!(book.set("Gigantic Black Ooze", Some(MonsterRule::Avoid), 13));
         assert_eq!(
             book.rule_for("gigantic black ooze"),
@@ -354,7 +373,7 @@ mod tests {
         assert!(!book.set("gigantic black ooze", None, 15));
         assert_eq!(
             book.rule_for("gigantic black ooze"),
-            Some(MonsterRule::FleeFrom)
+            Some(MonsterRule::Ignore)
         );
         let wire: Vec<(String, RuleSource)> = book
             .wire()
@@ -373,6 +392,58 @@ mod tests {
         let again = RuleBook::new(&book.stored());
         assert_eq!(again.wire(), book.wire());
         assert_eq!(again.stored(), book.stored());
+    }
+
+    #[test]
+    fn removing_takes_the_top_rule_off_and_a_default_is_switched_off_and_back() {
+        let mut book = RuleBook::default();
+        assert!(book.learn("stone golem", 10));
+        assert!(book.set("stone golem", Some(MonsterRule::Avoid), 11));
+        // The player's first, then the learned one.
+        assert!(book.remove("Stone Golem", 12));
+        assert_eq!(book.rule_for("stone golem"), Some(MonsterRule::Ignore));
+        assert!(book.remove("stone golem", 13));
+        assert_eq!(book.rule_for("stone golem"), None);
+        assert!(!book.remove("stone golem", 14));
+        // A default: switched off by a player `off`, kept in the store.
+        assert!(book.remove("gigantic black ooze", 15));
+        assert_eq!(book.rule_for("gigantic black ooze"), None);
+        let again = RuleBook::new(&book.stored());
+        assert_eq!(again.rule_for("gigantic black ooze"), None);
+        assert!(
+            again
+                .wire()
+                .iter()
+                .any(|e| e.pattern == "gigantic black ooze"
+                    && e.rule == MonsterRuleKind::Off
+                    && e.source == RuleSource::Player)
+        );
+        // Removing the `off` puts the default back.
+        assert!(book.remove("gigantic black ooze", 16));
+        assert_eq!(
+            book.rule_for("gigantic black ooze"),
+            Some(MonsterRule::Ignore)
+        );
+    }
+
+    #[test]
+    fn the_old_kinds_in_the_store_load_as_ignore() {
+        let stored = |pattern: &str, rule: &str, source: &str| RuleRecord {
+            pattern: pattern.into(),
+            rule: rule.into(),
+            source: source.into(),
+            at: 1,
+        };
+        let book = RuleBook::new(&[
+            stored("stone golem", "never_fight", "session"),
+            stored("fat orc", "flee_from", "player"),
+            stored("kobold", "avoid", "player"),
+        ]);
+        assert_eq!(book.rule_for("stone golem"), Some(MonsterRule::Ignore));
+        assert_eq!(book.rule_for("fat orc"), Some(MonsterRule::Ignore));
+        assert_eq!(book.rule_for("kobold"), Some(MonsterRule::Avoid));
+        let rules: Vec<String> = book.stored().into_iter().map(|r| r.rule).collect();
+        assert_eq!(rules, ["ignore", "ignore", "avoid"]);
     }
 
     #[tokio::test(start_paused = true)]

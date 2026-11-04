@@ -35,7 +35,7 @@ brain restarts without the characters.
 | `--token TOKEN` | the `gateway-token` file in the data directory | The gateway's token, as `wayfarer gateway --new-token` made it. A gateway on a loopback address checks none |
 | `--config PATH` | the user's data directory | The gateway's `wayfarer.toml`; its directory is the data directory |
 | `--store PATH` | `store.sqlite` in the data directory | The brain's store: each bot's state and the statistics ("What it keeps", below). `wayfarer serve` takes it too |
-| `--flee-from NAME` | none | Repeatable: every bot flees on sight from monsters whose name holds NAME (any case), as if the player had set *flee from* for it ("Monster rules", below). Use the full name |
+| `--ignore NAME` | none | Repeatable: every bot ignores monsters whose name holds NAME (any case), as if the player had set *ignore* for it ("Monster rules", below). Use the full name. `--flee-from` is its old name, still read |
 
 The data directory is the gateway's: on macOS `~/Library/Application Support/wayfarer/`
 (`WAYFARER_DATA_DIR` in the dev scripts). Logs go to stderr (`RUST_LOG` sets the level): one
@@ -307,7 +307,7 @@ for the map panel's go box (`docs/web-ui.md`, "The map").
 - **Passing monsters by.** `walk_to` with `fight: false` (the map panel's *fight on the way*
   unticked) makes the journey *passive*: on the way the bot fights nothing, not even a monster
   that attacks the character; it walks on, and the walk does not stop for one. Flee still runs
-  under the flee line (and from a *flee from* monster), and Recover does not rest while the
+  under the flee line, and Recover does not rest while the
   character is attacked. Narrated "Going to Newhaven, Arena, fighting nothing on the way";
   `bot.journey.passive` is set. `journey_fight` changes it on the way: off in the middle of a
   fight, the bot walks out of it; on, it fights from the next room (or here, once it looks).
@@ -487,9 +487,9 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
 
   | Mode | Wants control when | Does |
   |---|---|---|
-  | Flee | HP below 25% (`health.flee_below_hp`) while running, whether or not engaged, with something to run from (a fight, an attacker, or a room that spawns); a monster to *flee from* in the room, whatever the HP; a stalemate; until it is done | Leaves by a confirmed exit toward a room that spawns nothing, keeps running if followed, then hands over to Recover ("Flee", below) |
+  | Flee | HP below 25% (`health.flee_below_hp`) while running, whether or not engaged, with something to run from (a fight, an attacker, or a room that spawns); a stalemate, whatever the HP; until it is done | Leaves by a confirmed exit toward a room that spawns nothing, keeps running if followed, then hands over to Recover ("Flee", below) |
   | Recover | HP below 60% (`health.rest_below_hp`) and not fighting (poison alone is no reason: it lasts until a cure, resting does not end it, and its damage counts against the HP lines); or a rest it began is not finished. A rest starts only when the fight is over: not while a monster Fight would attack is in the room (one the party still fights, say), nor before the `look` after a kill, nor again after the walk to a quiet room, a flee, a cast or anything else ended it with such a monster here (a rest Recover took on but the prompt does not show as `(Resting)` waits for the fight like a new one: Faye kept typing `rest` beside a bandit her party fought, 2026-10-26); a rest under way (`(Resting)`) is woken only by an attack, and under the flee line Flee goes first | Rests where it stands (a lair or an arena too: spawns are slow enough, John, 2026-10-24). With `health.rest_quiet_room` on: in this room if nothing spawns here; else walks (through the walker, each step confirmed) to the nearest room within 5 steps where nothing spawns, never a player's house (a room the pack has no name for), and rests there; else rests here anyway. `rest` again when the next prompt lacks `(Resting)` (three times, then a 30 s wait; `You are too sick to rest!` waits 30 s too). Rested at 95%, it walks back home. Each walk is tried twice (a fight can stop one): after two walks out that were stopped it rests where it is, against the quiet-room rule, and says so with a warning ("Recover: resting in Newhaven, Arena though it spawns: 2 walks to a quiet room were stopped"); after two walks home that were stopped it waits where it rested: "Rested; could not walk home, waiting here" |
-  | Fight | Engaged; or a monster worth fighting is here | Picks one that is attacking the character first, else the first listed, by the monster rules ("Monster rules", below: never one to *never fight* unless it attacks, never one to *flee from*); sends `a <its last word>` once and lets auto-combat run. After `*Combat Off*` or a kill it looks (`look`) and picks the next. A target the game refuses (`You do not see rat here!`, `Your weapon has no effect`) is left alone for the rest of the session. Four rounds of the character's swings with no damage dealt, one of them glancing off the target's armour at least, are a stalemate: it gives the target up and the bot leaves ("Monster rules"). Never leaves the room itself |
+  | Fight | Engaged; or a monster worth fighting is here | Picks one that is attacking the character first, else the first listed, by the monster rules ("Monster rules", below: never one it *ignores* unless it attacks); sends `a <its last word>` once and lets auto-combat run. After `*Combat Off*` or a kill it looks (`look`) and picks the next. A target the game refuses (`You do not see rat here!`, `Your weapon has no effect`) is left alone for the rest of the session. Four rounds of the character's swings with no damage dealt, one of them glancing off the target's armour at least, are a stalemate: it gives the target up and the bot leaves ("Monster rules"). Never leaves the room itself |
   | Idle | Otherwise | Sends nothing: "Waiting here" |
 
 - **Worth fighting**: every record the name finds (adjectives stripped: `fat giant rat` is a
@@ -580,13 +580,13 @@ sent yet is dropped, and Flee acts at the next prompt.
   back". Flee does not take control again in that room until HP is over the line. Only a
   log-off under attack that finds no way out still ends in `break` and a stopped bot, so that
   the log-off can go on.
-- **Whatever the HP**: a monster to *flee from* seen in the room (listed, or arriving; whether
-  or not it attacks), and a stalemate, set a flee off at full HP too ("Monster rules", below):
-  "Fleeing: gigantic black ooze is here (flee from): south to ...", "Fleeing: stalemate with
-  gigantic black ooze: ...". Such a flee is over at the first room nothing follows into,
-  quiet or not. Cornered, it does not stop the bot: it breaks off a fight, stays, and fights
-  only what attacks it ("Flee: cornered: not sure which room this is; fighting only what
-  attacks"); it does not try again in that room.
+- **Whatever the HP**: a stalemate sets a flee off at full HP too ("Monster rules", below):
+  "Fleeing: stalemate with gigantic black ooze: ...". Such a flee is over at the first room
+  nothing follows into, quiet or not. Cornered, it does not stop the bot: it breaks off a
+  fight, stays, and fights only what attacks it ("Flee: cornered: not sure which room this is;
+  fighting only what attacks"). No monster is fled from on sight: the *flee from* rule that
+  did that became *ignore* (C-073), after the gigantic black ooze sent a party's four members
+  fleeing four ways.
 - Narrated as it goes: "Fleeing: HP 22%: up to Newhaven, Narrow Road", "Followed by large giant
   rat: east to Newhaven, Narrow Path", "Flee: in Newhaven, Narrow Path, watching for
   followers", "Safe in Newhaven, Narrow Path". The snapshot's `bot.mode` is `flee` meanwhile.
@@ -620,39 +620,46 @@ stayed):
 
 | Rule | The bot |
 |---|---|
-| *never fight* | does not attack it; fights back if it attacks (the flee line still applies) |
-| *flee from* | leaves the room as soon as it is seen, whatever the HP (Flee, above); fights it only when it attacks and Flee found no way out |
+| *ignore* | never attacks it and never leaves because of it; fights back if it attacks (the flee line still applies). A stop where only ignored monsters are left is cleared once the bot's own combat has been quiet `bot.stop_quiet_seconds` |
 | *avoid* | does not walk through the room it was last seen in when there is another way |
+| *off* | the player's only: switches a default or learned rule off for the pattern |
+
+*Never fight* and *flee from* (C-035) became *ignore* on 2026-11-04 (C-073): a stored rule of
+either kind, a `set_monster_rule` with either name and `--flee-from` are read as *ignore*.
 
 - **Matching** as MegaMud's monster lists: a pattern matches a name that holds it, in any case,
   and the longest matching pattern wins. So `ooze` would match the glittering ooze too (monster
   172, fightable): use the full name.
 - **Three layers**, later over earlier for the same pattern: wayfarer's **defaults** (in code,
   `DEFAULT_RULES` in `crates/wayfarer-world/src/monsters.rs`, one entry with why: the
-  *gigantic black ooze* is *flee from*: 2,500 HP, 500 regenerated a round, damage reduction
+  *gigantic black ooze* is *ignored*: 2,500 HP, 500 regenerated a round, damage reduction
   40); what the bot learned this **session** (a stalemate); and the **player**'s
-  (`set_monster_rule` from the stats tab, or `wayfarer brain --flee-from NAME`, repeatable).
+  (`set_monster_rule` from the stats tab, or `wayfarer brain --ignore NAME`, repeatable).
   The session's and the player's are kept with the bot's record (the store's `monster_rules`)
-  and survive a brain restart. The snapshot's `bot.monster_rules` lists all three.
+  and survive a brain restart. The snapshot's `bot.monster_rules` lists all three, a default
+  with its reason.
+- **Removing** (the stats tab's `x`, `set_monster_rule` with `null`) takes off the top rule for
+  the pattern: the player's own; else a learned one, forgotten; else the default, switched off
+  for this character by a player *off* (kept, shown struck through with **put back**, which
+  removes the *off*).
 - **A stalemate**: the character's own swings at its target are counted by round (a round's
   swings come within 2 s; rounds are 5 s apart). Four rounds in a row with no damage dealt,
   one of them a glance at least (`Your swing at <name> hits, but glances off its armour.`):
   "Stalemate: my swings do nothing to gigantic black ooze; leaving". Fight gives the target
-  up, the monster becomes *never fight* for the session ("Monster rule: never fight
-  gigantic black ooze (a stalemate)"), and the bot leaves as Flee does. A monster already kept
-  off by a rule is not added again.
-- **Sightings**: where a monster to avoid or flee from (or one a stalemate gave up) was last
+  up, the monster becomes *ignored* for the session ("Monster rule: ignore gigantic black
+  ooze (a stalemate)"), and the bot leaves as Flee does. A monster already ignored is not
+  added again.
+- **Sightings**: where a monster to avoid (or one a stalemate gave up) was last
   seen this session, for 30 minutes. The router treats those rooms as costly (1,000 a step,
   not impassable: another way wins when there is one, the only way is still taken). Recover
   does not walk back home into such a room ("Waiting here: large giant rat was last seen in
   Newhaven, Arena") until the sighting is forgotten; a loop stop in one is passed by this time
   round ("Skipping stop 2/3 ...: gigantic black ooze was last seen there").
-- **Mid-walk**: a monster to flee from in the room the bot's walk ends in stops the walk, as
-  the flee line does; one in a room the walk only passes through does not (the next step
+- **Mid-walk**: a stalemate's flee waiting in the room the bot's walk ends in stops the walk,
+  as the flee line does; one in a room the walk only passes through does not (the next step
   leaves it anyway, and a flee would turn the walk back).
-- **In Task mode** a flee from a monster the bot does not fight ends that stop for this time
-  round, not cleared ("Stop 1/3 Newhaven, Arena: leaving it for now"), and the loop goes on
-  from the next stop.
+- **In Task mode** a stalemate's flee ends that stop for this time round, not cleared ("Stop
+  1/3 Newhaven, Arena: leaving it for now"), and the loop goes on from the next stop.
 
 ## Running a loop
 

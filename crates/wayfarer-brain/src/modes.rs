@@ -714,7 +714,7 @@ pub(crate) struct Bot {
     journey: Option<Journey>,
     /// The player's move by hand landed here: its home becomes this room (C-072).
     rehome: Option<Key>,
-    /// Monsters a stalemate gave up, for the session to make *never fight*.
+    /// Monsters a stalemate gave up, for the session to make *ignored*.
     learned: Vec<String>,
 }
 
@@ -1065,17 +1065,10 @@ impl Bot {
         says
     }
 
-    /// A monster to flee from is in the room (or a stalemate wants out), and Flee would take
-    /// control now: what the bot has in flight gives way, as for the flee line.
-    pub fn flee_urgent(
-        &self,
-        rules: &MonsterRules,
-        presence: &Presence,
-        room: Option<Key>,
-    ) -> bool {
-        self.active()
-            && self.acting != Some(BotMode::Flee)
-            && self.flee.sighted(rules, presence, room)
+    /// A stalemate wants out, and Flee would take control now: what the bot has in flight
+    /// gives way, as for the flee line.
+    pub fn flee_urgent(&self) -> bool {
+        self.active() && self.acting != Some(BotMode::Flee) && self.flee.forced_waiting()
     }
 
     /// The monsters stalemates gave up since last asked: the session makes them *never
@@ -1364,8 +1357,6 @@ impl Bot {
         if let Some(name) = self.fight.take_stalemate() {
             self.stalemate(name, &mut says);
         }
-        self.fight
-            .set_cornered(self.flee.trapped_in(v.room) || self.flee.cornered_in(v.room));
         // A sneaker opens with a backstab (C-048); not sneaking after all, `bs` is a plain
         // attack, which is fine.
         self.sneak.arrived(v.room);

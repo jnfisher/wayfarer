@@ -423,8 +423,7 @@ const OWN_COMBAT: [&str; 10] = [
 impl Session {
     /// A session the brain has just learned of: its history up to now is fed silently. A bot
     /// the store has running or paused for it is resumed once that is done. Its monster rules
-    /// are the store's, with *flee from* for each of `flee_from` (`--flee-from`) as the
-    /// player's.
+    /// are the store's, with *ignore* for each of `ignore` (`--ignore`) as the player's.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         info: &SessionInfo,
@@ -433,7 +432,7 @@ impl Session {
         store: Option<Arc<Mutex<Store>>>,
         clock: Arc<dyn Clock>,
         settings: SettingsSource,
-        flee_from: &[String],
+        ignore: &[String],
         now: Instant,
     ) -> Self {
         let (resolved, settings_warning) = settings.resolve(&info.id, None);
@@ -446,8 +445,8 @@ impl Session {
             .filter(|b| b.state != BotState::Stopped)
             .cloned();
         let mut rules = RuleBook::new(ledger.stored().map_or(&[], |b| &b.monster_rules));
-        for name in flee_from {
-            rules.set(name, Some(world::MonsterRule::FleeFrom), unix(clock.now()));
+        for name in ignore {
+            rules.set(name, Some(world::MonsterRule::Ignore), unix(clock.now()));
         }
         let detect = Detector::new(ledger.rule_set(&info.server));
         Self {
@@ -881,8 +880,8 @@ impl Session {
     }
 
     /// Who is in the room changed: where the monsters to avoid were last seen (the router
-    /// keeps out of those rooms), and a monster to flee from makes what the bot has in flight
-    /// give way.
+    /// keeps out of those rooms), and a stalemate's flee waiting makes what the bot has in
+    /// flight give way.
     fn sighted(&mut self, ev: &GameEvent, now: Instant, out: &mut Vec<ToGateway>) {
         use GameEvent as G;
         let shown = matches!(
@@ -912,21 +911,17 @@ impl Session {
             && self.walker.walking()
             && room.is_some()
             && self.walker.destination() != room;
-        if !passing
-            && self
-                .bot
-                .flee_urgent(self.rules.rules(), &self.presence, room)
-        {
+        if !passing && self.bot.flee_urgent() {
             self.give_way(out);
         }
     }
 
-    /// The monsters stalemates gave up become *never fight* for the session (kept with the
-    /// bot), and their room is kept out of as a monster to avoid's would be.
+    /// The monsters stalemates gave up become *ignored* for the session (kept with the bot),
+    /// and their room is kept out of as a monster to avoid's would be.
     fn learn(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
         for name in self.bot.take_learned() {
             if self.rules.learn(&name, unix(self.clock.now())) {
-                out.push(self.notice(&format!("Monster rule: never fight {name} (a stalemate)")));
+                out.push(self.notice(&format!("Monster rule: ignore {name} (a stalemate)")));
             }
             if let Some(room) = self.position.best() {
                 self.sightings.mark(room, &name, now);
@@ -935,7 +930,8 @@ impl Session {
         }
     }
 
-    /// `set_monster_rule`: the player's rule for monsters whose name holds `pattern`, or none.
+    /// `set_monster_rule`: the player's rule for monsters whose name holds `pattern`; none
+    /// removes the top rule for it (`RuleBook::remove`: a default is switched off).
     pub fn set_monster_rule(
         &mut self,
         pattern: &str,
@@ -948,7 +944,12 @@ impl Session {
             out.push(self.warning("set_monster_rule: the pattern needs two characters or more"));
             return;
         }
-        if !self.rules.set(pattern, rule, unix(self.clock.now())) {
+        let at = unix(self.clock.now());
+        let changed = match rule {
+            Some(r) => self.rules.set(pattern, Some(r), at),
+            None => self.rules.remove(pattern, at),
+        };
+        if !changed {
             return;
         }
         let text = match rule {
@@ -965,12 +966,6 @@ impl Session {
             self.sightings
                 .seen(self.rules.rules(), room, &self.presence.here, now);
             self.position.traveller.avoid = self.sightings.rooms(now);
-        }
-        if self
-            .bot
-            .flee_urgent(self.rules.rules(), &self.presence, self.position.best())
-        {
-            self.give_way(out);
         }
         self.drive(now, out);
         self.flush_views(out);

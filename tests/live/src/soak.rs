@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 use crate::gateway::Gateway;
-use crate::{Ctx, bot_field, flee_from_args, placed_brain, stop_brain, walk_out_to};
+use crate::{Ctx, bot_field, ignore_args, placed_brain, stop_brain, walk_out_to};
 
 /// What `--scenario soak` was asked for.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -242,7 +242,7 @@ const SETTLE: Duration = Duration::from_secs(180);
 /// walk to the anchor, the brain stopped; the numbers in `ctx.soak`. Whether it all went.
 pub async fn scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
     let soak = ctx.args.soak.clone();
-    let extra = flee_from_args(&ctx.args.flee_from);
+    let extra = ignore_args(&ctx.args.ignore);
     let Some((running, start)) = placed_brain(ctx, gw, "soak", &extra).await else {
         return false;
     };

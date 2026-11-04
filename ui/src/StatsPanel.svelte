@@ -13,7 +13,7 @@
     timeTitle,
     type Stats,
   } from "./lib/stats";
-  import type { CharacterState, MonsterRuleKind, SessionInfo, StatsPart } from "./proto";
+  import type { CharacterState, MonsterRuleEntry, MonsterRuleKind, SessionInfo, StatsPart } from "./proto";
 
   interface Props {
     /** The focused tile's session, which the panel follows. */
@@ -34,14 +34,25 @@
   let { session, character, stats, attached, onrefresh, onreset = () => {}, onrule = () => {} }: Props = $props();
 
   const rules = $derived(character?.bot?.monster_rules ?? []);
+  /** The rules a player adds; `off` comes only from removing a default. */
   const RULES: { rule: MonsterRuleKind; label: string }[] = [
-    { rule: "flee_from", label: "flee from" },
-    { rule: "never_fight", label: "never fight" },
+    { rule: "ignore", label: "ignore" },
     { rule: "avoid", label: "avoid" },
   ];
   const ruleLabel = (r: MonsterRuleKind) => RULES.find((x) => x.rule === r)?.label ?? r;
+  /** Patterns the player switched off (a player `off`): the rule under it is shown struck. */
+  const switchedOff = $derived(
+    new Set(rules.filter((r) => r.source === "player" && r.rule === "off").map((r) => r.pattern.toLowerCase())),
+  );
+  /** What the `x` on a row does, for its tooltip. */
+  function removeTitle(r: MonsterRuleEntry): string {
+    if (r.rule === "off") return "Put the rule back";
+    if (r.source === "default") return "Switch this default off for this character";
+    if (r.source === "session") return "Forget this learned rule";
+    return "Remove this rule";
+  }
   let pattern = $state("");
-  let newRule: MonsterRuleKind = $state("flee_from");
+  let newRule: MonsterRuleKind = $state("ignore");
 
   function addRule(e: SubmitEvent) {
     e.preventDefault();
@@ -185,12 +196,19 @@
     <section class="rules" aria-label="Monster rules">
       <div class="tools"><span>monster rules</span></div>
       {#each rules as r (r.source + ":" + r.pattern)}
-        <div class="rule" data-source={r.source}>
+        {@const struck = r.rule !== "off" && r.source !== "player" && switchedOff.has(r.pattern.toLowerCase())}
+        <div class="rule" data-source={r.source} data-off={r.rule === "off" || struck} title={r.reason ?? ""}>
           <span class="r-rule">{ruleLabel(r.rule)}</span>
           <span class="r-pattern">{r.pattern}</span>
           <span class="r-source">{r.source}</span>
-          {#if r.source === "player"}
-            <button aria-label={`remove ${r.pattern}`} onclick={() => onrule(session.id, r.pattern, null)}>x</button>
+          {#if r.rule === "off"}
+            <button aria-label={`put back ${r.pattern}`} title={removeTitle(r)} onclick={() => onrule(session.id, r.pattern, null)}
+              >put back</button
+            >
+          {:else if !struck}
+            <button aria-label={`remove ${r.pattern}`} title={removeTitle(r)} onclick={() => onrule(session.id, r.pattern, null)}
+              >x</button
+            >
           {/if}
         </div>
       {/each}
@@ -397,6 +415,10 @@
   }
   .rule[data-source="default"] {
     color: var(--dim);
+  }
+  .rule[data-off="true"] .r-rule,
+  .rule[data-off="true"] .r-pattern {
+    text-decoration: line-through;
   }
   .r-rule {
     width: 11ch;

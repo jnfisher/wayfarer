@@ -3,4 +3,4 @@
 /**
  * What the bot does about a monster, by name.
  */
-export type MonsterRuleKind = "never_fight" | "flee_from" | "avoid";
+export type MonsterRuleKind = "ignore" | "avoid" | "off";
