@@ -43,10 +43,13 @@ one the bot learned from a stalemate.
 ## Behaviour
 
 - **Ignore** (the new kind, wire `ignore`). The bot never starts a fight with an ignored monster
-  and never picks it as a target, even while it is in the room. If it attacks the character, the
-  bot fights back. (*Needs John* if he wants "never, even when attacked"; the default is to fight
-  back, as *never fight* does.)
-  - Nothing about an ignored monster starts Flee. The bot flees only by HP.
+  and never picks it as a target, even while it is in the room, and even when it attacks the
+  character: the bot ignores it and keeps going (John, 2026-11-04: "the ooze will attack, we
+  just need to ignore it and keep going").
+  - Its blows are not a fight. A walk, a loop or an errand goes on under them; no rest starts
+    (the game would end it). The bot says once per attacker "Ignoring NAME: not fighting back".
+  - Nothing about an ignored monster starts Flee. The bot flees only by HP, and under the flee
+    line it runs from an ignored attacker as from any other.
   - At a loop stop where only ignored monsters are left, the stop counts as cleared, as it does
     today (`bot.stop_quiet_seconds`).
 - ***Never fight* and *ignore* become one kind.** They differ today only in Flee, and Flee goes
@@ -83,7 +86,7 @@ one the bot learned from a stalemate.
 ## Done when
 
 - With the ooze in the room, no member of a party leaves. Each fights what else is there, and
-  the ooze is never targeted unless it attacks.
+  the ooze is never targeted, even when it attacks.
 - An old store with `flee_from` and `never_fight` rows loads them as `ignore`.
 - In the page, John can remove the ooze default, a stalemate-learned rule and a player rule,
   and can put the ooze back.

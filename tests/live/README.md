@@ -271,8 +271,8 @@ the numbers are.
 
 1. **The world pack** and **a brain**, as in "walk" (the brain's store is `store.sqlite` in
    the run's `NN-soak` directory). Each `--ignore NAME` (once `--flee-from`) goes to the brain
-   as `wayfarer brain --ignore NAME`: the bot never attacks a monster whose name holds it
-   unless it attacks (`docs/brain.md` "Monster rules"), so a soak can declare one without a
+   as `wayfarer brain --ignore NAME`: the bot never attacks a monster whose name holds it,
+   even one that attacks it (`docs/brain.md` "Monster rules"), so a soak can declare one without a
    UI. The gigantic black ooze is *ignored* by default.
 2. **The loop**: `loops_request` around the anchor (default: the room the re-sync placed the
    character in; radius 8) and the first generated loop, or `--loop ID`: a generated loop's
@@ -347,8 +347,8 @@ Newhaven Arena's monsters; the fight scenario attacks the thieves). `flee-from` 
    "flee".
 2. **To the Arena** and **Start**, as in "fight".
 3. **Ignored: no flee, no leaving**: for a minute the bot stays in the Arena. It fails on any
-   "Flee..." or "Walking to ..." narration, or the bot stopping. A fight a monster starts is
-   fought back and counted, not a failure.
+   "Flee..." or "Walking to ..." narration, a "Fight..." one (an ignored monster that attacks
+   is not fought back), or the bot stopping. It reports how many attackers it ignored.
 4. **Stop the bot**, walk out to the Narrow Road, stop the brain; the gateway logs off as in
    M0.
 

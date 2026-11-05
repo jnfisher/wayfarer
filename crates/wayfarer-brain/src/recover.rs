@@ -158,8 +158,9 @@ impl Recover {
 
 impl Mode for Recover {
     fn wants(&self, v: &View) -> Option<String> {
-        // A fight comes first: Fight takes the character while engaged or attacked.
-        if v.engaged || !v.presence.attackers.is_empty() {
+        // A fight comes first: Fight takes the character while engaged or attacked. An ignored
+        // monster's blows end a rest, so none starts under them: the bot keeps going (C-073).
+        if v.engaged || !v.presence.attackers.is_empty() || !v.presence.ignored.is_empty() {
             return None;
         }
         if self.heal_due(v) {

@@ -153,19 +153,31 @@ async fn an_ignored_monster_is_not_attacked_and_one_beside_it_is() {
     assert!(rules_of(&seen).contains(&entry(RAT, MonsterRuleKind::Ignore, RuleSource::Player)));
 }
 
+/// C-073: an ignored monster that attacks is not fought back, nor fled from above the flee
+/// line: the bot says so once and keeps going.
 #[tokio::test(start_paused = true)]
-async fn an_ignored_monster_that_attacks_is_fought() {
+async fn an_ignored_monster_that_attacks_is_not_fought_back() {
     let brain = Brain::new(world(), clock(), None);
     let (mut g, run) = arena_with(brain, &[RAT]).await;
     g.set_rule("giant rat", Some(MonsterRuleKind::Ignore)).await;
     start(&mut g, &[RAT], 35).await;
     g.narrated("Waiting here").await;
-    g.expect("a rat", line(ENGAGED, 33));
     g.output(&line("The large giant rat lunges at you!", 33))
         .await;
-    g.narrated("Fight: large giant rat").await;
-    let (_, played) = g.close(run).await;
-    assert_eq!(played, ["st", "look", "a rat"]);
+    g.narrated("Ignoring large giant rat: not fighting back")
+        .await;
+    g.idle(Duration::from_secs(30)).await;
+    g.output(&line("The large giant rat lunges at you!", 31))
+        .await;
+    g.idle(Duration::from_secs(30)).await;
+    g.freeze();
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look"]);
+    let said = notices(&seen);
+    assert!(!said.iter().any(|s| s.starts_with("Fight")), "{said:?}");
+    assert!(!said.iter().any(|s| s.starts_with("Flee")), "{said:?}");
+    let ignoring = said.iter().filter(|s| s.starts_with("Ignoring")).count();
+    assert_eq!(ignoring, 1, "{said:?}");
 }
 
 /// The character's swing glancing off the rat's armour, a round of the fight.

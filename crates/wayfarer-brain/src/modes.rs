@@ -30,10 +30,13 @@ use crate::walker::Say;
 /// Who is in the room, as the game has shown it: the monsters and players of the last `Also
 /// here:`, with the arrivals, departures and deaths since; and those that attacked the
 /// character since. A player is an attacker only once a PvP line says so (`pvp`).
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct Presence {
     pub here: Vec<String>,
     pub attackers: Vec<String>,
+    /// Attackers the monster rules ignore, set aside by [`Presence::heeded`] for the modes;
+    /// always empty in the session's own presence.
+    pub ignored: Vec<String>,
     /// The players of the last `Also here:`.
     players: Vec<String>,
     /// Players a PvP line showed attacking the character.
@@ -145,6 +148,22 @@ impl Presence {
 }
 
 impl Presence {
+    /// The room as the modes see it (C-073): an attacker the rules ignore is not an attacker.
+    /// Nothing fights it back, waits on it or ends a walk for it: the bot keeps going. It is
+    /// moved to `ignored`, which Flee still counts under the flee line.
+    pub fn heeded(&self, rules: &MonsterRules) -> std::borrow::Cow<'_, Presence> {
+        let ignored = |a: &String| rules.rule_for(a) == Some(wayfarer_world::MonsterRule::Ignore);
+        if !self.attackers.iter().any(ignored) {
+            return std::borrow::Cow::Borrowed(self);
+        }
+        let mut p = self.clone();
+        let (ignored, fought): (Vec<String>, Vec<String>) =
+            p.attackers.drain(..).partition(|a| ignored(a));
+        p.attackers = fought;
+        p.ignored = ignored;
+        std::borrow::Cow::Owned(p)
+    }
+
     /// Who a monster's death text (`monsters`: every monster that dies with it) is about: the
     /// one attacking the character, if one of them fits, else the first here that does. Many
     /// monsters share a death text, so its list alone does not say.
@@ -718,6 +737,8 @@ pub(crate) struct Bot {
     in_party: bool,
     /// Monsters a stalemate gave up, for the session to make *ignored*.
     learned: Vec<String>,
+    /// Ignored monsters attacking it, said once each (C-073).
+    ignoring: Vec<String>,
 }
 
 impl Bot {
@@ -1368,6 +1389,14 @@ impl Bot {
         let mut says = Vec::new();
         if self.state != BotState::Running || self.pausing.is_some() {
             return (None, says);
+        }
+        // An ignored monster attacking: not fought back, said once while it attacks.
+        self.ignoring.retain(|n| v.presence.ignored.contains(n));
+        for name in &v.presence.ignored {
+            if !self.ignoring.contains(name) {
+                self.ignoring.push(name.clone());
+                self.narrate(format!("Ignoring {name}: not fighting back"), &mut says);
+            }
         }
         // A round of swings that is over counts now: it may be the stalemate's last.
         self.fight.settle(v.now);

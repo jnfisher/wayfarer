@@ -89,8 +89,8 @@ pub fn is_first(monsters: &Monsters, rules: &MonsterRules, name: &str) -> bool {
 /// What to attack: a hostile monster to attack first ([`is_first`]: a boss, by default), in the
 /// order the room lists them, whatever else attacks; else one that is attacking the character;
 /// else the first hostile one listed here. Never one on the skip list (the game refused it, or
-/// its attacks went unanswered). The monster rules (`rules`): one the bot *ignores* is attacked
-/// only when it attacks.
+/// its attacks went unanswered), and never one the rules *ignore*, even when it attacks
+/// (C-073: the bot keeps going).
 pub fn target<'a>(
     monsters: &Monsters,
     rules: &MonsterRules,
@@ -98,7 +98,9 @@ pub fn target<'a>(
     attackers: &'a [String],
     skip: &BTreeSet<String>,
 ) -> Option<&'a str> {
-    let fightable = |n: &&str| !skip.contains(*n) && hostile(monsters, n);
+    let fightable = |n: &&str| {
+        !skip.contains(*n) && hostile(monsters, n) && rules.rule_for(n) != Some(MonsterRule::Ignore)
+    };
     let first = here
         .iter()
         .chain(attackers)
@@ -106,12 +108,9 @@ pub fn target<'a>(
         .filter(fightable)
         .find(|n| is_first(monsters, rules, n));
     let attacker = || attackers.iter().map(String::as_str).find(fightable);
-    first.or_else(attacker).or_else(|| {
-        here.iter()
-            .map(String::as_str)
-            .filter(fightable)
-            .find(|n| rules.rule_for(n) != Some(MonsterRule::Ignore))
-    })
+    first
+        .or_else(attacker)
+        .or_else(|| here.iter().map(String::as_str).find(fightable))
 }
 
 /// Monsters come to the room: the spawn pass makes some there, or it holds a monster worth
@@ -303,16 +302,13 @@ mod tests {
         // Ignored monsters are passed over; avoid is fought.
         assert_eq!(target(&monsters, &rules, &here, &[], &none), Some("kobold"));
         assert_eq!(target(&monsters, &rules, &here[..2], &[], &none), None);
-        // An ignored monster that attacks is fought back.
+        // An ignored monster that attacks is not fought back; one it does fight is.
         let rat = s(&["fat giant rat"]);
+        assert_eq!(target(&monsters, &rules, &here[..1], &rat, &none), None);
+        let both = s(&["orc", "kobold"]);
         assert_eq!(
-            target(&monsters, &rules, &here[..1], &rat, &none),
-            Some("fat giant rat")
-        );
-        let orc = s(&["orc"]);
-        assert_eq!(
-            target(&monsters, &rules, &here[1..2], &orc, &none),
-            Some("orc")
+            target(&monsters, &rules, &here[1..], &both, &none),
+            Some("kobold")
         );
     }
 

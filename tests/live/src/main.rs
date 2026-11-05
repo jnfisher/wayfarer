@@ -2543,8 +2543,7 @@ fn ignore_args(names: &[String]) -> Vec<String> {
 
 /// The ignore scenario (C-073), with the gateway in the realm: a brain ignoring the Arena's
 /// monsters; rest to full HP; to the Arena; Start; for [`IGNORE_WATCH`] the bot neither flees
-/// nor leaves the Arena, and starts no fight of its own (one a monster starts it fights back).
-/// Then Stop, out of the Arena, the brain stopped. Whether all of it passed.
+/// nor leaves the Arena, nor fights, even a monster that attacks it. Then Stop, out of the Arena, the brain stopped. Whether all of it passed.
 async fn ignore_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
     let names: Vec<String> = if ctx.args.ignore.is_empty() {
         ARENA_MONSTERS.map(str::to_owned).to_vec()
@@ -2559,7 +2558,7 @@ async fn ignore_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
     let notices = gw.notices.len();
     ok = ok && fight_in_the_arena(ctx, gw, start, false).await;
 
-    // 5. A while in the Arena with them: no flee, no leaving, no fight it starts.
+    // 5. A while in the Arena with them: no flee, no leaving, no fight.
     if ok {
         let started = Instant::now();
         let watched = gw
@@ -2572,6 +2571,11 @@ async fn ignore_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
                 said.iter()
                     .find(|n| n.starts_with("Flee") || n.starts_with("Walking to"))
                     .map(|n| Err(format!("it left: {n}")))
+                    .or_else(|| {
+                        said.iter()
+                            .find(|n| n.starts_with("Fight"))
+                            .map(|n| Err(format!("it fought: {n}")))
+                    })
             })
             .await;
         let watched = match watched {
@@ -2579,9 +2583,9 @@ async fn ignore_scenario(ctx: &mut Ctx, gw: &mut Gateway) -> bool {
             // Nothing went wrong for the whole watch.
             Err(_) => {
                 let said = after(gw, notices);
-                let fights = said.iter().filter(|n| n.starts_with("Fight: ")).count();
+                let ignored = said.iter().filter(|n| n.starts_with("Ignoring ")).count();
                 Ok(format!(
-                    "stayed {} s; {fights} fight lines (each one a monster started)",
+                    "stayed {} s, fought nothing; {ignored} attackers ignored",
                     IGNORE_WATCH.as_secs()
                 ))
             }

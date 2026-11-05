@@ -2970,8 +2970,10 @@ impl Session {
         if self.errand.is_none() {
             return;
         }
+        // An ignored monster's blows do not end an errand: it keeps going (C-073).
+        let heeded = self.presence.heeded(self.rules.rules());
         let attacked =
-            !self.presence.attackers.is_empty() || self.character.state().in_combat == Some(true);
+            !heeded.attackers.is_empty() || self.character.state().in_combat == Some(true);
         if self.bot.running() || attacked || self.mortally_wounded() {
             let e = self.errand.take().expect("an errand");
             self.executor.cancel();
@@ -3102,6 +3104,8 @@ impl Session {
         let in_combat = self.combat(now);
         let regen = self.regen();
         let c = self.character.state();
+        // An attacker the rules ignore is not an attacker to the modes (C-073).
+        let heeded = self.presence.heeded(self.rules.rules());
         let view = View {
             atlas: &atlas,
             now,
@@ -3112,7 +3116,7 @@ impl Session {
             certain: self.position.belief.certain(),
             traveller: &self.position.traveller,
             doors: &self.position.traveller.doors,
-            presence: &self.presence,
+            presence: &heeded,
             party: &self.party_role,
             rules: self.rules.rules(),
             sightings: &self.sightings,

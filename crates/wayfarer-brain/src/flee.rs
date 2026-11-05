@@ -298,7 +298,8 @@ impl Mode for Flee {
         if self.cornered.is_some() && self.cornered == v.room {
             return None;
         }
-        let attacked = !v.presence.attackers.is_empty();
+        // An ignored monster's blows count here: under the line it is run from too.
+        let attacked = !v.presence.attackers.is_empty() || !v.presence.ignored.is_empty();
         // Fled already: Recover rests, unless a monster attacks again. Nothing to run from
         // in a quiet room either (HP lost to poison, say).
         let threat = v.engaged || attacked || spawns_here(v.atlas, v.room, v.certain);
@@ -339,7 +340,8 @@ impl Mode for Flee {
                     let hostile = |n: &&String| hostile(&v.atlas.monsters, n);
                     self.arrived.iter().find(hostile).cloned()
                 })
-                .or_else(|| v.presence.attackers.first().cloned());
+                .or_else(|| v.presence.attackers.first().cloned())
+                .or_else(|| v.presence.ignored.first().cloned());
             if follower.is_none() && v.now < until {
                 return Step::wait(format!("Flee: in {here}, watching for followers"));
             }
@@ -366,6 +368,7 @@ impl Mode for Flee {
         } else if self.forced.is_none()
             && !v.engaged
             && v.presence.attackers.is_empty()
+            && v.presence.ignored.is_empty()
             && !spawns_here(v.atlas, v.room, v.certain)
         {
             // Nothing to run from, and nothing spawns here.
@@ -395,7 +398,7 @@ impl Mode for Flee {
             return self.corner(v, format!("cornered in {here}: no exit to flee by"));
         };
         let p = v.presence;
-        for name in p.attackers.iter().chain(&p.here) {
+        for name in p.attackers.iter().chain(&p.ignored).chain(&p.here) {
             if !self.chasers.contains(name) {
                 self.chasers.push(name.clone());
             }
