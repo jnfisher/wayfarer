@@ -226,6 +226,33 @@ then CP), and choose again. Quests are occasional big boosts. [F, John]
   (Stone Tunnel 1:1541, 42 rooms; 70 HP / 100 exp / max hit 16, AC 14) are ordinary 5-minute
   group spawns in the data (no room has them as `genmonster`), so the cluster explains the lore.
   Access needs the black star key (7% drop from slum dark cultists). [C data, F lore]
+- **The slime beast really is instant** [C data + source; F t51]. It is the specific monster
+  (`specmon`) of Huge Cave, Refuse Pit 1:1765, with `maxalive` 1 and `regenhrs` 0, so once
+  it dies it is made again as soon as a player enters the room or LOOKs into it from next
+  door (`user_allowed_in_room`, `LJNUTIL.C:2525-2533`; `game-data.md` "RF_SPECALIVE"). The
+  loop is the two rooms: fall in from 1:1764 (`nw`, Action exit), kill, leave `se`, repeat
+  (t51: "roam northwest and southeast only"). Slime beast: 170 HP, AC 20, MR 54, 250 exp,
+  hits 9-30, Non Living (so harm/agony and other Affects-Living spells do nothing; it is not
+  undead, so turn/disrupt don't work either). Exp/hp is only 1.47, so it pays when you
+  kill it in a round or two (t51 gives 216k/hr theoretical, 180k/hr area max). The room also
+  has a group spawn (max 4, regen 5 min) from the Huge Cave orc pool, whose half-ogre
+  warriors and orc fanatics hit 45-50, and the way in crosses the Huge Cave (99 steps,
+  light -175). Bosses that are specific monsters with `regenhrs` > 0 (orc warleader 2:40,
+  gnoll chieftain, nomadic chieftain 1 h; white jelly 3 h) wait out their hours first.
+- **Forum exp/hr "area maxes"** (t51, https://www.mudinfo.net/viewtopic.php?t=51) [F]: per
+  character, by strong characters, so they rank areas rather than predict a level-15 bot.
+  Graveyard and Strange Mansion 25k; cave worm regen 75k; gnolls with chieftain 75k; Frozen
+  Caverns without the yeti 80k; Rhudaur money-changer loop 128k; slime beast regen 180k;
+  Shadowfist 185k; dark-elf training grounds 250k; salamanders 300-400k; sandbar 410k;
+  Mithril Mines 500k; Duergars with the Lord 975k; dragons 1.0-1.4M; Crimson Fortress 2.0M;
+  rakshasha 2.7M; Storm Fortress 4.1M (5.6M with bosses). t51's level lists put Frozen
+  Caverns at 26-30+ and gnolls at 20-35, later than this file's 15-20 (the data's hits,
+  21-22 for wolves, support the earlier band). Its Priest/Missionary list (12-30): slums,
+  cave worms, slime beast, Dark Caverns, Graveyard, Ancient Crypt, marble tomb, gnolls,
+  wooden passages, Small Pyramid ("Priests are hard to script solo"); Mage/Druid (12-25):
+  cave worms, Dark Caverns, Orc Mansion, kobolds, gnolls, wooden passages, Elder Grove.
+  Rhudaur and Shadowfist are "non-hostile to evil": in the source that is Lawful Evil
+  monsters leaving outlaws (40+ EP) alone until fought (`combat.md`).
 - Score candidate areas on paper by the exp on offer from safe monsters, a weighted count of
   spawn rooms, and distance. Then **measure exp/hr and prefer measured results**. [C]
 - Measured for a level-1 Kang Witchunter: Newhaven Arena about 2,830 exp/hr, Silvermere slums
