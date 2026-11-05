@@ -1028,3 +1028,57 @@ async fn on_1_20_the_leader_guards_the_follower_it_was_told_to() {
         assert_eq!(ms(FOLLOWER).guarded_by.as_deref(), Some("Penny"));
     }
 }
+
+/// The notices a session's brain said, in order.
+fn notices_of(g: &Gateway, session: &str) -> Vec<String> {
+    g.seen
+        .iter()
+        .filter_map(|m| match m {
+            ToGateway::Notice {
+                session: Some(s),
+                text,
+                ..
+            } if s == session => Some(text.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// C-074, Sasha on the Thrag run: a follower in the party whose leader the beliefs put in
+/// another room (as around a move), under its flee line and attacked, runs nowhere on its
+/// own: it says it asks the leader to run, and fights on.
+#[tokio::test(start_paused = true)]
+async fn a_follower_in_the_party_never_flees_on_its_own() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    formed(&mut g).await;
+    // The leader's belief moves up the stairs; the follower's stays in the Arena, which
+    // spawns, so its Flee would have something to run from.
+    g.output(LEADER, shown(NARROW_ROAD)).await;
+    g.world.hp.insert(FOLLOWER.to_owned(), 6);
+    let lines_before = g.lines.len();
+    // Its maximum HP, as the rest test gives it; then a blow at 6 of 35.
+    g.output(
+        FOLLOWER,
+        said("Health:    6/35    [17%]").replace("[HP=35", "[HP=6"),
+    )
+    .await;
+    g.tell(
+        FOLLOWER,
+        &said("The large giant rat lunges at you for 3 damage!"),
+    )
+    .await;
+    g.play(15).await;
+    let moved: Vec<&String> = g.lines[lines_before..]
+        .iter()
+        .filter(|(s, t)| s == FOLLOWER && is_direction(t))
+        .map(|(_, t)| t)
+        .collect();
+    assert!(moved.is_empty(), "the follower moved: {moved:?}");
+    let said = notices_of(&g, FOLLOWER);
+    assert!(
+        said.iter()
+            .any(|n| n == "Under my flee line: asking Penny to run"),
+        "{said:?}"
+    );
+    assert!(!said.iter().any(|n| n.starts_with("Fleeing")), "{said:?}");
+}

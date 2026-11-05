@@ -194,3 +194,13 @@ fn capitalised_monsters_in_also_here() {
         ]
     );
 }
+
+#[test]
+fn an_exits_line_with_a_blank_exit_keeps_the_slot() {
+    // Live, 2026-11-04: the Labyrinth Passage (1/1972) after `river` (C-076).
+    let evs = events("Obvious exits: nB\x08orth, , wI\x08est\r\n");
+    assert_eq!(names(&evs), ["room_exits"]);
+    let exits = parse_exits(evs[0].text("exits").unwrap());
+    let dirs: Vec<Option<&str>> = exits.iter().map(|e| e.dir.as_deref()).collect();
+    assert_eq!(dirs, [Some("north"), None, Some("west")]);
+}

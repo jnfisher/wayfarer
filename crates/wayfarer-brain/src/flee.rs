@@ -10,28 +10,20 @@
 //! the room comes it waits [`FLEE_WATCH`] at the prompt for a follower: the follow text, a
 //! hostile monster arriving, or an attack.
 //!
-//! Some flees do not wait for the flee line: a monster to *flee from* seen in the room (the
-//! monster rules), and a stalemate Fight gave up ([`Flee::run_from`]). Those stop at the first
-//! room nothing followed into, and a cornered one does not stop the bot: it stays, and fights
-//! only what attacks it.
+//! One flee does not wait for the flee line: a stalemate Fight gave up ([`Flee::run_from`]).
+//! It stops at the first room nothing followed into, and a cornered one does not stop the bot:
+//! it stays, and fights only what attacks it. No monster is fled from on sight: the rule that
+//! did that became *ignore* (C-073).
 
 use std::collections::BTreeSet;
 
 use tokio::time::Instant;
 use wayfarer_parse::typed::{GameEvent, Refusal};
-use wayfarer_world::{Key, LockState, MonsterRules, mm};
+use wayfarer_world::{Key, LockState, mm};
 
 use crate::executor::{Action, Confirmed, Expect, Outcome, Refused};
-use crate::modes::{Mode, Presence, Step, View};
-use crate::policy::{
-    Candidate, FLEE_BELOW, FLEE_WATCH, flee_exits, flee_from, hostile, spawns_here,
-};
-
-/// A monster to flee from in the room: listed, come in, or attacking (one that attacks can be
-/// missing from the room's list: `<Name> appears!`, `kb/combat.md`).
-fn to_flee<'a>(rules: &MonsterRules, p: &'a Presence) -> Option<&'a str> {
-    flee_from(rules, &p.here).or_else(|| flee_from(rules, &p.attackers))
-}
+use crate::modes::{Mode, Step, View};
+use crate::policy::{Candidate, FLEE_BELOW, FLEE_WATCH, flee_exits, hostile, spawns_here};
 
 /// The long name of direction `d`: `north`, `up`.
 pub(crate) fn dir_name(d: u8) -> &'static str {
@@ -99,11 +91,8 @@ pub(crate) struct Flee {
     give_up: Option<String>,
     /// A flee started, at this HP: for the run's statistics.
     started: Option<i32>,
-    /// A flee whatever the HP, and what it says: a monster to flee from is here, or a
-    /// stalemate. Set until the flee is over.
+    /// A flee whatever the HP, and what it says: a stalemate. Set until the flee is over.
     forced: Option<String>,
-    /// A forced flee found no way out of this room: it is not tried again here.
-    trapped: Option<Key>,
     /// A forced flee finished (or was cornered), for the bot to move on.
     forced_done: bool,
     /// An HP flee could not shake what followed it (or had no exit) in this room: the
@@ -143,7 +132,6 @@ impl Flee {
             give_up: None,
             started: None,
             forced: None,
-            trapped: None,
             forced_done: false,
             cornered: None,
         }
@@ -170,8 +158,8 @@ impl Flee {
         self.hops = 0;
     }
 
-    /// Leave the room now, whatever the HP, saying `why` (a stalemate): as a monster to flee
-    /// from does. Not while a flee is going on.
+    /// Leave the room now, whatever the HP, saying `why` (a stalemate). Not while a flee is
+    /// going on.
     pub fn run_from(&mut self, why: String) {
         if self.active {
             return;
@@ -181,28 +169,14 @@ impl Flee {
         self.hops = 0;
     }
 
-    /// A monster to flee from is here, and a flee for it would start now: what is in flight
-    /// should give way.
-    pub fn sighted(&self, rules: &MonsterRules, presence: &Presence, room: Option<Key>) -> bool {
-        !self.active
-            && !self.leaving
-            && (self.forced.is_some()
-                || (to_flee(rules, presence).is_some() && !self.trapped_in(room)))
+    /// A forced flee (a stalemate) would start now: what is in flight should give way.
+    pub fn forced_waiting(&self) -> bool {
+        !self.active && !self.leaving && self.forced.is_some()
     }
 
     /// Whether the flee that just finished was a forced one, once.
     pub fn take_forced_done(&mut self) -> bool {
         std::mem::take(&mut self.forced_done)
-    }
-
-    /// An HP flee turned to fight in `room` (it could not shake what followed it).
-    pub fn cornered_in(&self, room: Option<Key>) -> bool {
-        self.cornered.is_some() && self.cornered == room
-    }
-
-    /// A forced flee could not get out of `room`.
-    pub fn trapped_in(&self, room: Option<Key>) -> bool {
-        self.trapped.is_some() && self.trapped == room
     }
 
     /// An HP value: back at or above the line, the next fall is a new flee with its hops.
@@ -256,7 +230,6 @@ impl Flee {
     /// can). Only a log-off under attack gives up: the bot stops itself so the log-off can go on.
     fn corner(&mut self, v: &View, why: String) -> Step {
         if self.forced.is_some() && !self.leaving {
-            self.trapped = v.room;
             let why = format!("{why}; fighting only what attacks");
             let step = self.finish(format!("Flee: {why}"));
             if v.engaged {
@@ -314,21 +287,19 @@ impl Mode for Flee {
         if let Some(why) = &self.forced {
             return Some(why.clone());
         }
-        // With its party's leader, it runs when the leader runs: the game's follow takes it
-        // out behind the leader, and a flee of its own would break the party (C-042).
-        if v.party.with_leader() {
+        // In its leader's party it runs only when the leader runs: the game's follow takes it
+        // out behind the leader, and a flee of its own would break the party (C-042). Joined is
+        // the test, not the room: the room beliefs of two characters disagree for a moment
+        // around a move, and a follower that fled then split the party (C-074).
+        if v.party.joined_follower() {
             return None;
-        }
-        if let Some(name) = to_flee(v.rules, v.presence)
-            && !self.trapped_in(v.room)
-        {
-            return Some(format!("{name} is here (flee from)"));
         }
         let hp = v.hp.filter(|&hp| hp < self.below)?;
         if self.cornered.is_some() && self.cornered == v.room {
             return None;
         }
-        let attacked = !v.presence.attackers.is_empty();
+        // An ignored monster's blows count here: under the line it is run from too.
+        let attacked = !v.presence.attackers.is_empty() || !v.presence.ignored.is_empty();
         // Fled already: Recover rests, unless a monster attacks again. Nothing to run from
         // in a quiet room either (HP lost to poison, say).
         let threat = v.engaged || attacked || spawns_here(v.atlas, v.room, v.certain);
@@ -340,15 +311,6 @@ impl Mode for Flee {
 
     fn step(&mut self, v: &View) -> Step {
         let here = v.room_name(v.room);
-        if !self.active
-            && !self.leaving
-            && self.forced.is_none()
-            && let Some(name) = to_flee(v.rules, v.presence)
-            && !self.trapped_in(v.room)
-        {
-            self.forced = Some(format!("Fleeing: {name} is here (flee from)"));
-            self.hops = 0;
-        }
         let line = match (&self.forced, v.hp) {
             _ if self.leaving => "Logging off under attack: fleeing first".to_owned(),
             (Some(why), _) => why.clone(),
@@ -378,7 +340,8 @@ impl Mode for Flee {
                     let hostile = |n: &&String| hostile(&v.atlas.monsters, n);
                     self.arrived.iter().find(hostile).cloned()
                 })
-                .or_else(|| v.presence.attackers.first().cloned());
+                .or_else(|| v.presence.attackers.first().cloned())
+                .or_else(|| v.presence.ignored.first().cloned());
             if follower.is_none() && v.now < until {
                 return Step::wait(format!("Flee: in {here}, watching for followers"));
             }
@@ -405,6 +368,7 @@ impl Mode for Flee {
         } else if self.forced.is_none()
             && !v.engaged
             && v.presence.attackers.is_empty()
+            && v.presence.ignored.is_empty()
             && !spawns_here(v.atlas, v.room, v.certain)
         {
             // Nothing to run from, and nothing spawns here.
@@ -434,7 +398,7 @@ impl Mode for Flee {
             return self.corner(v, format!("cornered in {here}: no exit to flee by"));
         };
         let p = v.presence;
-        for name in p.attackers.iter().chain(&p.here) {
+        for name in p.attackers.iter().chain(&p.ignored).chain(&p.here) {
             if !self.chasers.contains(name) {
                 self.chasers.push(name.clone());
             }

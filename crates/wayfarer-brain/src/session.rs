@@ -352,6 +352,11 @@ pub(crate) struct Session {
     party_stuck: Option<(Key, String, Instant)>,
     /// The walk in progress is the bot's.
     bot_walk: bool,
+    /// A follower in a party under its flee line has said it asks the leader to run (C-074).
+    asked_to_run: bool,
+    /// A move the player made by hand has gone to the game and the room it leads to has not
+    /// been seen yet: the room seen next becomes the bot's home (C-072). A refusal clears it.
+    hand_moving: bool,
     /// The session stopped the walk in progress (`stop_walk`): its end is no give-up.
     walk_halted: bool,
     /// A walk asked for while the bot's action was in flight: it starts once that is answered.
@@ -420,8 +425,7 @@ const OWN_COMBAT: [&str; 10] = [
 impl Session {
     /// A session the brain has just learned of: its history up to now is fed silently. A bot
     /// the store has running or paused for it is resumed once that is done. Its monster rules
-    /// are the store's, with *flee from* for each of `flee_from` (`--flee-from`) as the
-    /// player's.
+    /// are the store's, with *ignore* for each of `ignore` (`--ignore`) as the player's.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         info: &SessionInfo,
@@ -430,7 +434,7 @@ impl Session {
         store: Option<Arc<Mutex<Store>>>,
         clock: Arc<dyn Clock>,
         settings: SettingsSource,
-        flee_from: &[String],
+        ignore: &[String],
         now: Instant,
     ) -> Self {
         let (resolved, settings_warning) = settings.resolve(&info.id, None);
@@ -443,8 +447,8 @@ impl Session {
             .filter(|b| b.state != BotState::Stopped)
             .cloned();
         let mut rules = RuleBook::new(ledger.stored().map_or(&[], |b| &b.monster_rules));
-        for name in flee_from {
-            rules.set(name, Some(world::MonsterRule::FleeFrom), unix(clock.now()));
+        for name in ignore {
+            rules.set(name, Some(world::MonsterRule::Ignore), unix(clock.now()));
         }
         let detect = Detector::new(ledger.rule_set(&info.server));
         Self {
@@ -483,6 +487,8 @@ impl Session {
             party_role: PartyRole::None,
             party_stuck: None,
             bot_walk: false,
+            asked_to_run: false,
+            hand_moving: false,
             walk_halted: false,
             walk_after: None,
             loops: HashMap::new(),
@@ -732,8 +738,13 @@ impl Session {
                 // Every HP value, not only those the bot sees at its ticks: a walk or an
                 // action in flight does not hold Flee back.
                 let c = self.character.state();
-                // A follower with its leader runs when the leader does (the coordinator).
-                if !self.party_role.with_leader() && self.bot.hp(hp_percent(c.hp, c.hp_max)) {
+                // A follower in its leader's party runs when the leader does (the
+                // coordinator), wherever it believes the leader is (C-074).
+                let hp = hp_percent(c.hp, c.hp_max);
+                if self.party_role.joined_follower() {
+                    self.bot.hp(hp);
+                    self.ask_to_run(hp, out);
+                } else if self.bot.hp(hp) {
                     self.give_way(out);
                 }
             }
@@ -752,10 +763,23 @@ impl Session {
                 *answered = true;
             }
             if let Some(atlas) = &self.atlas
-                && self.position.event(atlas, &typed, now).is_some()
+                && let Some(seen) = self.position.event(atlas, &typed, now)
             {
                 self.executor
                     .room_seen_in(Some(self.position.belief.clone()));
+                if self.hand_moving
+                    && seen.title.is_some()
+                    && let Some(here) = self.position.best()
+                {
+                    self.hand_moving = false;
+                    self.bot.arrived_by_hand(here);
+                }
+            }
+            if matches!(
+                typed,
+                GameEvent::MoveRefused { .. } | GameEvent::DoorClosed { .. }
+            ) {
+                self.hand_moving = false;
             }
             self.executor.event(&typed);
             combat |= typed == GameEvent::CombatEngaged;
@@ -864,8 +888,8 @@ impl Session {
     }
 
     /// Who is in the room changed: where the monsters to avoid were last seen (the router
-    /// keeps out of those rooms), and a monster to flee from makes what the bot has in flight
-    /// give way.
+    /// keeps out of those rooms), and a stalemate's flee waiting makes what the bot has in
+    /// flight give way.
     fn sighted(&mut self, ev: &GameEvent, now: Instant, out: &mut Vec<ToGateway>) {
         use GameEvent as G;
         let shown = matches!(
@@ -879,6 +903,16 @@ impl Session {
         );
         if !shown {
             return;
+        }
+        // A boss seen: its default, *attack first*, shows in the rules list (C-075).
+        if let Some(atlas) = &self.atlas {
+            for name in self.presence.here.iter().chain(&self.presence.attackers) {
+                let records = atlas.monsters.by_name(name);
+                if let Some(boss) = records.iter().find(|m| atlas.monsters.is_boss(m.number)) {
+                    let hours = atlas.monsters.regen_hours(boss.number);
+                    self.rules.saw_boss(&boss.name, hours);
+                }
+            }
         }
         let room = self.position.best();
         if let Some(room) = room.filter(|_| self.position.belief.certain())
@@ -895,21 +929,17 @@ impl Session {
             && self.walker.walking()
             && room.is_some()
             && self.walker.destination() != room;
-        if !passing
-            && self
-                .bot
-                .flee_urgent(self.rules.rules(), &self.presence, room)
-        {
+        if !passing && self.bot.flee_urgent() {
             self.give_way(out);
         }
     }
 
-    /// The monsters stalemates gave up become *never fight* for the session (kept with the
-    /// bot), and their room is kept out of as a monster to avoid's would be.
+    /// The monsters stalemates gave up become *ignored* for the session (kept with the bot),
+    /// and their room is kept out of as a monster to avoid's would be.
     fn learn(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
         for name in self.bot.take_learned() {
             if self.rules.learn(&name, unix(self.clock.now())) {
-                out.push(self.notice(&format!("Monster rule: never fight {name} (a stalemate)")));
+                out.push(self.notice(&format!("Monster rule: ignore {name} (a stalemate)")));
             }
             if let Some(room) = self.position.best() {
                 self.sightings.mark(room, &name, now);
@@ -918,7 +948,8 @@ impl Session {
         }
     }
 
-    /// `set_monster_rule`: the player's rule for monsters whose name holds `pattern`, or none.
+    /// `set_monster_rule`: the player's rule for monsters whose name holds `pattern`; none
+    /// removes the top rule for it (`RuleBook::remove`: a default is switched off).
     pub fn set_monster_rule(
         &mut self,
         pattern: &str,
@@ -931,7 +962,12 @@ impl Session {
             out.push(self.warning("set_monster_rule: the pattern needs two characters or more"));
             return;
         }
-        if !self.rules.set(pattern, rule, unix(self.clock.now())) {
+        let at = unix(self.clock.now());
+        let changed = match rule {
+            Some(r) => self.rules.set(pattern, Some(r), at),
+            None => self.rules.remove(pattern, at),
+        };
+        if !changed {
             return;
         }
         let text = match rule {
@@ -948,12 +984,6 @@ impl Session {
             self.sightings
                 .seen(self.rules.rules(), room, &self.presence.here, now);
             self.position.traveller.avoid = self.sightings.rooms(now);
-        }
-        if self
-            .bot
-            .flee_urgent(self.rules.rules(), &self.presence, self.position.best())
-        {
-            self.give_way(out);
         }
         self.drive(now, out);
         self.flush_views(out);
@@ -1647,6 +1677,7 @@ impl Session {
             .is_some_and(|a| self.position.is_move(a, text))
         {
             self.hand_move(out);
+            self.hand_moving = true;
         } else if self.walker.walking() && !self.bot_walk {
             // The player comes first (docs/plan/02-architecture.md "Input arbitration").
             self.stop_walk("you typed a line", out);
@@ -1707,6 +1738,7 @@ impl Session {
             self.stop_walk("you pressed a key", out);
         }
         self.hand_move(out);
+        self.hand_moving = true;
         self.flush_views(out);
     }
 
@@ -1761,6 +1793,13 @@ impl Session {
         }
         let line = self.typed.pop_front().expect("a typed line");
         self.send_own(&line.text, now, out);
+        if self
+            .atlas
+            .as_ref()
+            .is_some_and(|a| self.position.is_move(a, &line.text))
+        {
+            self.hand_moving = true;
+        }
         // A re-sync command after it waits for an idle prompt, as after any typed line.
         if let Resync::Want { idle, .. } = &mut self.resync {
             *idle = true;
@@ -1797,6 +1836,16 @@ impl Session {
 
     /// Send one of the brain's own lines to the game.
     fn send_own(&mut self, cmd: &str, now: Instant, out: &mut Vec<ToGateway>) {
+        // A move of the brain's own: the room seen next is not the player's move's (a typed
+        // one sets it again after this, C-072).
+        if self.hand_moving
+            && self
+                .atlas
+                .as_ref()
+                .is_some_and(|a| self.position.is_move(a, cmd))
+        {
+            self.hand_moving = false;
+        }
         self.parser.sent(cmd);
         self.ledger.combat(now).sent(cmd);
         if let Some(atlas) = &self.atlas {
@@ -2921,8 +2970,10 @@ impl Session {
         if self.errand.is_none() {
             return;
         }
+        // An ignored monster's blows do not end an errand: it keeps going (C-073).
+        let heeded = self.presence.heeded(self.rules.rules());
         let attacked =
-            !self.presence.attackers.is_empty() || self.character.state().in_combat == Some(true);
+            !heeded.attackers.is_empty() || self.character.state().in_combat == Some(true);
         if self.bot.running() || attacked || self.mortally_wounded() {
             let e = self.errand.take().expect("an errand");
             self.executor.cancel();
@@ -3053,6 +3104,8 @@ impl Session {
         let in_combat = self.combat(now);
         let regen = self.regen();
         let c = self.character.state();
+        // An attacker the rules ignore is not an attacker to the modes (C-073).
+        let heeded = self.presence.heeded(self.rules.rules());
         let view = View {
             atlas: &atlas,
             now,
@@ -3063,7 +3116,7 @@ impl Session {
             certain: self.position.belief.certain(),
             traveller: &self.position.traveller,
             doors: &self.position.traveller.doors,
-            presence: &self.presence,
+            presence: &heeded,
             party: &self.party_role,
             rules: self.rules.rules(),
             sightings: &self.sightings,
@@ -3302,7 +3355,25 @@ impl Session {
 
     /// The coordinator's role for this session. Made a follower, it stops the loop it ran:
     /// it goes where the party goes.
+    /// A follower in its leader's party under its flee line: it says once, each time it goes
+    /// under, that it asks the leader to run (the coordinator's party flee does it) (C-074).
+    fn ask_to_run(&mut self, hp: Option<i32>, out: &mut Vec<ToGateway>) {
+        let under = self.bot.active() && hp.is_some_and(|h| h < self.bot.flee_below());
+        if !under {
+            self.asked_to_run = false;
+            return;
+        }
+        if std::mem::replace(&mut self.asked_to_run, true) {
+            return;
+        }
+        if let Some(leader) = self.party_role.joined_leader() {
+            let text = format!("Under my flee line: asking {leader} to run");
+            out.push(self.notice(&text));
+        }
+    }
+
     pub(crate) fn set_party_role(&mut self, role: PartyRole, out: &mut Vec<ToGateway>) {
+        self.bot.set_in_party(role.joined_follower());
         // A walk back that found no way is tried again later, or when the leader moves.
         let now = self.clock.instant();
         if self.party_stuck.as_ref().is_some_and(|(to, _, at)| {

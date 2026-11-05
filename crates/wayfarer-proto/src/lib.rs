@@ -476,15 +476,38 @@ pub struct Bot {
 }
 
 /// What the bot does about a monster, by name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "snake_case")]
 pub enum MonsterRuleKind {
-    /// Never attack it; fight back if it attacks.
-    NeverFight,
-    /// Leave the room as soon as it is seen, whatever the HP.
-    FleeFrom,
+    /// Never attack it and never leave because of it; fight back if it attacks. The old
+    /// `never_fight` and `flee_from` are read as this (C-073).
+    Ignore,
     /// Keep out of the room it was last seen in when there is another way.
     Avoid,
+    /// Attack it before anything else in the room, attackers included; every boss by default
+    /// (C-075).
+    First,
+    /// The player switched a default or learned rule off for this pattern.
+    Off,
+}
+
+// By hand, for the old names: `ts-rs` does not read serde's `alias`.
+impl<'de> Deserialize<'de> for MonsterRuleKind {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        Ok(match s.as_str() {
+            "ignore" | "never_fight" | "flee_from" => MonsterRuleKind::Ignore,
+            "avoid" => MonsterRuleKind::Avoid,
+            "first" => MonsterRuleKind::First,
+            "off" => MonsterRuleKind::Off,
+            other => {
+                return Err(serde::de::Error::unknown_variant(
+                    other,
+                    &["ignore", "avoid", "first", "off"],
+                ));
+            }
+        })
+    }
 }
 
 /// Where a monster rule comes from.
@@ -495,7 +518,7 @@ pub enum RuleSource {
     Default,
     /// The bot learned it this session: a fight that was a stalemate.
     Session,
-    /// The player set it (`set_monster_rule`, or the brain's `--flee-from`).
+    /// The player set it (`set_monster_rule`, or the brain's `--ignore`).
     Player,
 }
 
@@ -505,6 +528,10 @@ pub struct MonsterRuleEntry {
     pub pattern: String,
     pub rule: MonsterRuleKind,
     pub source: RuleSource,
+    /// Why wayfarer has it, for a default rule (the page's tooltip).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub reason: Option<String>,
 }
 
 /// The loop the bot runs, and where it is on it.

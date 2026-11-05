@@ -6,7 +6,7 @@
 //! A fight can be a stalemate: the target's armour takes every blow (`glances off its
 //! armour`) and it never dies. After [`STALEMATE_ROUNDS`] rounds of the character's swings with
 //! no damage dealt, at least one of them a glance, Fight gives the target up: the bot leaves
-//! as Flee does and the monster becomes *never fight* for the session.
+//! as Flee does and the monster becomes *ignored* for the session.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
@@ -17,7 +17,7 @@ use wayfarer_parse::typed::GameEvent;
 use crate::brain::Atlas;
 use crate::executor::{Action, Expect, Outcome, Refused};
 use crate::modes::{Mode, Presence, Step, View};
-use crate::policy::{attack_word, target};
+use crate::policy::{attack_word, hostile, is_first, target};
 use crate::spellcraft::PartyCast;
 use wayfarer_world::MonsterRules;
 
@@ -65,12 +65,12 @@ pub(crate) struct Fight {
     skip: BTreeSet<String>,
     /// The attacks on each monster that timed out.
     timeouts: BTreeMap<String, u32>,
-    /// Flee could not get the character out of a monster to flee from: it is fought if it
-    /// attacks.
-    cornered: bool,
     stall: Stall,
     /// A stalemate with this monster, for the bot to act on.
     stalemate: Option<String>,
+    /// The monster to attack first it switched to mid-fight (C-075): once per arrival, so a
+    /// round that shows it again sends nothing more.
+    switched_to: Option<String>,
     /// The game refused an attack spell; the hold starts at the next step.
     spell_refused: bool,
     /// No attack spells until then.
@@ -146,6 +146,9 @@ impl Mode for Fight {
                 return step;
             }
             if let Some(step) = self.weapon_now(v) {
+                return step;
+            }
+            if let Some(step) = self.switch_to_first(v) {
                 return step;
             }
             let t = self.target.as_deref().unwrap_or("in combat");
@@ -338,6 +341,45 @@ impl Fight {
         self.heal_ready = Some(now + HEAL_GAP);
     }
 
+    /// A monster to attack first (a boss, by default) is here while the character fights
+    /// another: attack it at once, once for each time it comes (C-075). Thrag's wolves came
+    /// first on the Thrag run, attacking, and the party fought them with Thrag in the room.
+    fn switch_to_first(&mut self, v: &View) -> Option<Step> {
+        if self
+            .target
+            .as_deref()
+            .is_some_and(|t| is_first(&v.atlas.monsters, v.rules, t))
+        {
+            return None;
+        }
+        let first = v
+            .presence
+            .here
+            .iter()
+            .chain(&v.presence.attackers)
+            .map(String::as_str)
+            .filter(|n| !self.skip.contains(*n) && hostile(&v.atlas.monsters, n))
+            .find(|n| is_first(&v.atlas.monsters, v.rules, n));
+        let Some(first) = first else {
+            self.switched_to = None;
+            return None;
+        };
+        if self.switched_to.as_deref() == Some(first) {
+            return None;
+        }
+        let first = first.to_owned();
+        let from = self.target.replace(first.clone());
+        self.switched_to = Some(first.clone());
+        self.stall = Stall::default();
+        self.spell_fight = false;
+        let attack = format!("{} {}", v.attack_command(), attack_word(&first));
+        let why = match from {
+            Some(from) => format!("Fight: {first} is here: switching from {from}"),
+            None => format!("Fight: {first} is here: switching to it"),
+        };
+        Some(Step::send(Action::new(attack, Expect::Engaged), why))
+    }
+
     /// A heal for another member of the party in the room, or the party heal (C-043); the fight
     /// goes on at once after the cast, as after its own heal.
     fn heal_mates(&mut self, v: &View) -> Option<Step> {
@@ -375,10 +417,16 @@ impl Fight {
         ))
     }
 
-    /// The monster to go for: the party leader's, when this follower is with it and nothing
-    /// attacks it (exp is shared only among those fighting the monster that dies,
+    /// The monster to go for: one to attack first, if one is here; else the party leader's, when
+    /// this follower is with it and nothing attacks it (exp is shared only among those fighting the monster that dies,
     /// `kb/grouping.md` §9) and its own rules would fight it; else its own pick.
     fn choose<'a>(&self, v: &View<'a>) -> Option<&'a str> {
+        // A monster to attack first (a boss) comes before the leader's target too (C-075).
+        if let Some(own) = self.pick(v.atlas, v.rules, v.presence)
+            && is_first(&v.atlas.monsters, v.rules, own)
+        {
+            return Some(own);
+        }
         if v.presence.attackers.is_empty()
             && let Some(lead) = v.party.assist()
             && let Some(name) = v
@@ -392,7 +440,6 @@ impl Fight {
                 std::slice::from_ref(name),
                 &[],
                 &self.skip,
-                self.cornered,
             )
             .is_some()
         {
@@ -413,7 +460,6 @@ impl Fight {
             &presence.here,
             &presence.attackers,
             &self.skip,
-            self.cornered,
         )
     }
 
@@ -431,11 +477,6 @@ impl Fight {
     /// The monster it fights or last went for.
     pub fn target(&self) -> Option<&str> {
         self.target.as_deref()
-    }
-
-    /// Flee could not leave a monster to flee from (`true`): fight it if it attacks.
-    pub fn set_cornered(&mut self, cornered: bool) {
-        self.cornered = cornered;
     }
 
     /// Open the next fight with `bs` (a sneaker, C-048); `sneaking`, it goes before a spell.

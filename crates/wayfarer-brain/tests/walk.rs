@@ -717,6 +717,35 @@ async fn a_hidden_exit_opened_shows_by_its_own_name_and_is_walked() {
     assert_eq!(played, ["push eye", "look", "e"]);
 }
 
+/// The Labyrinth Passage with the brass plaque (1:1972): `river` opens east, whose name message
+/// is blank, so the exits line reads `north, , west` (live, 2026-11-04; C-076). The player says
+/// it; the empty slot is east, which shows, so a walk through goes at once, with no phrase again
+/// (without the slot read as east, the walk went 13 steps round by the north).
+#[tokio::test(start_paused = true)]
+async fn a_hidden_exit_listed_as_a_blank_slot_shows_and_is_walked() {
+    let (plaque, beyond) = ((1, 1972), (1, 1983));
+    let shut = room(plaque);
+    assert!(shut.contains("Obvious exits: north, west"), "{shut}");
+    let open = shut.replace("Obvious exits: north, west", "Obvious exits: north, , west");
+    let (mut g, run) = Game::start(SessionState::Realm, plaque).await;
+    // The player said `river` before asking: the Go to's re-sync looks and sees it open.
+    g.expect("look", open);
+    g.expect("e", room(beyond));
+    g.walk_to_short(beyond, Some(false)).await;
+    let mut said = Vec::new();
+    let end = loop {
+        let n = g.walk_narration().await;
+        said.push(n.clone());
+        if n.starts_with("Arrived") || n.starts_with("Stopped") || n.starts_with("Not ") {
+            break n;
+        }
+    };
+    assert!(end.starts_with("Arrived: "), "{said:?}");
+    let (_, played) = g.close(run).await;
+    // The re-sync's look, then east: no `river` again, and not the 13 steps round.
+    assert_eq!(played, ["look", "e"]);
+}
+
 #[tokio::test(start_paused = true)]
 async fn a_hidden_exit_its_phrase_did_not_open_is_walked_round() {
     // Someone else's puzzle half done, or the pack wrong: the look shows no exit west, and

@@ -214,6 +214,7 @@ impl Position {
         }
         self.exits = seen.exits;
         if let GameEvent::RoomExits { exits } = ev {
+            self.blanks_shown(atlas, exits);
             self.doors_shown(exits);
             self.hidden_shown(atlas, now);
         }
@@ -223,6 +224,42 @@ impl Position {
             self.visited.insert(k);
         }
         Some(seen)
+    }
+
+    /// The empty slots of an exits line (`north, , west`) are the room's opened Hidden exits
+    /// whose name is blank (C-076): only a room with as many of them, not otherwise listed, can
+    /// show the line, which narrows the belief (the Labyrinth's rooms share a name and exits),
+    /// and once it is sure the slots count as those exits, so the line shows them.
+    fn blanks_shown(&mut self, atlas: &Atlas, exits: &[wayfarer_parse::helpers::Exit]) {
+        let slots = exits
+            .iter()
+            .filter(|e| e.dir.is_none() && e.state.as_deref() == Some(""))
+            .count();
+        let Some(listed) = self.exits.filter(|_| slots > 0) else {
+            return;
+        };
+        let blank = |k: Key| -> Vec<u8> {
+            atlas
+                .graph
+                .edges(k)
+                .iter()
+                .filter(|e| e.lists_blank && !listed.contains(e.dir))
+                .map(|e| e.dir)
+                .collect()
+        };
+        self.belief.narrow(|k| blank(k).len() == slots);
+        if let (Some(k), true, Some(shown)) = (
+            self.belief.best(),
+            self.belief.certain(),
+            self.exits.as_mut(),
+        ) {
+            let dirs = blank(k);
+            if dirs.len() == slots {
+                for d in dirs {
+                    shown.insert(d);
+                }
+            }
+        }
     }
 
     /// The Hidden exits an exits line shows (found lately, by anyone: `secret passage south`)

@@ -175,13 +175,18 @@ impl Monsters {
 /// players"; MegaMud's relationships, `kb/megamud-manual.md` 9.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MonsterRule {
-    /// Never attack it; fight back if it attacks.
-    NeverFight,
-    /// Leave the room as soon as it is seen, whatever the HP; fight only if there is no way
-    /// out and it attacks.
-    FleeFrom,
+    /// Never attack it, and never leave because of it; fight back if it attacks (C-073: it
+    /// replaced *never fight* and *flee from*).
+    Ignore,
     /// Do not walk through the room it was last seen in when there is another way.
     Avoid,
+    /// Attack it before anything else in the room, attackers included (C-075). Every boss is
+    /// this by default, unless a rule names it.
+    First,
+    /// No rule: the player switched off a default (or learned) rule for the pattern. It wins
+    /// over a shorter pattern's rule as any rule does, and [`MonsterRules::rule_for`] reads it
+    /// as none.
+    Off,
 }
 
 /// The rules every character starts with, each with why. Settings (M4) layer over them.
@@ -189,10 +194,11 @@ pub enum MonsterRule {
 /// glittering ooze, which is fightable.
 pub const DEFAULT_RULES: &[(&str, MonsterRule, &str)] = &[(
     "gigantic black ooze",
-    MonsterRule::FleeFrom,
+    MonsterRule::Ignore,
     // Monster 63: 2,500 HP, regenerates 500 a round, damage reduction 40. Every swing of a
     // mid-level character glances off its armour: a fight that never ends (the M3 soak,
-    // 2026-10-20). MegaMud's manual uses it as the example of its Flee class.
+    // 2026-10-20). It was *flee from* until the Thrag run (2026-11-04), where fleeing it split
+    // a party four ways: ignored, the bot plays on around it.
     "unfightable: its armour takes every blow and it regenerates 500 HP a round",
 )];
 
@@ -229,8 +235,20 @@ impl MonsterRules {
         MonsterRules::new(DEFAULT_RULES.iter().map(|&(p, r, _)| (p, r)))
     }
 
-    /// The rule for a monster `name` as the game shows it (`large giant rat`), if one matches.
+    /// The rule for a monster `name` as the game shows it (`large giant rat`), if one matches;
+    /// a matching [`MonsterRule::Off`] is none.
     pub fn rule_for(&self, name: &str) -> Option<MonsterRule> {
+        let name = name.to_lowercase();
+        self.list
+            .iter()
+            .find(|(p, _)| name.contains(p.as_str()))
+            .map(|&(_, r)| r)
+            .filter(|r| *r != MonsterRule::Off)
+    }
+
+    /// The rule a pattern for `name` sets, [`MonsterRule::Off`] included: whether anything
+    /// names it, for a default that applies only when nothing does (a boss is *first*).
+    pub fn explicit(&self, name: &str) -> Option<MonsterRule> {
         let name = name.to_lowercase();
         self.list
             .iter()
@@ -249,19 +267,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_ooze_is_flee_from_by_default_and_only_by_its_full_name() {
+    fn the_ooze_is_ignored_by_default_and_only_by_its_full_name() {
         let rules = MonsterRules::defaults();
         assert_eq!(
             rules.rule_for("gigantic black ooze"),
-            Some(MonsterRule::FleeFrom)
+            Some(MonsterRule::Ignore)
         );
         assert_eq!(
             rules.rule_for("Gigantic Black Ooze"),
-            Some(MonsterRule::FleeFrom)
+            Some(MonsterRule::Ignore)
         );
         assert_eq!(
             rules.rule_for("large gigantic black ooze"),
-            Some(MonsterRule::FleeFrom)
+            Some(MonsterRule::Ignore)
         );
         assert_eq!(rules.rule_for("ooze"), None);
         assert_eq!(rules.rule_for("glittering ooze"), None);
@@ -271,13 +289,10 @@ mod tests {
     fn the_longest_matching_pattern_wins_in_any_case() {
         let rules = MonsterRules::new([
             ("rat", MonsterRule::Avoid),
-            ("Giant Rat", MonsterRule::NeverFight),
-            ("orc", MonsterRule::FleeFrom),
+            ("Giant Rat", MonsterRule::Ignore),
+            ("orc", MonsterRule::Ignore),
         ]);
-        assert_eq!(
-            rules.rule_for("fat GIANT rat"),
-            Some(MonsterRule::NeverFight)
-        );
+        assert_eq!(rules.rule_for("fat GIANT rat"), Some(MonsterRule::Ignore));
         assert_eq!(rules.rule_for("rat"), Some(MonsterRule::Avoid));
         assert_eq!(rules.rule_for("pirate"), Some(MonsterRule::Avoid));
         assert_eq!(rules.rule_for("kobold"), None);
@@ -288,14 +303,14 @@ mod tests {
     #[test]
     fn a_later_rule_for_the_same_pattern_replaces_the_earlier() {
         let rules = MonsterRules::new([
-            ("gigantic black ooze", MonsterRule::FleeFrom),
-            ("GIGANTIC black ooze ", MonsterRule::NeverFight),
+            ("gigantic black ooze", MonsterRule::Ignore),
+            ("GIGANTIC black ooze ", MonsterRule::Ignore),
             ("", MonsterRule::Avoid),
         ]);
         assert_eq!(rules.iter().count(), 1);
         assert_eq!(
             rules.rule_for("gigantic black ooze"),
-            Some(MonsterRule::NeverFight)
+            Some(MonsterRule::Ignore)
         );
         assert_eq!(rules.rule_for("anything"), None);
     }
@@ -406,5 +421,16 @@ mod tests {
         assert_eq!(ms.by_name("giant rat").len(), 2);
         assert!(ms.by_name("rat").is_empty());
         assert!(ms.by_name("orc").is_empty());
+    }
+
+    #[test]
+    fn off_switches_a_rule_off_and_beats_a_shorter_pattern() {
+        let rules = MonsterRules::new([
+            ("gigantic black ooze", MonsterRule::Ignore),
+            ("ooze", MonsterRule::Avoid),
+            ("gigantic black ooze", MonsterRule::Off),
+        ]);
+        assert_eq!(rules.rule_for("gigantic black ooze"), None);
+        assert_eq!(rules.rule_for("glittering ooze"), Some(MonsterRule::Avoid));
     }
 }

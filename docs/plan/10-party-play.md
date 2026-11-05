@@ -172,6 +172,8 @@ knows one. **(John: on/off only)**
 - The fleeing is today's Flee (`docs/brain.md` "Flee"): a confirmed exit toward a room with no
   spawns, running on while followed, up to the leader's *Flee rooms*. **(call)**
 - A follower whose flee triggered does not run on its own; that would break the party. **(call)**
+  Since C-074 (2026-11-04, the Thrag run) that holds for any follower joined to the party, not
+  only one the beliefs put in the leader's room. **(John)**
 - The leader reaching its own flee line also flees the party. **(call)**
 - After the flee, `par`; anyone left behind is separated (§6). Then the usual party rest
   before the leader goes back to its loop. **(call)**

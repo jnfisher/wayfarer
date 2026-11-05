@@ -4,7 +4,7 @@
 //! resting when the character has Meditate (it gives HP as rest does and mana five times as
 //! fast), and with HP and mana full it starts neither (both end at once there). A monster that attacks wakes it: Fight has the character until
 //! that fight is over, then Recover carries on. It does not walk back into a room where a
-//! monster to avoid or flee from was last seen (`rules.rs`): it waits until that is forgotten.
+//! monster to avoid was last seen (`rules.rs`): it waits until that is forgotten.
 
 use std::time::Duration;
 
@@ -158,8 +158,9 @@ impl Recover {
 
 impl Mode for Recover {
     fn wants(&self, v: &View) -> Option<String> {
-        // A fight comes first: Fight takes the character while engaged or attacked.
-        if v.engaged || !v.presence.attackers.is_empty() {
+        // A fight comes first: Fight takes the character while engaged or attacked. An ignored
+        // monster's blows end a rest, so none starts under them: the bot keeps going (C-073).
+        if v.engaged || !v.presence.attackers.is_empty() || !v.presence.ignored.is_empty() {
             return None;
         }
         if self.heal_due(v) {

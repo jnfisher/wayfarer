@@ -245,7 +245,7 @@ The brain's log is `NN-loop/brain.log`.
 
 ```sh
 scripts/live-check.sh --scenario soak --char NAME --minutes N [--anchor MAP:ROOM]
-    [--radius R] [--skip MAP:ROOM ...] [--loop ID] [--flee-from NAME ...]
+    [--radius R] [--skip MAP:ROOM ...] [--loop ID] [--ignore NAME ...]
     [--save-as NAME [--add-stop MAP:ROOM[@N] ...]]
 scripts/live-check.sh --scenario soak --char Waychecka --minutes 3 --anchor 1:2140 \
     --skip 1:2152 --skip 1:2156          # the smoke run: Newhaven, the Lairs unticked
@@ -270,10 +270,10 @@ A character runs a loop for N minutes and the numbers come out. It is for M3's a
 the numbers are.
 
 1. **The world pack** and **a brain**, as in "walk" (the brain's store is `store.sqlite` in
-   the run's `NN-soak` directory). Each `--flee-from NAME` goes to the brain as `wayfarer
-   brain --flee-from NAME`: the bot leaves on sight of a monster whose name holds it
-   (`docs/brain.md` "Monster rules"), so a soak can declare one without a UI. The gigantic
-   black ooze is *flee from* by default.
+   the run's `NN-soak` directory). Each `--ignore NAME` (once `--flee-from`) goes to the brain
+   as `wayfarer brain --ignore NAME`: the bot never attacks a monster whose name holds it,
+   even one that attacks it (`docs/brain.md` "Monster rules"), so a soak can declare one without a
+   UI. The gigantic black ooze is *ignored* by default.
 2. **The loop**: `loops_request` around the anchor (default: the room the re-sync placed the
    character in; radius 8) and the first generated loop, or `--loop ID`: a generated loop's
    id, or a MegaMud loop's file (`--loop NARNLOO2.mp`, any case; one the brain lists not
@@ -333,26 +333,26 @@ It claims and logs on a character, then:
 
 The brain's log is `NN-goto/brain.log`.
 
-## Scenario "flee-from" (C-035, monster rules)
+## Scenario "ignore" (C-073, monster rules; was C-035's "flee-from")
 
 ```sh
-scripts/live-check.sh --scenario flee-from [--flee-from NAME ...]
+scripts/live-check.sh --scenario ignore [--ignore NAME ...]
 ```
 
-The brain runs with `--flee-from` for each NAME, by default `kobold thief` and `giant rat`
-(the Newhaven Arena's monsters; the fight scenario attacks the thieves). It claims and logs on
-a character, then:
+The brain runs with `--ignore` for each NAME, by default `kobold thief` and `giant rat` (the
+Newhaven Arena's monsters; the fight scenario attacks the thieves). `flee-from` and
+`--flee-from` are still read, as the old names. It claims and logs on a character, then:
 
 1. **The world pack** and **a brain**, as in "walk"; **rest to full HP** by hand, as in
    "flee".
 2. **To the Arena** and **Start**, as in "fight".
-3. **On sight: flee, no attack**: within three minutes (a monster may have to come first) the
-   brain narrates "Fleeing: <name> is here (flee from): ..." and then "Safe in ...", at full
-   HP; it fails if `*Combat Engaged*` shows (an attack of the bot's) or the bot stops.
-4. **Stop the bot**, check again that no attack went, walk out to the Narrow Road, stop the
-   brain; the gateway logs off as in M0.
+3. **Ignored: no flee, no leaving**: for a minute the bot stays in the Arena. It fails on any
+   "Flee..." or "Walking to ..." narration, a "Fight..." one (an ignored monster that attacks
+   is not fought back), or the bot stopping. It reports how many attackers it ignored.
+4. **Stop the bot**, walk out to the Narrow Road, stop the brain; the gateway logs off as in
+   M0.
 
-The brain's log is `NN-flee-from/brain.log`.
+The brain's log is `NN-ignore/brain.log`.
 
 ## Scenario "hidden" (C-037, hidden exits)
 

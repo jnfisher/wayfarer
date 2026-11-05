@@ -409,10 +409,11 @@ since" (`only: "combat"`; the run goes on): press it after changing weapons or s
 starting a loop or a level-up.
 
 Between the two, the **monster rules** the bot plays by ([brain.md](brain.md) "Monster
-rules"): each rule (*flee from*, *never fight*, *avoid*), its pattern and where it comes from
-(`default`, dim; `session`, learned from a stalemate; `player`). A player's rule has an `x` to
-remove it; the line under the list adds one (`set_monster_rule`): pick the rule, type the
-name, `add`. A pattern matches any monster whose name holds it, so use the full name (`ooze`
+rules"): each rule (*ignore*, *avoid*, *attack first*: every boss seen, by default), its pattern and where it comes from (`default`, dim,
+its reason as the tooltip; `session`, learned from a stalemate; `player`). Every rule has an `x`:
+the player's is removed, a learned one forgotten, and a default switched off for this character,
+shown struck through with an *off* row whose **put back** restores it. The line under the list
+adds one (`set_monster_rule`): pick the rule, type the name, `add`. A pattern matches any monster whose name holds it, so use the full name (`ooze`
 would also catch the glittering ooze). The settings page (M4) replaces this list.
 
 ## The settings

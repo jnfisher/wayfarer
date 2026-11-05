@@ -248,6 +248,10 @@ pub struct Edge {
     /// Action exits that take its blocks off, in the order to type them ([`unblocking`]).
     /// Empty for any other exit, and for one its room's Remote Actions can't open.
     pub unblock: Vec<String>,
+    /// A Hidden exit that can be opened and whose own name (message `exitpar4`) is blank in all
+    /// three texts: once open, the game lists it as an empty slot, `north, , west`, with no
+    /// direction (C-076: the Labyrinth's `river` exit east, 1/1972).
+    pub lists_blank: bool,
     pub gate: Gate,
     /// Doors, gates and key doors, with the pack's lock state.
     pub door: Option<LockState>,
@@ -487,6 +491,7 @@ impl RoomGraph {
             .map(|(i, r)| ((r.map, r.room), i as u32))
             .collect();
         let mut phrases: HashMap<i64, Vec<String>> = HashMap::new();
+        let mut blank_names: HashMap<i64, bool> = HashMap::new();
         let commands: HashMap<Key, String> = pack
             .room_commands()?
             .into_iter()
@@ -568,6 +573,18 @@ impl RoomGraph {
                     _ => Gate::None,
                 };
                 let gate = if house { Gate::Unnamed } else { gate };
+                // Listed by its own name once open (`kb/navigation.md` "Hidden"); a plain
+                // passable one is never listed, and 0 is the default name.
+                let lists_blank = kind == ExitType::Hidden
+                    && !(p[0] & EXF_PASSABLE != 0 && p[0] & EXF_NEEDSEARCH == 0)
+                    && p[3] != 0
+                    && match blank_names.entry(p[3]) {
+                        Entry::Occupied(o) => *o.get(),
+                        Entry::Vacant(v) => *v.insert(
+                            pack.message(p[3])?
+                                .is_none_or(|m| m.iter().all(|t| t.trim().is_empty())),
+                        ),
+                    };
                 let door = match kind {
                     ExitType::Door | ExitType::Gate => Some(LockState::from_param(p[0])),
                     ExitType::Key => Some(LockState::from_param(p[1])),
@@ -581,6 +598,7 @@ impl RoomGraph {
                     command,
                     phrases: texts,
                     unblock: Vec::new(),
+                    lists_blank,
                     gate,
                     door,
                     params: p,
@@ -605,6 +623,7 @@ impl RoomGraph {
                     command: phrases[0].clone(),
                     phrases,
                     unblock: Vec::new(),
+                    lists_blank: false,
                     gate,
                     door: None,
                     params: [0; 4],
@@ -799,6 +818,7 @@ impl RoomGraph {
                 command: phrase.clone(),
                 phrases: vec![phrase],
                 unblock: Vec::new(),
+                lists_blank: false,
                 gate: Gate::None,
                 door: None,
                 params: [0; 4],
@@ -839,6 +859,7 @@ impl RoomGraph {
                 command: w.file.clone(),
                 phrases: Vec::new(),
                 unblock: Vec::new(),
+                lists_blank: false,
                 gate: Gate::None,
                 door: None,
                 params: [0; 4],

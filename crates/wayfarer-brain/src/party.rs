@@ -133,6 +133,26 @@ impl PartyRole {
         }
     }
 
+    /// A follower in its leader's party in the game, wherever it believes the leader is: it
+    /// never flees on its own (C-074). Its flee line asks the leader to run the party; a
+    /// stalemate gives the target up and asks nothing. Around a move the two characters' room
+    /// beliefs can disagree for a moment, so the room is no test of being together.
+    pub fn joined_follower(&self) -> bool {
+        matches!(self, PartyRole::Follower { joined: true, .. })
+    }
+
+    /// The leader's name, for a follower in its party (`joined_follower`).
+    pub fn joined_leader(&self) -> Option<&str> {
+        match self {
+            PartyRole::Follower {
+                joined: true,
+                leader_name,
+                ..
+            } => Some(leader_name),
+            _ => None,
+        }
+    }
+
     /// A follower with its leader: its own Flee waits for the leader's.
     pub fn with_leader(&self) -> bool {
         matches!(
@@ -289,6 +309,9 @@ pub(crate) struct Parties {
     resting: HashMap<String, (Instant, bool)>,
     /// Followers whose flee line set the leader fleeing, until they are above it again.
     fled_for: BTreeSet<String>,
+    /// Followers in the party, under their flee line but not in the leader's room, the leader
+    /// has said so for (C-074).
+    not_here_for: BTreeSet<String>,
     /// The last statuses sent, to send again only on a change.
     sent: Option<Vec<PartyStatus>>,
     ranks: Ranks,
@@ -1095,6 +1118,31 @@ impl Parties {
                     }
                 } else {
                     self.fled_for.remove(*f);
+                }
+            }
+            // A follower in the party but not in the leader's room (as the beliefs have it)
+            // under its line: the leader does not run from elsewhere, and says so once; the
+            // follower does not run either (C-074).
+            for f in &def.followers {
+                let Some(fi) = m.get(f) else { continue };
+                if !plan.roles[f].joined_follower()
+                    || plan.roles[f].with_leader()
+                    || !(fi.realm && fi.running)
+                {
+                    continue;
+                }
+                if fi.health.flee {
+                    if self.not_here_for.insert(f.clone()) {
+                        plan.notes.push((
+                            def.leader.clone(),
+                            format!(
+                                "{} is under its flee line but not here: not running",
+                                name(f, fi)
+                            ),
+                        ));
+                    }
+                } else {
+                    self.not_here_for.remove(f);
                 }
             }
             // Each one's mates, for its heals: the others with the leader, HP known.
@@ -1965,8 +2013,11 @@ mod tests {
         assert_eq!(p.plan(&m, now).flee.len(), 1);
     }
 
+    /// C-074, Sasha on the Thrag run: for a plan around a move the beliefs put the follower
+    /// in another room. She is still in the party, so her own Flee stands down
+    /// (`joined_follower`); the leader does not run from elsewhere, and says so once.
     #[tokio::test]
-    async fn a_follower_out_of_the_leaders_room_flees_on_its_own() {
+    async fn a_follower_in_the_party_but_not_in_the_room_neither_runs_nor_makes_the_leader_run() {
         let now = Instant::now();
         let mut p = Parties::default();
         let mut m = formed(&mut p, now);
@@ -1975,6 +2026,19 @@ mod tests {
         let plan = p.plan(&m, now);
         assert!(plan.flee.is_empty());
         assert!(!plan.roles["lauren"].with_leader());
+        assert!(plan.roles["lauren"].joined_follower());
+        assert_eq!(
+            plan.notes,
+            [(
+                "penny".to_owned(),
+                "Lauren is under its flee line but not here: not running".to_owned()
+            )]
+        );
+        assert!(p.plan(&m, now).notes.is_empty());
+        // Back in the room, still under: the party flee goes, as for any follower under its
+        // line with the leader.
+        m.get_mut("lauren").unwrap().room = m["penny"].room;
+        assert_eq!(p.plan(&m, now).flee.len(), 1);
     }
 
     #[tokio::test]

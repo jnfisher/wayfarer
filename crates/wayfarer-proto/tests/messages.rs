@@ -110,14 +110,15 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                         }),
                         monster_rules: vec![MonsterRuleEntry {
                             pattern: "gigantic black ooze".into(),
-                            rule: MonsterRuleKind::FleeFrom,
+                            rule: MonsterRuleKind::Ignore,
                             source: RuleSource::Default,
+                            reason: None,
                         }],
                     }),
                     ..CharacterState::default()
                 }),
             },
-            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]},"bot":{"state":"running","mode":"fight","narration":"Fight: large giant rat","doing":"attacking large giant rat","journey":{"name":"Newhaven, Arena","to":{"map":1,"room":2150}},"monster_rules":[{"pattern":"gigantic black ooze","rule":"flee_from","source":"default"}]}}}"#,
+            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]},"bot":{"state":"running","mode":"fight","narration":"Fight: large giant rat","doing":"attacking large giant rat","journey":{"name":"Newhaven, Arena","to":{"map":1,"room":2150}},"monster_rules":[{"pattern":"gigantic black ooze","rule":"ignore","source":"default"}]}}}"#,
         ),
         (
             ToGateway::CharacterPatch {
@@ -798,9 +799,9 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
             ToGateway::SetMonsterRule {
                 session: "kasimir".into(),
                 pattern: "giant rat".into(),
-                rule: Some(MonsterRuleKind::NeverFight),
+                rule: Some(MonsterRuleKind::Ignore),
             },
-            r#"{"type":"set_monster_rule","session":"kasimir","pattern":"giant rat","rule":"never_fight"}"#,
+            r#"{"type":"set_monster_rule","session":"kasimir","pattern":"giant rat","rule":"ignore"}"#,
         ),
         (ToGateway::PartiesRequest, r#"{"type":"parties_request"}"#),
         (
@@ -1434,4 +1435,18 @@ fn a_patch_and_fields_pass_through_as_any_json() {
         panic!("expected a character");
     };
     assert_eq!(state.hp, Some(3));
+}
+
+#[test]
+fn the_old_rule_names_are_read_as_ignore() {
+    // `never_fight` and `flee_from` became `ignore` (C-073): a UI or store from before still
+    // speaks them.
+    for old in ["never_fight", "flee_from", "ignore"] {
+        let kind: MonsterRuleKind = serde_json::from_str(&format!("\"{old}\"")).unwrap();
+        assert_eq!(kind, MonsterRuleKind::Ignore, "{old}");
+    }
+    assert_eq!(
+        serde_json::to_string(&MonsterRuleKind::Off).unwrap(),
+        "\"off\""
+    );
 }

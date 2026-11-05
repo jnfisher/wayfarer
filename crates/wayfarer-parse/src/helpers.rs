@@ -44,9 +44,20 @@ pub fn parse_exits(exits: &str) -> Vec<Exit> {
     if exits.trim() == "NONE!!!" {
         return out;
     }
-    for part in exits.split(',') {
+    let parts: Vec<&str> = exits.split(',').collect();
+    for (i, part) in parts.iter().enumerate() {
         let part = part.trim().trim_end_matches('.');
         if part.is_empty() {
+            // An empty slot between two commas is an exit the game printed with no name and no
+            // direction: an opened Hidden exit whose name message is blank (`north, , west`,
+            // C-076). A comma at either end is no slot.
+            if i > 0 && i + 1 < parts.len() {
+                out.push(Exit {
+                    dir: None,
+                    kind: "custom".into(),
+                    state: Some(String::new()),
+                });
+            }
             continue;
         }
         let Some(c) = exit_rx().captures(part) else {
@@ -250,6 +261,27 @@ mod tests {
         // No direction word last: no direction.
         assert_eq!(parse_exits("a hole")[0].dir, None);
         assert_eq!(parse_exits("south wind")[0].dir, None);
+    }
+
+    #[test]
+    fn an_empty_slot_between_commas_is_an_exit_with_no_name() {
+        // The Labyrinth Passage (1/1972) after `river`: its east exit's name message is blank
+        // (C-076).
+        let e = parse_exits("north, , west");
+        assert_eq!(e.len(), 3);
+        assert_eq!(e[0].dir.as_deref(), Some("north"));
+        assert_eq!(
+            e[1],
+            Exit {
+                dir: None,
+                kind: "custom".into(),
+                state: Some(String::new())
+            }
+        );
+        assert_eq!(e[2].dir.as_deref(), Some("west"));
+        // A comma at either end is no slot.
+        assert_eq!(parse_exits("north, west,").len(), 2);
+        assert_eq!(parse_exits(", north").len(), 1);
     }
 
     #[test]

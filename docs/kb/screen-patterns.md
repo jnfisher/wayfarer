@@ -228,6 +228,13 @@ All of it is [C]. The details:
     `secret passage %s` (22) and so on; the Crypt's knight statue (1/1250) after `push eye`
     reads `Obvious exits: cramped passage south, northeast, northwest` [C, stock data; live,
     2026-10-26]. A reader takes the direction from the last word.
+  - **A blank name prints an empty slot.** Five Hidden exits that can be opened name message 1,
+    whose three texts are empty, so the game prints neither name nor direction: the Labyrinth
+    Passage with the brass plaque (1/1972) after `river` reads `Obvious exits: north, , west`,
+    the east exit being the slot between the commas [C, stock data; live, 2026-11-04]. The
+    others: 1/2100 west and 1/2103 east (the Labyrinth), 12/2383 west, 1/2441 up (a Sewer
+    Tunnel) [C, stock data]. A reader keeps the slot and takes it for the room's blank-named
+    exit (wayfarer C-076).
   - No exits: `Obvious exits: NONE!!!`.
   - Remote Action, unfound Hidden and Text exits are never listed. A **Trap** exit is listed
     by its direction name while its second parameter is not 2, and a **Timed** exit while its
