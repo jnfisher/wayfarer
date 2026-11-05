@@ -80,6 +80,7 @@ Cards don't repeat these:
 | 11 | The Accounts panel: servers, characters and logins edited in the page, BBS accounts made on Save (C-062) | 2026-10-30, at John's request |
 | 12 | Quicksilver 1.20 beside stock 1.11p: detect the rule set, the 1.20 lines, spells, rests, `GUARD` and models (C-063 to C-069) | 2026-11-01, from the Quicksilver 1.20.0 handoff (`../quicksilver-1.20/handoff.md`) |
 | 13 | KB corrections from the data lookup tool (C-070) | 2026-11-02, from mmud-exploration KQ-001 |
+| 14 | Loops not barred by this session's blocked exits (C-071) | 2026-11-03, after Penny's Bandit Keep loop was refused for a door that failed three bashes |
 
 ## Index (wave 1, M0)
 
@@ -223,6 +224,7 @@ watches its characters from the laptop's browser.
 | [C-068](C-068-qs120-guard.md) | `GUARD`: a party's tank guards the member the player picks | B | M | C-063, C-064 | |
 | [C-069](C-069-qs120-models.md) | 1.20 numbers in the models: the opener, openings, weaves, knees, casting stat, area resists, class tables as data | B | L | C-064, C-066 | review |
 | [C-070](C-070-kb-item-sources.md) | KB: item and drop sources checked against the game data | C | M | | |
+| [C-071](C-071-temporary-blocks.md) | Loops are not barred by this session's blocked exits: three failed bashes don't lock a loop out | B | S | | |
 
 Wave 12 (2026-11-01) runs one card at a time in the order above, one pull request each. Every
 card leaves 1.11p exactly as it was: its 1.11p tests and fixtures give the same results. The class
