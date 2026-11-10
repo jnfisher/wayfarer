@@ -65,8 +65,8 @@ Nothing recorded which rooms the brain believed when, so this took a replay by h
   - A surprise: `{"kind":"surprise","expected":"2/189","count":1,"cands":[…],"guessed":true,"unsure":false,"counted":"unsure"|"drift"}`.
 - **The re-sync's `look` starts afresh.** The room it brings is placed among every room of its
   name and exits, not just the ones history led to. The belief stands until that room comes:
-  forgetting it when `look` goes leaves the bot a moment with no position, which some bot
-  states spin on. Where the name and exits are unique, the belief is as sure as before.
+  forgetting it when `look` goes leaves the bot a moment with no position, and a bot started
+  then re-syncs a second time ("Starting in an unknown room"). Where the name and exits are unique, the belief is as sure as before.
   Among look-alikes it is honestly unsure, and moves narrow it (C-084).
 - **A contradicted belief looks everywhere.** When the room seen fits none of the candidates
   and its exits were seen, the belief becomes every room in the world of that name and exits.
@@ -112,6 +112,7 @@ Nothing recorded which rooms the brain believed when, so this took a replay by h
 
 - The size of `position.log`: one line per room seen and per plan, small next to `output.log`.
 - Found on the way: forgetting the belief when the re-sync's `look` goes (before its room
-  came) made six `fight.rs` tests spin forever on the paused clock (`a_go_to_keeps_the_bot_on_…`,
-  `logging_off_stops_the_bot_…` and others). A bot with no position for a moment should not
-  spin; a card of its own.
+  came) made six `fight.rs` tests hang on the paused clock (`a_go_to_keeps_the_bot_on_…`,
+  `logging_off_stops_the_bot_…` and others). Not the bot: it re-synced a second time, the
+  scripts got out of step, and the harness's `until` waited for ever for a line that never
+  came (C-088 found this and makes such a wait fail).

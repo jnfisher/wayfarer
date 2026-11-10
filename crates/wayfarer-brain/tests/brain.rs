@@ -208,13 +208,23 @@ impl Fake {
         Some(msg)
     }
 
-    /// Read until `want` matches a message, which it returns.
+    /// Read until `want` matches a message, which it returns. Fails the test after an hour of
+    /// the paused clock rather than waiting forever (C-088).
     async fn until<T>(&mut self, mut want: impl FnMut(&ToGateway) -> Option<T>) -> T {
-        loop {
-            let msg = self.next().await.expect("the brain went away");
-            if let Some(t) = want(&msg) {
-                return t;
+        let wait = async {
+            loop {
+                let msg = self.next().await.expect("the brain went away");
+                if let Some(t) = want(&msg) {
+                    return t;
+                }
             }
+        };
+        match tokio::time::timeout(Duration::from_secs(3600), wait).await {
+            Ok(t) => t,
+            Err(_) => panic!(
+                "waited an hour of the paused clock; it never came. The brain sent: {:?}",
+                &self.seen[self.seen.len().saturating_sub(30)..]
+            ),
         }
     }
 
