@@ -3970,6 +3970,9 @@ impl Session {
                     // fight, a journey's leg is begun again rather than given up (C-082).
                     if next.held {
                         self.walk_halted = true;
+                        if self.bot_walk {
+                            self.bot.walk_held(self.clock.instant());
+                        }
                     }
                     self.apply(next, out);
                     // An errand's walk beside the running bot: the bot plays where it ends.

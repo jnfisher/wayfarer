@@ -987,7 +987,11 @@ async fn a_go_to_held_where_it_stands_walks_on_once_it_can_move() {
     let (mut g, run) = game::arena::in_arena(&[]).await;
     game::arena::start(&mut g, &[], 35).await;
     g.narrated("re-synced").await;
-    g.expect("u", says("You can't seem to move anywhere!"));
+    // Down for a while (C-083): each refusal waits a moment and does not count as a try, so
+    // more refusals than the journey's three tries still end in the walk going on.
+    for _ in 0..5 {
+        g.expect("u", says("You can't seem to move anywhere!"));
+    }
     g.expect("u", room(NARROW_ROAD));
     g.expect("e", room(NARROW_PATH));
     g.expect("e", room(VILLAGE_ENTRANCE));
@@ -1004,10 +1008,18 @@ async fn a_go_to_held_where_it_stands_walks_on_once_it_can_move() {
         .await;
     assert!(arrived.starts_with("Arrived"), "{arrived}");
     let (seen, played) = g.close(run).await;
-    assert_eq!(played, ["st", "look", "u", "u", "e", "e"]);
+    assert_eq!(
+        played,
+        ["st", "look", "u", "u", "u", "u", "u", "u", "e", "e"]
+    );
     let said = game::arena::notices(&seen);
     assert!(
         said.iter().any(|s| s.contains("can't move for now")),
+        "{said:?}"
+    );
+    assert!(
+        said.iter()
+            .any(|s| s == "Can't move for now: waiting a moment"),
         "{said:?}"
     );
 }

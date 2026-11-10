@@ -173,6 +173,11 @@ impl Journey {
         }
     }
 
+    /// The leg it asked for did not count: the character could not move (C-083).
+    pub fn walk_deferred(&mut self) {
+        self.tries = self.tries.saturating_sub(1);
+    }
+
     /// The walker could not start the leg (no route), or gave it up (it said why): the
     /// journey is over.
     pub fn walk_failed(&mut self) {

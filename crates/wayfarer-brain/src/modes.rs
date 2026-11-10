@@ -27,6 +27,10 @@ use crate::spellcraft::{Hurt, PartyCast, Spellbook};
 use crate::task::Task;
 use crate::walker::Say;
 
+/// How long a bot waits after a move refused because the character could not move (knocked
+/// flat, held, stunned) before it walks again (C-083): about a round.
+pub const HELD_PAUSE: std::time::Duration = std::time::Duration::from_secs(4);
+
 /// Who is in the room, as the game has shown it: the monsters and players of the last `Also
 /// here:`, with the arrivals, departures and deaths since; and those that attacked the
 /// character since. A player is an attacker only once a PvP line says so (`pvp`).
@@ -733,6 +737,9 @@ pub(crate) struct Bot {
     journey: Option<Journey>,
     /// The player's move by hand landed here: its home becomes this room (C-072).
     rehome: Option<Key>,
+    /// A walk of the bot's was refused because the character could not move (knocked flat,
+    /// held, stunned): no walk before this, unless something attacks (C-083).
+    held_until: Option<Instant>,
     /// A follower in its leader's party: a stalemate does not make it leave (C-074).
     in_party: bool,
     /// Monsters a stalemate gave up, for the session to make *ignored*.
@@ -937,6 +944,18 @@ impl Bot {
     pub fn walk_arrived(&mut self, at: Key) {
         if let Some(j) = &mut self.journey {
             j.arrived(at);
+        }
+    }
+
+    /// A walk of the bot's stopped because the character could not move for now (C-083): the
+    /// leg is not counted as a try, and no walk goes for [`HELD_PAUSE`].
+    pub fn walk_held(&mut self, now: Instant) {
+        self.held_until = Some(now + HELD_PAUSE);
+        if let Some(j) = &mut self.journey {
+            j.walk_deferred();
+        }
+        if let Some(t) = &mut self.task {
+            t.walk_deferred();
         }
     }
 
@@ -1346,6 +1365,7 @@ impl Bot {
             .chain(self.bless.wake(now))
             .chain(self.sneak.wake(now))
             .chain(self.task.as_ref().and_then(|t| t.wake(now)))
+            .chain(self.held_until.filter(|&t| t > now))
             .min()
     }
 
@@ -1389,6 +1409,15 @@ impl Bot {
         let mut says = Vec::new();
         if self.state != BotState::Running || self.pausing.is_some() {
             return (None, says);
+        }
+        // Down or held after a refused move (C-083): a moment before the next decision, unless
+        // there is a fight to take part in.
+        if let Some(t) = self.held_until {
+            if v.now < t && !v.engaged && v.presence.attackers.is_empty() {
+                self.narrate("Can't move for now: waiting a moment".to_owned(), &mut says);
+                return (None, says);
+            }
+            self.held_until = None;
         }
         // An ignored monster attacking: not fought back, said once while it attacks.
         self.ignoring.retain(|n| v.presence.ignored.contains(n));

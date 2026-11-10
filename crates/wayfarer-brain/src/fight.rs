@@ -91,10 +91,16 @@ pub(crate) struct Fight {
     switched: bool,
     /// The weapon, not the spell, for the rest of this monster's fight.
     weapon_only: bool,
-    /// A sneaker with backstabs on: the next fight opens with `bs` (C-048).
+    /// A sneaker with backstabs on: the next fight opens with `bs` (C-048), when sneaking.
     backstab: bool,
-    /// Believed sneaking: the backstab goes before an attack spell.
+    /// Believed sneaking: the backstab goes, and before an attack spell. Not sneaking (the
+    /// sneak failed and the bot knows it), the fight opens with the attack command (C-083).
     sneaking: bool,
+    /// The fight opened with `bs`; its strike has not come yet.
+    opened_bs: bool,
+    /// The backstab struck (hit or missed): auto-combat goes on with the attack command, sent
+    /// at the next step (C-083).
+    bs_struck: bool,
     /// On a passive Go to: nothing is fought, not even what attacks the character.
     passive: bool,
 }
@@ -145,6 +151,9 @@ impl Mode for Fight {
             if let Some(step) = self.heal_mates(v) {
                 return step;
             }
+            if let Some(step) = self.after_backstab(v) {
+                return step;
+            }
             if let Some(step) = self.weapon_now(v) {
                 return step;
             }
@@ -193,10 +202,16 @@ impl Mode for Fight {
                     ),
                     // Any sneaker may try it: only a backstab weapon or bare hands backstab,
                     // any other weapon strikes a normal blow (`kb/classes/ninja.md`).
-                    None if self.backstab => Step::send(
-                        Action::new(format!("bs {}", attack_word(&t)), Expect::Engaged),
-                        format!("Fight: {t} (backstab)"),
-                    ),
+                    // Only while believed sneaking: a sneak that failed opens with the attack
+                    // command (C-083).
+                    None if self.backstab && self.sneaking => {
+                        self.opened_bs = true;
+                        self.bs_struck = false;
+                        Step::send(
+                            Action::new(format!("bs {}", attack_word(&t)), Expect::Engaged),
+                            format!("Fight: {t} (backstab)"),
+                        )
+                    }
                     None => Step::send(
                         Action::new(
                             format!("{} {}", v.attack_command(), attack_word(&t)),
@@ -224,6 +239,8 @@ impl Mode for Fight {
                 self.stall = Stall::default();
             }
             GameEvent::CombatOff | GameEvent::ExpGain { .. } => {
+                self.opened_bs = false;
+                self.bs_struck = false;
                 self.healed = false;
                 self.switched = false;
                 self.weapon_only = false;
@@ -240,6 +257,8 @@ impl Mode for Fight {
                 self.casts += 1;
             }
             GameEvent::YouKilled => {
+                self.opened_bs = false;
+                self.bs_struck = false;
                 self.weapon_only = false;
                 self.spell_fight = false;
                 self.cast_target = None;
@@ -247,7 +266,10 @@ impl Mode for Fight {
                 self.look = false;
                 self.stall = Stall::default();
             }
-            GameEvent::YouHit { target, .. } => self.swing(target, true, false, now),
+            GameEvent::YouHit { target, .. } => {
+                self.bs_struck |= self.opened_bs;
+                self.swing(target, true, false, now);
+            }
             // 1.20: an opening or a weave that did damage is damage dealt in the round.
             GameEvent::Opening {
                 who: None,
@@ -262,7 +284,10 @@ impl Mode for Fight {
                 resisted: false,
                 ..
             } if *damage > 0 => self.swing(target, true, false, now),
-            GameEvent::YouMiss { target, .. } => self.swing(target, false, false, now),
+            GameEvent::YouMiss { target, .. } => {
+                self.bs_struck |= self.opened_bs;
+                self.swing(target, false, false, now);
+            }
             GameEvent::SwingGlanced { target } => self.swing(target, false, true, now),
             _ => {}
         }
@@ -397,6 +422,22 @@ impl Fight {
     /// `spells.attack_mana_above` (the game casts the spell every round on its own, so the line
     /// checked when the fight opened is not enough). The attack command is sent at it, which
     /// carries on the fight with the weapon.
+    /// The backstab's round is over (C-083): auto-combat repeats a backstab only while hidden,
+    /// so the fight goes on with the attack command (`bash`, `smash`, `a` …), sent once.
+    fn after_backstab(&mut self, v: &View) -> Option<Step> {
+        if !(self.opened_bs && self.bs_struck) {
+            return None;
+        }
+        self.opened_bs = false;
+        self.bs_struck = false;
+        let t = self.target.clone()?;
+        let attack = format!("{} {}", v.attack_command(), attack_word(&t));
+        Some(Step::send(
+            Action::new(attack, Expect::Engaged),
+            format!("Fight: backstab done, now {}", v.attack_command()),
+        ))
+    }
+
     fn weapon_now(&mut self, v: &View) -> Option<Step> {
         let t = self.target.clone().unwrap_or_else(|| "it".to_owned());
         let why = if spell_fight_is_over(v.max_casts(), self.spell_fight, self.casts, self.switched)

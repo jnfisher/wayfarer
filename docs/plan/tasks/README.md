@@ -265,6 +265,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-080](C-080-party-sysop-goto.md) | Sysop goto for the whole party: a town list in the Parties panel and the tile menu | B | M | C-079 | |
 | [C-081](C-081-gear-tab-and-all-settings.md) | Gear is a tab like the others; the settings form shows all settings by default | C | S | | |
 | [C-082](C-082-cant-move.md) | Knocked flat or stunned: a refused move stops the leg, not the Go to | B | S | | |
+| [C-083](C-083-held-pause-and-backstab.md) | A moment's wait after a knockdown; backstab only while sneaking, then the attack command | B | S | C-082 | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or
