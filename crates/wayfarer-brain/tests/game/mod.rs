@@ -171,6 +171,9 @@ pub struct Game {
     last_prompt: String,
     /// The moves that went while another was in flight.
     pub ahead: Vec<String>,
+    /// The game walks the map (C-084): a direction the script has no line for moves the
+    /// character from this room along the pack's exit and answers with the room it reaches.
+    pub map_at: Option<Key>,
 }
 
 /// A direction command, as a pipelined move is.
@@ -257,6 +260,7 @@ impl Game {
             frozen: false,
             last_prompt: PROMPT.to_owned(),
             ahead: Vec::new(),
+            map_at: None,
         };
         g.log.push(Chunk {
             seq: 1,
@@ -416,6 +420,19 @@ impl Game {
                         self.script.pop_front().unwrap().1
                     }
                     _ if RESYNC_COMMANDS.contains(&text.as_str()) => PROMPT.to_owned(),
+                    // Walking the map: the pack's exit, and the room it reaches.
+                    _ if self.map_at.is_some()
+                        && is_direction(text)
+                        && let Some(e) = atlas()
+                            .graph
+                            .edges(self.map_at.unwrap())
+                            .iter()
+                            .find(|e| e.taken_by(text)) =>
+                    {
+                        self.played.push(text.clone());
+                        self.map_at = Some(e.to);
+                        room(e.to)
+                    }
                     // The rule-set probe (C-064), answered as a stock 1.11p server answers it.
                     _ if text == "help 1.20" => format!(
                         "Sorry, no help is available for that topic!\r\n{}",

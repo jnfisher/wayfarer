@@ -1023,3 +1023,31 @@ async fn a_go_to_held_where_it_stands_walks_on_once_it_can_move() {
         "{said:?}"
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn among_look_alike_rooms_a_go_to_narrows_down_and_gets_there() {
+    // C-084: the Dragon's Teeth Hills are 931 rooms of one name with 54 exit layouts. Started
+    // in 2/651, the belief holds the 32 rooms of that name and layout; the walk planned from
+    // the lowest of them (2/191), was surprised twice and stopped ("lost the way: expected
+    // Dragon's Teeth Hills, the room was Dragon's Teeth Hills", as Lexi did on 2026-11-10).
+    // Now the first step is voted among the candidates, and a surprise while unsure plans
+    // again from what is left.
+    const START: Key = (2, 651);
+    const TO: Key = (2, 565);
+    let (mut g, run) = Game::start(SessionState::Realm, START).await;
+    g.map_at = Some(START);
+    g.walk_to(TO).await;
+    let end = g
+        .until(|m| match m {
+            ToGateway::Notice { text, .. } | ToGateway::Warning { text, .. }
+                if text.starts_with("Arrived") || text.starts_with("Stopped walking") =>
+            {
+                Some(text.clone())
+            }
+            _ => None,
+        })
+        .await;
+    assert!(end.starts_with("Arrived"), "{end}");
+    assert_eq!(g.map_at, Some(TO));
+    g.close(run).await;
+}

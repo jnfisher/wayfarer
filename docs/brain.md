@@ -261,6 +261,26 @@ progress (after the move in flight).
 - **A boss lair** is walked to one room short unless `walk_to` says `stop_short: false`
   ("Go to", below).
 
+## Look-alike rooms
+
+Where many rooms share a name and their exits (the Dragon's Teeth Hills: 931 rooms of one name,
+54 exit layouts between them), one room seen leaves the belief with many candidates, and only the
+moves after it tell them apart (C-084).
+
+- **Where a walk plans again from**: when the belief is certain, its room.
+  - If the room the step went from is still a candidate (the move was refused, or a phrase was
+    only speech), the walk is still there and plans from it.
+  - Otherwise the walker routes from each of up to 16 candidates and plans from the one whose
+    first step most of them share, so the next move is right for most of them. Before, it
+    planned from the lowest-numbered candidate, which was right for one of them.
+  - A walk's first plan is still from the believed room (the lowest-numbered candidate).
+- **A surprise while unsure**: a move that reaches a room the route didn't expect, with the
+  belief still holding several candidates, is not being lost. The candidates have narrowed, and
+  the walker plans again from what is left ("Replanned (not sure which Dragon's Teeth Hills)").
+  This happens up to `MAX_UNSURE_MOVES` (20) times a walk, and doesn't count against
+  `MAX_REPLANS`. With the belief certain, the old rule holds: a second surprise is "lost the
+  way".
+
 ## Knocked down, held or stunned
 
 A move refused with "You can't seem to move anywhere!" (knocked flat by an ankheg's charge or a
