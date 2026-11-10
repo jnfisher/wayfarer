@@ -3966,6 +3966,11 @@ impl Session {
                         seen.as_ref(),
                     );
                     let arrived = next.arrived;
+                    // Held where it stands (knocked down, stunned): like a walk stopped for a
+                    // fight, a journey's leg is begun again rather than given up (C-082).
+                    if next.held {
+                        self.walk_halted = true;
+                    }
                     self.apply(next, out);
                     // An errand's walk beside the running bot: the bot plays where it ends.
                     if !self.bot_walk

@@ -559,7 +559,15 @@ fn death_and_conditions() {
     assert_eq!(example("poison_tick"), GameEvent::PoisonTick);
     assert_eq!(example("cured_paid"), GameEvent::Cured);
     assert_eq!(example("blind"), GameEvent::Blind);
-    assert_eq!(example("stunned"), GameEvent::Stunned);
+    // A move refused while knocked flat or stunned (C-082).
+    for name in ["stunned", "cant_move"] {
+        assert_eq!(
+            example(name),
+            GameEvent::MoveRefused {
+                reason: Refusal::CantMove
+            }
+        );
+    }
 }
 
 #[test]

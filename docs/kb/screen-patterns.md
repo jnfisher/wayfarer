@@ -544,7 +544,7 @@ Regexes are matched against a whole line (stripped of trailing blanks). `<hit ve
 | `exit_unhealthy` | You are not healthy enough to enter that room. | `You are not healthy enough to enter that room\.` | LJNUTIL.C:2606 | [C] |
 | `exit_timed` | You may not pass through that exit at this point in time. | `You may not pass through that exit at this point in time\.` | LJNUTIL.C:3644 | [C] |
 | `exit_purchase` | Your sysop must purchase the ... before you may move through this exit. | `(?:Your sysop must purchase\|You must purchase) the .+ before you may move through this exit\.` | LJNUTIL.C:3622 | [C] |
-| `cant_move` | You can't seem to move anywhere! | `You can't seem to move anywhere(?: to hide)?!` | LJNUTIL.C:2792 | [C] |
+| `cant_move` | You can't seem to move anywhere! | `You can't seem to move anywhere(?: to hide)?!` | LJNUTIL.C:2792 | [C]; live 2026-11-10 (Dragon's Teeth, Southwestern Road): an ankheg's charge, "You are knocked off your feet, and land with a heavy thump! You are flat on your back!", then the next move answered this about a second later [C live] |
 | `stunned` | You are too stunned to move anywhere! | `You are too stunned to move anywhere(?: to hide)?!` | LJNUTIL.C:2800 | [C] |
 | `too_heavy` | You are too heavy to move! | `You are too heavy to (?:move(?: anywhere)?\|be dragged)!` | LJNUTIL.C:2846 | [C] |
 | `ran_into_wall` | Bob ran into the wall to the north. | `(?P<who>.+) ran into the wall to the (?P<dir>\w+)\.` | LJNCMDB.C:5254 | [C] |

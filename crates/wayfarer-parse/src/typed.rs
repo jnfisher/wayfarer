@@ -74,6 +74,10 @@ pub enum Refusal {
     Purchase,
     /// `There is a closed door in that direction!` (a shut Key exit, or while dragging).
     ClosedDoor,
+    /// `You can't seem to move anywhere!` (knocked flat, held, entangled) or `You are too
+    /// stunned to move anywhere!`: the character can't move for now (`kb/grouping.md` "Can't
+    /// move", LJNUTIL.C:2792-2800).
+    CantMove,
 }
 
 impl Refusal {
@@ -94,6 +98,7 @@ impl Refusal {
             "exit_unhealthy" => Refusal::Unhealthy,
             "exit_purchase" => Refusal::Purchase,
             "door_closed_drag" => Refusal::ClosedDoor,
+            "cant_move" | "stunned" => Refusal::CantMove,
             _ => return None,
         })
     }
@@ -115,6 +120,7 @@ impl Refusal {
             Refusal::Unhealthy => "not healthy enough",
             Refusal::Purchase => "not purchased",
             Refusal::ClosedDoor => "a closed door",
+            Refusal::CantMove => "can't move for now (knocked down, held or stunned)",
         }
     }
 }
@@ -970,7 +976,6 @@ impl GameEvent {
             "cured_paid" => G::Cured,
             "poison_tick" => G::PoisonTick,
             "blind" => G::Blind,
-            "stunned" => G::Stunned,
             "room_items" => {
                 let (coins, items) = parse_carrying(ev.text("items").unwrap_or_default());
                 G::RoomItems { coins, items }
