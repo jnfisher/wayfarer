@@ -180,6 +180,14 @@ A room can cast a spell on you ("The room" is the caster) [C] `LJNROOMC.C:1079-1
   identical rooms can't be told apart. [C]
 - Pitfall: matching by title alone picked "Town Square" on map 17 instead of map 1. Always
   prefer candidates close to the previous belief. [C]
+- Pitfall, the other way: the Dragon's Teeth Hills (931 rooms named "Dragon's Teeth Hills",
+  map 2) repeat whole stretches of maze room for room. 2/191 → 192 → 193 (exits `w,ne`, then
+  `e,w`, then `s,e,nw`) has the same name and exits as 2/482 → 483 → 484 until the third room,
+  and other copies follow the same moves further. A belief sure of the wrong copy follows every
+  move; when the copies part, the rooms near it are the wrong copy's neighbourhood, and
+  preferring them settles on another wrong room. With the room's exits seen, hold every room
+  in the world of that name and exits, and let the moves narrow it. [C data; live 2026-11-10,
+  Lexi's walk to Markus] (wayfarer C-085)
 
 ## Routing
 - BFS over walkable exit types, giving commands that include Text-exit phrases. [C]
