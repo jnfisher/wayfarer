@@ -84,7 +84,7 @@ async fn after_five_failures_it_moves_on_unsneaked() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn back_from_a_rest_it_sneaks_in_and_backstabs() {
+async fn back_from_a_rest_whose_sneak_failed_it_opens_with_the_attack_command() {
     let (mut g, run) = in_arena_with(&[], SNEAK).await;
     start(&mut g, &[], 20).await;
     g.expect("sneak", attempt(20));
@@ -94,16 +94,55 @@ async fn back_from_a_rest_it_sneaks_in_and_backstabs() {
         .await;
     g.idle(Duration::from_secs(20)).await;
     // The rest ended the sneak: it sneaks again before walking back. The move shows no
-    // `Sneaking...`, so the sneak had ended; `bs` still opens (a plain attack, then).
+    // `Sneaking...`, so the sneak had ended and the bot knows it: the fight opens with the
+    // attack command, not `bs` (C-083).
     g.expect("sneak", attempt(31));
     g.expect("d", arena(&["large giant rat"], 31));
-    g.expect("bs rat", line(ENGAGED, 31));
+    g.expect("a rat", line(ENGAGED, 31));
     g.output(&resting(31)).await;
-    g.narrated("Fight: large giant rat (backstab)").await;
+    g.narrated("Fight: large giant rat").await;
     let (_, played) = g.close(run).await;
     assert_eq!(
         played,
-        ["st", "look", "sneak", "u", "rest", "sneak", "d", "bs rat"]
+        ["st", "look", "sneak", "u", "rest", "sneak", "d", "a rat"]
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn sneaking_in_it_backstabs_then_goes_on_with_the_attack_command() {
+    // C-083: `bs` only while the bot believes it sneaks (the move showed `Sneaking...`); once
+    // the backstab has struck, auto-combat would only repeat it while hidden, so the attack
+    // command (`bash` here) goes.
+    let (mut g, run) = in_arena_with(
+        &[],
+        "[movement]\nsneak = true\n[combat]\nattack_command = \"bash\"\n",
+    )
+    .await;
+    start(&mut g, &[], 20).await;
+    g.expect("sneak", attempt(20));
+    g.expect("u", at_hp(&room(NARROW_ROAD), 20));
+    g.expect("rest", format!("You are now resting.\r\n{}", resting(20)));
+    g.narrated("Recover: resting to 85% in Newhaven, Narrow Road")
+        .await;
+    g.idle(Duration::from_secs(20)).await;
+    g.expect("sneak", attempt(31));
+    g.expect("d", sneaking(&arena(&["large giant rat"], 31)));
+    g.expect("bs rat", line(ENGAGED, 31));
+    g.output(&prompt(31)).await;
+    g.narrated("Fight: large giant rat (backstab)").await;
+    g.expect("bash rat", line(ENGAGED, 31));
+    g.output(&line(
+        "You surprise whap large giant rat for 30 damage!",
+        31,
+    ))
+    .await;
+    g.narrated("Fight: backstab done, now bash").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(
+        played,
+        [
+            "st", "look", "sneak", "u", "rest", "sneak", "d", "bs rat", "bash rat"
+        ]
     );
 }
 

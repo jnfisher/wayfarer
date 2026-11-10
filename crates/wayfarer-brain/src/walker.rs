@@ -30,7 +30,9 @@ use std::collections::BTreeSet;
 
 use wayfarer_parse::typed::{GameEvent, Refusal};
 use wayfarer_proto::{BossLair, RoomKey, Walking};
-use wayfarer_world::{Belief, ExitType, Gate, Key, Purchase, Route, Step, mm, route_buying};
+use wayfarer_world::{
+    Belief, ExitType, Gate, Key, Purchase, Route, Step, mm, route_buying, route_within,
+};
 
 use crate::brain::Atlas;
 use crate::executor::{Action, Confirmed, Expect, Outcome, Refused};
@@ -137,6 +139,8 @@ struct Walk {
     replans: u32,
     /// Rooms that were not the one the route expected.
     drifts: u32,
+    /// Such rooms while the belief held several candidates (C-084): planned again, not lost.
+    unsure_moves: u32,
     /// Stop when the action in flight is done, and why.
     stopping: Option<String>,
     /// Moves may be pipelined on this walk.
@@ -212,6 +216,48 @@ fn room_name(atlas: &Atlas, k: Key) -> String {
         .graph
         .room(k)
         .map_or_else(|| format!("{}/{}", k.0, k.1), |r| r.name.clone())
+}
+
+/// Moves into a room the route did not expect, while the belief held several look-alike
+/// candidates, that are planned again rather than counted as lost (C-084). The Dragon's Teeth
+/// Hills are 931 rooms of one name with 54 exit layouts between them.
+pub const MAX_UNSURE_MOVES: u32 = 20;
+/// Candidates a walk's first step is voted among, at most (C-084).
+const VOTERS: usize = 16;
+
+/// The room to plan a walk again to `to` from: the believed room when it is certain; else the
+/// first of `near` still a candidate (where the walk was: a refused move or a phrase that was
+/// only speech left it there); else, among several look-alike candidates (C-084), the one whose
+/// route's first step most of them share, so the first move is right for most of them and the
+/// room it reaches narrows them (rather than the lowest-numbered candidate's, right for one).
+/// `None`: the position is unknown.
+fn origin(pos: &Position, atlas: &Atlas, to: Key, lair: Option<Key>, near: &[Key]) -> Option<Key> {
+    let cands = pos.belief.candidates();
+    if cands.len() <= 1 {
+        return pos.best();
+    }
+    if let Some(&k) = near.iter().find(|k| cands.contains(k)) {
+        return Some(k);
+    }
+    let mut votes: Vec<(String, u32, Key)> = Vec::new();
+    for &c in cands.iter().take(VOTERS) {
+        let Some(r) = route_within(&atlas.graph, c, to, &pos.traveller, |k| Some(k) != lair) else {
+            continue;
+        };
+        let first = r.first().map_or_else(String::new, |s| s.command.clone());
+        match votes.iter_mut().find(|(cmd, _, _)| *cmd == first) {
+            Some(v) => v.1 += 1,
+            None => votes.push((first, 1, c)),
+        }
+    }
+    // The most votes; ties to the first seen (the lowest key).
+    let mut best: Option<&(String, u32, Key)> = None;
+    for v in &votes {
+        if best.is_none_or(|b| v.1 > b.1) {
+            best = Some(v);
+        }
+    }
+    best.map(|v| v.2).or_else(|| pos.best())
 }
 
 /// `use <key>` at one Key exit before the walker gives it up.
@@ -480,6 +526,7 @@ impl Walker {
             relocations: 0,
             replans: 0,
             drifts: 0,
+            unsure_moves: 0,
             stopping: None,
             pipelined,
             ahead: false,
@@ -593,15 +640,24 @@ impl Walker {
                     }
                     Ok(Doing::Move)
                 } else {
-                    w.drifts += 1;
+                    let unsure = !seen.unwrap_or(&pos.belief).certain();
                     let seen = pos.title.clone().unwrap_or_else(|| "unknown".to_owned());
-                    if w.drifts > 1 {
-                        Err(format!(
-                            "lost the way: expected {}, the room was {seen}",
-                            room_name(atlas, step.to)
-                        ))
+                    if unsure && w.unsure_moves < MAX_UNSURE_MOVES {
+                        // Among rooms that look alike (C-084): the move told which of them it
+                        // was not; plan again from what is left, and it is not being lost.
+                        w.unsure_moves += 1;
+                        w.replans = w.replans.saturating_sub(1);
+                        w.replan(pos, atlas, &mut next, &format!("not sure which {seen}"))
                     } else {
-                        w.replan(pos, atlas, &mut next, &format!("the room was {seen}"))
+                        w.drifts += 1;
+                        if w.drifts > 1 {
+                            Err(format!(
+                                "lost the way: expected {}, the room was {seen}",
+                                room_name(atlas, step.to)
+                            ))
+                        } else {
+                            w.replan(pos, atlas, &mut next, &format!("the room was {seen}"))
+                        }
                     }
                 }
             }
@@ -996,7 +1052,17 @@ impl Walk {
         if self.replans > MAX_REPLANS {
             return Err(format!("{why}; gave up after {MAX_REPLANS} replans"));
         }
-        let Some(from) = pos.best() else {
+        // A walk stopping short of a boss lair never plans through it.
+        let lair = self.short_of.as_ref().map(|l| l.key);
+        // Where the step in progress went from: still a candidate (the move was refused, or a
+        // phrase was only speech), the walk is still there.
+        let near: Vec<Key> = self
+            .route
+            .get(self.next)
+            .map(|s| s.from)
+            .into_iter()
+            .collect();
+        let Some(from) = origin(pos, atlas, self.to, lair, &near) else {
             // In a room the map lacks (a player's house): say which.
             return Err(match pos.title.as_deref() {
                 Some(t) if atlas.graph.rooms_named(t).is_empty() => {
@@ -1005,8 +1071,6 @@ impl Walk {
                 _ => format!("{why}; the position is unknown"),
             });
         };
-        // A walk stopping short of a boss lair never plans through it.
-        let lair = self.short_of.as_ref().map(|l| l.key);
         let r = route_buying(
             &atlas.graph,
             from,

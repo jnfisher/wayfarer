@@ -261,6 +261,38 @@ progress (after the move in flight).
 - **A boss lair** is walked to one room short unless `walk_to` says `stop_short: false`
   ("Go to", below).
 
+## Look-alike rooms
+
+Where many rooms share a name and their exits (the Dragon's Teeth Hills: 931 rooms of one name,
+54 exit layouts between them), one room seen leaves the belief with many candidates, and only the
+moves after it tell them apart (C-084).
+
+- **Where a walk plans again from**: when the belief is certain, its room.
+  - If the room the step went from is still a candidate (the move was refused, or a phrase was
+    only speech), the walk is still there and plans from it.
+  - Otherwise the walker routes from each of up to 16 candidates and plans from the one whose
+    first step most of them share, so the next move is right for most of them. Before, it
+    planned from the lowest-numbered candidate, which was right for one of them.
+  - A walk's first plan is still from the believed room (the lowest-numbered candidate).
+- **A surprise while unsure**: a move that reaches a room the route didn't expect, with the
+  belief still holding several candidates, is not being lost. The candidates have narrowed, and
+  the walker plans again from what is left ("Replanned (not sure which Dragon's Teeth Hills)").
+  This happens up to `MAX_UNSURE_MOVES` (20) times a walk, and doesn't count against
+  `MAX_REPLANS`. With the belief certain, the old rule holds: a second surprise is "lost the
+  way".
+
+## Knocked down, held or stunned
+
+A move refused with "You can't seem to move anywhere!" (knocked flat by an ankheg's charge or a
+dark monk's sweep, held, entangled) or "You are too stunned to move anywhere!" stops the walk
+without marking the exit refused (C-082). With the bot running, the bot then waits
+`HELD_PAUSE` (4 s, about a round) before it walks again, unless something attacks, and the
+refused leg does not count as one of a Go to's or a loop's tries (C-083). These wear off, so a
+character down for several rounds keeps trying every few seconds and never gives the walk up for
+it. The same goes for every walk of the bot's, a follower's walk back to its leader too: a
+follower knocked down as the leader moves on is left behind by the game, and its walk back waits
+the same way.
+
 ## Go to
 
 `find {session, query}` answers with `found`: the rooms, well-known places and monsters whose
@@ -1257,9 +1289,12 @@ there; a fight comes first anyway).
   and not sneaking, not fighting, not resting and with no monster in the room: after each
   fight, after a failure it noticed, and after a party move that showed no `Sneaking...`.
 - **Backstab.** With *Open with a backstab* on (`combat.backstab`, Combat, on by default),
-  Fight opens each fight of a sneaker with `bs <monster>` instead of its attack command, and,
-  while it believes the character sneaking, instead of its attack spell too. Not sneaking after
-  all, `bs` is a plain attack, which is fine. Any sneaker may try it: a one-handed weapon made for backstabbing,
+  Fight opens each fight of a sneaker it believes sneaking with `bs <monster>` instead of its
+  attack command or attack spell. When it knows the sneak failed (the move showed no
+  `Sneaking...`, or the game said so), it opens with the attack command (C-083). Once the
+  backstab has struck (hit or missed), it sends the attack command (`bash rat`, `a rat` …) once:
+  auto-combat repeats a backstab only while the character is still hidden, so in practice the
+  backstab is the opener and the attack command does the rest. Any sneaker may try it: a one-handed weapon made for backstabbing,
   or bare hands, backstabs; any other weapon prints `You cannot backstab with this weapon.` and
   strikes a normal blow, and the fight goes on as any other.
 - On the local server the attempt's line (with or without the failure) ends with CR LF and the
