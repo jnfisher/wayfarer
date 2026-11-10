@@ -82,6 +82,7 @@ Cards don't repeat these:
 | 13 | KB corrections from the data lookup tool (C-070) | 2026-11-02, from mmud-exploration KQ-001 |
 | 14 | Loops not barred by this session's blocked exits (C-071) | 2026-11-03, after Penny's Bandit Keep loop was refused for a door that failed three bashes |
 | 15 | Fixes from the Thrag run: typed moves re-home, ignore replaces flee-from, one flee per party, bosses first, the Labyrinth's blank exit (C-072 to C-076) | 2026-11-04, at John's request after the run |
+| 16 | Levers on doors: a locked gate a lever opens is routed through (C-077) | 2026-11-10, after Go to found no route to Chancellor Annora for Lexi |
 
 ## Index (wave 1, M0)
 
@@ -253,6 +254,15 @@ run together. C-074 and C-075 come after C-073, one at a time, since both change
 without anyone leaving, a follower under its flee line waits for the leader's party flee, John
 walks the leader into a room by hand and it stays there after a rest, in Thrag's room
 everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's east exit is there.
+
+## Index (wave 16, levers on doors)
+
+| Id | Title | Tier | Size | Depends | Review |
+|---|---|---|---|---|---|
+| [C-077](C-077-door-levers.md) | Levers on doors: a locked gate a lever opens is routed through, and the walker pulls the lever when the gate refuses | B | S | | |
+
+Wave 16 (2026-11-10) comes from Lexi's Go to to Chancellor Annora (1:1333), which found no route:
+the Monastery's Inner Gate can't be bashed or picked, and is opened by a lever next door.
 
 Tier: B Opus, C Sonnet. Size: S under half a day of agent time, M about a day, L two to three
 days.

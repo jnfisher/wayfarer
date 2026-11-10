@@ -152,7 +152,7 @@ impl Traveller {
     pub fn can_take(&self, e: &Edge) -> bool {
         if self.blocked.contains(&(e.from, e.dir))
             || (self.no_doors && e.door.is_some())
-            || self.door_odds(e) == Some(0)
+            || (self.door_odds(e) == Some(0) && e.lever.is_empty())
         {
             return false;
         }
@@ -219,6 +219,9 @@ pub struct Step {
     /// A Hidden exit walked without a search: `Edge::passable`, or a sealed exit a path
     /// window has opened.
     pub passable: bool,
+    /// A Door or Gate a lever opens ([`Edge::lever`]): the steps to the lever, the phrase and
+    /// the steps back, walked when the door refuses.
+    pub lever: Vec<Step>,
 }
 
 impl Step {
@@ -233,6 +236,7 @@ impl Step {
             door: t.lock_state(e),
             unblock: e.unblock.clone(),
             passable: e.passable() || e.sealed(),
+            lever: e.lever.iter().map(|s| Step::through(s, t)).collect(),
         }
     }
 }
@@ -316,7 +320,11 @@ fn route_core(
                 c += t.costs.avoid;
             }
             if e.door.is_some() {
-                c += t.costs.door_cost(t.door_odds(e));
+                c += match t.door_odds(e) {
+                    // Opened by its lever: the door, and the way to the lever and back.
+                    Some(0) => t.costs.door + u32::try_from(e.lever.len()).unwrap_or(u32::MAX),
+                    odds => t.costs.door_cost(odds),
+                };
             }
             if e.kind == ExitType::Hidden && !e.passable() && !t.found.contains(&(e.from, e.dir)) {
                 c += t.costs.hidden;

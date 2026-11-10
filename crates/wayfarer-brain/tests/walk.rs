@@ -918,3 +918,63 @@ async fn a_shut_sealed_hidden_exit_is_never_searched_for() {
         "{played:?}"
     );
 }
+
+/// The Monastery's Inner Gate (C-077): the gate north to the Courtyard is locked with
+/// `exitpar2` -300; `pull lever` in the room east (1:1339) or west opens it.
+const INNER_GATE: Key = (1, 1331);
+const LEVER_ROOM: Key = (1, 1339);
+const COURTYARD: Key = (1, 1375);
+const GATE_LEVER: &str = "You pull the lever, and you hear the loud nearby rumbling of a gate.";
+
+#[tokio::test(start_paused = true)]
+async fn a_locked_gate_is_opened_by_its_lever_when_it_refuses() {
+    let (mut g, run) = Game::start(SessionState::Realm, INNER_GATE).await;
+    g.output(&strength(50)).await;
+    g.expect("n", says("The gate is closed!"));
+    g.expect("e", room(LEVER_ROOM));
+    g.expect("pull lever", says(GATE_LEVER));
+    g.expect("w", room(INNER_GATE));
+    g.expect("n", room(COURTYARD));
+    g.walk_to(COURTYARD).await;
+    let said = g.walk_narrated("Arrived: Courtyard").await;
+    assert_eq!(said[0], "Walking to Courtyard: one step, one door");
+    assert!(
+        said.contains(&"The gate north is opened by a lever: e, pull lever, w".to_owned()),
+        "{said:?}"
+    );
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["n", "e", "pull lever", "w", "n"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_gate_still_locked_after_its_lever_is_given_up() {
+    let (mut g, run) = Game::start(SessionState::Realm, INNER_GATE).await;
+    g.output(&strength(50)).await;
+    g.expect("n", says("The gate is closed!"));
+    g.expect("e", room(LEVER_ROOM));
+    g.expect("pull lever", says(GATE_LEVER));
+    g.expect("w", room(INNER_GATE));
+    g.expect("n", says("The gate is closed!"));
+    g.walk_to(COURTYARD).await;
+    g.walk_narrated("The gate north is beyond my strength (needs more than 300)")
+        .await;
+    let stop = g.walk_narration().await;
+    assert!(
+        stop.starts_with("Stopped walking: the door north cannot be opened"),
+        "{stop}"
+    );
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["n", "e", "pull lever", "w", "n"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_open_gate_is_walked_through_without_its_lever() {
+    let (mut g, run) = Game::start(SessionState::Realm, INNER_GATE).await;
+    g.output(&strength(50)).await;
+    g.expect("n", room(COURTYARD));
+    g.walk_to(COURTYARD).await;
+    let said = g.walk_narrated("Arrived: Courtyard").await;
+    assert!(!said.iter().any(|s| s.contains("lever")), "{said:?}");
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["n"]);
+}

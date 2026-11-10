@@ -261,6 +261,12 @@ pub struct Edge {
     /// Action edges from their room to itself; the last is the sealed exit they open. Empty for
     /// any other way through.
     pub window: Vec<Edge>,
+    /// A Door or Gate a lever opens (a Remote Action on it, C-077): the way to the lever's room
+    /// over Normal exits, the phrase as a Remote Action edge from that room to itself, and the
+    /// way back; just the phrase when the lever is in the door's own room. Walked only when the
+    /// door refuses, as the lever swaps the door between open and locked
+    /// (`kb/navigation.md` "Remote Action"). Empty for any other exit.
+    pub lever: Vec<Edge>,
     pub(crate) to_ix: u32,
 }
 
@@ -302,6 +308,10 @@ impl Edge {
 
 /// The first `dir` of the ways through that are not exits ([`ExitType::is_command`]).
 pub const COMMAND_DIRS: u8 = 10;
+
+/// The most Normal exits between a door and the room of the lever that opens it, each way
+/// ([`Edge::lever`]). The stock data's farthest such lever is one step away.
+pub const LEVER_STEPS: usize = 3;
 
 /// A Hidden exit's flags (`exitpar1`, `EXF_`): walked without being found.
 const EXF_PASSABLE: i64 = 0x0001;
@@ -603,6 +613,7 @@ impl RoomGraph {
                     door,
                     params: p,
                     window: Vec::new(),
+                    lever: Vec::new(),
                     to_ix,
                 });
             }
@@ -628,6 +639,7 @@ impl RoomGraph {
                     door: None,
                     params: [0; 4],
                     window: Vec::new(),
+                    lever: Vec::new(),
                     to_ix,
                 });
             }
@@ -689,14 +701,108 @@ impl RoomGraph {
                 .or_default()
                 .push(i as u32);
         }
-        Ok(RoomGraph {
+        let mut graph = RoomGraph {
             nodes,
             edges,
             index,
             by_name,
             dangling,
             into_unnamed,
-        })
+        };
+        graph.find_levers();
+        Ok(graph)
+    }
+
+    /// Give each Door and Gate a lever opens its [`Edge::lever`] (C-077): a Remote Action on
+    /// it (`exitpar2` units its direction) that needs no item, in its own room or one at most
+    /// [`LEVER_STEPS`] Normal exits away and back. The shortest wins.
+    fn find_levers(&mut self) {
+        let mut found: HashMap<(Key, u8), Vec<Edge>> = HashMap::new();
+        for r in self
+            .edges
+            .iter()
+            .filter(|r| r.kind == ExitType::RemoteAction && r.params[1] >= 0 && r.params[3] == 0)
+        {
+            let Some(phrase) = r.phrases.first() else {
+                continue;
+            };
+            let dir = (r.params[1] % 10) as u8;
+            let Some(door) = self
+                .edge(r.to, dir)
+                .filter(|d| matches!(d.kind, ExitType::Door | ExitType::Gate))
+            else {
+                continue;
+            };
+            let (Some(there), Some(back)) = (
+                self.normal_way(door.from, r.from),
+                self.normal_way(r.from, door.from),
+            ) else {
+                continue;
+            };
+            let Some(&lever_ix) = self.index.get(&r.from) else {
+                continue;
+            };
+            let pull = Edge {
+                from: r.from,
+                to: r.from,
+                dir: COMMAND_DIRS,
+                kind: ExitType::RemoteAction,
+                command: phrase.clone(),
+                phrases: vec![phrase.clone()],
+                unblock: Vec::new(),
+                lists_blank: false,
+                gate: Gate::None,
+                door: None,
+                params: r.params,
+                window: Vec::new(),
+                lever: Vec::new(),
+                to_ix: lever_ix,
+            };
+            let lever: Vec<Edge> = there
+                .into_iter()
+                .chain(std::iter::once(pull))
+                .chain(back)
+                .collect();
+            let at = (door.from, door.dir);
+            if found.get(&at).is_none_or(|l| lever.len() < l.len()) {
+                found.insert(at, lever);
+            }
+        }
+        for ((from, dir), lever) in found {
+            let i = self.index[&from];
+            let range = self.nodes[i as usize].edges.clone();
+            if let Some(e) = self.edges[range.start as usize..range.end as usize]
+                .iter_mut()
+                .find(|e| e.dir == dir)
+            {
+                e.lever = lever;
+            }
+        }
+    }
+
+    /// The fewest Normal exits from `from` to `to`, at most [`LEVER_STEPS`] (empty when they
+    /// are the same room).
+    fn normal_way(&self, from: Key, to: Key) -> Option<Vec<Edge>> {
+        let mut paths: Vec<(Key, Vec<Edge>)> = vec![(from, Vec::new())];
+        let mut seen = vec![from];
+        for _ in 0..=LEVER_STEPS {
+            if let Some((_, p)) = paths.iter().find(|(k, _)| *k == to) {
+                return Some(p.clone());
+            }
+            let mut next = Vec::new();
+            for (k, p) in &paths {
+                for e in self.edges(*k) {
+                    if e.kind == ExitType::Normal && e.gate == Gate::None && !seen.contains(&e.to) {
+                        seen.push(e.to);
+                        let mut q = p.clone();
+                        q.push(e.clone());
+                        next.push((e.to, q));
+                    }
+                }
+            }
+            paths = next;
+        }
+        None
     }
 
     pub fn len(&self) -> usize {
@@ -823,6 +929,7 @@ impl RoomGraph {
                 door: None,
                 params: [0; 4],
                 window: Vec::new(),
+                lever: Vec::new(),
                 to_ix,
             });
         }
@@ -864,6 +971,7 @@ impl RoomGraph {
                 door: None,
                 params: [0; 4],
                 window: w.steps.clone(),
+                lever: Vec::new(),
                 to_ix,
             });
         }
