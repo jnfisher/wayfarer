@@ -260,6 +260,23 @@ export function toggleDrawer(prefs: DevPrefs, panel: DrawerPanel): void {
   }
 }
 
+/**
+ * A tab of the bar pressed (C-081): the gear planner or a drawer panel. Gear is a tab like the
+ * others: its tab opens the planner over the tiles, or closes it; any other tab closes the
+ * planner and shows its panel (a tab already showing under the planner stays open). Returns
+ * whether the planner is open now.
+ */
+export function pressTab(prefs: DevPrefs, gearOpen: boolean, tab: DrawerPanel | "gear"): boolean {
+  if (tab === "gear") return !gearOpen;
+  if (gearOpen) {
+    prefs.open = true;
+    prefs.panel = tab;
+  } else {
+    toggleDrawer(prefs, tab);
+  }
+  return false;
+}
+
 export function saveDevPrefs(storage: Pick<Storage, "setItem"> | undefined, prefs: DevPrefs): void {
   try {
     storage?.setItem(DEV_KEY, JSON.stringify(prefs));

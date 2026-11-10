@@ -586,6 +586,21 @@ impl Parties {
         &self.defs
     }
 
+    /// Everyone in `session`'s party, the leader first; just `session` when it is in none.
+    pub fn members_of(&self, session: &str) -> Vec<String> {
+        self.defs
+            .iter()
+            .find(|d| d.leader == session || d.followers.iter().any(|f| f == session))
+            .map_or_else(
+                || vec![session.to_owned()],
+                |d| {
+                    std::iter::once(d.leader.clone())
+                        .chain(d.followers.iter().cloned())
+                        .collect()
+                },
+            )
+    }
+
     /// `session` follows a leader in one of the parties.
     pub fn is_follower(&self, session: &str) -> bool {
         self.defs
@@ -1299,6 +1314,15 @@ mod tests {
             followers: followers.iter().map(|f| (*f).to_owned()).collect(),
             guards: Vec::new(),
         }
+    }
+
+    #[test]
+    fn members_of_a_party_or_the_character_alone() {
+        let mut p = Parties::default();
+        p.save(def("penny", &["lauren", "faye"]), &known()).unwrap();
+        assert_eq!(p.members_of("faye"), ["penny", "lauren", "faye"]);
+        assert_eq!(p.members_of("penny"), ["penny", "lauren", "faye"]);
+        assert_eq!(p.members_of("manuel"), ["manuel"]);
     }
 
     fn member(name: &str, room: Key) -> MemberInfo {

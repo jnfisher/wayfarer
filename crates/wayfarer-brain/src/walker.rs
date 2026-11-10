@@ -602,17 +602,30 @@ impl Walker {
                     }
                 }
             }
-            // A Key exit the character holds the key of is turned with `use <key>`, twice at most.
-            (Doing::Move, Outcome::Refused(Refused::DoorClosed { .. }))
-                if step.exit_type == ExitType::Key
-                    && w.key_tries < MAX_KEY_TRIES
-                    && key_for(pos, atlas, &step).is_some() =>
+            // A shut Key exit ("There is a closed door in that direction!", `kb/navigation.md`
+            // "Key"): `use <key> <dir>` with the key held, twice at most, then `open <dir>`.
+            (
+                Doing::Move,
+                Outcome::Refused(Refused::DoorClosed { .. } | Refused::Move(Refusal::ClosedDoor)),
+            )
+            | (Doing::Open, Outcome::Refused(Refused::Locked))
+                if step.exit_type == ExitType::Key =>
             {
-                w.key_tries += 1;
-                w.key = key_for(pos, atlas, &step);
-                Ok(Doing::UseKey)
+                if w.key_tries < MAX_KEY_TRIES && key_for(pos, atlas, &step).is_some() {
+                    w.key_tries += 1;
+                    w.key = key_for(pos, atlas, &step);
+                    Ok(Doing::UseKey)
+                } else if w.key_tries == 0 && doing == Doing::Move {
+                    // No key held: it may be shut but not locked.
+                    Ok(Doing::Open)
+                } else {
+                    pos.block(step.from, step.dir);
+                    let why = format!("the door {} would not unlock", dir_name(step.dir));
+                    w.replan(pos, atlas, &mut next, &why)
+                }
             }
-            (Doing::UseKey, Outcome::Confirmed(Confirmed::Prompt)) => Ok(Doing::Move),
+            // Unlocked (or it was not locked): still shut until opened.
+            (Doing::UseKey, Outcome::Confirmed(Confirmed::Prompt)) => Ok(Doing::Open),
             (Doing::Buy, Outcome::Confirmed(_)) => {
                 let p = w.purchase.take().expect("buying");
                 match w.heard_buy.take() {
@@ -935,8 +948,9 @@ impl Walk {
             Doing::Move => Action::new(step.command.clone(), Expect::RoomSeen),
             Doing::Arrive => Action::new("look", Expect::RoomSeen),
             Doing::Open => Action::new(format!("open {dir}"), Expect::DoorOpened),
+            // A key takes the word after its name as the direction; with none it unlocks nothing.
             Doing::UseKey => Action::new(
-                format!("use {}", self.key.clone().unwrap_or_default()),
+                format!("use {} {dir}", self.key.clone().unwrap_or_default()),
                 Expect::Prompt,
             ),
             Doing::Bash => {

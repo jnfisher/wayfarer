@@ -1040,12 +1040,20 @@ round still going). Stop, Start, a death, a level-up and restarts leave them; on
 ## Errands
 
 An errand is a one-shot job the player starts from the `[▼]` menu on a tile
-([web-ui.md](web-ui.md)): `bot_control` `pick_up_all`, `equip_all` and `cancel_errand`. It runs only
-with the bot stopped or paused (the player is playing; starting the bot, or anything attacking
-the character, ends it with a warning, "Pick up stopped: something is attacking"), one at a time,
-in the realm. Like the bot it sends a command only when nothing is in flight and the game is at a
-prompt, and the snapshot's `errand` carries its narration (`Pick up: get torch`). Flee and Fight
-do not apply: it is short, and the player stands by.
+([web-ui.md](web-ui.md)): `bot_control` `pick_up_all`, `equip_all` and `cancel_errand`. It runs one
+at a time, in the realm. Like the bot it sends a command only when nothing is in flight and the game
+is at a prompt, and the snapshot's `errand` carries its narration (`Pick up: get torch`).
+
+- **With the bot stopped or paused** the player is playing: anything attacking the character ends
+  the errand with a warning ("Pick up stopped: something is attacking"). Flee and Fight do not
+  apply.
+- **With the bot running** (C-079) the errand runs beside it. Starting it drops the bot's loop or
+  Go to ("Stopped loop Wooden Passage: playing here"; a walk of the bot's stops after the move in
+  flight), and the bot keeps running where the character is. The bot comes first: while something
+  attacks, the errand sends nothing and the bot fights (and rests, and flees, as always); a walk
+  of the errand's stops for the fight and is walked again after it. Where an errand's walk ends,
+  the bot plays from (as after a move by hand). Starting the bot while an errand runs is allowed
+  too, and the errand goes on.
 
 - **Pick up all** sends `look`, then `get N <coin>` for each coin on the floor, runic down to
   copper (copper too, unlike the bot's loot, but under the same `cash.max_encumbrance` load
@@ -1081,6 +1089,29 @@ there says so and stops ("Train stopped: could not get to Training Room").
 An errand in progress is asked again every half second even when the game says nothing, so a walk
 or a re-sync that ends quietly does not leave it waiting.
 
+## Sysop goto
+
+`sys_goto {session, town}` (C-080; the Parties panel's **sysop goto** list, or **Sysop goto ▸** in a
+tile's `[▼]` menu) teleports with `sysop goto <town>` to one of the five towns of
+`kb/navigation.md` "SYSOP GOTO" (`newhaven`, `silvermere`, `rhudaur`, `khazarad`, `lostcity`); by
+policy never a room number. It needs a sysop account; without one the game says the line instead,
+and the re-sync below puts the position right.
+
+- **The whole party goes**: when the character is in a party, every member, leader and followers,
+  teleports; out of one, the character alone.
+- **Each member** drops its errand (cancelled) and its loop or Go to (a running bot keeps running,
+  as after ■), stops any walk after the move in flight, and waits out a fight ("Sysop goto Rhudaur:
+  after the fight": the game refuses the command in combat). Then, before the bot's next action,
+  it sends `sysop goto <town>`.
+- **Landing**: the game shows no room, only the prompt, so the brain takes the town's room as where
+  the character is ("Sysop goto: in Rhudaur, Massive Doors"), a running bot plays there from now
+  on, and a re-sync checks it with a `look`. With every member's position in the same room, a
+  follower never sets off to walk back to a leader it believes is far away; the party forms up
+  again where they land (the game breaks the follows).
+- Typing `sysop goto` (or `sys goto`) into the tiles or the party's send box is not this: the brain
+  does not know where the character went until it sees a room, so followers may try to walk to the
+  leader from where they were.
+
 ## Buying spells
 
 `spell_plan_request` is answered with a `spell_plan`: the spells the character's class could learn
@@ -1110,7 +1141,8 @@ now", and the errand goes on).
   with the cheaper ones before it ("buy what the money covers").
 
 **The shopping errand** (`bot_control` `buy_spells`, the plan's **buy spells** button) does it, with
-the bot stopped or paused like the other errands ("Errands"), and `cancel_errand` ends it:
+the bot stopped, paused or running beside it like the other errands ("Errands"), and `cancel_errand`
+ends it:
 
 1. Scrolls at a shop with no way there are left at once ("song of lore (no way to Bard Song
    Store)"), with no walk, and don't count towards the bank.

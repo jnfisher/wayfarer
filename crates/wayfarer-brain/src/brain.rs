@@ -607,6 +607,26 @@ impl Brain {
                 Some(s) => s.walk_stop(now, out),
                 None => out.push(no_session("walk_stop", &session)),
             },
+            // The whole party goes (C-080): every member teleports on its own and the party
+            // forms up again where they land.
+            ToClient::SysGoto { session, town } => {
+                let Some(t) = crate::sysop::town(&town) else {
+                    out.push(ToGateway::Warning {
+                        session: Some(session),
+                        text: format!("sysop goto: no town {town:?}"),
+                    });
+                    return;
+                };
+                if !self.sessions.contains_key(&session) {
+                    out.push(no_session("sys_goto", &session));
+                    return;
+                }
+                for id in self.parties.members_of(&session) {
+                    if let Some(s) = self.sessions.get_mut(&id) {
+                        s.sys_goto(t, now, out);
+                    }
+                }
+            }
             ToClient::BotControl { session, action } => match self.sessions.get_mut(&session) {
                 // An errand that walks takes a follower out of its party first.
                 Some(_)

@@ -109,6 +109,33 @@ describe("PartiesPanel", () => {
     expect(onsend).toHaveBeenCalledTimes(1);
   });
 
+  it("teleports the party with sysop goto from its dropdown (C-080)", async () => {
+    const onsysgoto = vi.fn();
+    const parties: PartyStatus[] = [
+      {
+        party: { id: "party-1", leader: "penny", followers: ["lauren"] },
+        members: [
+          { session: "penny", state: "joined" },
+          { session: "lauren", state: "joined" },
+        ],
+      },
+    ];
+    render(PartiesPanel, { sessions, parties, attached: true, onsave: vi.fn(), ondelete: vi.fn(), onsysgoto });
+    const pick = screen.getByLabelText("Sysop goto for Penny's party") as HTMLSelectElement;
+    expect([...pick.options].map((o) => o.textContent)).toEqual([
+      "town…",
+      "Newhaven",
+      "Silvermere",
+      "Rhudaur",
+      "Khazarad",
+      "Lost City",
+    ]);
+    await fireEvent.change(pick, { target: { value: "rhudaur" } });
+    expect(onsysgoto).toHaveBeenCalledWith("penny", "rhudaur");
+    // Back to the prompt, so the same town can be picked again.
+    expect(pick.value).toBe("");
+  });
+
   it("has nothing to re-sync with no parties", () => {
     render(PartiesPanel, { sessions, parties: [], attached: true, onsave: vi.fn(), ondelete: vi.fn() });
     expect(screen.queryByText("re-sync all")).toBeNull();

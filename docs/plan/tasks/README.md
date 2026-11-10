@@ -82,7 +82,7 @@ Cards don't repeat these:
 | 13 | KB corrections from the data lookup tool (C-070) | 2026-11-02, from mmud-exploration KQ-001 |
 | 14 | Loops not barred by this session's blocked exits (C-071) | 2026-11-03, after Penny's Bandit Keep loop was refused for a door that failed three bashes |
 | 15 | Fixes from the Thrag run: typed moves re-home, ignore replaces flee-from, one flee per party, bosses first, the Labyrinth's blank exit (C-072 to C-076) | 2026-11-04, at John's request after the run |
-| 16 | Levers on doors: a locked gate a lever opens is routed through (C-077) | 2026-11-10, after Go to found no route to Chancellor Annora for Lexi |
+| 16 | The Annora and Rhudaur run: levers on doors, Key exits, errands beside the bot, party sysop goto, gear tab (C-077 to C-081) | 2026-11-10, at John's request after the run |
 
 ## Index (wave 1, M0)
 
@@ -260,9 +260,19 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | Id | Title | Tier | Size | Depends | Review |
 |---|---|---|---|---|---|
 | [C-077](C-077-door-levers.md) | Levers on doors: a locked gate a lever opens is routed through, and the walker pulls the lever when the gate refuses | B | S | | |
+| [C-078](C-078-key-exits.md) | Key exits as the game words them: the shut door's refusal, `use <key> <dir>`, then `open` | B | S | | |
+| [C-079](C-079-errands-beside-the-bot.md) | Errands beside the running bot: they drop the loop or Go to, and the bot keeps fighting | B | M | | |
+| [C-080](C-080-party-sysop-goto.md) | Sysop goto for the whole party: a town list in the Parties panel and the tile menu | B | M | C-079 | |
+| [C-081](C-081-gear-tab-and-all-settings.md) | Gear is a tab like the others; the settings form shows all settings by default | C | S | | |
 
-Wave 16 (2026-11-10) comes from Lexi's Go to to Chancellor Annora (1:1333), which found no route:
-the Monastery's Inner Gate can't be bashed or picked, and is opened by a lever next door.
+Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
+- Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or
+  picked and is opened by a lever next door (C-077);
+- the walk on from Rhudaur stopped at a Key exit (C-078);
+- John asked for errands with the bot on (C-079), a party sysop goto (C-080), gear as a tab and
+  all settings shown (C-081).
+
+The five cards go in one pull request.
 
 Tier: B Opus, C Sonnet. Size: S under half a day of agent time, M about a day, L two to three
 days.

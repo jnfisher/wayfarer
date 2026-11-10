@@ -103,6 +103,22 @@ export function linkWidth(state: string): number {
   return b ? b.label.length + 3 : 0;
 }
 
+/** The towns `sysop goto` takes (C-080, `kb/navigation.md` "SYSOP GOTO"), as the brain names them. */
+export const TOWNS: { town: string; label: string }[] = [
+  { town: "newhaven", label: "Newhaven" },
+  { town: "silvermere", label: "Silvermere" },
+  { town: "rhudaur", label: "Rhudaur" },
+  { town: "khazarad", label: "Khazarad" },
+  { town: "lostcity", label: "Lost City" },
+];
+
+/** What a sysop goto from `who`'s menu does: its whole party goes when it is in one. */
+export function sysGotoTitle(party: boolean): string {
+  return party
+    ? "Teleport the whole party with sysop goto; it forms up again there (a running bot keeps running)"
+    : "Teleport with sysop goto (a running bot keeps running)";
+}
+
 export interface ErrandItem {
   /** A `bot_control` action, or `spell_plan`: a read-only plan, asked for with its own message. */
   action: BotAction | "spell_plan";
@@ -117,8 +133,9 @@ export function menuWidth(state: string, hasBrain: boolean): number {
 }
 
 /**
- * The entries of a tile's errand menu: pick up all and equip all (not while the bot runs or an
- * errand is on), and cancel while one is.
+ * The entries of a tile's errand menu: pick up all, equip all, train and recover the death pile
+ * (not while an errand is on), and cancel while one is. With the bot running they go too (C-079):
+ * its loop or Go to stops, and it keeps running beside the errand, fighting what comes.
  */
 export function errandItems(
   bot: Bot | undefined,
@@ -127,19 +144,21 @@ export function errandItems(
 ): ErrandItem[] {
   const busy = errand !== undefined;
   const running = bot?.state === "running";
-  const why = busy ? "An errand is in progress" : running ? "Stop or pause the bot first" : "";
+  const why = busy ? "An errand is in progress" : "";
+  /** What a running bot does when the errand starts. */
+  const beside = running ? " (the bot's loop or Go to stops; it keeps running and fights)" : "";
   const items: ErrandItem[] = [
     {
       action: "pick_up_all",
       label: "Pick up all",
-      title: why || "Take the coins and the items on the floor here",
-      disabled: busy || running,
+      title: why || `Take the coins and the items on the floor here${beside}`,
+      disabled: busy,
     },
     {
       action: "equip_all",
       label: "Equip all",
-      title: why || "Wear and wield what is carried, into empty slots only",
-      disabled: busy || running,
+      title: why || `Wear and wield what is carried, into empty slots only${beside}`,
+      disabled: busy,
     },
   ];
   const died = places.some((p) => p.kind === "death");
@@ -147,16 +166,16 @@ export function errandItems(
     {
       action: "train",
       label: "Train",
-      title: why || "Walk to the right trainer and train levels; stays there for you to train stats",
-      disabled: busy || running,
+      title: why || `Walk to the right trainer and train levels; stays there for you to train stats${beside}`,
+      disabled: busy,
     },
     {
       action: "recover_pile",
       label: "Recover death pile",
       title:
         why ||
-        (died ? "Walk to where the character last died, pick up what is there and equip it" : "No death on record"),
-      disabled: busy || running || !died,
+        (died ? `Walk to where the character last died, pick up what is there and equip it${beside}` : "No death on record"),
+      disabled: busy || !died,
     },
   );
   items.push({

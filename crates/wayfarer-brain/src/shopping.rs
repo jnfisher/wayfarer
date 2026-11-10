@@ -117,6 +117,14 @@ impl Shopping {
         }
     }
 
+    /// Its walk was stopped short (a fight, with the bot running): walk it again next step,
+    /// rather than count it as not getting there.
+    pub fn rewalk(&mut self) {
+        if matches!(self.todo.front(), Some(Job::Walk { .. })) {
+            self.walking = false;
+        }
+    }
+
     pub fn narration(&self) -> String {
         let what = match (&self.current, self.todo.front()) {
             (Some((job, _)), _) => self.describe(job),

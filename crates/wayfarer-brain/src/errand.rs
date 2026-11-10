@@ -642,6 +642,15 @@ impl Active {
         }
     }
 
+    /// Its walk was stopped for a fight (the bot running alongside, C-079): it walks again.
+    pub fn rewalk(&mut self) {
+        match self {
+            Active::Simple(_) => {}
+            Active::Shop(s) => s.rewalk(),
+            Active::Trip(t) => t.rewalk(),
+        }
+    }
+
     pub fn step(&mut self, ctx: &Ctx) -> ErrandNext {
         match self {
             Active::Simple(e) => e.step(ctx),

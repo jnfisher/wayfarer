@@ -50,6 +50,14 @@ impl Trip {
         self.label
     }
 
+    /// Its walk was stopped short (a fight, with the bot running): walk it again next step,
+    /// rather than count it as not getting there.
+    pub fn rewalk(&mut self) {
+        if self.dest.is_some() {
+            self.walking = false;
+        }
+    }
+
     pub fn narration(&self) -> String {
         match (&self.dest, &self.current) {
             (Some((_, name)), _) => format!("{}: walking to {name}", self.label),
@@ -219,6 +227,31 @@ mod tests {
                 "= Train stopped: could not get to the Training Room"
             ]
         );
+    }
+
+    #[test]
+    fn a_walk_stopped_for_a_fight_is_walked_again() {
+        // C-079: the bot fought beside the errand; the walk stopped short, so it goes again.
+        let mut trip = Trip::new(
+            "Train",
+            ((1, 20), "the Training Room".to_owned()),
+            vec![],
+            None,
+        );
+        let empty = BTreeMap::new();
+        assert!(matches!(
+            trip.step(&ctx(Some((1, 1)), &empty)),
+            ErrandNext::Walk((1, 20))
+        ));
+        trip.rewalk();
+        assert!(matches!(
+            trip.step(&ctx(Some((1, 5)), &empty)),
+            ErrandNext::Walk((1, 20))
+        ));
+        assert!(matches!(
+            trip.step(&ctx(Some((1, 20)), &empty)),
+            ErrandNext::Done(_)
+        ));
     }
 
     #[test]

@@ -62,7 +62,7 @@
     emptyDevLog,
     loadDevPrefs,
     saveDevPrefs,
-    toggleDrawer,
+    pressTab,
     type DrawerPanel,
   } from "./lib/state";
   import type { Accounts, Blessings, PartyStatus, SessionInfo } from "./proto";
@@ -430,7 +430,7 @@
   function onkeydown(e: KeyboardEvent) {
     if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === GEAR_CODE) {
       e.preventDefault();
-      gearOpen = !gearOpen;
+      gearOpen = pressTab(devPrefs, gearOpen, "gear");
       return;
     }
     if (gearOpen && e.key === "Escape" && !helpArea) {
@@ -463,11 +463,12 @@
               : null;
     if (e.altKey && !e.ctrlKey && !e.metaKey && drawer) {
       e.preventDefault();
-      toggleDrawer(devPrefs, drawer);
+      gearOpen = pressTab(devPrefs, gearOpen, drawer);
       return;
     }
     if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === GO_CODE) {
       e.preventDefault();
+      gearOpen = false;
       devPrefs.open = true;
       devPrefs.panel = "map";
       goAsked += 1;
@@ -517,7 +518,7 @@
         class="devbtn"
         class:on={gearOpen}
         aria-pressed={gearOpen}
-        onclick={() => (gearOpen = !gearOpen)}
+        onclick={() => (gearOpen = pressTab(devPrefs, gearOpen, "gear"))}
         title="Gear planner (Alt+E)"
       >
         gear
@@ -525,9 +526,9 @@
       {#each DRAWER_BUTTONS as b (b.panel)}
         <button
           class="devbtn"
-          class:on={devPrefs.open && devPrefs.panel === b.panel}
-          aria-pressed={devPrefs.open && devPrefs.panel === b.panel}
-          onclick={() => toggleDrawer(devPrefs, b.panel)}
+          class:on={!gearOpen && devPrefs.open && devPrefs.panel === b.panel}
+          aria-pressed={!gearOpen && devPrefs.open && devPrefs.panel === b.panel}
+          onclick={() => (gearOpen = pressTab(devPrefs, gearOpen, b.panel))}
           title={b.title}
         >
           {b.panel}
@@ -629,6 +630,7 @@
             ondelete={(id) => client.deleteParty(id)}
             onresync={(id) => client.resyncParties(id)}
             onsend={(ids, text) => ids.forEach((id) => client.sendLine(id, text))}
+            onsysgoto={(id, town) => client.sysGoto(id, town)}
           />
         {:else if devPrefs.panel === "blessings"}
           <BlessingsPanel
