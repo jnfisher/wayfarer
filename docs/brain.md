@@ -458,6 +458,23 @@ walk to at all is left out.
   then sends `look` (C-055): a teleport prints no room ("You find yourself...elsewhere."), and a
   phrase where the room has no such script is only speech (`You say "ring chime"`). The room
   the look shows is checked as a move's: the one it was going to, or a drift and a new plan.
+- **A spell that only teleports** (C-086). A `cast` of a spell whose only abilities are
+  Teleport Room (140) and Teleport Map (141) is a line's teleport too: the Dragon's Teeth holes
+  (`go hole` at 2/487 casts *fall* into Stone Tunnel, Hole Up, 2/1306; 2/630 into 2/1617; Western
+  Road, Avalanche 2/115 into 2/1123) and the organic chambers' `go hole` (2/2366, 2/2367). A
+  `text` clause (a text block shown) is as harmless as a `message`.
+- **A MegaMud phrase in the wrong look-alike** (C-086). MegaMud tells rooms apart by a room id
+  many rooms can share (22 rooms of the hills have 2/193's); a path's walk places each step in
+  one of them. A crossing whose room has a look-alike that already has a way through to the same
+  room taking the phrase is that look-alike's, and is not added (`Dthhstt1.mp`'s `@party go
+  hole` was placed in 2/193; the hole is 2/487's).
+- **Only speech** (C-086). When the game answers the phrase in flight with `You say
+  "<phrase>"`, the character did not move: the position drops that move (the room after it is
+  the same room, not the way through's other side). For a MegaMud crossing the walker bars it for
+  the session, says "`go hole` is only speech in Dragon's Teeth Hills: going round" and plans
+  again from where it is; it never types that phrase there again this session. A room command
+  is the game's own, so speech there means the position is wrong: the `look` after it tells where
+  the character is, as before (C-055).
   A stop that comes while the phrase is in flight (a party leader's hold for a follower the
   teleport left behind, a fight, the player) still waits for that look: without it the
   character's room is unknown, and the followers have nowhere to walk back to. A teleport

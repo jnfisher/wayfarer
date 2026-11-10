@@ -104,7 +104,8 @@ fn megamud_crossings_are_added_once_and_not_where_a_room_command_is() {
     // The chime is a room command already: no crossing.
     assert!(crossings.iter().all(|c| c.0 != SLUM_STREET));
     let added = g.learn_crossings(&k);
-    assert_eq!(added, crossings.len());
+    // All but `Dthhstt1.mp`'s `go hole`, which a look-alike room has (C-086).
+    assert_eq!(added, crossings.len() - 1);
     let arch = g
         .edges((7, 141))
         .iter()
@@ -120,4 +121,41 @@ fn megamud_crossings_are_added_once_and_not_where_a_room_command_is() {
             .any(|e| e.kind == ExitType::RoomCommand)
     );
     assert_eq!(g.learn_crossings(&k), 0, "known ones are not added twice");
+}
+
+#[test]
+fn the_dragons_teeth_hole_is_in_its_own_room_not_a_look_alike() {
+    // C-086: 2/487's command text casts *fall* (336) into Stone Tunnel, Hole Up (2/1306), a
+    // way through. `Dthhstt1.mp` types `@party go hole` in a room 22 rooms share a MegaMud id
+    // with, and its walk placed it in 2/193, where the game only hears speech: that crossing
+    // is 2/487's, and 2/193 gets none.
+    const HOLE: (i64, i64) = (2, 487);
+    const LOOK_ALIKE: (i64, i64) = (2, 193);
+    const TUNNEL: (i64, i64) = (2, 1306);
+    let (pack, mut g) = graph();
+    let hole = g
+        .edges(HOLE)
+        .iter()
+        .find(|e| e.kind == ExitType::RoomCommand)
+        .expect("go hole");
+    assert_eq!(hole.to, TUNNEL);
+    assert!(hole.taken_by("go hole") && hole.taken_by("crawl hole"));
+    // The way back up is a plain teleport (text 307).
+    assert!(
+        g.edges(TUNNEL)
+            .iter()
+            .any(|e| e.kind == ExitType::RoomCommand && e.to == HOLE && e.taken_by("climb hole"))
+    );
+    let k = PathKnowledge::load(&pack, &g).unwrap();
+    assert!(
+        k.crossings()
+            .any(|c| c == (LOOK_ALIKE, TUNNEL, "go hole".to_owned())),
+        "the path's walk placed it in 2/193"
+    );
+    g.learn_crossings(&k);
+    assert!(
+        g.edges(LOOK_ALIKE).iter().all(|e| !e.taken_by("go hole")),
+        "{:?}",
+        g.edges(LOOK_ALIKE)
+    );
 }

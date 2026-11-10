@@ -124,6 +124,17 @@ scripts (`LJNSPEC.C`). A client meets them as typed phrases that do something in
   first) at Slum Street 1:1182 (command text 4087: `message 3177:teleport 65 1:message 837`); its
   front door north of 1:1182 is locked at -800 and opens only from inside (-20) [C, the stock data;
   MegaMud's `SLMCSSME.mp` ends with `@party ring chime` there].
+- **Holes that cast** (wayfarer C-086, the stock data, 2026-11-10): some ways down `cast` a spell
+  that only teleports (abilities 140 Teleport Room and 141 Teleport Map, plus 144 Non Magical) and
+  are as sure as a `teleport`. The Dragon's Teeth Hills holes: `go hole` / `enter hole` / `crawl
+  hole` at **2/487** (text 308) cast *fall* (336) into Stone Tunnel, Hole Up **2/1306**, whose
+  `climb hole` (text 307) is a plain `teleport 487 2` back; 2/630 (text 311, spell 338) into
+  2/1617; Western Road, Avalanche 2/115 (text 305, spell 335) into 2/1123. The organic chambers
+  2/2366 and 2/2367 cast *tentacles* (343, 344) into each other, with `nomonsters`. The rest of
+  the hills have no command text: `go hole` in 2/193, a look-alike of 2/487 (same name, exits and
+  MegaMud room id), is only speech [C data; live 2026-11-10, `You say "go hole"`]. MegaMud's
+  `Dthhstt1.mp` types `@party go hole` in a room 22 rooms share an id with; read against the room
+  data, it is 2/487.
 - **ASK and GREET** (`ask_monster_a_question`, `LJNUTIL.C:10088-10256`). The question is upper-cased; the
   monster's talk block is read (first record only) as `KEYWORDS:text number` lines and the first line whose
   keywords occur anywhere in the question (substring, not word) wins; its answer text is shown with the
