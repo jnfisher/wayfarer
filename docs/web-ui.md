@@ -257,7 +257,11 @@ and works nothing out itself.
   them cost; spells above the character's level are greyed ("needs level 9"). Under the plan,
   **buy spells** runs the shopping errand: it draws money from the Bank of Godfrey in Silvermere if
   the cash falls short, walks to the shops, buys what the money covers (the cheapest first) and
-  reads the scrolls ([brain.md](brain.md) "Buying spells"); the `[x]` closes the plan. They are offered only while the bot is stopped or paused. The
+  reads the scrolls ([brain.md](brain.md) "Buying spells"); the `[x]` closes the plan. They work
+  with the bot running too (C-079): its loop or Go to stops, and it keeps running beside the errand,
+  fighting what comes ([brain.md](brain.md) "Errands"). **Sysop goto ▸** opens the five towns
+  under it; picking one teleports the character's whole party, or the character alone out of one
+  ([brain.md](brain.md) "Sysop goto"). The
   tile's narration line shows what the errand is doing, and a notice says what it did
   ([brain.md](brain.md) "Errands").
 - **Recent places**: with nothing typed, the go box lists where the character died (its gear
@@ -333,6 +337,11 @@ are in one room. When one gets stuck (a follower shown joined that is not, or se
 no reason), **re-sync** in its box, or **re-sync all** at the top, has every member check its
 party with `par` at once and the invites and follows go again without waiting
 (`party_resync`, [brain.md](brain.md) "Parties").
+
+**sysop goto** in each box (C-080) is a list of the five towns: picking one teleports every member
+with `sysop goto`, each once it is out of combat, with the bot running or not; the brain puts each
+in the town's room and the party forms up again there ([brain.md](brain.md) "Sysop goto"). Use it
+rather than typing `sys goto` into the send box: the brain then knows where they all landed.
 
 Under the members, **guards** (Quicksilver 1.20): for each member a list, `Penny guards
 nobody / Lauren / Faye`, one ward each; set it and save. It is greyed with "1.20 servers only"
@@ -422,8 +431,8 @@ The focused character's settings as a form (`docs/plan/04-settings.md`), from th
 `settings` answer. Rows are grouped (Health, Combat, Spells, Coins, Movement, The bot), each
 with its label, a control that fits it (a number box with its range, a switch, a list of
 words), the unit, where the value in force comes from (`default`, `class & style`, `my
-defaults`, `this server`, `this character`) and the setting's help line. The advanced
-settings show with `all`.
+defaults`, `this server`, `this character`) and the setting's help line. `all` (on by default)
+shows the standard and advanced settings too; untick it for the essential ones only.
 
 - **Which file**: the buttons above the form choose the file being edited, `this character`
   (default), `this server` or `my defaults`; the line under them says which file that is and
@@ -479,9 +488,10 @@ editing. `Alt+A` or the `accounts` button opens it.
 
 ## The gear planner
 
-The `gear` button on the bar at the top, beside the drawer's tabs, or `Alt+E` (on a Mac,
+The `gear` tab on the bar at the top, the first of the drawer's tabs, or `Alt+E` (on a Mac,
 `Option+E`) opens the gear planner over the tiles and the drawer, which stay as they are
-underneath; `Alt+E` again, `Esc` or `[x] Esc` closes it. It opens on the focused character, and
+underneath; `Alt+E` again, `Esc` or `[x] Esc` closes it. It is a tab like the others (C-081):
+pressing another tab (or its `Alt` key) closes the planner and shows that panel. It opens on the focused character, and
 the picker in its header switches to another. It is a view of the brain's gear plan
 ([brain.md](brain.md) "Gear plan"): every weapon the character's class and race could ever use,
 and the rest greyed, each scored for a plain attack, a bash and a smash against a monster set.

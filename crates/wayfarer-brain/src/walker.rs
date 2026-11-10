@@ -16,11 +16,17 @@
 //! from elsewhere, `wayfarer_world::Window`) has its steps in place: a phrase on the way (`pull
 //! lever`) is typed and its prompt awaited, and the sealed exit is walked without a search.
 //!
+//! A locked Door or Gate a lever opens (`Step::lever`, C-077) is tried first like any door;
+//! when it refuses and the character cannot open it, the walker goes to the lever, types its
+//! phrase, comes back and tries again, once a walk.
+//!
 //! A route through an Item or Key exit whose item a shop sells goes by the shop when that is the
 //! only or the shorter way ([`route_buying`]): there the walker sends `buy <item>` and goes on. A
 //! one-charge item (a room ticket) is used up by its exit, so it is no longer counted as carried.
 //!
 //! [`Traveller::lock_odds`]: wayfarer_world::Traveller::lock_odds
+
+use std::collections::BTreeSet;
 
 use wayfarer_parse::typed::{GameEvent, Refusal};
 use wayfarer_proto::{BossLair, RoomKey, Walking};
@@ -143,6 +149,8 @@ struct Walk {
     purchase: Option<Purchase>,
     /// What the shop said to the `buy` in flight: bought, or refused and why.
     heard_buy: Option<Result<(), &'static str>>,
+    /// Doors whose lever this walk has gone to (`Step::lever`): a second refusal gives them up.
+    levered: BTreeSet<(Key, u8)>,
 }
 
 /// A boss lair a walk stops short of.
@@ -230,17 +238,21 @@ fn hopeless(pos: &Position, atlas: &Atlas, step: &Step) -> Option<String> {
         .iter()
         .find(|e| e.dir == step.dir && e.door.is_some())?;
     (pos.traveller.lock_odds(e) == Some(0)).then(|| {
-        let what = if e.kind == ExitType::Gate {
-            "gate"
-        } else {
-            "door"
-        };
+        let what = door_word(atlas, step);
         format!(
             "The {what} {} is beyond my strength (needs more than {})",
             dir_name(step.dir),
             -e.params[1]
         )
     })
+}
+
+/// "gate" for a Gate, else "door".
+fn door_word(atlas: &Atlas, step: &Step) -> &'static str {
+    match atlas.graph.edge(step.from, step.dir).map(|e| e.kind) {
+        Some(ExitType::Gate) => "gate",
+        _ => "door",
+    }
 }
 
 fn plural(n: usize, one: &str) -> String {
@@ -471,6 +483,7 @@ impl Walker {
             void: None,
             purchase,
             heard_buy: None,
+            levered: BTreeSet::new(),
         };
         let doing = w.first(pos, &mut next);
         next.action = Some(w.send(doing));
@@ -589,17 +602,30 @@ impl Walker {
                     }
                 }
             }
-            // A Key exit the character holds the key of is turned with `use <key>`, twice at most.
-            (Doing::Move, Outcome::Refused(Refused::DoorClosed { .. }))
-                if step.exit_type == ExitType::Key
-                    && w.key_tries < MAX_KEY_TRIES
-                    && key_for(pos, atlas, &step).is_some() =>
+            // A shut Key exit ("There is a closed door in that direction!", `kb/navigation.md`
+            // "Key"): `use <key> <dir>` with the key held, twice at most, then `open <dir>`.
+            (
+                Doing::Move,
+                Outcome::Refused(Refused::DoorClosed { .. } | Refused::Move(Refusal::ClosedDoor)),
+            )
+            | (Doing::Open, Outcome::Refused(Refused::Locked))
+                if step.exit_type == ExitType::Key =>
             {
-                w.key_tries += 1;
-                w.key = key_for(pos, atlas, &step);
-                Ok(Doing::UseKey)
+                if w.key_tries < MAX_KEY_TRIES && key_for(pos, atlas, &step).is_some() {
+                    w.key_tries += 1;
+                    w.key = key_for(pos, atlas, &step);
+                    Ok(Doing::UseKey)
+                } else if w.key_tries == 0 && doing == Doing::Move {
+                    // No key held: it may be shut but not locked.
+                    Ok(Doing::Open)
+                } else {
+                    pos.block(step.from, step.dir);
+                    let why = format!("the door {} would not unlock", dir_name(step.dir));
+                    w.replan(pos, atlas, &mut next, &why)
+                }
             }
-            (Doing::UseKey, Outcome::Confirmed(Confirmed::Prompt)) => Ok(Doing::Move),
+            // Unlocked (or it was not locked): still shut until opened.
+            (Doing::UseKey, Outcome::Confirmed(Confirmed::Prompt)) => Ok(Doing::Open),
             (Doing::Buy, Outcome::Confirmed(_)) => {
                 let p = w.purchase.take().expect("buying");
                 match w.heard_buy.take() {
@@ -618,6 +644,25 @@ impl Walker {
             }
             (Doing::Move, Outcome::Refused(Refused::DoorClosed { locked: false })) => {
                 Ok(Doing::Open)
+            }
+            (Doing::Move, Outcome::Refused(Refused::DoorClosed { locked: true }))
+            | (Doing::Open, Outcome::Refused(Refused::Locked))
+                if !step.lever.is_empty()
+                    && !w.levered.contains(&(step.from, step.dir))
+                    && hopeless(pos, atlas, &step).is_some() =>
+            {
+                // Its lever (C-077): there, the phrase and back, then the door again. Only now
+                // that it refused: the lever swaps it, so pulling it open would lock it.
+                w.levered.insert((step.from, step.dir));
+                let what = door_word(atlas, &step);
+                let way: Vec<&str> = step.lever.iter().map(|s| s.command.as_str()).collect();
+                next.notice(format!(
+                    "The {what} {} is opened by a lever: {}",
+                    dir_name(step.dir),
+                    way.join(", ")
+                ));
+                w.route.splice(w.next..w.next, step.lever.iter().cloned());
+                Ok(Doing::Move)
             }
             (Doing::Move, Outcome::Refused(Refused::DoorClosed { locked: true }))
             | (Doing::Open, Outcome::Refused(Refused::Locked)) => match hopeless(pos, atlas, &step)
@@ -903,8 +948,9 @@ impl Walk {
             Doing::Move => Action::new(step.command.clone(), Expect::RoomSeen),
             Doing::Arrive => Action::new("look", Expect::RoomSeen),
             Doing::Open => Action::new(format!("open {dir}"), Expect::DoorOpened),
+            // A key takes the word after its name as the direction; with none it unlocks nothing.
             Doing::UseKey => Action::new(
-                format!("use {}", self.key.clone().unwrap_or_default()),
+                format!("use {} {dir}", self.key.clone().unwrap_or_default()),
                 Expect::Prompt,
             ),
             Doing::Bash => {

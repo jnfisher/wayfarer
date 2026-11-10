@@ -130,7 +130,20 @@ describe("the tile", () => {
     expect(botControl).toHaveBeenLastCalledWith("a", "cancel_errand");
   });
 
-  it("offers the errands only while the bot is not running, and the spell plan always", () => {
+  it("sends a sysop goto from the errand menu's towns (C-080)", async () => {
+    const sysGoto = vi.fn();
+    const gotoClient = { sendLine: vi.fn(), sendKeys: vi.fn(), botControl, sysGoto } as never;
+    const props = { info, number: 1, focused: false, zoom: 0, offline: null, client: gotoClient, sinks, onfocus() {}, onhelp() {} };
+    render(Tile, { ...props, character: { bot: running } });
+    await fireEvent.click(screen.getByRole("button", { name: "Errands" }));
+    expect(screen.queryByRole("menuitem", { name: "Rhudaur" })).toBeNull();
+    await fireEvent.click(screen.getByRole("menuitem", { name: "Sysop goto ▸" }));
+    await fireEvent.click(screen.getByRole("menuitem", { name: "Rhudaur" }));
+    expect(sysGoto).toHaveBeenCalledWith("a", "rhudaur");
+    expect(screen.queryByRole("menu", { name: "Errands" })).toBeNull();
+  });
+
+  it("offers the errands with the bot stopped or running (C-079), and the spell plan always", () => {
     expect(errandItems(stopped, undefined).map((i) => [i.label, i.disabled])).toEqual([
       ["Pick up all", false],
       ["Equip all", false],
@@ -138,7 +151,10 @@ describe("the tile", () => {
       ["Recover death pile", true],
       ["Spell plan…", false],
     ]);
-    expect(errandItems(running, undefined).map((i) => i.disabled)).toEqual([true, true, true, true, false]);
+    // Running: they go too; the loop or Go to stops and the bot keeps running.
+    const beside = errandItems(running, undefined);
+    expect(beside.map((i) => i.disabled)).toEqual([false, false, false, true, false]);
+    expect(beside[0].title).toContain("keeps running");
     expect(errandItems(paused, "Pick up: get torch").map((i) => i.label)).toEqual([
       "Pick up all",
       "Equip all",

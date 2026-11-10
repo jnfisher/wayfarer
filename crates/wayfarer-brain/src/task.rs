@@ -107,7 +107,7 @@ pub(crate) fn why_unreachable(
     } else {
         "door"
     };
-    if t.door_odds(&e) == Some(0) {
+    if t.door_odds(&e) == Some(0) && e.lever.is_empty() {
         format!("the {door} {dir} of {at} cannot be opened")
     } else if e.door.is_some() && t.blocked.contains(&(e.from, e.dir)) {
         format!("the {door} {dir} of {at} would not open")

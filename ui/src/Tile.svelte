@@ -4,7 +4,7 @@
   import { FitAddon } from "@xterm/addon-fit";
   import { WebglAddon } from "@xterm/addon-webgl";
   import "@xterm/xterm/css/xterm.css";
-  import { botButtons, errandItems, linkButton, narrationLine } from "./lib/bot";
+  import { TOWNS, botButtons, errandItems, linkButton, narrationLine, sysGotoTitle } from "./lib/bot";
   import { keyBytes, type GatewayClient } from "./lib/gateway";
   import { HEADER_CELL_PX, bar, barSize, expText, fitHeader, levelClass, roomText } from "./lib/header";
   import { InputHistory } from "./lib/input";
@@ -88,6 +88,10 @@
   let menuOpen = $state(false);
   /** The spell plan is showing. */
   let planOpen = $state(false);
+  /** The errand menu's sysop goto towns are showing (C-080). */
+  let gotoOpen = $state(false);
+  /** In a party: a sysop goto takes all of it. */
+  const inParty = $derived(parties.some((p) => p.party.leader === info.id || p.party.followers.includes(info.id)));
   const shown = $derived(
     fitHeader(headerText, headerCols, party ? party.text.length + 3 : 0),
   );
@@ -384,6 +388,34 @@
             >
           </li>
         {/each}
+        <li role="none">
+          <button
+            role="menuitem"
+            aria-expanded={gotoOpen}
+            title={sysGotoTitle(inParty)}
+            onclick={(e) => {
+              e.stopPropagation();
+              gotoOpen = !gotoOpen;
+            }}>{gotoOpen ? "Sysop goto ▾" : "Sysop goto ▸"}</button
+          >
+        </li>
+        {#if gotoOpen}
+          {#each TOWNS as t (t.town)}
+            <li role="none">
+              <button
+                role="menuitem"
+                class="town"
+                title={sysGotoTitle(inParty)}
+                onclick={(e) => {
+                  e.stopPropagation();
+                  menuOpen = false;
+                  gotoOpen = false;
+                  client.sysGoto(info.id, t.town);
+                }}>{t.label}</button
+              >
+            </li>
+          {/each}
+        {/if}
       </ul>
     {/if}
   {#if planOpen}
@@ -684,6 +716,9 @@
   ul.errands button:hover:not(:disabled) {
     color: #000;
     background: var(--vga-lightcyan);
+  }
+  ul.errands button.town {
+    padding-left: 3ch;
   }
   ul.errands button:disabled {
     color: var(--vga-darkgray);

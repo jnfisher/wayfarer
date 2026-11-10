@@ -22,6 +22,7 @@
     type Draft,
   } from "./lib/parties";
   import type { CharacterState, PartyDef, PartyStatus, SessionInfo } from "./proto";
+  import { TOWNS, sysGotoTitle } from "./lib/bot";
 
   interface Props {
     sessions: SessionInfo[];
@@ -36,6 +37,8 @@
     onresync?: (id?: string) => void;
     /** Type `text` into each of `sessions`, as if typed into each one's terminal. */
     onsend?: (sessions: string[], text: string) => void;
+    /** Teleport `session`'s party to `town` with `sysop goto` (C-080). */
+    onsysgoto?: (session: string, town: string) => void;
   }
 
   let {
@@ -47,6 +50,7 @@
     ondelete,
     onresync = () => {},
     onsend = () => {},
+    onsysgoto = () => {},
   }: Props = $props();
   const RESYNC_TITLE =
     "Stuck? Every member checks its party with par now, and the invites and follows go again at once";
@@ -192,6 +196,23 @@
           />
           <button type="submit" disabled={!(says[p.party.id] ?? "").trim()}>send</button>
         </form>
+        <label class="goto" title={sysGotoTitle(true)}>
+          sysop goto
+          <select
+            aria-label="Sysop goto for {names[p.party.leader] ?? p.party.leader}'s party"
+            value=""
+            onchange={(e) => {
+              const el = e.currentTarget as HTMLSelectElement;
+              if (el.value) onsysgoto(p.party.leader, el.value);
+              el.value = "";
+            }}
+          >
+            <option value="">town…</option>
+            {#each TOWNS as t (t.town)}
+              <option value={t.town}>{t.label}</option>
+            {/each}
+          </select>
+        </label>
         <div class="acts">
           {#if changed(p)}
             <button disabled={!!draftProblem(d)} title={draftProblem(d) ?? "Save the party"} onclick={() => save(d)}
@@ -325,6 +346,12 @@
     border: 1px solid var(--frame);
   }
   .party .acts {
+    padding: 2px 0 0;
+  }
+  .goto {
+    display: flex;
+    gap: 1ch;
+    align-items: baseline;
     padding: 2px 0 0;
   }
   button {

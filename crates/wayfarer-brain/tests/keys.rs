@@ -15,8 +15,14 @@ async fn a_key_exit_is_turned_with_use_when_the_key_is_carried() {
     // The keys line of `i`: the brain learns it holds the key.
     g.output(&says("You have the following keys:  large iron key."))
         .await;
-    g.expect("e", says("The door is closed!"));
-    g.expect("use large iron key", says("You unlock the door."));
+    // The game's texts (`kb/navigation.md` "Key"; seen at Rhudaur's doors on 2026-11-10): a
+    // shut Key exit refuses the move, the key takes a direction, and the door is still shut.
+    g.expect("e", says("There is a closed door in that direction!"));
+    g.expect(
+        "use large iron key e",
+        says("You successfully unlocked the door."),
+    );
+    g.expect("open e", says("The door is now open."));
     g.expect("e", room(CAVERN));
     // Thrag's lair: walk in, not one room short of it.
     g.walk_to_short(CAVERN, Some(false)).await;
@@ -26,7 +32,7 @@ async fn a_key_exit_is_turned_with_use_when_the_key_is_carried() {
     );
     assert_eq!(g.walk_narration().await, "Arrived: Gigantic Cavern");
     let (_, played) = g.close(run).await;
-    assert_eq!(played, ["e", "use large iron key", "e"]);
+    assert_eq!(played, ["e", "use large iron key e", "open e", "e"]);
 }
 
 #[tokio::test(start_paused = true)]
@@ -43,4 +49,40 @@ async fn without_the_key_there_is_no_way_in_and_it_says_so() {
         .await;
     assert!(said.contains("no way there"), "{said}");
     g.close(run).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_key_exit_that_will_not_unlock_is_given_up() {
+    let (mut g, run) = Game::start(SessionState::Realm, GUARDROOM).await;
+    g.output(&says("You have the following keys:  large iron key."))
+        .await;
+    g.expect("e", says("There is a closed door in that direction!"));
+    for _ in 0..2 {
+        g.expect(
+            "use large iron key e",
+            says("The key doesn't fit the lock."),
+        );
+        g.expect("open e", says("The door is locked."));
+    }
+    g.walk_to_short(CAVERN, Some(false)).await;
+    let stop = g
+        .until(|m| match m {
+            ToGateway::Warning { text, .. } if text.starts_with("Stopped walking") => {
+                Some(text.clone())
+            }
+            _ => None,
+        })
+        .await;
+    assert!(stop.contains("the door east would not unlock"), "{stop}");
+    let (_, played) = g.close(run).await;
+    assert_eq!(
+        played,
+        [
+            "e",
+            "use large iron key e",
+            "open e",
+            "use large iron key e",
+            "open e"
+        ]
+    );
 }

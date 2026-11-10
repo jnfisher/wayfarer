@@ -106,14 +106,14 @@ describe("the settings tab", () => {
     expect(row("health.flee_below_hp").textContent).toContain("set here");
     expect(row("spells.heal").textContent).toContain("default");
     expect(container.textContent).toContain("/data/characters/a.toml");
-    // The advanced setting is hidden until "all".
-    expect(container.querySelector('[data-key="bot.leg_tries"]')).toBeNull();
+    // "all" is on by default: the advanced setting shows.
+    expect(container.querySelector('[data-key="bot.leg_tries"]')).not.toBeNull();
   });
 
-  it("shows the advanced settings with 'all'", async () => {
+  it("hides the advanced settings with 'all' off", async () => {
     const { container } = render_();
     await fireEvent.click(screen.getByLabelText("all"));
-    expect(container.querySelector('[data-key="bot.leg_tries"]')).not.toBeNull();
+    expect(container.querySelector('[data-key="bot.leg_tries"]')).toBeNull();
   });
 
   it("saves a number, a switch and a word to the layer being edited", async () => {

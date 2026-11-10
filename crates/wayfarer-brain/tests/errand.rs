@@ -1,5 +1,5 @@
 //! Errands (docs/brain.md "Errands"): pick up all and equip all against the fake game of
-//! `game/mod.rs`, with the bot stopped. On a paused clock.
+//! `game/mod.rs`, with the bot stopped, and beside it running (C-079). On a paused clock.
 
 mod game;
 
@@ -81,15 +81,28 @@ async fn equip_all_wears_what_wears_and_leaves_the_rest() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_errand_is_refused_while_the_bot_runs() {
+async fn an_errand_beside_the_running_bot_waits_for_the_fight() {
+    // C-079: the bot keeps running and fights; the errand goes once the fight is over.
     let (mut g, run) = in_arena(&["large giant rat"]).await;
     start(&mut g, &["large giant rat"], 35).await;
     g.expect("a rat", line(ENGAGED, 35));
     g.narrated("Fight: large giant rat").await;
     g.bot(BotAction::PickUpAll).await;
-    let said = done(&mut g, "errand: stop or pause the bot first").await;
-    assert!(said.contains("bot"), "{said}");
-    g.close(run).await;
+    let started = done(&mut g, "Pick up started").await;
+    assert_eq!(started, "Pick up started");
+    // Engaged: nothing is sent (the script has nothing; anything would fail).
+    for hp in [33, 30] {
+        g.round("The large giant rat lunges at you!", hp).await;
+    }
+    g.expect("look", arena(&[], 30));
+    g.expect("look", arena_with_floor("torch"));
+    g.expect("get torch", line("You took torch.", 30));
+    g.output(&kill(30)).await;
+    let text = done(&mut g, "Pick up done").await;
+    assert_eq!(text, "Pick up done: torch");
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "look", "look", "get torch"]);
+    assert_eq!(bot(&seen).state, wayfarer_proto::BotState::Running);
 }
 
 /// The status screen's character: resynced, with the bot stopped again.
@@ -199,4 +212,30 @@ async fn recover_goes_to_where_it_died_and_picks_up_and_equips() {
             "wear padded vest"
         ]
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_errand_stops_the_bots_go_to_and_the_bot_plays_on() {
+    // C-079: pick up all during a Go to: the walk stops after the move in flight, the journey is
+    // dropped, the errand runs where the character stopped, and the bot keeps running.
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 35).await;
+    g.narrated("re-synced").await;
+    g.expect("u", room(NARROW_ROAD));
+    g.expect("look", room(NARROW_ROAD));
+    g.walk_to(VILLAGE_ENTRANCE).await;
+    g.bot(BotAction::PickUpAll).await;
+    let text = done(&mut g, "Pick up done").await;
+    assert!(text.starts_with("Pick up done"), "{text}");
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u", "look"]);
+    let said = notices(&seen);
+    assert!(
+        said.iter()
+            .any(|s| s.starts_with("Stopped ") && s.ends_with(": playing here")),
+        "{said:?}"
+    );
+    let b = bot(&seen);
+    assert_eq!(b.state, wayfarer_proto::BotState::Running);
+    assert!(b.journey.is_none());
 }

@@ -231,6 +231,12 @@ export class GatewayClient {
     return q.length >= MIN_QUERY && this.send({ type: "find", session, query: q });
   }
 
+  /** Teleport a character's party (or the character alone) to a town with `sysop goto` (C-080);
+   * false when not connected. */
+  sysGoto(session: string, town: string): boolean {
+    return this.send({ type: "sys_goto", session, town });
+  }
+
   /** Stop a character's walk after the move in flight; false when not connected. */
   walkStop(session: string): boolean {
     return this.send({ type: "walk_stop", session });

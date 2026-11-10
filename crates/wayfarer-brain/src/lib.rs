@@ -52,6 +52,7 @@ mod shopping;
 mod sneak;
 mod spellcraft;
 mod stats;
+mod sysop;
 mod task;
 mod time_stats;
 mod trip;

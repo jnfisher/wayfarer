@@ -19,7 +19,7 @@
 
   /** The layer being edited, and whether the standard and advanced settings show too. */
   let layer = $state<string>("character");
-  let all = $state(false);
+  let all = $state(true);
   /** Number boxes whose text is not yet a whole number in range. */
   let bad = $state<Record<string, boolean>>({});
 

@@ -12,7 +12,7 @@ use std::time::Instant;
 
 use wayfarer_world::{
     Belief, Category, DirSet, ExitType, Key, LockState, Monsters, RoomGraph, Traveller, WorldPack,
-    huntable, layout, route,
+    huntable, layout, route, route_or_search,
 };
 
 fn graph() -> (WorldPack, RoomGraph) {
@@ -744,4 +744,82 @@ fn a_whole_room_the_pack_lacks_leaves_the_position_unknown_until_a_known_one() {
         .expect("the house");
     assert_eq!(door.gate, wayfarer_world::Gate::Unnamed);
     assert!(!Traveller::anyone().can_take(door));
+}
+
+/// The Monastery (C-077): the Inner Gate's gate north to the Courtyard is locked with `exitpar2`
+/// -300, opened by a lever in the room east or west of it; the Courtyard has its own lever for
+/// the gate back. Chancellor Annora's office is past the Courtyard.
+const INNER_GATE: Key = (1, 1331);
+const COURTYARD: Key = (1, 1375);
+const LARGE_OFFICE: Key = (1, 1333);
+const MONASTERY_ENTRANCE: Key = (1, 1322);
+
+#[test]
+fn a_locked_door_a_lever_opens_carries_the_lever() {
+    let (_, g) = graph();
+    let levers: Vec<&wayfarer_world::Edge> = g
+        .all_edges()
+        .iter()
+        .filter(|e| !e.lever.is_empty())
+        .collect();
+    let own = levers.iter().filter(|e| e.lever.len() == 1).count();
+    assert_eq!((levers.len(), own), (19, 17));
+    assert!(
+        levers
+            .iter()
+            .all(|e| matches!(e.kind, ExitType::Door | ExitType::Gate))
+    );
+    let gate = g.edge(INNER_GATE, 0).unwrap();
+    assert_eq!(
+        (gate.kind, gate.to, gate.params[1]),
+        (ExitType::Gate, COURTYARD, -300)
+    );
+    let lever: Vec<(&str, ExitType)> = gate
+        .lever
+        .iter()
+        .map(|e| (e.command.as_str(), e.kind))
+        .collect();
+    assert_eq!(
+        lever,
+        [
+            ("e", ExitType::Normal),
+            ("pull lever", ExitType::RemoteAction),
+            ("w", ExitType::Normal),
+        ]
+    );
+    let back = g.edge(COURTYARD, 1).unwrap();
+    assert_eq!(commands_of(&back.lever), ["pull lever"]);
+    // Gates whose lever is reached only by a Hidden exit have none (7/150 southeast, 7/1173
+    // east).
+    assert!(g.edge((7, 150), 6).unwrap().lever.is_empty());
+    assert!(g.edge((7, 1173), 2).unwrap().lever.is_empty());
+}
+
+fn commands_of(edges: &[wayfarer_world::Edge]) -> Vec<&str> {
+    edges.iter().map(|e| e.command.as_str()).collect()
+}
+
+#[test]
+fn a_locked_gate_a_lever_opens_is_routed_through() {
+    let (_, g) = graph();
+    let weak = Traveller {
+        strength: Some(50),
+        ..Traveller::default()
+    };
+    let gate = g.edge(INNER_GATE, 0).unwrap();
+    assert_eq!(weak.door_odds(gate), Some(0));
+    assert!(weak.can_take(gate));
+    // Straight through the gate; the lever rides on the step, for when it refuses.
+    let r = route(&g, INNER_GATE, COURTYARD, &weak).unwrap();
+    assert_eq!(commands(&r), ["n"]);
+    assert_eq!(commands(&r[0].lever), ["e", "pull lever", "w"]);
+    // Chancellor Annora, from the Monastery's door (a hidden exit on the way, searched for as
+    // Go to does).
+    let r = route_or_search(&g, MONASTERY_ENTRANCE, LARGE_OFFICE, &weak).unwrap();
+    assert_eq!(&commands(&r)[..2], ["n", "n"]);
+    assert_eq!(r.last().unwrap().to, LARGE_OFFICE);
+    // A door with no lever and no odds is still left out.
+    let mut no_lever = gate.clone();
+    no_lever.lever.clear();
+    assert!(!weak.can_take(&no_lever));
 }

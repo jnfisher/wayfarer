@@ -317,6 +317,16 @@ impl Position {
 
     /// The game refused `command` (anything but "no exit"): mark the exits it would have taken
     /// from the candidates, so routes avoid them for the rest of the session.
+    /// A `sysop goto` landed: the character is in `room` (C-080). The game shows no room for
+    /// it, so the belief is told; the re-sync's `look` checks it.
+    pub fn teleported(&mut self, room: Key) {
+        self.belief = Belief::at(room);
+        self.moving.clear();
+        self.door_cmd = None;
+        self.title_pending = None;
+        self.visited.insert(room);
+    }
+
     pub fn refused(&mut self, atlas: &Atlas, command: &str) {
         let exits = self.belief.refused(&atlas.graph, command);
         self.traveller.blocked.extend(exits);

@@ -32,7 +32,7 @@ use crate::commands::{Kind, classify};
 use crate::custom;
 use crate::detect::{Bars, Detector};
 use crate::errand::{Active, Ctx, Errand, ErrandKind, ErrandNext};
-use crate::executor::{Action, Executor, Expect};
+use crate::executor::{Action, Executor, Expect, Outcome};
 use crate::journey::Journey;
 use crate::modes::{Bot, Do, Presence, View};
 use crate::party::{Health, MemberInfo, PartyRole, WalkBack};
@@ -221,6 +221,19 @@ enum Owner {
     Errand,
     /// The party coordinator's `invite`, `follow`, `par` or `leave`.
     Party,
+    /// `sysop goto <town>` (C-080).
+    Goto,
+}
+
+/// A `sysop goto` asked for (C-080): sent when the character is out of combat and nothing else
+/// is in flight.
+#[derive(Debug)]
+struct Goto {
+    town: &'static crate::sysop::Town,
+    /// It has gone to the game; its prompt is awaited.
+    sent: bool,
+    /// "after the fight" has been said.
+    waiting_said: bool,
 }
 
 /// What a re-sync step did, for the brain to report.
@@ -371,8 +384,11 @@ pub(crate) struct Session {
     down: bool,
     /// The notice that the character is mortally wounded has been given, until it is not.
     wounded_noted: bool,
-    /// The errand the player started (pick up all, equip all), with the bot stopped or paused.
+    /// The errand the player started (pick up all, equip all, train ...): with the bot stopped,
+    /// paused, or running beside it (C-079).
     errand: Option<Active>,
+    /// A `sysop goto` asked for and not yet landed (C-080).
+    goto: Option<Goto>,
     /// The connection was dropped at the hang-up line and the realm has not been left yet.
     hung_up: bool,
     /// The gateway is logging the character off (`logging_off`): nothing more is sent.
@@ -496,6 +512,7 @@ impl Session {
             down: false,
             wounded_noted: false,
             errand: None,
+            goto: None,
             hung_up: false,
             leaving: false,
             flee_out: false,
@@ -2656,6 +2673,105 @@ impl Session {
         self.flush_views(out);
     }
 
+    /// `sys_goto` (C-080), for this member of the party the brain teleports: its errand is
+    /// cancelled and its loop or Go to dropped (a running bot keeps running); `sysop goto <town>`
+    /// goes once it is out of combat ([`Session::goto_tick`]).
+    pub fn sys_goto(
+        &mut self,
+        town: &'static crate::sysop::Town,
+        now: Instant,
+        out: &mut Vec<ToGateway>,
+    ) {
+        if self.state != SessionState::Realm {
+            out.push(self.warning("sysop goto: the character is not in the realm"));
+            return;
+        }
+        if self.errand.is_some() {
+            self.errand_control(BotAction::CancelErrand, out);
+        }
+        if self.bot.running() && self.bot.has_route() {
+            let says = self.bot.halt(self.position.best());
+            self.say(says, out);
+        }
+        self.goto = Some(Goto {
+            town,
+            sent: false,
+            waiting_said: false,
+        });
+        out.push(self.notice(&format!("Sysop goto {}", town.name)));
+        self.drive(now, out);
+        self.flush_views(out);
+    }
+
+    /// Send the `sysop goto` asked for when the game will take it: not in combat (it is refused
+    /// then, `kb/navigation.md` "SYSOP GOTO"), no walk under way (stopped first), nothing in
+    /// flight.
+    fn goto_tick(&mut self, out: &mut Vec<ToGateway>) {
+        let Some(g) = &self.goto else {
+            return;
+        };
+        if g.sent || self.state != SessionState::Realm || !self.live() || self.leaving {
+            return;
+        }
+        let heeded = self.presence.heeded(self.rules.rules());
+        let engaged = !heeded.attackers.is_empty()
+            || self.character.state().in_combat == Some(true)
+            || self.mortally_wounded();
+        if engaged {
+            if !g.waiting_said {
+                let text = format!("Sysop goto {}: after the fight", g.town.name);
+                out.push(self.notice(&text));
+                if let Some(g) = &mut self.goto {
+                    g.waiting_said = true;
+                }
+            }
+            return;
+        }
+        if self.walker.walking() {
+            self.stop_walk("a sysop goto", out);
+            return;
+        }
+        if !self.at_prompt || self.executor.busy() || self.resync != Resync::Off {
+            return;
+        }
+        let word = g.town.word;
+        match self
+            .executor
+            .submit(Action::new(format!("sysop goto {word}"), Expect::Prompt))
+        {
+            Ok(()) => {
+                self.owner = Some(Owner::Goto);
+                if let Some(g) = &mut self.goto {
+                    g.sent = true;
+                }
+            }
+            Err(guard) => {
+                self.goto = None;
+                out.push(self.warning(&format!("sysop goto refused: {}", guard.describe())));
+            }
+        }
+    }
+
+    /// The `sysop goto`'s prompt came: the character is in the town's room, where a running
+    /// bot plays from now on; a re-sync looks to make sure (the game shows no room).
+    fn goto_landed(&mut self, atlas: &Atlas, outcome: &Outcome, out: &mut Vec<ToGateway>) {
+        let Some(g) = self.goto.take() else {
+            return;
+        };
+        if matches!(outcome, Outcome::TimedOut) {
+            out.push(self.warning(&format!("Sysop goto {}: no answer", g.town.name)));
+        } else {
+            self.position.teleported(g.town.room);
+            self.bot.arrived_by_hand(g.town.room);
+            let name = atlas
+                .graph
+                .room(g.town.room)
+                .map_or(g.town.name, |r| r.name.as_str());
+            out.push(self.notice(&format!("Sysop goto: in {name}")));
+        }
+        self.request_resync();
+    }
+
     pub fn walk_stop(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
         if self.bot.has_route() {
             self.bot_control(BotAction::Stop, now, out);
@@ -2713,10 +2829,6 @@ impl Session {
         }
         let says = match action {
             BotAction::Start => {
-                if self.errand.is_some() {
-                    out.push(self.warning("bot: an errand is in progress; cancel it first"));
-                    return;
-                }
                 if self.state != SessionState::Realm {
                     out.push(self.warning("bot: the character is not in the realm"));
                     return;
@@ -2836,8 +2948,6 @@ impl Session {
         }
         if self.state != SessionState::Realm {
             out.push(self.warning("errand: the character is not in the realm"));
-        } else if self.bot.running() {
-            out.push(self.warning("errand: stop or pause the bot first"));
         } else if self.errand.is_some() {
             out.push(self.warning("errand: one is in progress; cancel it first"));
         } else if self.mortally_wounded() {
@@ -2861,6 +2971,17 @@ impl Session {
                     }
                 }
             };
+            // With the bot running (C-079): its loop or Go to stops, and it plays on beside the
+            // errand, fighting what comes.
+            if self.bot.running() {
+                if self.bot_walk && self.walker.walking() {
+                    self.stop_walk("an errand", out);
+                }
+                if self.bot.has_route() {
+                    let says = self.bot.halt(self.position.best());
+                    self.say(says, out);
+                }
+            }
             out.push(self.notice(&format!("{} started", errand.label())));
             self.errand = Some(errand);
         }
@@ -2974,18 +3095,25 @@ impl Session {
         let heeded = self.presence.heeded(self.rules.rules());
         let attacked =
             !heeded.attackers.is_empty() || self.character.state().in_combat == Some(true);
-        if self.bot.running() || attacked || self.mortally_wounded() {
+        if self.bot.running() {
+            // Beside the bot (C-079): it fights first. The errand waits, and a walk of its stops
+            // for the fight and goes again after.
+            if attacked || self.mortally_wounded() {
+                if !self.bot_walk && self.walker.walking() {
+                    self.stop_walk("a fight", out);
+                    if let Some(e) = &mut self.errand {
+                        e.rewalk();
+                    }
+                }
+                return;
+            }
+        } else if attacked || self.mortally_wounded() {
             let e = self.errand.take().expect("an errand");
             self.executor.cancel();
             if self.owner == Some(Owner::Errand) {
                 self.owner = None;
             }
-            let why = if self.bot.running() {
-                "the bot started"
-            } else {
-                "something is attacking"
-            };
-            out.push(self.warning(&format!("{} stopped: {why}", e.label())));
+            out.push(self.warning(&format!("{} stopped: something is attacking", e.label())));
             return;
         }
         if self.state != SessionState::Realm
@@ -3809,6 +3937,7 @@ impl Session {
                 }
                 // The coordinator reads the answer from the game's lines (`GameParty`).
                 Some(Owner::Party) => {}
+                Some(Owner::Goto) => self.goto_landed(&atlas, &outcome, out),
                 Some(Owner::Bot) => {
                     let says = self.bot.outcome(&action, outcome);
                     self.say(says, out);
@@ -3838,6 +3967,13 @@ impl Session {
                     );
                     let arrived = next.arrived;
                     self.apply(next, out);
+                    // An errand's walk beside the running bot: the bot plays where it ends.
+                    if !self.bot_walk
+                        && self.errand.is_some()
+                        && let Some(k) = arrived
+                    {
+                        self.bot.arrived_by_hand(k);
+                    }
                     // The walker gave the bot's walk up by itself (lost, a door that will not
                     // open): a journey ends there.
                     if self.bot_walk
@@ -3887,6 +4023,8 @@ impl Session {
             self.bot.forget();
         }
         self.probe(now, out);
+        // Before the bot: a teleport waiting for a quiet moment goes first.
+        self.goto_tick(out);
         self.bot_tick(now, out);
         self.errand_tick(out);
         self.flee_out_done(out);

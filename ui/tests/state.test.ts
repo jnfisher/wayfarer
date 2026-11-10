@@ -21,6 +21,7 @@ import {
   pruneCharacters,
   saveDevPrefs,
   toggleDrawer,
+  pressTab,
   trim,
   unknownLines,
   unknownMarkdown,
@@ -425,5 +426,26 @@ describe("the drawer's prefs", () => {
     expect(prefs).toMatchObject({ open: false, panel: "dev" });
     toggleDrawer(prefs, "map");
     expect(prefs).toMatchObject({ open: true, panel: "map" });
+  });
+
+  it("gear is a tab: another tab closes the planner and shows its panel", () => {
+    const prefs = loadDevPrefs(undefined);
+    // Gear opens over the tiles; the drawer stays as it was.
+    let gear = pressTab(prefs, false, "gear");
+    expect(gear).toBe(true);
+    expect(prefs.open).toBe(false);
+    // Map: the planner closes and the map shows.
+    gear = pressTab(prefs, gear, "map");
+    expect(gear).toBe(false);
+    expect(prefs).toMatchObject({ open: true, panel: "map" });
+    // Gear, then map again: map stays open (it was showing under the planner).
+    gear = pressTab(prefs, gear, "gear");
+    gear = pressTab(prefs, gear, "map");
+    expect(gear).toBe(false);
+    expect(prefs).toMatchObject({ open: true, panel: "map" });
+    // Without the planner, a tab toggles as before; gear's tab closes the planner.
+    gear = pressTab(prefs, gear, "map");
+    expect(prefs.open).toBe(false);
+    expect(pressTab(prefs, true, "gear")).toBe(false);
   });
 });
