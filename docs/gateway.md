@@ -187,6 +187,9 @@ in the realm: ...".
   What the bot said it was doing ("Fight: large giant rat", "Loop Newhaven: to stop 2/3 ...")
   and why it stopped or paused ("Stopped: ...", "Paused: you took over"); the tile and the dev
   panel show the same lines only while they are open. Not part of a replay's input.
+- `position.log`: where the brain believed the character was, one JSON line per room seen
+  and per walk plan or surprise, with `seq` and `ts` as in `notes.log` (C-085; the entries are
+  in [brain.md](brain.md) "The position log"). Not part of a replay's input.
 
 Together they are a recording that `wayfarer replay` plays back ([replay.md](replay.md)).
 

@@ -1051,3 +1051,57 @@ async fn among_look_alike_rooms_a_go_to_narrows_down_and_gets_there() {
     assert_eq!(g.map_at, Some(TO));
     g.close(run).await;
 }
+
+#[tokio::test(start_paused = true)]
+async fn sure_of_the_wrong_copy_of_the_hills_the_go_to_still_gets_there() {
+    // C-085: on 2026-11-10 Lexi was in 2/191 and the brain sure of 2/482, the same name and
+    // exits in another copy of the same stretch of maze. Her Go to went back and forth and
+    // stopped: "lost the way: expected Dragon's Teeth Hills, the room was Dragon's Teeth
+    // Hills". Here the history shows 2/482's room (the same text as 2/191's) and the game
+    // walks from 2/191. The re-sync's `look` places the room afresh, and the walk gets there.
+    const BELIEVED: Key = (2, 482);
+    const REALLY: Key = (2, 191);
+    const TO: Key = (2, 182);
+    let (mut g, run) = Game::start(SessionState::Realm, BELIEVED).await;
+    g.map_at = Some(REALLY);
+    g.walk_to(TO).await;
+    let end = g
+        .until(|m| match m {
+            ToGateway::Notice { text, .. } | ToGateway::Warning { text, .. }
+                if text.starts_with("Arrived") || text.starts_with("Stopped walking") =>
+            {
+                Some(text.clone())
+            }
+            _ => None,
+        })
+        .await;
+    assert!(end.starts_with("Arrived"), "{end}");
+    assert_eq!(g.map_at, Some(TO));
+    // The position log heard the fresh start and the rooms on the way.
+    let traces: Vec<&serde_json::Value> = g
+        .seen
+        .iter()
+        .filter_map(|m| match m {
+            ToGateway::PositionTrace { entry, .. } => Some(entry),
+            _ => None,
+        })
+        .collect();
+    let kinds: Vec<&str> = traces.iter().filter_map(|t| t["kind"].as_str()).collect();
+    assert!(kinds.contains(&"afresh"), "{kinds:?}");
+    assert!(kinds.contains(&"plan"), "{kinds:?}");
+    // The re-sync's room: every room of that name and exits, 2/482 and 2/191 among them.
+    let at = kinds.iter().position(|k| *k == "afresh").unwrap();
+    let placed = traces[at + 1..]
+        .iter()
+        .find(|t| t["kind"] == "room")
+        .unwrap();
+    assert_eq!(placed["how"], "anywhere", "{placed}");
+    assert!(placed["count"].as_u64().unwrap() > 2, "{placed}");
+    let last_room = traces.iter().rev().find(|t| t["kind"] == "room").unwrap();
+    assert_eq!(
+        last_room["cands"],
+        serde_json::json!(["2/182"]),
+        "{last_room}"
+    );
+    g.close(run).await;
+}

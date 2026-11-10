@@ -11,8 +11,8 @@ use std::collections::BTreeSet;
 use std::time::Instant;
 
 use wayfarer_world::{
-    Belief, Category, DirSet, ExitType, Key, LockState, Monsters, RoomGraph, Traveller, WorldPack,
-    huntable, layout, route, route_or_search,
+    Belief, Category, DirSet, ExitType, How, Key, LockState, Monsters, RoomGraph, Traveller,
+    WorldPack, huntable, layout, route, route_or_search,
 };
 
 fn graph() -> (WorldPack, RoomGraph) {
@@ -268,6 +268,39 @@ fn belief() {
     b.moved(&g, "n");
     b.observe(&g, None, Some(dirs(&["south", "northwest"])), false);
     assert_eq!(b.candidates(), &[(1, 2148)].into());
+}
+
+#[test]
+fn a_contradicted_belief_looks_everywhere() {
+    // C-085: Lexi in the Dragon's Teeth Hills, 2026-11-10. The brain was sure of 2/482; she
+    // was in 2/191, the same name and exits in another copy of the same stretch of maze. A
+    // move west went to 2/483 in the belief and to 2/192 in the game (alike again); the next
+    // west, to 2/193, showed exits 2/484 lacks.
+    let (pack, g) = graph();
+    const HILLS: &str = "Dragon's Teeth Hills";
+    let mut b = Belief::at((2, 482));
+    b.moved(&g, "w");
+    assert_eq!(
+        b.observe(&g, Some(HILLS), Some(dirs(&["east", "west"])), false),
+        How::Followed
+    );
+    assert_eq!(b.candidates(), &[(2, 483)].into());
+    b.moved(&g, "w");
+    let seen = dirs(&["south", "east", "northwest"]);
+    // Every room of that name and exits in the world, not the nearest copy of the maze.
+    assert_eq!(
+        b.observe(&g, Some(HILLS), Some(seen), false),
+        How::Relocated
+    );
+    let want = named_with_exits(&pack, HILLS, seen);
+    assert!(want.len() > 1 && want.contains(&(2, 193)), "{want:?}");
+    assert_eq!(b.candidates(), &want);
+
+    // Without its exits (the title behind a prompt) it is not placed by name and exits: the
+    // old widening, near the candidates first, then anywhere by name.
+    let mut b = Belief::at((2, 482));
+    assert_eq!(b.observe(&g, Some("Docks"), None, false), How::Anywhere);
+    assert_eq!(b.candidates().len(), 5);
 }
 
 /// A room shown: its title and `Obvious exits`.

@@ -933,6 +933,48 @@ async fn the_brains_notices_and_warnings_about_a_session_are_kept_in_notes_log()
     assert!(lines[0]["ts"].as_u64().unwrap() > 0 && lines[0]["seq"].is_u64());
 }
 
+#[tokio::test]
+async fn the_brains_position_traces_are_kept_in_position_log_and_refused_from_a_ui() {
+    // C-085.
+    let dir = tempfile::tempdir().unwrap();
+    let rig = Rig::start(dir.path(), None).await;
+    let mut ui = rig.welcomed().await;
+    let mut brain = rig.brain().await;
+    assert_eq!(recv(&mut ui).await, ToClient::BrainState { attached: true });
+    let trace = ToGateway::PositionTrace {
+        session: ID.into(),
+        entry: serde_json::json!({"kind": "room", "how": "relocated", "count": 3}),
+    };
+    brain_says(&mut brain, &mut ui, trace).await;
+    let path = dir.path().join("logs").join(ID).join("position.log");
+    let text = std::fs::read_to_string(path).unwrap();
+    let lines: Vec<serde_json::Value> = text
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 1, "{text}");
+    assert_eq!(lines[0]["kind"], "room");
+    assert_eq!(lines[0]["how"], "relocated");
+    assert_eq!(lines[0]["count"], 3);
+    assert!(lines[0]["ts"].as_u64().unwrap() > 0 && lines[0]["seq"].is_u64());
+
+    // A UI may not send one.
+    let trace = ToGateway::PositionTrace {
+        session: ID.into(),
+        entry: serde_json::json!({}),
+    };
+    send(&mut ui, &trace).await;
+    assert!(matches!(recv(&mut ui).await, ToClient::Error { .. }));
+    // Nor is it written.
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("logs").join(ID).join("position.log"))
+            .unwrap()
+            .lines()
+            .count(),
+        1
+    );
+}
+
 /// Read exactly `want` from the game, and nothing more for a moment.
 async fn game_reads(game: &mut TcpStream, want: &[u8]) {
     let mut got = vec![0u8; want.len()];

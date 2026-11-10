@@ -779,9 +779,12 @@ impl Session {
             {
                 *answered = true;
             }
-            if let Some(atlas) = &self.atlas
-                && let Some(seen) = self.position.event(atlas, &typed, now)
-            {
+            let seen = match &self.atlas {
+                Some(atlas) => self.position.event(atlas, &typed, now),
+                None => None,
+            };
+            self.flush_traces(out);
+            if let Some(seen) = seen {
                 self.executor
                     .room_seen_in(Some(self.position.belief.clone()));
                 if self.hand_moving
@@ -3564,9 +3567,25 @@ impl Session {
         }
     }
 
+    /// Send the position's log entries (C-085).
+    fn flush_traces(&mut self, out: &mut Vec<ToGateway>) {
+        for entry in self.position.traces.drain(..) {
+            out.push(ToGateway::PositionTrace {
+                session: self.id.clone(),
+                entry,
+            });
+        }
+    }
+
     /// Do what the walker asked: narrate, and submit its next action; a loop walk goes on.
     fn apply(&mut self, next: Next, out: &mut Vec<ToGateway>) {
         let arrived = next.arrived;
+        for entry in next.traces {
+            out.push(ToGateway::PositionTrace {
+                session: self.id.clone(),
+                entry,
+            });
+        }
         self.say(next.says, out);
         self.map_dirty |= next.route_changed;
         let ahead = next.ahead;
@@ -4263,6 +4282,10 @@ impl Session {
             Resync::Want { next, idle }
                 if self.at_prompt && (!idle || now >= self.last_sent + IDLE) =>
             {
+                if RESYNC_COMMANDS[next] == "look" {
+                    // The room it shows is placed afresh (C-085).
+                    self.position.afresh("re-sync");
+                }
                 self.send_own(RESYNC_COMMANDS[next], now, out);
                 self.resync = Resync::Waiting {
                     step: next,

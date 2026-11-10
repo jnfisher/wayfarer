@@ -740,6 +740,10 @@ impl Connection {
                 });
                 return None;
             }
+            ToGateway::PositionTrace { session, entry } => {
+                self.hub.gateway().position_from_brain(&session, entry);
+                return None;
+            }
             ToGateway::Arbitrate { session, on } => {
                 if let Some(id) = self.brain_id {
                     tracing::info!(%session, on, "the brain arbitrates the session's input");

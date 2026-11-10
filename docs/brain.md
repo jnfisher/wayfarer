@@ -280,6 +280,36 @@ moves after it tell them apart (C-084).
   This happens up to `MAX_UNSURE_MOVES` (20) times a walk, and doesn't count against
   `MAX_REPLANS`. With the belief certain, the old rule holds: a second surprise is "lost the
   way".
+- **A guessed plan** (C-085): a route planned while the belief held several candidates starts
+  from a guess. A surprise on it is an unsure move too, however sure the belief is after the
+  move: the move told which candidate it was not. Only a surprise on a route planned from a
+  certain belief counts toward "lost the way".
+- **Sure of the wrong copy** (C-085): parts of the hills repeat, room for room, in more than one
+  place (2/191 → 192 → 193 has the same layout as 2/482 → 483 → 484). A belief sure of the
+  wrong copy follows every move until the copies part. Then:
+  - a room that fits none of the candidates, its exits seen, places the belief among every
+    room in the world of that name and exits, not the nearest ones (that is the wrong copy's
+    neighbourhood). Without its exits (a title behind a prompt) the old widening stands: near
+    the candidates by name, then anywhere by name;
+  - the re-sync's `look` places its room afresh, among every room of its name and exits, so a
+    guess from the output before it can't stay certain only because the room fits. The belief
+    stands until that room comes.
+
+## The position log
+
+The brain sends `position_trace` entries, and the gateway writes them to the character's
+`position.log` with `seq` and `ts` (`docs/gateway.md`). One JSON object each, by `kind`:
+
+- `room`: a room seen. `move` (the move it was carried through, or null), `title`, `exits`
+  (`n,sw`), `how` the belief moved (`followed`, `relocated`, `anywhere`, `near`,
+  `near_by_name`, `anywhere_by_name`, `exits`, `dark`, `not_a_title`, `not_on_map`), `count`
+  of candidates, and the first 8 `cands` (`2/190`).
+- `afresh`: the next room is placed afresh (`why`: `re-sync`).
+- `plan`: a walk's route: `why` (`start`, or the replan's reason), `from`, `to`, `steps`,
+  `guessed`, `count`, `cands`.
+- `surprise`: a move reached a room the route didn't expect: `move`, `expected`, the belief's
+  `count` and `cands` after it, `guessed`, `unsure`, and how it `counted` (`unsure` or
+  `drift`).
 
 ## Knocked down, held or stunned
 

@@ -1098,6 +1098,13 @@ fn to_gateway() -> Vec<(ToGateway, &'static str)> {
             },
             r#"{"type":"arbitrate","session":"kasimir","on":true}"#,
         ),
+        (
+            ToGateway::PositionTrace {
+                session: "kasimir".into(),
+                entry: serde_json::json!({"kind": "room", "how": "followed", "count": 1}),
+            },
+            r#"{"type":"position_trace","session":"kasimir","entry":{"count":1,"how":"followed","kind":"room"}}"#,
+        ),
     ])
     .collect()
 }
@@ -1393,7 +1400,7 @@ fn families_say_who_may_send_what() {
             "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
             | "map_view" | "loops" | "stats" | "spell_plan" | "gear_plan" | "gear_detail"
             | "settings" | "found" | "parties" | "blessings" => Family::Brain,
-            "ready_to_leave" | "arbitrate" => Family::BrainToGateway,
+            "ready_to_leave" | "arbitrate" | "position_trace" => Family::BrainToGateway,
             _ => Family::Gateway,
         };
         assert_eq!(family, want, "{}", msg.type_name());

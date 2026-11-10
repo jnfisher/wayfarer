@@ -2302,6 +2302,14 @@ pub enum ToGateway {
         session: SessionId,
         on: bool,
     },
+    /// Brain → gateway: one entry of the session's `position.log` (C-085): a room seen and how
+    /// the position belief moved, a walk's plan, a surprise. The gateway adds `seq` and `ts`.
+    /// Never relayed.
+    PositionTrace {
+        session: SessionId,
+        #[ts(type = "unknown")]
+        entry: serde_json::Value,
+    },
 }
 
 /// Why a received message could not be decoded. The receiver reports it (an `error` reply)
@@ -2592,6 +2600,7 @@ impl ToGateway {
         "blessings",
         "ready_to_leave",
         "arbitrate",
+        "position_trace",
     ];
 
     /// This message's `type`.
@@ -2652,6 +2661,7 @@ impl ToGateway {
             Self::Parties { .. } => "parties",
             Self::Blessings { .. } => "blessings",
             Self::ReadyToLeave { .. } => "ready_to_leave",
+            Self::PositionTrace { .. } => "position_trace",
             Self::Arbitrate { .. } => "arbitrate",
         }
     }
@@ -2713,7 +2723,9 @@ impl ToGateway {
             | Self::Found { .. }
             | Self::Parties { .. }
             | Self::Blessings { .. } => Family::Brain,
-            Self::ReadyToLeave { .. } | Self::Arbitrate { .. } => Family::BrainToGateway,
+            Self::ReadyToLeave { .. } | Self::Arbitrate { .. } | Self::PositionTrace { .. } => {
+                Family::BrainToGateway
+            }
         }
     }
 
@@ -2924,6 +2936,7 @@ impl ToGateway {
             | Self::SessionControl { .. }
             | Self::ReadyToLeave { .. }
             | Self::Arbitrate { .. }
+            | Self::PositionTrace { .. }
             | Self::AccountsRequest
             | Self::AccountsSave { .. } => return None,
         })

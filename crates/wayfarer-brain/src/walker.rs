@@ -80,6 +80,8 @@ pub(crate) struct Next {
     /// The walk stopped because the character could not move for now (knocked down, held,
     /// stunned): not a failed walk. A journey walks on from where it is (C-082).
     pub held: bool,
+    /// Entries for the position log (C-085): the plans and the surprises.
+    pub traces: Vec<serde_json::Value>,
 }
 
 impl Next {
@@ -141,6 +143,10 @@ struct Walk {
     drifts: u32,
     /// Such rooms while the belief held several candidates (C-084): planned again, not lost.
     unsure_moves: u32,
+    /// The route was planned while the belief held several candidates: its room is a guess,
+    /// and a surprise on it tells which candidate it was not, however sure the belief is
+    /// after the move (C-085).
+    guessed: bool,
     /// Stop when the action in flight is done, and why.
     stopping: Option<String>,
     /// Moves may be pipelined on this walk.
@@ -527,6 +533,7 @@ impl Walker {
             replans: 0,
             drifts: 0,
             unsure_moves: 0,
+            guessed: !pos.belief.certain(),
             stopping: None,
             pipelined,
             ahead: false,
@@ -535,6 +542,7 @@ impl Walker {
             heard_buy: None,
             levered: BTreeSet::new(),
         };
+        next.traces.push(w.plan_trace(pos, "start"));
         let doing = w.first(pos, &mut next);
         next.action = Some(w.send(doing));
         next.ahead = w.propose_ahead(pos);
@@ -640,11 +648,28 @@ impl Walker {
                     }
                     Ok(Doing::Move)
                 } else {
-                    let unsure = !seen.unwrap_or(&pos.belief).certain();
+                    let belief = seen.unwrap_or(&pos.belief);
+                    let unsure = !belief.certain();
+                    let counted = if (unsure || w.guessed) && w.unsure_moves < MAX_UNSURE_MOVES {
+                        "unsure"
+                    } else {
+                        "drift"
+                    };
+                    next.traces.push(serde_json::json!({
+                        "kind": "surprise",
+                        "move": action.command,
+                        "expected": key_str(step.to),
+                        "count": belief.candidates().len(),
+                        "cands": cands_str(belief),
+                        "guessed": w.guessed,
+                        "unsure": unsure,
+                        "counted": counted,
+                    }));
                     let seen = pos.title.clone().unwrap_or_else(|| "unknown".to_owned());
-                    if unsure && w.unsure_moves < MAX_UNSURE_MOVES {
+                    if counted == "unsure" {
                         // Among rooms that look alike (C-084): the move told which of them it
-                        // was not; plan again from what is left, and it is not being lost.
+                        // was not; plan again from what is left, and it is not being lost. A
+                        // plan from a guess is the same, sure as the belief may be now (C-085).
                         w.unsure_moves += 1;
                         w.replans = w.replans.saturating_sub(1);
                         w.replan(pos, atlas, &mut next, &format!("not sure which {seen}"))
@@ -1100,6 +1125,39 @@ impl Walk {
         self.route = r;
         self.next = 0;
         self.purchase = purchase;
+        self.guessed = pos.belief.candidates().len() > 1;
+        let mut t = self.plan_trace(pos, why);
+        t["from"] = key_str(from).into();
+        next.traces.push(t);
         Ok(Doing::Move)
     }
+
+    /// The position log's entry for the route just planned (C-085).
+    fn plan_trace(&self, pos: &Position, why: &str) -> serde_json::Value {
+        serde_json::json!({
+            "kind": "plan",
+            "why": why,
+            "from": self.route.first().map(|s| key_str(s.from)),
+            "to": key_str(self.to),
+            "steps": self.route.len(),
+            "guessed": self.guessed,
+            "count": pos.belief.candidates().len(),
+            "cands": cands_str(&pos.belief),
+        })
+    }
+}
+
+/// A room as the position log writes it: `2/190`.
+pub(crate) fn key_str(k: Key) -> String {
+    format!("{}/{}", k.0, k.1)
+}
+
+/// The first candidates of `belief`, as the position log writes them.
+pub(crate) fn cands_str(belief: &wayfarer_world::Belief) -> Vec<String> {
+    belief
+        .candidates()
+        .iter()
+        .take(8)
+        .map(|&k| key_str(k))
+        .collect()
 }

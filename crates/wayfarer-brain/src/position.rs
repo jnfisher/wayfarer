@@ -62,6 +62,10 @@ pub(crate) struct Position {
     door_cmd: Option<u8>,
     /// A room title waiting for its exits.
     title_pending: Option<String>,
+    /// Entries for the position log (C-085), until the session sends them.
+    pub traces: Vec<serde_json::Value>,
+    /// The next room seen with a title is placed afresh ([`Position::afresh`]).
+    afresh: bool,
 }
 
 impl Position {
@@ -204,11 +208,29 @@ impl Position {
             }
             _ => return None,
         };
-        if let Some(cmd) = self.moving.pop_front() {
-            self.belief.moved(&atlas.graph, &cmd);
+        let moved = self.moving.pop_front();
+        if let Some(cmd) = &moved {
+            self.belief.moved(&atlas.graph, cmd);
         }
-        self.belief
+        if self.afresh && seen.title.is_some() && !seen.dark {
+            self.afresh = false;
+            self.belief = Belief::unknown();
+        }
+        let how = self
+            .belief
             .observe(&atlas.graph, seen.title.as_deref(), seen.exits, seen.dark);
+        const NAMES: [&str; 10] = ["n", "s", "e", "w", "ne", "nw", "se", "sw", "u", "d"];
+        self.traces.push(serde_json::json!({
+            "kind": "room",
+            "move": moved,
+            "title": seen.title,
+            "exits": seen.exits.map(|x| {
+                x.iter().map(|d| NAMES[usize::from(d)]).collect::<Vec<_>>().join(",")
+            }),
+            "how": how.as_str(),
+            "count": self.belief.candidates().len(),
+            "cands": crate::walker::cands_str(&self.belief),
+        }));
         if seen.title.is_some() {
             self.title.clone_from(&seen.title);
         }
@@ -317,6 +339,16 @@ impl Position {
 
     /// The game refused `command` (anything but "no exit"): mark the exits it would have taken
     /// from the candidates, so routes avoid them for the rest of the session.
+    /// Place the next room seen afresh (C-085): among every room of its name and exits, not
+    /// only the candidates so far. The re-sync's `look` does this, so a guess made from the
+    /// output before it can't stay certain only because the room fits. The belief stands
+    /// until that room comes.
+    pub fn afresh(&mut self, why: &str) {
+        self.afresh = true;
+        self.traces
+            .push(serde_json::json!({"kind": "afresh", "why": why}));
+    }
+
     /// A `sysop goto` landed: the character is in `room` (C-080). The game shows no room for
     /// it, so the belief is told; the re-sync's `look` checks it.
     pub fn teleported(&mut self, room: Key) {
