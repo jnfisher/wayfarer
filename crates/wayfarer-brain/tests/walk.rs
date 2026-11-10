@@ -978,3 +978,36 @@ async fn an_open_gate_is_walked_through_without_its_lever() {
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["n"]);
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_go_to_held_where_it_stands_walks_on_once_it_can_move() {
+    // C-082: an ankheg knocked Lexi flat in the Dragon's Teeth and the move was refused with
+    // "You can't seem to move anywhere!". That was no answer to the walker, so the Go to was
+    // dropped. Now the refusal stops the leg, not the journey, and it walks again.
+    let (mut g, run) = game::arena::in_arena(&[]).await;
+    game::arena::start(&mut g, &[], 35).await;
+    g.narrated("re-synced").await;
+    g.expect("u", says("You can't seem to move anywhere!"));
+    g.expect("u", room(NARROW_ROAD));
+    g.expect("e", room(NARROW_PATH));
+    g.expect("e", room(VILLAGE_ENTRANCE));
+    g.walk_to(VILLAGE_ENTRANCE).await;
+    let arrived = g
+        .until(|m| match m {
+            ToGateway::Notice { text, .. } | ToGateway::Warning { text, .. }
+                if text.starts_with("Arrived") || text.starts_with("Not going") =>
+            {
+                Some(text.clone())
+            }
+            _ => None,
+        })
+        .await;
+    assert!(arrived.starts_with("Arrived"), "{arrived}");
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u", "u", "e", "e"]);
+    let said = game::arena::notices(&seen);
+    assert!(
+        said.iter().any(|s| s.contains("can't move for now")),
+        "{said:?}"
+    );
+}

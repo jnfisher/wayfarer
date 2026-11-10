@@ -75,6 +75,9 @@ pub(crate) struct Next {
     /// A move to send ahead of `action` or of the move in flight, if the session may
     /// (pipelining): it says so with [`Walker::went_ahead`].
     pub ahead: Option<Action>,
+    /// The walk stopped because the character could not move for now (knocked down, held,
+    /// stunned): not a failed walk. A journey walks on from where it is (C-082).
+    pub held: bool,
 }
 
 impl Next {
@@ -686,6 +689,16 @@ impl Walker {
                     next.notice(format!("No exit `{}`: looking to relocate", step.command));
                     Ok(Doing::Look)
                 }
+            }
+            // Knocked flat, held or stunned (C-082): the walk stops, and it is not the route's
+            // fault; a journey begins it again once the character can move.
+            (Doing::Move, Outcome::Refused(Refused::Move(Refusal::CantMove))) => {
+                next.held = true;
+                Err(format!(
+                    "`{}` refused: {}",
+                    step.command,
+                    Refusal::CantMove.describe()
+                ))
             }
             (Doing::Move, Outcome::Refused(Refused::Move(Refusal::Combat))) => {
                 Err("in combat".to_owned())
