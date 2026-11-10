@@ -20,6 +20,7 @@
     loopText,
     roomAt,
     stopTip,
+    walkBar,
     walkText,
     zoomAt,
     ZOOMS,
@@ -42,7 +43,7 @@
   import type { LayoutStorage } from "./lib/layout";
   import { FONT_FAMILY } from "./lib/theme";
   import { lockedTitle } from "./lib/parties";
-  import type { CharacterState, GeneratedLoop, LoopStop, MapRoom, MegaMudLoop, Place, RoomKey, SessionInfo } from "./proto";
+  import type { CharacterState, GeneratedLoop, LoopStop, MapRoom, MegaMudLoop, Place, RoomKey, SessionInfo, Walking } from "./proto";
 
   interface Props {
     /** The focused tile's session, which the panel follows. */
@@ -555,7 +556,17 @@
     moved = level !== view?.level || panX !== 0 || panY !== 0;
   }
 
-  const route = $derived(walkText(walking));
+  // The last leg of a Go to seen for this session: kept while the bot fights or plans the next
+  // leg, so the walk bar stays (C-087).
+  let lastWalk = $state<{ session: string; walking: Walking } | undefined>(undefined);
+  $effect.pre(() => {
+    if (session && walking) lastWalk = { session: session.id, walking };
+    else if (!character?.bot?.journey || character.bot.state === "stopped") lastWalk = undefined;
+  });
+  const bar = $derived(
+    walkBar(walking, character?.bot, lastWalk && lastWalk.session === session?.id ? lastWalk.walking : undefined),
+  );
+  const route = $derived(walkText(bar?.walking));
 </script>
 
 <!-- A loop's run button, or that it is running; its stops to tick are listed under its row. -->
@@ -835,20 +846,25 @@
       {/if}
     </div>
     <div class="bar" aria-label="Walk">
-      {#if walking}
-        <span class="to">→ {walking.name}</span>
-        {#if walking.short_of}
-          <span class="short">one room short of {walking.short_of.name}{walking.short_of.bosses.length
-              ? ` (boss: ${walking.short_of.bosses.join(", ")})`
+      {#if bar}
+        <span class="to">→ {bar.name}</span>
+        {#if bar.walking?.short_of}
+          <span class="short">one room short of {bar.walking.short_of.name}{bar.walking.short_of.bosses.length
+              ? ` (boss: ${bar.walking.short_of.bosses.join(", ")})`
               : ""}</span
           >
         {/if}
         {#if character?.bot?.journey?.passive}
           <span class="short">not fighting on the way</span>
         {/if}
-        <span class="dim">step {walking.step}, {walking.steps_left} left</span>
+        {#if bar.walking}
+          <span class="dim">step {bar.walking.step}, {bar.walking.steps_left} left</span>
+        {/if}
+        {#if bar.paused}
+          <span class="paused" title="The Go to goes on when this is done">{bar.paused}</span>
+        {/if}
         <button class="stop" onclick={() => onstop(session.id)}>stop</button>
-        <div class="route">{route || "…"}</div>
+        <div class="route" class:stale={!!bar.paused}>{route || "…"}</div>
       {:else}
         <span class="dim">Click a room to walk there.</span>
       {/if}
@@ -870,6 +886,12 @@
   .msg.locked {
     margin: 2px 1ch;
     color: var(--vga-lightcyan);
+  }
+  .paused {
+    color: var(--vga-yellow);
+  }
+  .route.stale {
+    color: var(--vga-darkgray);
   }
   .bar {
     display: flex;

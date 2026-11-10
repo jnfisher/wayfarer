@@ -16,6 +16,7 @@ import {
   roomAt,
   roomBox,
   roomCentre,
+  walkBar,
   walkText,
   zoomAt,
   ZOOMS,
@@ -301,6 +302,29 @@ describe("the route bar", () => {
     expect(walkText(undefined)).toBe("");
     // From a brain that did not send them.
     expect(walkText({ ...walking, commands: undefined } as never)).toBe("");
+  });
+});
+
+describe("the walk bar (C-087)", () => {
+  const leg = { to: k(15), name: "Small Pier", steps_left: 3, step: 2, commands: ["n", "e", "borrow skiff"] };
+  const bot = (over: object = {}) =>
+    ({ state: "running", mode: "fight", narration: "Fight: giant rat", journey: { name: "Small Pier", to: k(15) }, ...over }) as never;
+  it("is the leg on now", () => {
+    expect(walkBar(leg, undefined, undefined)).toEqual({ name: "Small Pier", walking: leg });
+  });
+  it("keeps the last leg between legs of a Go to, saying what the bot does", () => {
+    expect(walkBar(undefined, bot(), leg)).toEqual({ name: "Small Pier", walking: leg, paused: "Fight: giant rat" });
+    // Before the first leg: the journey's name.
+    expect(walkBar(undefined, bot({ narration: "" }), undefined)).toEqual({
+      name: "Small Pier",
+      walking: undefined,
+      paused: "planning the next leg",
+    });
+  });
+  it("is nothing without a Go to, or with the bot stopped", () => {
+    expect(walkBar(undefined, undefined, leg)).toBeUndefined();
+    expect(walkBar(undefined, bot({ journey: undefined }), leg)).toBeUndefined();
+    expect(walkBar(undefined, bot({ state: "stopped" }), leg)).toBeUndefined();
   });
 });
 

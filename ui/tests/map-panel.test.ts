@@ -34,7 +34,7 @@ function mount(props: Partial<Parameters<typeof render<typeof MapPanel>>[1]> = {
   const onloops = vi.fn();
   const onwalkloop = vi.fn();
   const onrunloop = vi.fn();
-  render(MapPanel, {
+  const { rerender } = render(MapPanel, {
     session,
     view,
     character: {},
@@ -46,7 +46,7 @@ function mount(props: Partial<Parameters<typeof render<typeof MapPanel>>[1]> = {
     onrunloop,
     ...props,
   } as never);
-  return { onwalk, onstop, onloops, onwalkloop, onrunloop };
+  return { onwalk, onstop, onloops, onwalkloop, onrunloop, rerender };
 }
 
 const here = { position: { map: 1, room: 10, candidates: 1 } };
@@ -131,6 +131,26 @@ describe("the map panel", () => {
     expect(screen.getByText("n")).toBeTruthy();
     await fireEvent.click(screen.getByRole("button", { name: "stop" }));
     expect(onstop).toHaveBeenCalledWith("aria");
+  });
+
+  it("keeps the walk bar and its stop while the bot fights on a Go to, and drops it after", async () => {
+    // C-087: the walker's leg ends when the bot stops to fight or plans the next leg; the Go
+    // to (`bot.journey`) goes on, and so does the bar, with the last leg seen.
+    const walking = { to: { map: 1, room: 11 }, name: "Road", steps_left: 3, step: 2, commands: ["n", "e", "e"] };
+    const bot = { state: "running" as const, mode: "fight" as const, narration: "Fight: giant rat", journey: { name: "Road", to: { map: 1, room: 11 } } };
+    const { onstop, rerender } = mount({ character: { position: { map: 1, room: 10, candidates: 1 }, walking, bot } });
+    expect(screen.getByText("step 2, 3 left")).toBeTruthy();
+    await rerender({ character: { position: { map: 1, room: 10, candidates: 1 }, bot } } as never);
+    expect(screen.getByText("→ Road")).toBeTruthy();
+    expect(screen.getByText("step 2, 3 left")).toBeTruthy();
+    expect(screen.getByText("n, e, e")).toBeTruthy();
+    expect(screen.getByText("Fight: giant rat")).toBeTruthy();
+    await fireEvent.click(screen.getByRole("button", { name: "stop" }));
+    expect(onstop).toHaveBeenCalledWith("aria");
+    // The Go to is over: the bar goes.
+    await rerender({ character: { position: { map: 1, room: 10, candidates: 1 }, bot: { ...bot, journey: undefined } } } as never);
+    expect(screen.queryByText("→ Road")).toBeNull();
+    expect(screen.getByText("Click a room to walk there.")).toBeTruthy();
   });
 
   it("shows the map:room the character is in, and says when it is lost", () => {

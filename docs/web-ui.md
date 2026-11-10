@@ -207,7 +207,10 @@ and works nothing out itself.
   the steps left, and the commands the walker will still type (`n, n, e, borrow skiff`), from
   the brain. A door shows on the map; the walker types `open` only when it finds the door
   closed, so that is not listed ahead. **stop** stops the walk
-  after the move in flight. Clicking another room while walking replaces the walk. Two
+  after the move in flight. On a Go to the bar stays between legs, while the bot stops to
+  fight or plans the next leg (C-087): the last leg's steps and commands, greyed, with what
+  the bot is doing instead in yellow (`Fight: giant rat`), and **stop**, which stops the bot
+  and drops the Go to. It goes when the Go to is over or the bot stops. Clicking another room while walking replaces the walk. Two
   characters can walk at once; the panel shows the focused one.
 - **Go to**: the map only shows its 15 steps, so for anywhere farther there is the **go**
   box (`Alt+G`, or the `go` button on the tools line). Type part of a name, two letters or
