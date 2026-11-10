@@ -1,6 +1,6 @@
 //! The pack built from `tests/fixtures/world` and the MegaMud paths in `tests/fixtures/megamud`
-//! and `tests/fixtures/megamud-crossings` (C-052) and `tests/fixtures/megamud-windows` (path
-//! windows), shared by the tests that read one.
+//! and `tests/fixtures/megamud-crossings` (C-052), `tests/fixtures/megamud-windows` (path
+//! windows) and `tests/fixtures/megamud-hole` (C-086), shared by the tests that read one.
 
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
@@ -26,6 +26,7 @@ pub fn pack_path() -> &'static Path {
             "tests/fixtures/megamud",
             "tests/fixtures/megamud-crossings",
             "tests/fixtures/megamud-windows",
+            "tests/fixtures/megamud-hole",
         ]
         .iter()
         .flat_map(|d| std::fs::read_dir(repo(d).join("Default")).unwrap())

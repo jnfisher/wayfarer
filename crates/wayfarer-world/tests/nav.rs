@@ -44,8 +44,10 @@ const SMALL_PIER: Key = (1, 2335);
 fn graph_loads_every_room_and_exit() {
     let (pack, g) = graph();
     assert_eq!(g.len(), 26_720);
-    // The pack's 62,352 exits and 40 ways through rooms' command texts (C-052).
-    assert_eq!(g.edge_count(), 62_392);
+    // The pack's 62,352 exits and 45 ways through rooms' command texts: 40 that teleport
+    // (C-052) and 5 that cast a spell that only teleports (C-086: the Dragon's Teeth holes at
+    // 2/115, 2/487 and 2/630, and the two organic chambers' `go hole`, 2/2366 and 2/2367).
+    assert_eq!(g.edge_count(), 62_397);
     // Into players' houses, which have no name: there, but never taken (C-053).
     assert_eq!(g.into_unnamed, 34);
     assert_eq!(g.dangling, 0);

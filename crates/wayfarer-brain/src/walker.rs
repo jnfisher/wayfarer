@@ -615,6 +615,33 @@ impl Walker {
         let mut advanced = false;
         let result = match (doing, outcome) {
             (_, Outcome::TimedOut) => Err(format!("no answer to `{}`", action.command)),
+            // The game heard a MegaMud crossing's phrase as speech (`You say "go hole"`): the
+            // path's walk placed it in the wrong room, and there is no way through here. The
+            // character stayed, the crossing is barred for the session, and the walk goes
+            // round (C-086). A room command is the game's own: speech there means the position
+            // is wrong, and the look after it tells where the character is (C-055).
+            (Doing::Move, Outcome::Confirmed(Confirmed::Prompt))
+                if step.exit_type == ExitType::PathCommand && pos.spoken(&action.command) =>
+            {
+                pos.block(step.from, step.dir);
+                next.traces.push(serde_json::json!({
+                    "kind": "barred",
+                    "phrase": action.command,
+                    "from": key_str(step.from),
+                    "to": key_str(step.to),
+                }));
+                next.warning(format!(
+                    "`{}` is only speech in {}: going round",
+                    action.command,
+                    room_name(atlas, step.from)
+                ));
+                w.replan(
+                    pos,
+                    atlas,
+                    &mut next,
+                    &format!("`{}` was only speech", action.command),
+                )
+            }
             // The phrase went and its prompt came: look where it took the character.
             (Doing::Move, Outcome::Confirmed(Confirmed::Prompt)) if step.exit_type.is_command() => {
                 Ok(Doing::Arrive)

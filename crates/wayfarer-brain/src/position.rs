@@ -66,6 +66,9 @@ pub(crate) struct Position {
     pub traces: Vec<serde_json::Value>,
     /// The next room seen with a title is placed afresh ([`Position::afresh`]).
     afresh: bool,
+    /// The phrase of the move in flight came back as speech (`You say "go hole"`): the
+    /// character did not move (C-086). Cleared by the next move sent.
+    spoken: Option<String>,
 }
 
 impl Position {
@@ -91,6 +94,7 @@ impl Position {
         if self.is_move(atlas, text) {
             // A move that never got its room is forgotten: it went nowhere.
             self.moving.clear();
+            self.spoken = None;
             self.moving.push_back(text.trim().to_owned());
         }
         let mut words = text.split_whitespace();
@@ -200,6 +204,24 @@ impl Position {
                 return None;
             }
             // The status screen's picklocks skill: the odds of picking a lock.
+            // The phrase in flight was only speech: no way through here (C-086).
+            GameEvent::Other(ev) if ev.name == "you_say" => {
+                let said = ev.text("msg").unwrap_or("").trim();
+                if self
+                    .moving
+                    .front()
+                    .is_some_and(|m| m.eq_ignore_ascii_case(said))
+                {
+                    let phrase = self.moving.pop_front();
+                    self.traces.push(serde_json::json!({
+                        "kind": "speech",
+                        "phrase": phrase,
+                        "cands": crate::walker::cands_str(&self.belief),
+                    }));
+                    self.spoken = phrase;
+                }
+                return None;
+            }
             GameEvent::StatusStat { stats } => {
                 if let Some((_, n)) = stats.iter().find(|(label, _)| label == "Picklocks") {
                     self.traveller.picklocks = Some(*n);
@@ -339,6 +361,13 @@ impl Position {
 
     /// The game refused `command` (anything but "no exit"): mark the exits it would have taken
     /// from the candidates, so routes avoid them for the rest of the session.
+    /// Whether `phrase`, the last move sent, came back as speech (C-086).
+    pub fn spoken(&self, phrase: &str) -> bool {
+        self.spoken
+            .as_deref()
+            .is_some_and(|s| s.eq_ignore_ascii_case(phrase.trim()))
+    }
+
     /// Place the next room seen afresh (C-085): among every room of its name and exits, not
     /// only the candidates so far. The re-sync's `look` does this, so a guess made from the
     /// output before it can't stay certain only because the room fits. The belief stands

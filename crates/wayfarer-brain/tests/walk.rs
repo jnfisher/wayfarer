@@ -1105,3 +1105,61 @@ async fn sure_of_the_wrong_copy_of_the_hills_the_go_to_still_gets_there() {
     );
     g.close(run).await;
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_megamud_phrase_the_game_hears_as_speech_is_barred_and_not_tried_again() {
+    // C-086: on 2026-11-10 Lexi's Go to typed `go hole` in 2/193, a MegaMud crossing the
+    // path's walk had placed in the wrong look-alike. The game only heard speech (`You say "go
+    // hole"`); the brain took the room it was still in as the hole's other side, threw the sure
+    // belief away, and typed it 20 times more. Here `go arch` (`ELSAHDRU.mp`'s crossing at
+    // 7/141, into 7/142) answers the same: one try, the belief stays, the crossing is barred and the walk
+    // goes round or stops, without typing it again.
+    const ARCH: Key = (7, 141);
+    const BEYOND: Key = (7, 142);
+    let (mut g, run) = Game::start(SessionState::Realm, ARCH).await;
+    g.map_at = Some(ARCH);
+    g.expect("go arch", format!("You say \"go arch\"\r\n{PROMPT}"));
+    // 7/142 is the high druid's lair: walk into it, not one room short.
+    g.walk_to_with(BEYOND, Some(false), None).await;
+    let said = g
+        .until(|m| match m {
+            ToGateway::Warning { text, .. }
+                if text.contains("only speech") || text.starts_with("Stopped walking") =>
+            {
+                Some(text.clone())
+            }
+            _ => None,
+        })
+        .await;
+    let name = atlas().graph.room(ARCH).unwrap().name.clone();
+    assert_eq!(
+        said,
+        format!("`go arch` is only speech in {name}: going round")
+    );
+    g.freeze();
+    g.idle(Duration::from_secs(5)).await;
+    let (seen, _) = g.close(run).await;
+    let traces: Vec<&serde_json::Value> = seen
+        .iter()
+        .filter_map(|m| match m {
+            ToGateway::PositionTrace { entry, .. } => Some(entry),
+            _ => None,
+        })
+        .collect();
+    assert!(traces.iter().any(|t| t["kind"] == "speech"), "{traces:?}");
+    assert!(traces.iter().any(|t| t["kind"] == "barred"), "{traces:?}");
+    // The belief was never thrown away for the crossing's other side.
+    assert!(traces.iter().all(|t| t["how"] != "relocated"), "{traces:?}");
+    let sent: Vec<&str> = seen
+        .iter()
+        .filter_map(|m| match m {
+            ToGateway::InputLine { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        sent.iter().filter(|s| **s == "go arch").count(),
+        1,
+        "{sent:?}"
+    );
+}

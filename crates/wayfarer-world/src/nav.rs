@@ -354,10 +354,12 @@ fn unblocking(params: [i64; 4], actions: &[(i64, String)]) -> Vec<String> {
 }
 
 /// The clauses a room command line may have and still be a way through: what they do can be
-/// told beforehand (`kb/navigation.md` "Text blocks"). Anything else (a `cast`, a `random`, a
-/// skill test, an item taken or checked, an ability or alignment check) leaves the line out.
-const PLAIN_CLAUSES: [&str; 6] = [
+/// told beforehand (`kb/navigation.md` "Text blocks"). `cast` of a spell that only teleports is
+/// one too (C-086). Anything else (another `cast`, a `random`, a skill test, an item taken or
+/// checked, an ability or alignment check) leaves the line out.
+const PLAIN_CLAUSES: [&str; 7] = [
     "message",
+    "text",
     "adddelay",
     "minlevel",
     "maxlevel",
@@ -365,12 +367,43 @@ const PLAIN_CLAUSES: [&str; 6] = [
     "teleport",
 ];
 
+/// Where a spell puts its caster, when all it does is teleport (C-086): the Dragon's Teeth
+/// holes' `go hole` casts *fall* (336: Teleport Map 2, Teleport Room 1306), and the room it
+/// names is where the player lands. Abilities 140 (`ABL_TELEPORTROOM`) and 141
+/// (`ABL_TELEPORTMAP`, the caster's own map when 0 or missing); 144 (`ABL_NONMAGICAL`), and 1
+/// (the damage slot) at 0, change nothing. A spell with any other ability is not only a
+/// teleport.
+pub fn spell_teleport(own_map: i64, raw: &str) -> Option<Key> {
+    let v: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let abils = v.get("abilities")?.as_array()?;
+    let vals = v.get("abilvals")?.as_array()?;
+    let (mut room, mut map) = (None, None);
+    for (a, val) in abils.iter().zip(vals) {
+        let (a, val) = (a.as_i64()?, val.as_i64().unwrap_or(0));
+        match a {
+            0 | 144 => {}
+            1 if val == 0 => {}
+            140 => room = Some(val),
+            141 => map = Some(val),
+            _ => return None,
+        }
+    }
+    let map = map.filter(|&m| m != 0).unwrap_or(own_map);
+    room.filter(|&r| r > 0).map(|r| (map, r))
+}
+
 /// The ways through a room's command text gives (C-052): for each line that is the first with
 /// its pattern, a plain pattern (no wildcard) and only [`PLAIN_CLAUSES`] with one `teleport
 /// <room> <map>`, the room it puts the character in (on `map`, its own map when 0 or left
 /// out), gated by `minlevel` / `maxlevel`. Lines to the same room with the same gate are one
-/// way with every pattern as a phrase, in text order.
-pub fn room_commands(map: i64, text: &str) -> Vec<(Key, Gate, Vec<String>)> {
+/// way with every pattern as a phrase, in text order. `spell_to`: where a spell puts its
+/// caster when all it does is teleport ([`spell_teleport`]); a `cast` of one is the line's
+/// teleport (C-086).
+pub fn room_commands(
+    map: i64,
+    text: &str,
+    spell_to: &dyn Fn(i64) -> Option<Key>,
+) -> Vec<(Key, Gate, Vec<String>)> {
     let mut seen: Vec<String> = Vec::new();
     let mut out: Vec<(Key, Gate, Vec<String>)> = Vec::new();
     for line in text.lines() {
@@ -394,6 +427,10 @@ pub fn room_commands(map: i64, text: &str) -> Vec<(Key, Gate, Vec<String>)> {
                 "teleport" if to.is_none() => match (num(words.next()), num(words.next())) {
                     (Some(room), m) => to = Some((m.filter(|&m| m != 0).unwrap_or(map), room)),
                     _ => plain = false,
+                },
+                "cast" if to.is_none() => match num(words.next()).and_then(spell_to) {
+                    Some(k) => to = Some(k),
+                    None => plain = false,
                 },
                 "minlevel" => min = num(words.next()).unwrap_or(0),
                 "maxlevel" => max = num(words.next()).unwrap_or(0),
@@ -502,6 +539,11 @@ impl RoomGraph {
             .collect();
         let mut phrases: HashMap<i64, Vec<String>> = HashMap::new();
         let mut blank_names: HashMap<i64, bool> = HashMap::new();
+        let spells: HashMap<i64, String> = pack
+            .spells()?
+            .into_iter()
+            .map(|s| (s.number, s.raw))
+            .collect();
         let commands: HashMap<Key, String> = pack
             .room_commands()?
             .into_iter()
@@ -618,9 +660,11 @@ impl RoomGraph {
                 });
             }
             // The ways through the room's command text, after its exits.
-            let ways = commands
-                .get(&key)
-                .map_or_else(Vec::new, |t| room_commands(key.0, t));
+            let ways = commands.get(&key).map_or_else(Vec::new, |t| {
+                room_commands(key.0, t, &|n| {
+                    spells.get(&n).and_then(|raw| spell_teleport(key.0, raw))
+                })
+            });
             for (dir, (to, gate, phrases)) in (COMMAND_DIRS..).zip(ways) {
                 let Some(&to_ix) = index.get(&to) else {
                     dangling += 1;
@@ -896,7 +940,16 @@ impl RoomGraph {
     /// Add MegaMud's crossings (`PathKnowledge::crossings`) as ways through where the room has
     /// none to that room taking the phrase: each a [`ExitType::PathCommand`] numbered after the
     /// room's other ways. Returns how many it added.
+    ///
+    /// A crossing a look-alike of its room already has (the same MegaMud room id, and a way
+    /// through to the same room taking the phrase) is left out: the path was typed there, and
+    /// its walk placed the step in the wrong one of rooms MegaMud can't tell apart (C-086:
+    /// `Dthhstt1.mp`'s `@party go hole`, placed in 2/193 among 22 such rooms, is 2/487's).
     pub fn learn_crossings(&mut self, k: &crate::knowledge::PathKnowledge) -> usize {
+        let mut by_mm: HashMap<u32, Vec<u32>> = HashMap::new();
+        for (i, n) in self.nodes.iter().enumerate() {
+            by_mm.entry(n.room.mm_id).or_default().push(i as u32);
+        }
         let mut added: HashMap<u32, Vec<Edge>> = HashMap::new();
         for (from, to, phrase) in k.crossings() {
             let (Some(&i), Some(&to_ix)) = (self.index.get(&from), self.index.get(&to)) else {
@@ -904,8 +957,18 @@ impl RoomGraph {
             };
             let have =
                 |e: &Edge| e.to == to && (e.taken_by(&phrase) || e.kind == ExitType::RoomCommand);
+            let elsewhere = by_mm
+                .get(&self.nodes[i as usize].room.mm_id)
+                .into_iter()
+                .flatten()
+                .filter(|&&j| j != i)
+                .any(|&j| {
+                    self.edges_at(j)
+                        .iter()
+                        .any(|e| e.to == to && e.taken_by(&phrase))
+                });
             let mine = added.entry(i).or_default();
-            if self.edges_at(i).iter().any(have) || mine.iter().any(have) {
+            if elsewhere || self.edges_at(i).iter().any(have) || mine.iter().any(have) {
                 continue;
             }
             let dir = self
@@ -1063,7 +1126,7 @@ mod tests {
         let chime = "use chime:message 3177:teleport 65 1:message 837\n\
                      ring chime:message 3177:teleport 65 1:message 837\n\n";
         assert_eq!(
-            room_commands(1, chime),
+            room_commands(1, chime, &|_| None),
             [(
                 (1, 65),
                 Gate::None,
@@ -1074,7 +1137,7 @@ mod tests {
         let vortex = "go vortex:adddelay 5:minlevel 20 1220:message 1205:teleport 681 3:message 1221\n\
                       enter vortex:adddelay 5:minlevel 20 1220:message 1205:teleport 681\n";
         assert_eq!(
-            room_commands(3, vortex),
+            room_commands(3, vortex, &|_| None),
             [(
                 (3, 681),
                 Gate::Level { min: 20, max: 0 },
@@ -1091,7 +1154,33 @@ mod tests {
                     jump *:teleport 5 1\n\
                     push panel:failability 3:message 1\n\
                     push panel:teleport 9 1\n";
-        assert!(room_commands(1, text).is_empty());
+        assert!(room_commands(1, text, &|_| None).is_empty());
+        // A cast of a spell that is not only a teleport.
+        assert!(room_commands(1, "go hole:cast 335", &|_| None).is_empty());
+    }
+
+    #[test]
+    fn a_room_command_that_casts_a_teleport_is_a_way_through() {
+        // C-086: Dragon's Teeth Hills 2/487 (text 308): `go hole` casts *fall* (336), which
+        // drops the caster into Stone Tunnel, Hole Up (2/1306).
+        let hole = "go hole:message 774:cast 336:message 766:text 306\n\
+                    enter hole:message 774:cast 336:message 766:text 306\n\
+                    crawl hole:message 774:cast 336:message 766:text 306\n";
+        let fall =
+            r#"{"abilities":[1,141,140,144,0,0,0,0,0,0],"abilvals":[0,2,1306,0,0,0,0,0,0,0]}"#;
+        assert_eq!(spell_teleport(2, fall), Some((2, 1306)));
+        let spell_to = |n: i64| (n == 336).then_some((2, 1306));
+        assert_eq!(
+            room_commands(2, hole, &spell_to),
+            [(
+                (2, 1306),
+                Gate::None,
+                vec!["go hole".into(), "enter hole".into(), "crawl hole".into()]
+            )]
+        );
+        // A spell that also hurts is not only a teleport.
+        let hurts = r#"{"abilities":[1,140],"abilvals":[-10,1306]}"#;
+        assert_eq!(spell_teleport(2, hurts), None);
     }
 
     #[test]
