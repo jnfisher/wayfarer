@@ -159,6 +159,9 @@ pub(crate) struct Slot {
     /// The brain's own notices and warnings about this session (`notes.log`): what the bot
     /// said it was doing and why it stopped.
     pub notes_log: LineLog,
+    /// Where the brain believed the character was, room by room, and its walks' plans
+    /// (`position.log`, C-085).
+    pub position_log: LineLog,
     pub output: broadcast::Sender<Output>,
     pub read_buffer: usize,
     pub reconnect: bool,
@@ -191,6 +194,7 @@ pub(crate) struct SlotParts {
     pub sent_log: LineLog,
     pub brain_log: LineLog,
     pub notes_log: LineLog,
+    pub position_log: LineLog,
     pub read_buffer: usize,
     pub reconnect: bool,
     pub connector: Arc<dyn Connect>,
@@ -209,6 +213,7 @@ impl Slot {
             sent_log: p.sent_log,
             brain_log: p.brain_log,
             notes_log: p.notes_log,
+            position_log: p.position_log,
             output: broadcast::channel(p.subscriber_capacity.max(1)).0,
             read_buffer: p.read_buffer.max(1),
             reconnect: p.reconnect,

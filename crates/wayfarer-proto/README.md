@@ -120,10 +120,11 @@ Brain → gateway → UIs (the same JSON both ways):
 
 The control messages above are relayed to the brain the same way.
 
-Brain → gateway (the answer to `logging_off`, and which sessions' input the brain
-arbitrates; never relayed):
+Brain → gateway (the answer to `logging_off`, which sessions' input the brain
+arbitrates, and the entries of a session's `position.log`; never relayed):
 
 ```json
 {"type":"ready_to_leave","session":"kasimir","clean":true}
 {"type":"arbitrate","session":"kasimir","on":true}
+{"type":"position_trace","session":"kasimir","entry":{"count":1,"how":"followed","kind":"room"}}
 ```

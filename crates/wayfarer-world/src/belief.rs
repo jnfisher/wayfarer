@@ -12,6 +12,48 @@ pub const WIDEN_RADIUS: u32 = 12;
 /// Old candidates searched around when widening, at most (the lowest keys).
 const WIDEN_FROM: usize = 50;
 
+/// How a room seen moved the belief ([`Belief::observe`]), for the position log (C-085).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum How {
+    /// Too dark to see: nothing told.
+    Dark,
+    /// No title: the exits narrowed the candidates, if any fitted.
+    Exits,
+    /// No room has that name, and no exits came: not a title.
+    NotATitle,
+    /// A whole room the pack lacks: the position is unknown.
+    NotOnMap,
+    /// Candidates fitted, and were kept.
+    Followed,
+    /// Every room of that name (and exits, when seen) in the world.
+    Anywhere,
+    /// None of the candidates fitted: every room of that name and exits in the world.
+    Relocated,
+    /// The rooms near the old candidates that fit, the exits not seen.
+    Near,
+    /// The rooms near the old candidates of that name: no room has those exits.
+    NearByName,
+    /// Every room of that name: no room has those exits.
+    AnywhereByName,
+}
+
+impl How {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            How::Dark => "dark",
+            How::Exits => "exits",
+            How::NotATitle => "not_a_title",
+            How::NotOnMap => "not_on_map",
+            How::Followed => "followed",
+            How::Anywhere => "anywhere",
+            How::Relocated => "relocated",
+            How::Near => "near",
+            How::NearByName => "near_by_name",
+            How::AnywhereByName => "anywhere_by_name",
+        }
+    }
+}
+
 /// The candidate rooms. Empty is unknown.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Belief {
@@ -77,25 +119,28 @@ impl Belief {
 
     /// A room was shown. `title` is `None` when it was lost (behind a prompt, or replaced by
     /// "You hear movement"); `exits` is the `Obvious exits` list, `None` when not seen; `dark`
-    /// when the room was too dark to see, which tells nothing.
+    /// when the room was too dark to see, which tells nothing. Returns how the belief moved.
     ///
     /// Candidates are kept whose name is the title and whose listed exits can be the ones
     /// seen ([`RoomGraph::exits_fit`]). From an unknown belief the candidates are every room
-    /// of that name. When nothing fits: the rooms within [`WIDEN_RADIUS`] steps of the old
-    /// candidates by name and exits, then by name alone, then the world by name and exits,
-    /// then by name alone. Without a title, the exits narrow the candidates if any fit. A title
-    /// no room has changes nothing on its own (it may be a line misread as one), but with its
-    /// `Obvious exits` it is a whole room the pack lacks, a player's house (C-053): the
-    /// position is unknown, and the next room the pack has relocates it from the old one.
+    /// of that name and exits. When nothing fits and the exits were seen, every room in the
+    /// world of that name and exits (C-085: the rooms near the old candidates may be a copy of
+    /// the same stretch of maze, and the belief would settle on the wrong one). Without exits,
+    /// or when no room has those: the rooms within [`WIDEN_RADIUS`] steps of the old
+    /// candidates by name, then the world by name. Without a title, the exits narrow the
+    /// candidates if any fit. A title no room has changes nothing on its own (it may be a line
+    /// misread as one), but with its `Obvious exits` it is a whole room the pack lacks, a
+    /// player's house (C-053): the position is unknown, and the next room the pack has
+    /// relocates it from the old one.
     pub fn observe(
         &mut self,
         graph: &RoomGraph,
         title: Option<&str>,
         exits: Option<DirSet>,
         dark: bool,
-    ) {
+    ) -> How {
         if dark {
-            return;
+            return How::Dark;
         }
         let fits_exits = |k: &Key| exits.is_none_or(|x| graph.exits_fit(*k, x));
         let Some(title) = title else {
@@ -103,24 +148,36 @@ impl Belief {
             if !kept.is_empty() {
                 self.set(kept);
             }
-            return;
+            return How::Exits;
         };
         let all = graph.rooms_named(title);
         if all.is_empty() {
             if exits.is_some() {
                 // A whole room the pack does not have: nowhere it knows.
                 self.cands.clear();
+                return How::NotOnMap;
             }
             // Otherwise no room has that name: not a title after all.
-            return;
+            return How::NotATitle;
         }
         let named = |k: &Key| graph.room(*k).is_some_and(|r| r.name == title);
         let fits = |k: &Key| named(k) && fits_exits(k);
-        if !self.cands.is_empty() {
+        let was_unknown = self.cands.is_empty();
+        if !was_unknown {
             let kept: BTreeSet<Key> = self.cands.iter().copied().filter(fits).collect();
             if !kept.is_empty() {
-                return self.set(kept);
+                self.set(kept);
+                return How::Followed;
             }
+        }
+        let anywhere: BTreeSet<Key> = all.iter().copied().filter(fits).collect();
+        if exits.is_some() && !anywhere.is_empty() {
+            self.set(anywhere);
+            return if was_unknown {
+                How::Anywhere
+            } else {
+                How::Relocated
+            };
         }
         if !self.last.is_empty() {
             let anyone = Traveller::anyone();
@@ -128,19 +185,24 @@ impl Belief {
             for &c in self.last.iter().take(WIDEN_FROM) {
                 near.extend(distances(graph, c, WIDEN_RADIUS, &anyone).into_keys());
             }
-            for pick in [&fits as &dyn Fn(&Key) -> bool, &named] {
+            for (pick, how) in [
+                (&fits as &dyn Fn(&Key) -> bool, How::Near),
+                (&named, How::NearByName),
+            ] {
                 let found: BTreeSet<Key> = near.iter().copied().filter(|k| pick(k)).collect();
                 if !found.is_empty() {
-                    return self.set(found);
+                    self.set(found);
+                    return how;
                 }
             }
         }
-        let found: BTreeSet<Key> = all.iter().copied().filter(fits).collect();
-        self.set(if found.is_empty() {
-            all.into_iter().collect()
+        if anywhere.is_empty() {
+            self.set(all.into_iter().collect());
+            How::AnywhereByName
         } else {
-            found
-        });
+            self.set(anywhere);
+            How::Anywhere
+        }
     }
 
     /// A move was typed and the game took it: every candidate follows the exit that

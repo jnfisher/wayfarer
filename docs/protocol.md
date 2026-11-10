@@ -164,6 +164,7 @@ typed line always comes after its `sent`. UIs never get `sent`.
 | `logging_off {session}` | gateway → brain | The gateway is about to log this session off: it is stopping, or a UI asked (`session_control log_off`); sent only for a session in the realm. The brain stops playing the character and answers `ready_to_leave` |
 | `ready_to_leave {session, clean?}` | brain → gateway | The brain sends the session nothing more: the log-off may start. `clean` (the character's `bot.log_off`): exit with the logoff script; left out, the gateway hangs up. The gateway waits for it up to 30 s after `logging_off`, or until the brain goes, and hangs up when none came; never relayed, and refused from a UI |
 | `arbitrate {session, on}` | brain → gateway | Whether the brain arbitrates the session's input: on while its bot runs or is paused, off when it stops. Never relayed, and refused from a UI |
+| `position_trace {session, entry}` | brain → gateway | One entry for the session's `position.log` (C-085): a room seen and how the position belief moved, a walk's plan, a surprise (`docs/brain.md` "The position log"). The gateway writes it with the session's latest `seq` and `ts`. Never relayed, and refused from a UI |
 | `user_input {session, text, from}` | gateway → brain | A line a UI typed (`input_line`) for a session the brain arbitrates; the gateway sent nothing to the game. `from` names the UI's connection (`ui-3`). The brain's own `input_line` is never turned into one |
 | `keys_sent {session}` | gateway → brain | A UI's `input_keys` went to the game for a session the brain arbitrates |
 
@@ -174,6 +175,7 @@ typed line always comes after its `sent`. UIs never get `sent`.
 {"type":"logging_off","session":"kasimir"}
 {"type":"ready_to_leave","session":"kasimir","clean":true}
 {"type":"arbitrate","session":"kasimir","on":true}
+{"type":"position_trace","session":"kasimir","entry":{"count":1,"how":"followed","kind":"room"}}
 {"type":"user_input","session":"kasimir","text":"a rat","from":"ui-3"}
 {"type":"keys_sent","session":"kasimir"}
 ```

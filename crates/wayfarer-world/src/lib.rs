@@ -35,7 +35,7 @@ pub mod walk;
 
 use std::path::PathBuf;
 
-pub use belief::Belief;
+pub use belief::{Belief, How};
 pub use build::{BuildReport, MegaMudReport, build};
 pub use combat::{Blow, Buff, Character, Defender, Fight, Fighter, Move, Qs120Melee, Stats};
 pub use exit_items::ExitItem;

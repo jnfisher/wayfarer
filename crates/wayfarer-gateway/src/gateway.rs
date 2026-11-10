@@ -212,6 +212,7 @@ impl Gateway {
             sent_log: LineLog::new(dir.join("sent.log")),
             brain_log: LineLog::new(dir.join("brain.log")),
             notes_log: LineLog::new(dir.join("notes.log")),
+            position_log: LineLog::new(dir.join("position.log")),
             read_buffer: options.read_buffer,
             reconnect: options.reconnect,
             connector: Arc::clone(&self.inner.connector),
@@ -575,6 +576,24 @@ impl Gateway {
                 kind,
                 text,
             });
+        }
+    }
+
+    /// Write one entry the brain sent to its session's `position.log` (C-085), with the
+    /// session's latest output `seq` and the time; an entry that is not a JSON object is
+    /// written under `entry`.
+    pub fn position_from_brain(&self, session: &str, entry: serde_json::Value) {
+        if let Ok(slot) = self.slot(session) {
+            let mut line = serde_json::Map::new();
+            line.insert("seq".into(), slot.log.last_seq().into());
+            line.insert("ts".into(), now_ms().into());
+            match entry {
+                serde_json::Value::Object(fields) => line.extend(fields),
+                other => {
+                    line.insert("entry".into(), other);
+                }
+            }
+            slot.position_log.append(&line);
         }
     }
 

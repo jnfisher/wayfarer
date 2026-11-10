@@ -74,4 +74,4 @@ time?: TimeSpent, } | { "type": "spell_plan", session: string, cash: number, ite
 /**
  * The layer whose own values `own` shows.
  */
-layer: string, files: Array<SettingsFile>, rows: Array<SettingRow>, } | { "type": "found", session: string, query: string, results: Array<Found>, } | { "type": "parties", parties: Array<PartyStatus>, } | { "type": "blessings", characters: Array<Blessings>, } | { "type": "ready_to_leave", session: string, clean?: boolean, } | { "type": "arbitrate", session: string, on: boolean, };
+layer: string, files: Array<SettingsFile>, rows: Array<SettingRow>, } | { "type": "found", session: string, query: string, results: Array<Found>, } | { "type": "parties", parties: Array<PartyStatus>, } | { "type": "blessings", characters: Array<Blessings>, } | { "type": "ready_to_leave", session: string, clean?: boolean, } | { "type": "arbitrate", session: string, on: boolean, } | { "type": "position_trace", session: string, entry: unknown, };
