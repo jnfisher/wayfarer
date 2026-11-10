@@ -4,7 +4,7 @@
 //
 // The brain lays the rooms out and plans the routes; this file only draws what it was sent.
 
-import type { GeneratedLoop, LoopStop, MapExit, MapRoom, RoomKey, RoomKind, ToClient, Walking } from "../proto";
+import type { Bot, GeneratedLoop, LoopStop, MapExit, MapRoom, RoomKey, RoomKind, ToClient, Walking } from "../proto";
 
 export type MapView = Extract<ToClient, { type: "map_view" }>;
 export type Loops = Extract<ToClient, { type: "loops" }>;
@@ -262,6 +262,28 @@ export function stopTip(s: LoopStop): string {
 /** The route bar's line: the walker's commands still to type, `n, n, e, borrow skiff`. */
 export function walkText(walking: Walking | undefined): string {
   return walking?.commands?.join(", ") ?? "";
+}
+
+/**
+ * The walk bar (C-087): the leg the walker is on, or, between legs of a Go to (the bot stopped
+ * to fight, or plans the next leg), the last leg seen for this session, so the destination,
+ * the steps, the directions and the stop button stay. `paused` says why no leg is on: the
+ * bot's narration ("Fight: nasty ankheg"). Undefined: nothing to show, no Go to and no walk.
+ */
+export interface WalkBar {
+  /** The destination's name. */
+  name: string;
+  /** The leg on now, or the last one seen; absent before the first leg of a Go to. */
+  walking?: Walking;
+  /** No leg is on: what the bot is doing instead. */
+  paused?: string;
+}
+
+export function walkBar(walking: Walking | undefined, bot: Bot | undefined, last: Walking | undefined): WalkBar | undefined {
+  if (walking) return { name: walking.name, walking };
+  const journey = bot && bot.state !== "stopped" ? bot.journey : undefined;
+  if (!journey) return undefined;
+  return { name: last?.name ?? journey.name, walking: last, paused: bot?.narration || "planning the next leg" };
 }
 
 /** One zoom step at the point (px, py), keeping what is under it in place. */
