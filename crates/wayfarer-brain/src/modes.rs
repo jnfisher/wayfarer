@@ -146,7 +146,43 @@ impl Presence {
                 self.here.clear();
                 self.attackers.clear();
             }
+            // A fight in the room the character is not in: a monster the room view never
+            // showed (it came in by a text the parser missed, or before the last look) is here
+            // all the same (C-090).
+            GameEvent::Intercept { monster, .. } => self.seen_fighting(atlas, monster),
+            GameEvent::Other(e) => {
+                let field = match e.name.as_str() {
+                    "mon_hits_other" | "mon_miss_other" => "mon",
+                    "spell_cast_room" => "caster",
+                    "attacks_other" | "other_hits" | "other_miss" => "target",
+                    _ => return,
+                };
+                if let Some(name) = e.text(field) {
+                    self.seen_fighting(atlas, name);
+                }
+            }
             _ => {}
+        }
+    }
+
+    /// A monster seen fighting in the room (`The ice golem pounds Rocco`, `Rocco moves to
+    /// attack ice golem`): here, if no monster here is already called that.
+    fn seen_fighting(&mut self, atlas: &Atlas, name: &str) {
+        let name = name.trim();
+        let name = ["The ", "the ", "An ", "an ", "A ", "a "]
+            .iter()
+            .find_map(|a| name.strip_prefix(a))
+            .unwrap_or(name);
+        if name.is_empty() || atlas.monsters.by_name(name).is_empty() || self.is_player(atlas, name)
+        {
+            return;
+        }
+        let known = |n: &String| {
+            n.eq_ignore_ascii_case(name)
+                || policy::is_one_of(&atlas.monsters, n, &[name.to_owned()])
+        };
+        if !self.here.iter().any(known) {
+            self.here.push(name.to_owned());
         }
     }
 }

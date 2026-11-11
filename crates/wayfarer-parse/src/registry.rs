@@ -242,6 +242,9 @@ pub struct Registry {
     table_by_opener: HashMap<String, usize>,
     room_names: HashSet<String>,
     death_texts: HashMap<String, Vec<String>>,
+    /// A monster's arrival, leaving or following text that names it and has one `%s`, the
+    /// direction ("The ice golem stomps in from the %s!"): the text to the monster (C-090).
+    named_moves: HashMap<String, String>,
     monster_names: HashSet<String>,
     pub(crate) join: Vec<(String, JoinRule)>,
     pub(crate) exit_tail: Vec<String>,
@@ -262,6 +265,7 @@ struct Builder {
     patterns: Vec<Option<Pattern>>,
     seen: HashMap<String, usize>,
     death_texts: HashMap<String, Vec<String>>,
+    named_moves: HashMap<String, String>,
 }
 
 impl Builder {
@@ -285,6 +289,17 @@ impl Builder {
                 .entry(text.to_owned())
                 .or_default()
                 .push(mon.to_owned());
+        }
+        if matches!(
+            role,
+            "monster_arrives" | "monster_leaves" | "monster_follows"
+        ) && let Some(mon) = mon.filter(|m| !m.is_empty())
+            && text.matches("%s").count() == 1
+            && text.to_lowercase().contains(&mon.to_lowercase())
+        {
+            self.named_moves
+                .entry(text.to_owned())
+                .or_insert_with(|| mon.to_owned());
         }
         if !template_tokens(text).iter().any(|t| t.chars().count() >= 3) {
             return;
@@ -331,6 +346,7 @@ impl Registry {
             patterns: Vec::new(),
             seen: HashMap::new(),
             death_texts: HashMap::new(),
+            named_moves: HashMap::new(),
         };
         let mut verbs = Verbs::default();
         let mut monster_names = HashSet::new();
@@ -355,9 +371,10 @@ impl Registry {
             for m in &w.monsters {
                 monster_names.insert(m.name.to_lowercase());
                 if let Some(a) = msg(m.arrive_msg) {
-                    b.add_text(&a[0], "monster_arrives", "movement", 55, m.arrive_msg, None);
-                    b.add_text(&a[1], "monster_leaves", "movement", 55, m.arrive_msg, None);
-                    b.add_text(&a[2], "monster_follows", "movement", 55, m.arrive_msg, None);
+                    let name = Some(m.name.as_str());
+                    b.add_text(&a[0], "monster_arrives", "movement", 55, m.arrive_msg, name);
+                    b.add_text(&a[1], "monster_leaves", "movement", 55, m.arrive_msg, name);
+                    b.add_text(&a[2], "monster_follows", "movement", 55, m.arrive_msg, name);
                 }
                 if let Some(d) = msg(m.death_msg) {
                     b.add_text(
@@ -582,6 +599,7 @@ impl Registry {
             table_by_opener,
             room_names,
             death_texts: b.death_texts,
+            named_moves: b.named_moves,
             monster_names,
             join: tbl
                 .join
@@ -713,7 +731,13 @@ impl Registry {
                 .unwrap_or_default();
             d.insert("monsters".into(), Value::List(names));
         }
-        if d.contains_key("mon") && !self.monster_names.is_empty() {
+        // A text that names its monster: its one `%s` is the direction, not the monster.
+        if let Some(mon) = p.template.as_ref().and_then(|t| self.named_moves.get(t)) {
+            if let Some(dir) = d.remove("mon") {
+                d.insert("dir".into(), dir);
+            }
+            d.insert("mon".into(), Value::Text(mon.clone()));
+        } else if d.contains_key("mon") && !self.monster_names.is_empty() {
             self.fix_monster(&mut d);
         }
         if let Some(n) = p.msgnum {

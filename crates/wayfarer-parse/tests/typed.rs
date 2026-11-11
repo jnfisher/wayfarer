@@ -1062,3 +1062,29 @@ fn sneak_lines() {
     }
     assert_eq!(line("Sneaking..."), [GameEvent::StillSneaking]);
 }
+
+/// C-090: a monster's movement text that names it ("The ice golem stomps in from the %s!",
+/// 86 monsters' in the game data) has one `%s`, the direction. It was taken for the monster,
+/// so the golem came in as "east" and the bot never saw it.
+#[test]
+fn a_movement_text_that_names_its_monster_is_that_monster() {
+    for t in [
+        "The ice golem stomps in from the the east!",
+        // The server's anti-bot backspace in the direction.
+        "The ice golem stomps in from the the eP\x08ast!",
+    ] {
+        assert_eq!(
+            line(t),
+            [GameEvent::MonsterArrives {
+                name: "ice golem".into()
+            }],
+            "{t:?}"
+        );
+    }
+    assert_eq!(
+        line("The ice golem stomps out to the the west!"),
+        [GameEvent::MonsterLeaves {
+            name: "ice golem".into()
+        }]
+    );
+}
