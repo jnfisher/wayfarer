@@ -653,6 +653,8 @@
             attached={brain.attached}
             onrequest={(id, layer) => client.requestSettings(id, layer)}
             onsave={(id, layer, changes) => client.saveSettings(id, layer, changes)}
+            rules={focusedId ? (brain.characters[focusedId]?.bot?.monster_rules ?? []) : []}
+            onrule={(id, pattern, rule) => client.setMonsterRule(id, pattern, rule)}
           />
         {:else if devPrefs.panel === "stats"}
           <StatsPanel
@@ -662,7 +664,6 @@
             attached={brain.attached}
             onrefresh={(id) => client.requestStats(id)}
             onreset={(id, only) => client.resetStats(id, only)}
-            onrule={(id, pattern, rule) => client.setMonsterRule(id, pattern, rule)}
           />
         {:else}
           <DevPanel

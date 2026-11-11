@@ -14,7 +14,7 @@
     timeTitle,
     type Stats,
   } from "./lib/stats";
-  import type { CharacterState, MonsterRuleEntry, MonsterRuleKind, SessionInfo, StatsPart } from "./proto";
+  import type { CharacterState, SessionInfo, StatsPart } from "./proto";
 
   interface Props {
     /** The focused tile's session, which the panel follows. */
@@ -28,41 +28,9 @@
     /** `run`: end the current run and start a new one at zero (the old one stays in the
      * history). `combat`: zero the combat numbers. Each section has its own reset. */
     onreset?: (session: string, only: StatsPart) => void;
-    /** Set the player's monster rule for a pattern, or remove it (`null`). */
-    onrule?: (session: string, pattern: string, rule: MonsterRuleKind | null) => void;
   }
 
-  let { session, character, stats, attached, onrefresh, onreset = () => {}, onrule = () => {} }: Props = $props();
-
-  const rules = $derived(character?.bot?.monster_rules ?? []);
-  /** The rules a player adds; `off` comes only from removing a default. */
-  const RULES: { rule: MonsterRuleKind; label: string }[] = [
-    { rule: "ignore", label: "ignore" },
-    { rule: "avoid", label: "avoid" },
-    { rule: "first", label: "attack first" },
-  ];
-  const ruleLabel = (r: MonsterRuleKind) => RULES.find((x) => x.rule === r)?.label ?? r;
-  /** Patterns the player switched off (a player `off`): the rule under it is shown struck. */
-  const switchedOff = $derived(
-    new Set(rules.filter((r) => r.source === "player" && r.rule === "off").map((r) => r.pattern.toLowerCase())),
-  );
-  /** What the `x` on a row does, for its tooltip. */
-  function removeTitle(r: MonsterRuleEntry): string {
-    if (r.rule === "off") return "Put the rule back";
-    if (r.source === "default") return "Switch this default off for this character";
-    if (r.source === "session") return "Forget this learned rule";
-    return "Remove this rule";
-  }
-  let pattern = $state("");
-  let newRule: MonsterRuleKind = $state("ignore");
-
-  function addRule(e: SubmitEvent) {
-    e.preventDefault();
-    const p = pattern.trim();
-    if (!session || p.length < 2) return;
-    onrule(session.id, p, newRule);
-    pattern = "";
-  }
+  let { session, character, stats, attached, onrefresh, onreset = () => {} }: Props = $props();
 
   const run = $derived(character?.run);
   const combat = $derived(stats?.combat);
@@ -212,40 +180,6 @@
         <div class="dim">No combat numbers since the last reset.</div>
       {/if}
     </section>
-    <section class="rules" aria-label="Monster rules">
-      <div class="tools"><span>monster rules</span></div>
-      {#each rules as r (r.source + ":" + r.pattern)}
-        {@const struck = r.rule !== "off" && r.source !== "player" && switchedOff.has(r.pattern.toLowerCase())}
-        <div class="rule" data-source={r.source} data-off={r.rule === "off" || struck} title={r.reason ?? ""}>
-          <span class="r-rule">{ruleLabel(r.rule)}</span>
-          <span class="r-pattern">{r.pattern}</span>
-          <span class="r-source">{r.source}</span>
-          {#if r.rule === "off"}
-            <button aria-label={`put back ${r.pattern}`} title={removeTitle(r)} onclick={() => onrule(session.id, r.pattern, null)}
-              >put back</button
-            >
-          {:else if !struck}
-            <button aria-label={`remove ${r.pattern}`} title={removeTitle(r)} onclick={() => onrule(session.id, r.pattern, null)}
-              >x</button
-            >
-          {/if}
-        </div>
-      {/each}
-      <form class="add" onsubmit={addRule}>
-        <select aria-label="rule" bind:value={newRule}>
-          {#each RULES as o (o.rule)}
-            <option value={o.rule}>{o.label}</option>
-          {/each}
-        </select>
-        <input
-          aria-label="monster name"
-          placeholder="full monster name"
-          title="Matches any monster whose name holds this, in any case: 'ooze' would also match the glittering ooze. Use the full name."
-          bind:value={pattern}
-        />
-        <button type="submit">add</button>
-      </form>
-    </section>
     <div class="tools">
       <span>last runs</span>
       <button onclick={() => onrefresh(session.id)}>refresh</button>
@@ -340,10 +274,6 @@
     border: none;
     cursor: pointer;
   }
-  .rules {
-    border-bottom: 1px solid var(--frame);
-    padding-bottom: 2px;
-  }
   .combat,
   .stash,
   .time {
@@ -430,51 +360,6 @@
   }
   .monsters {
     color: var(--dim);
-  }
-  .rule {
-    display: flex;
-    gap: 1ch;
-    padding: 0 1ch;
-    white-space: pre;
-  }
-  .rule[data-source="default"] {
-    color: var(--dim);
-  }
-  .rule[data-off="true"] .r-rule,
-  .rule[data-off="true"] .r-pattern {
-    text-decoration: line-through;
-  }
-  .r-rule {
-    width: 13ch;
-    color: var(--vga-yellow);
-  }
-  .r-pattern {
-    flex: 1;
-    min-width: 4ch;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .r-source {
-    color: var(--dim);
-  }
-  .add {
-    display: flex;
-    gap: 1ch;
-    padding: 2px 1ch;
-  }
-  .add input {
-    flex: 1;
-    min-width: 8ch;
-    font: inherit;
-    color: var(--vga-lightgray);
-    background: #000;
-    border: 1px solid var(--frame);
-  }
-  .add select {
-    font: inherit;
-    color: var(--vga-lightgray);
-    background: #000;
-    border: 1px solid var(--frame);
   }
   .list {
     flex: 1;

@@ -1318,7 +1318,9 @@ numbers and formulas are `wayfarer_world::balance`, from `crates/wayfarer-world/
   crit chances, the damage expected in round 1, the chance of a kill by round 1 and by round 2,
   and the expected rounds to the kill (at most 20 counted; `rounds_capped` when a fight may well
   run longer). The best move of a row has the fewest expected rounds (ties to the higher round-1
-  kill chance), and the row whose best move is best of all is marked `best`. `gear_detail_request`
+  kill chance), and the row whose best move is best of all is marked `best`, among the weapons
+  that can be had: one with no source (a monster's own weapon it never drops, like the marble
+  archer's bow of silver) is scored but never `best`. `gear_detail_request`
   gives one weapon's numbers per monster, with the blows of 8 rounds.
 - **The weapons** are the gear catalogue's (`wayfarer_world::gear`): who may use each (now, later
   for a level or an alignment, never and why) and where it comes from (shops with the price for

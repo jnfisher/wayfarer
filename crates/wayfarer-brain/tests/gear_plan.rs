@@ -536,3 +536,20 @@ fn on_1_20_the_class_knob_changes_the_scores_and_the_plan_says_so() {
         }
     }
 }
+
+/// The bow of silver is the marble archer's own weapon: no shop, drop, quest or room has it.
+/// It scores best of all, but a weapon that cannot be had is never marked best (John,
+/// 2026-11-11: "seems like its impossible to get and constantly shows up ... as the 'best
+/// weapon'").
+#[test]
+fn a_weapon_nobody_can_get_is_scored_but_never_the_best() {
+    let p = plan(&subject("Witchunter", "Kang"), &ask(WITCHUNTER_20));
+    let bow = row(&p, "bow of silver");
+    assert!(bow.sources.is_empty());
+    assert_eq!(bow.status, GearStatus::Now);
+    let fastest = |r: &GearRow| r.moves.iter().map(|m| m.rounds).min().unwrap();
+    let best = p.rows.iter().find(|r| r.best).expect("a best row");
+    assert!(fastest(bow) < fastest(best), "{} beats the bow", best.name);
+    assert!(!bow.best);
+    assert!(!best.sources.is_empty());
+}

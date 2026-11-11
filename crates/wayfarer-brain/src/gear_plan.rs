@@ -334,7 +334,9 @@ impl Gear {
             let fastest = scores.iter().min_by(|a, b| a.1.cmp(&b.1));
             if let Some((mv, rank)) = fastest.map(|(s, r)| (s.mv, *r)) {
                 row.best_move = Some(mv);
-                if best.is_none_or(|(_, b)| rank < b) {
+                // A weapon no shop, drop, quest or room has (a monster's own, like the marble
+                // archer's bow of silver) is scored but never the best: it cannot be had.
+                if !row.sources.is_empty() && best.is_none_or(|(_, b)| rank < b) {
                     best = Some((i, rank));
                 }
             }
