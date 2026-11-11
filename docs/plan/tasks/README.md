@@ -275,6 +275,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-090](C-090-group-2-is-not-npcs.md) | Monsters the bot missed: montype 2 is a spawn group, not NPCs; movement texts that name their monster; monsters seen fighting the party | C | S | | |
 | [C-091](C-091-give-up-later.md) | Give up later: bashes by the door's odds, write-offs that expire, stalemates over ten rounds, legs that get closer are not failures | B | M | | |
 | [C-092](C-092-stash-currency-and-loop-map.md) | Stash currency at the loop's first stop, the party's too; the running loop on the map | C | M | | |
+| [C-093](C-093-stash-counts-and-sure-room.md) | Stash what is carried now (`i` first, retry on "don't have"), and only in the stop the bot is sure it is in | C | S | C-092 | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or
