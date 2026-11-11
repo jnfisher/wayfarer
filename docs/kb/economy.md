@@ -212,7 +212,9 @@ From the silvermere T-030 port of the item code (LJNUTIL, LJNCMDB, LJNSUPP, LJNF
   item already lies stacks on that slot; charged items (torches) take a slot each. A full floor
   refuses: "There is no room to drop X here." [C] `LJNUTIL.C:6811-6851`, `LJNCMDB.C:3497`
 - `stash <item>` / `hide <item>` / `stash <n> <coin>` put things in the room's hidden lists;
-  `get` finds a hidden item only after a search has revealed its slot. `take` does nothing in
+  `get` finds a hidden item only after a search has revealed its slot. A coin hide confirms
+  with the count: "You hid 76 gold crowns." [C live, silver-mirror 2026-11-11]; a count above
+  what is carried is refused ("You don't have 1859 gold crowns to hide!") and hides nothing. `take` does nothing in
   1.11p (no routine), and there are no containers. [C] `LJNCMDB.C:3727-3888`, `LJNUTIL.C:6928-7006`,
   `LJNCMDS.C:1092`
 - A worn cursed item cannot be dropped, given or hidden unless a second copy is carried. [C]

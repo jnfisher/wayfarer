@@ -78,6 +78,11 @@ impl Stash {
         self.due.is_some()
     }
 
+    /// The room the coins go in, once the stash is sure of it and has counted them there.
+    pub fn hiding_in(&self) -> Option<Key> {
+        self.due.filter(|_| self.read)
+    }
+
     fn start(&mut self, room: Key, sure: Sure) {
         *self = Stash {
             due: Some(room),

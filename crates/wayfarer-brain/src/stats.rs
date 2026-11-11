@@ -58,6 +58,31 @@ struct OpenRun {
     totals: Totals,
     /// The last kill's row, until exp is put on it; `Some(0)` without a store.
     kill: Option<i64>,
+    /// The coins its stashes hid (C-097): by room, in the order first stashed in.
+    stashed: Vec<wayfarer_proto::Stashed>,
+}
+
+/// Count `n` coins of `word` (`gold`) hidden in `room` into `list`; any other coin is not
+/// stashed and not counted.
+fn add_stashed(list: &mut Vec<wayfarer_proto::Stashed>, room: Key, word: &str, n: u64) {
+    let room = format!("{}:{}", room.0, room.1);
+    let i = match list.iter().position(|s| s.room == room) {
+        Some(i) => i,
+        None => {
+            list.push(wayfarer_proto::Stashed {
+                room,
+                ..Default::default()
+            });
+            list.len() - 1
+        }
+    };
+    let s = &mut list[i];
+    match word {
+        "gold" => s.gold += n,
+        "silver" => s.silver += n,
+        "copper" => s.copper += n,
+        _ => {}
+    }
 }
 
 pub(crate) struct Ledger {
@@ -273,12 +298,19 @@ impl Ledger {
                 .as_deref(),
         );
         self.run = Some(match run {
-            Some((run, totals)) => OpenRun {
-                id: run.id,
-                started_at: run.started_at,
-                totals,
-                kill: None,
-            },
+            Some((run, totals)) => {
+                let mut stashed = Vec::new();
+                for (room, word, n) in self.with(|s, _| s.stashed(run.id)).unwrap_or_default() {
+                    add_stashed(&mut stashed, room, &word, n);
+                }
+                OpenRun {
+                    id: run.id,
+                    started_at: run.started_at,
+                    totals,
+                    kill: None,
+                    stashed,
+                }
+            }
             None => self.start_run(at, bot.loop_id.as_deref()),
         });
         let keep = self.run.as_ref().map(|r| r.id);
@@ -297,6 +329,7 @@ impl Ledger {
             started_at: at,
             totals: Totals::default(),
             kill: None,
+            stashed: Vec::new(),
         }
     }
 
@@ -349,6 +382,31 @@ impl Ledger {
             run.kill = Some(row);
         }
         self.refresh();
+    }
+
+    /// A stash hid `n` coins of `word` (`gold`) in `room`, as the game confirmed: counted
+    /// with the run, if one is in progress.
+    pub fn stashed(&mut self, word: &str, n: u64, room: Key) {
+        if self.run.is_none() {
+            return;
+        }
+        self.event(
+            EventKind::Stash,
+            i64::try_from(n).unwrap_or(i64::MAX),
+            Some(word),
+            Some(room),
+        );
+        if let Some(run) = self.run.as_mut() {
+            add_stashed(&mut run.stashed, room, word, n);
+        }
+    }
+
+    /// The coins the run's stashes hid, by room, for the `stats` message; empty with no run.
+    pub fn stashed_wire(&self) -> Vec<wayfarer_proto::Stashed> {
+        self.run
+            .as_ref()
+            .map(|r| r.stashed.clone())
+            .unwrap_or_default()
     }
 
     /// Exp gained: the last kill's, if it has none yet; otherwise exp on its own.

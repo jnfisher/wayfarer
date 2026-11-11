@@ -279,6 +279,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-094](C-094-blind-is-not-a-refusal.md) | Blind is not a refusal; a refused target is skipped in its room, not for the session | B | S | | |
 | [C-095](C-095-confusion-retries.md) | A command lost to confusion goes again: every confuse message from the world's data, any command, five tries, then held | B | S | | |
 | [C-096](C-096-megamud-monster-defaults.md) | Monster rules are the player's, over defaults from MegaMud's list; a stalemate makes no rule | B | S | C-094 | |
+| [C-097](C-097-stash-stats.md) | The stats tab shows the coins stashed this run, and where | B | S | C-093 | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or

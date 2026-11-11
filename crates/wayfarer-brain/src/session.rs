@@ -1065,6 +1065,13 @@ impl Session {
                 self.ledger.place(StoredPlace::Death, None, room);
             }
             GameEvent::Resting { .. } => self.ledger.event(EventKind::Rest, 0, None, room),
+            // Coins the bot's stash hid, in the room it was sure of (C-097); a hide the player
+            // types is theirs, not counted.
+            GameEvent::CoinsHidden { n, coin } => {
+                if let Some(room) = self.bot.stashing() {
+                    self.ledger.stashed(crate::loot::coin_word(coin), *n, room);
+                }
+            }
             _ => {}
         }
         if let (Some(was), Some(now)) = (level, self.character.state().level)
@@ -1535,6 +1542,7 @@ impl Session {
             samples,
             combat,
             time,
+            stashed: self.ledger.stashed_wire(),
         });
     }
 

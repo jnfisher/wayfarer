@@ -686,6 +686,26 @@ fn coins_on_the_floor_and_picked_up() {
 }
 
 #[test]
+fn coins_hidden_are_counted_and_a_hidden_item_is_not() {
+    assert_eq!(
+        line("You hid 76 gold crowns.")[0],
+        GameEvent::CoinsHidden {
+            n: 76,
+            coin: "gold crowns".into()
+        }
+    );
+    assert_eq!(
+        line("You hid 1 copper farthing.")[0],
+        GameEvent::CoinsHidden {
+            n: 1,
+            coin: "copper farthing".into()
+        }
+    );
+    assert!(matches!(line("You hid torch.")[0], GameEvent::Other(_)));
+    assert!(matches!(line("You hid 2 torches.")[0], GameEvent::Other(_)));
+}
+
+#[test]
 fn a_cast_that_does_damage_is_a_spell_cast_and_a_heal_is_not() {
     let got = line("You cast magic missile at the large giant rat for 7 damage!");
     assert_eq!(

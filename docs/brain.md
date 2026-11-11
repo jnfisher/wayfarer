@@ -1078,7 +1078,9 @@ what the game shows (not the catch-up's history, which a brain before it saw): a
 death text is a kill, the `You gain N experience.` after it its exp; `You have been killed!` a
 death; `rest` starting a rest; the level going up a level-up; each flee a flee (the HP per
 cent it started at, the first attacker, the room it left), a flee before a log-off included,
-counted before the log-off ends the run.
+counted before the log-off ends the run; the coins the bot's stash hid, as the game confirmed
+them ("You hid 76 gold crowns."), with the stash's room (C-097; a hide the player types is not
+counted). `stats` sums them by room as `stashed`.
 Every minute it samples the character's exp and HP. Times come from the brain's clock, so a
 replay can run on a throwaway store and its recorded clock.
 
