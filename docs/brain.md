@@ -1565,7 +1565,9 @@ own, one at a time:
   it forms up again. A follower added with `party_join` walks in the same way; one saved with
   the party but never in it does not. Meanwhile the leader **holds**: its loop's next leg (and
   a leg already walking) waits, narrated "Waiting for Lauren to catch up" (all who are out, by
-  name); it still fights and flees, and moves the player types or a Go to are not held. With
+  name); it still fights and flees, and moves the player types are not held. A Go to is held
+  the same way and walks on when they are back. A leg held back, like one a sneak goes before,
+  is not one of the Go to's or the loop's tries (C-089). With
   no way to the leader's room known, the follower is `unreachable` ("no way to Penny's room is
   known", a warning on its tile) and tries again after 30 s or when the leader moves. After
   `party.wait_separated_minutes` (Party, 5 by default) the leader's loop stops with a warning

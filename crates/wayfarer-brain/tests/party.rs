@@ -1082,3 +1082,37 @@ async fn a_follower_in_the_party_never_flees_on_its_own() {
     );
     assert!(!said.iter().any(|n| n.starts_with("Fleeing")), "{said:?}");
 }
+
+/// C-089, Lexi in the Dragon's Teeth Hills: a leader on a Go to holds while a member walks
+/// back, and the hold is not a walk that ended elsewhere. Each tick of the hold had counted
+/// one, so three ticks in a second ended the Go to ("3 walks ... ended elsewhere") and the
+/// party stood where it was.
+#[tokio::test(start_paused = true)]
+async fn a_go_to_waits_for_a_member_walking_back_and_goes_on() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    formed(&mut g).await;
+    // The game drops Lauren in the village; she walks back to the Arena.
+    g.world.following = false;
+    let far = VILLAGE_ENTRANCE;
+    g.world.rooms.insert(FOLLOWER.to_owned(), far);
+    g.output(FOLLOWER, shown(far)).await;
+    g.member(FOLLOWER, MemberState::Separated).await;
+    let to = NARROW_ROAD;
+    g.send(ToClient::WalkTo {
+        session: LEADER.into(),
+        map: to.0,
+        room: to.1,
+        stop_short: None,
+        fight: None,
+    })
+    .await;
+    // She walks back meanwhile, and the leader's hold ticks while she does.
+    g.play(60).await;
+    let said = notices_of(&g, LEADER);
+    assert!(
+        !said.iter().any(|n| n.contains("could not get there")),
+        "{said:#?}"
+    );
+    assert!(said.iter().any(|n| n.contains("to catch up")), "{said:#?}");
+    assert_eq!(g.world.rooms[LEADER], to, "{said:#?}");
+}

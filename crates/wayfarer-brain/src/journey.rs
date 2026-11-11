@@ -173,7 +173,8 @@ impl Journey {
         }
     }
 
-    /// The leg it asked for did not count: the character could not move (C-083).
+    /// The leg it asked for did not count: the character could not move (C-083), or it was
+    /// not walked (a party hold, a sneak first; C-089).
     pub fn walk_deferred(&mut self) {
         self.tries = self.tries.saturating_sub(1);
     }
