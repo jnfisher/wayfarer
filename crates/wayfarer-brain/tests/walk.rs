@@ -1163,3 +1163,16 @@ async fn a_megamud_phrase_the_game_hears_as_speech_is_barred_and_not_tried_again
         "{sent:?}"
     );
 }
+
+#[tokio::test(start_paused = true)]
+#[should_panic(expected = "it never came")]
+async fn a_wait_for_what_never_comes_fails_instead_of_running_on() {
+    // C-088: the walk below stops one room short of the high druid's lair, so the walker's
+    // `go arch` line never comes. Before, `until` waited for ever on the paused clock while
+    // the bot's own timers kept it talking; now the test fails, with the brain's last words.
+    // Over a second: it plays out the whole `WAIT_LIMIT` (an hour of game time) of the bot's
+    // timers.
+    let (mut g, _run) = Game::start(SessionState::Realm, (7, 141)).await;
+    g.walk_to((7, 142)).await;
+    g.walk_narrated("this line never comes").await;
+}
