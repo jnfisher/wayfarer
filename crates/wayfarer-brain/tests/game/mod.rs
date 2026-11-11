@@ -44,6 +44,10 @@ pub fn test_settings(text: &str) -> wayfarer_settings::Settings {
 }
 
 pub const ID: &str = "aldric";
+/// How long a wait for a message may run on the paused clock before the test fails (C-088): an
+/// hour of game time. The longest wait of a passing test is over ten minutes (`task.rs`, an
+/// arena's delay three times); reaching the limit takes a second or two of real time.
+pub const WAIT_LIMIT: Duration = Duration::from_secs(3600);
 /// The wall clock's start in the tests: 2026-10-19T12:00:00Z.
 pub const T0: u64 = 1_792_411_200;
 /// A script answer that sends no output: the command's answer came with an earlier one.
@@ -480,29 +484,83 @@ impl Game {
         self.frozen = true;
     }
 
-    pub async fn until<T>(&mut self, mut want: impl FnMut(&ToGateway) -> Option<T>) -> T {
+    /// Read until `want` takes a message; it. Fails the test after [`WAIT_LIMIT`] of the paused
+    /// clock: the brain's own timers keep it talking ("Waiting here"), so a wait for something
+    /// that never comes would otherwise run on forever instead of failing (C-088).
+    pub async fn until<T>(&mut self, want: impl FnMut(&ToGateway) -> Option<T>) -> T {
+        let by = tokio::time::Instant::now() + WAIT_LIMIT;
+        self.until_by(by, "the message the test waits for", want)
+            .await
+    }
+
+    async fn until_by<T>(
+        &mut self,
+        by: tokio::time::Instant,
+        what: &str,
+        mut want: impl FnMut(&ToGateway) -> Option<T>,
+    ) -> T {
         loop {
-            let msg = self.next().await.expect("the brain went away");
+            let msg = tokio::select! {
+                msg = self.next() => msg.expect("the brain went away"),
+                () = tokio::time::sleep_until(by) => self.gave_up(what),
+            };
             if let Some(t) = want(&msg) {
                 return t;
             }
+            if tokio::time::Instant::now() >= by {
+                self.gave_up(what);
+            }
+        }
+    }
+
+    /// Fail the test: what it waited for never came. With what the brain said and sent last.
+    fn gave_up(&self, what: &str) -> ! {
+        const LAST: usize = 30;
+        let said: Vec<&str> = self
+            .seen
+            .iter()
+            .filter_map(|m| match m {
+                ToGateway::Notice { text, .. } | ToGateway::Warning { text, .. } => {
+                    Some(text.as_str())
+                }
+                _ => None,
+            })
+            .collect();
+        let sent: Vec<&str> = self
+            .seen
+            .iter()
+            .filter_map(|m| match m {
+                ToGateway::InputLine { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        panic!(
+            "waited {WAIT_LIMIT:?} of the paused clock for {what}; it never came. The brain's \
+             last words: {:?}; its last lines sent: {:?}",
+            &said[said.len().saturating_sub(LAST)..],
+            &sent[sent.len().saturating_sub(LAST)..],
+        )
+    }
+
+    fn narration_of(m: &ToGateway) -> Option<String> {
+        match m {
+            ToGateway::Notice { text, .. } | ToGateway::Warning { text, .. } => Some(text.clone()),
+            _ => None,
         }
     }
 
     /// The next notice or warning for the session.
     pub async fn narration(&mut self) -> String {
-        self.until(|m| match m {
-            ToGateway::Notice { text, .. } | ToGateway::Warning { text, .. } => Some(text.clone()),
-            _ => None,
-        })
-        .await
+        self.until(Self::narration_of).await
     }
 
     /// Read until the narration is `text`; every narration on the way.
     pub async fn narrated(&mut self, text: &str) -> Vec<String> {
+        let by = tokio::time::Instant::now() + WAIT_LIMIT;
+        let what = format!("the narration {text:?}");
         let mut all = Vec::new();
         loop {
-            let n = self.narration().await;
+            let n = self.until_by(by, &what, Self::narration_of).await;
             all.push(n.clone());
             if n == text {
                 return all;
@@ -513,8 +571,13 @@ impl Game {
     /// The next narration that is not the bot's own about a journey (a Go to turns the bot on:
     /// it re-syncs, says where it goes, and plays where it ends up): the walker's lines.
     pub async fn walk_narration(&mut self) -> String {
+        let by = tokio::time::Instant::now() + WAIT_LIMIT;
+        self.walk_narration_by(by, "the walker's next line").await
+    }
+
+    async fn walk_narration_by(&mut self, by: tokio::time::Instant, what: &str) -> String {
         loop {
-            let n = self.narration().await;
+            let n = self.until_by(by, what, Self::narration_of).await;
             if !is_bots_own(&n) {
                 return n;
             }
@@ -523,9 +586,11 @@ impl Game {
 
     /// Read until the walker's narration is `text`; the walker's lines on the way.
     pub async fn walk_narrated(&mut self, text: &str) -> Vec<String> {
+        let by = tokio::time::Instant::now() + WAIT_LIMIT;
+        let what = format!("the walker's line {text:?}");
         let mut all = Vec::new();
         loop {
-            let n = self.walk_narration().await;
+            let n = self.walk_narration_by(by, &what).await;
             all.push(n.clone());
             if n == text {
                 return all;

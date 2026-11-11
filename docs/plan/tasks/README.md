@@ -270,6 +270,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-085](C-085-wrong-copy-of-the-hills.md) | Sure of the wrong copy: a position log, the re-sync's look starts afresh, a contradicted belief looks everywhere, a guessed plan's surprise is not being lost | B | M | C-084 | |
 | [C-086](C-086-a-phrase-that-is-only-speech.md) | The hole is 2/487's: holes that cast a teleport, a MegaMud phrase in the wrong look-alike, and a phrase that is only speech | B | S | C-085 | |
 | [C-087](C-087-go-panel-persists.md) | The walk bar stays through a Go to: between legs, while the bot fights or plans, with its stop button | C | S | | |
+| [C-088](C-088-harness-waits-fail.md) | A test's wait for what never comes fails, with the brain's last words, instead of running on | C | S | | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or
