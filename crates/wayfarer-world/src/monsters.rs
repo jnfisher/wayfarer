@@ -201,18 +201,80 @@ pub enum MonsterRule {
     Off,
 }
 
-/// The rules every character starts with, each with why. Settings (M4) layer over them.
-/// Full names only: a pattern matches any name that holds it, so `ooze` would also match the
-/// glittering ooze, which is fightable.
-pub const DEFAULT_RULES: &[(&str, MonsterRule, &str)] = &[(
-    "gigantic black ooze",
-    MonsterRule::Ignore,
-    // Monster 63: 2,500 HP, regenerates 500 a round, damage reduction 40. Every swing of a
-    // mid-level character glances off its armour: a fight that never ends (the M3 soak,
-    // 2026-10-20). It was *flee from* until the Thrag run (2026-11-04), where fleeing it split
-    // a party four ways: ignored, the bot plays on around it.
-    "unfightable: its armour takes every blow and it regenerates 500 HP a round",
-)];
+/// The rules every character starts with, each with why. The player's rules layer over them,
+/// and may switch one off. Full names only: a pattern matches any name that holds it, so
+/// `ooze` would also match the glittering ooze, which is fightable.
+///
+/// Besides wayfarer's own test (evil, not an NPC, worth experience), these follow MegaMud's
+/// shipped monster list (`Default/Monsters.md`, its relationship byte; C-096): of its
+/// Friend, Avoid and Flee monsters, the ones that test would still fight and that are not
+/// worth it. Bosses it avoids (the giant roc) are left to the player.
+pub const DEFAULT_RULES: &[(&str, MonsterRule, &str)] = &[
+    (
+        "gigantic black ooze",
+        MonsterRule::Ignore,
+        // Monster 63: 2,500 HP, regenerates 500 a round, damage reduction 40. Every swing of
+        // a mid-level character glances off its armour: a fight that never ends (the M3 soak,
+        // 2026-10-20). It was *flee from* until the Thrag run (2026-11-04), where fleeing it
+        // split a party four ways: ignored, the bot plays on around it. MegaMud: flee.
+        "unfightable: its armour takes every blow and it regenerates 500 HP a round",
+    ),
+    (
+        "huge gruesome creation",
+        MonsterRule::Ignore,
+        "32,000 HP for 50 exp; MegaMud's monster list flees it",
+    ),
+    (
+        "amber guardian",
+        MonsterRule::Ignore,
+        "1 exp for 350 HP; MegaMud's monster list has it as a friend",
+    ),
+    (
+        "amethyst guardian",
+        MonsterRule::Ignore,
+        "1 exp for 350 HP; MegaMud's monster list has it as a friend",
+    ),
+    (
+        "diamond guardian",
+        MonsterRule::Ignore,
+        "1 exp for 350 HP; MegaMud's monster list has it as a friend",
+    ),
+    (
+        "emerald guardian",
+        MonsterRule::Ignore,
+        "1 exp for 350 HP; MegaMud's monster list has it as a friend",
+    ),
+    (
+        "gold guardian",
+        MonsterRule::Ignore,
+        "1 exp for 350 HP; MegaMud's monster list has it as a friend",
+    ),
+    (
+        "onyx guardian",
+        MonsterRule::Ignore,
+        "1 exp for 350 HP; MegaMud's monster list has it as a friend",
+    ),
+    (
+        "ruby guardian",
+        MonsterRule::Ignore,
+        "1 exp for 350 HP; MegaMud's monster list has it as a friend",
+    ),
+    (
+        "sapphire guardian",
+        MonsterRule::Ignore,
+        "1 exp for 350 HP; MegaMud's monster list has it as a friend",
+    ),
+    (
+        "silver guardian",
+        MonsterRule::Ignore,
+        "1 exp for 350 HP; MegaMud's monster list has it as a friend",
+    ),
+    (
+        "topaz guardian",
+        MonsterRule::Ignore,
+        "1 exp for 350 HP; MegaMud's monster list has it as a friend",
+    ),
+];
 
 /// Rules by monster name, matched as MegaMud does: a pattern matches a name that holds it, in
 /// any case, and the longest matching pattern wins.

@@ -978,12 +978,16 @@ impl Session {
         }
     }
 
-    /// The monsters stalemates gave up become *ignored* for the session (kept with the bot),
-    /// and their room is kept out of as a monster to avoid's would be.
+    /// A monster a stalemate gave up: no rule is made of it (C-096: rules are the player's,
+    /// over wayfarer's and MegaMud's defaults). Fight leaves it alone while it stays in the
+    /// room, and the room is kept out of for [`rules::AVOID_MEMORY`] as a monster to avoid's
+    /// would be; the player is told how to ignore it for good.
     fn learn(&mut self, now: Instant, out: &mut Vec<ToGateway>) {
         for name in self.bot.take_learned() {
-            if self.rules.learn(&name, unix(self.clock.now())) {
-                out.push(self.notice(&format!("Monster rule: ignore {name} (a stalemate)")));
+            if self.rules.rule_for(&name) != Some(wayfarer_world::MonsterRule::Ignore) {
+                out.push(self.notice(&format!(
+                    "Stalemate with {name}: its room is kept out of for 30 minutes; a monster rule can ignore it for good"
+                )));
             }
             if let Some(room) = self.position.best() {
                 self.sightings.mark(room, &name, now);

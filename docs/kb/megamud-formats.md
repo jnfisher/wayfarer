@@ -246,6 +246,16 @@ itempcts[5], 98–107 cash (5 denominations), 108 u16 abilities[5], 118 i16 abil
 150000, so a different exp multiplier in that era), 152 spellpcts[5], 162 atkmins[5], 172
 atkmaxs[5], 182 atkenergies[5], 192 deathspell, 194 createspell, 196 spelllvls[5], 201 undead,
 202 hitspells, 208 charmres. 32–51 is mostly zero apart from a constant `40 04` [G: MegaMud flags].
+**37 is the Relationship** [C: wayfarer C-096, 2026-11-11, from the v2.0 `Default/Monsters.md`;
+the manual's own Flee example, the gigantic black ooze, is 5]: 2 Friend (195 records: the
+NPCs, quest figures, shopkeepers, healers, trainers, class spirits and the ten gem guardians),
+3 Avoid (128: harmless animals such as the cow, pig, chicken and squirrel, and some dangerous
+ones such as the storm giant king, ancient sand dragon, Kai Master and Morukai), 4 Enemy (803:
+attacked), 5 Flee (2: gigantic black ooze, huge gruesome creation); no Hangup (6). A name with
+two records may have two relationships (giant rat, Kai Master, sandworm: Avoid and Enemy).
+Bytes 33 (bit flags 0x08, 0x10, 0x20, 0x40, 0x80) and 34 (0x01, 0x02, 0x04) vary too and are
+probably the Attack Priority radio and the Find first, Not hostile, Don't backstab and Check
+if alive options [G].
 
 **Spells (158)** [C ≈ 0.99; name 461/466]: 0 number, 2 name[30], **32 short name** (`mmis`, `trav`:
 the cast mnemonic), 84 level, 85 maxinc, 86 mana, 88 energy, 90 minval, 92 maxval, 94 duration,
