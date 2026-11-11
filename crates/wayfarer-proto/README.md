@@ -69,6 +69,7 @@ Client → gateway:
 {"type":"walk_to","session":"kasimir","map":1,"room":2150}
 {"type":"walk_stop","session":"kasimir"}
 {"type":"sys_goto","session":"kasimir","town":"rhudaur"}
+{"type":"recover_to","session":"kasimir","town":"silvermere"}
 {"type":"journey_fight","session":"kasimir","fight":false}
 {"type":"map_request","session":"kasimir","radius":15}
 {"type":"bot_control","session":"kasimir","action":"start"}

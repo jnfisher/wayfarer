@@ -660,6 +660,13 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
             r#"{"type":"sys_goto","session":"kasimir","town":"rhudaur"}"#,
         ),
         (
+            ToGateway::RecoverTo {
+                session: "kasimir".into(),
+                town: "silvermere".into(),
+            },
+            r#"{"type":"recover_to","session":"kasimir","town":"silvermere"}"#,
+        ),
+        (
             ToGateway::JourneyFight {
                 session: "kasimir".into(),
                 fight: false,
@@ -1372,6 +1379,7 @@ fn families_say_who_may_send_what() {
             | "walk_to"
             | "walk_stop"
             | "sys_goto"
+            | "recover_to"
             | "journey_fight"
             | "map_request"
             | "bot_control"

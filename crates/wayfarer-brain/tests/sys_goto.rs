@@ -145,3 +145,30 @@ async fn connecting_to_recover_goes_to_the_town_with_the_bot_stopped() {
     );
     assert_ne!(bot(&seen).state, BotState::Running);
 }
+
+/// C-093: recovering a character already in the realm stops its bot outright (not the ■
+/// button's stop, which plays on) and sends the `sysop goto` at once.
+#[tokio::test(start_paused = true)]
+async fn recovering_in_the_realm_stops_the_bot_and_goes() {
+    use game::arena::*;
+    use wayfarer_proto::BotState;
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 35).await;
+    g.narrated("Waiting here").await;
+    g.expect("sysop goto silvermere", prompt(35));
+    g.send(ToClient::RecoverTo {
+        session: ID.into(),
+        town: "silvermere".into(),
+    })
+    .await;
+    g.narrated("Stopped: recovering in Silvermere").await;
+    g.until(|m| match m {
+        ToGateway::Notice { text, .. } if text.starts_with("Sysop goto: in") => Some(()),
+        _ => None,
+    })
+    .await;
+    g.idle(Duration::from_secs(5)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "sysop goto silvermere"]);
+    assert_eq!(bot(&seen).state, BotState::Stopped);
+}
