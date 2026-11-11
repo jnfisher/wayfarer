@@ -25,7 +25,7 @@ preset = "mbbsemu"          # the logon script (mbbsemu or silvermere)
 id = "kasimir"              # letters, digits, - and _
 name = "Kasimir"
 server = "home"
-autostart = true            # connect when the gateway starts
+autostart = true            # connect when the gateway starts (not after a hang-up, until connected)
 ```
 
 Ids must be unique; every character's `server` must be a listed server.

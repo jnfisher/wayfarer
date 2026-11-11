@@ -936,7 +936,7 @@ impl Connection {
                                 gateway.close_now(&session).await
                             }
                         }
-                        SessionAction::HangUp => gateway.close_now(&session).await,
+                        SessionAction::HangUp => gateway.hang_up(&session).await,
                     };
                     if let Err(e) = done {
                         tracing::warn!(%session, ?action, "session control: {e}");

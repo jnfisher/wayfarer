@@ -118,6 +118,9 @@ impl Drop for Inner {
     }
 }
 
+/// In a session's log directory: it was hung up and not connected since (`Gateway::hang_up`).
+const HUNG_UP: &str = "hung-up";
+
 impl Gateway {
     /// Read the config and credentials (creating an empty, private `credentials.toml` if there
     /// is none), open the logs and connect the characters marked `autostart`.
@@ -133,9 +136,43 @@ impl Gateway {
             Some(paths.clone()),
         )?;
         for c in config.characters.iter().filter(|c| c.autostart) {
+            // Hung up (at low HP, most likely): logged on again it would be hit and hung up
+            // again at once, which the game punishes at each entry. It waits for the player.
+            if gateway.hung_up(&c.id) {
+                tracing::warn!(
+                    session = %c.id,
+                    "not connecting {}: it was hung up; it stays off until you connect it",
+                    c.name
+                );
+                gateway
+                    .slot(&c.id)?
+                    .set_reason(Some("hung up: stays off until you connect it".to_owned()));
+                continue;
+            }
             gateway.open(&c.id)?;
         }
         Ok(gateway)
+    }
+
+    /// The file whose presence says the session was hung up and has not been connected since.
+    fn hung_up_marker(&self, id: &str) -> std::path::PathBuf {
+        self.inner.logs.join(id).join(HUNG_UP)
+    }
+
+    /// Whether the session was hung up and not connected since: a restart leaves it off.
+    pub fn hung_up(&self, id: &str) -> bool {
+        self.hung_up_marker(id).exists()
+    }
+
+    /// Hang a session up on purpose (the brain at the player's HP line, or the player's
+    /// button): disconnect at once, and remember it, so a restart does not log it on again
+    /// into what it was hung up from. Connecting it clears that.
+    pub async fn hang_up(&self, id: &str) -> Result<(), GatewayError> {
+        let path = self.hung_up_marker(id);
+        if let Err(e) = std::fs::write(&path, format!("{}\n", now_ms())) {
+            tracing::warn!(session = %id, "could not note the hang-up in {}: {e}", path.display());
+        }
+        self.close_now(id).await
     }
 
     /// A gateway for `config`'s characters, logging under `logs`, with nothing connected yet.
@@ -369,6 +406,8 @@ impl Gateway {
         let capture = Capture::create(dir.join("raw.bin"), dir.join("sent.bin"))
             .map_err(|source| GatewayError::Io { path: dir, source })?;
         let (commands, rx) = mpsc::channel(64);
+        // Connected again: a later restart connects it as usual.
+        let _ = std::fs::remove_file(self.hung_up_marker(id));
         slot.set_reason(None);
         slot.set_state(SessionState::Connecting);
         let task = tokio::spawn(session::run(Arc::clone(&slot), rx, capture));
