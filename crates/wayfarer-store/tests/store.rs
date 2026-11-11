@@ -128,6 +128,39 @@ fn runs_count_their_events_and_keep_their_samples() {
     assert_eq!(t, store.totals(run.id).unwrap());
 }
 
+/// C-097: the coins a run's stashes hid, by room in the order first stashed in, each coin
+/// summed; they are not kills or exp.
+#[test]
+fn a_runs_stashes_sum_by_room_and_coin() {
+    let store = Store::in_memory().unwrap();
+    let run = store.start_run("aldric", T0, None).unwrap();
+    let hid = |at, n, coin: &str, room| Event {
+        value: n,
+        detail: Some(coin.to_owned()),
+        room: Some(room),
+        ..event(at, EventKind::Stash)
+    };
+    for e in [
+        hid(T0 + 10, 76, "gold", (15, 12)),
+        hid(T0 + 11, 9, "silver", (15, 12)),
+        hid(T0 + 20, 5, "copper", (1, 2150)),
+        hid(T0 + 30, 24, "gold", (15, 12)),
+    ] {
+        store.record(run.id, &e).unwrap();
+    }
+    assert_eq!(
+        store.stashed(run.id).unwrap(),
+        [
+            ((15, 12), "gold".to_owned(), 100),
+            ((15, 12), "silver".to_owned(), 9),
+            ((1, 2150), "copper".to_owned(), 5),
+        ]
+    );
+    assert_eq!(store.totals(run.id).unwrap(), Totals::default());
+    let other = store.start_run("aldric", T0 + 100, None).unwrap();
+    assert!(store.stashed(other.id).unwrap().is_empty());
+}
+
 #[test]
 fn runs_list_newest_first_per_session() {
     let store = Store::in_memory().unwrap();

@@ -345,6 +345,9 @@ pub enum EventKind {
     Rest,
     /// `value` is the new level.
     LevelUp,
+    /// Coins hidden by a stash (C-097): `value` is how many, `detail` the coin's word (`gold`),
+    /// the room where.
+    Stash,
 }
 
 impl EventKind {
@@ -356,6 +359,7 @@ impl EventKind {
             EventKind::Flee => "flee",
             EventKind::Rest => "rest",
             EventKind::LevelUp => "level_up",
+            EventKind::Stash => "stash",
         }
     }
 
@@ -367,6 +371,7 @@ impl EventKind {
             "flee" => EventKind::Flee,
             "rest" => EventKind::Rest,
             "level_up" => EventKind::LevelUp,
+            "stash" => EventKind::Stash,
             _ => return Err(Error::Bad(format!("event kind {s:?}"))),
         })
     }
@@ -463,6 +468,7 @@ impl Totals {
             EventKind::Flee => self.flees += 1,
             EventKind::Rest => self.rests += 1,
             EventKind::LevelUp => self.level_ups += 1,
+            EventKind::Stash => {}
         }
     }
 }
@@ -1060,6 +1066,24 @@ impl Store {
     }
 
     /// A run's events, counted.
+    /// The coins run `run`'s stashes hid: by room, in the order first stashed in, the count
+    /// of each coin's word.
+    pub fn stashed(&self, run: i64) -> Result<Vec<(Key, String, u64)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT room_map, room_room, detail, coalesce(sum(value), 0) FROM events
+             WHERE run_id = ?1 AND kind = 'stash' AND room_map IS NOT NULL
+             GROUP BY room_map, room_room, detail ORDER BY min(id)",
+        )?;
+        let rows = stmt.query_map([run], |r| {
+            Ok((
+                (r.get::<_, i64>(0)?, r.get::<_, i64>(1)?),
+                r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                u64::try_from(r.get::<_, i64>(3)?).unwrap_or(0),
+            ))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     pub fn totals(&self, run: i64) -> Result<Totals> {
         let mut stmt = self.conn.prepare(
             "SELECT kind, count(*), coalesce(sum(value), 0) FROM events
@@ -1086,6 +1110,7 @@ impl Store {
                 EventKind::Flee => t.flees = n,
                 EventKind::Rest => t.rests = n,
                 EventKind::LevelUp => t.level_ups = n,
+                EventKind::Stash => {}
             }
         }
         Ok(t)

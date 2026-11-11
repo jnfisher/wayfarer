@@ -76,6 +76,7 @@ export type { SettingRow } from "./SettingRow";
 export type { SettingValue } from "./SettingValue";
 export type { SettingsFile } from "./SettingsFile";
 export type { SpellPlanItem } from "./SpellPlanItem";
+export type { Stashed } from "./Stashed";
 export type { Stats } from "./Stats";
 export type { StatsPart } from "./StatsPart";
 export type { Task } from "./Task";

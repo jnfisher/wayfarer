@@ -8,6 +8,7 @@
     efficiency,
     perCent,
     sparkline,
+    stashLines,
     startedAt,
     timeLines,
     timeTitle,
@@ -69,6 +70,7 @@
   const spark = $derived(stats ? sparkline(stats.samples) : "");
   const time = $derived(run ? stats?.time : undefined);
   const times = $derived(time ? timeLines(time) : []);
+  const stash = $derived(run ? stashLines(stats?.stashed) : undefined);
   const eff = $derived(
     time && run
       ? efficiency(time, run.kills, run.exp_gained, (Date.now() - Date.parse(run.run_started_at)) / 1000)
@@ -162,6 +164,22 @@
           {/if}
         {:else}
           <div class="dim-line">Nothing counted yet.</div>
+        {/if}
+      </section>
+    {/if}
+    {#if run}
+      <section class="stash" aria-label="Stashed">
+        {#if stash}
+          <div class="eff" data-stash="total" title="Coins the loop's stashes hid this run, as the game confirmed them">
+            stashed this run: {stash.total}
+          </div>
+          {#each stash.rooms as r (r.room)}
+            <div class="row" data-stash-room={r.room}>
+              <span class="s-room">in {r.room}</span><span>{r.coins}</span>
+            </div>
+          {/each}
+        {:else}
+          <div class="dim-line" data-stash="none">nothing stashed this run</div>
         {/if}
       </section>
     {/if}
@@ -327,6 +345,7 @@
     padding-bottom: 2px;
   }
   .combat,
+  .stash,
   .time {
     padding: 2px 1ch 4px;
     border-bottom: 1px solid var(--frame);
@@ -397,6 +416,10 @@
   }
   .table .k {
     width: 6ch;
+  }
+  .s-room {
+    width: 12ch;
+    color: var(--dim);
   }
   .c-range {
     width: 9ch;

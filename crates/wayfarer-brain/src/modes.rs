@@ -1111,6 +1111,12 @@ impl Bot {
 
     /// For the party coordinator (C-093): the last leader's stash round this follower is done
     /// with.
+    /// The room a stash under way hides coins in, once it has counted them there: sure of it
+    /// (C-093), so a `You hid ...` now is the stash's.
+    pub fn stashing(&self) -> Option<Key> {
+        self.stash.hiding_in()
+    }
+
     pub fn stash_done(&self) -> u64 {
         if self.stash.active() {
             self.stash_followed.saturating_sub(1)

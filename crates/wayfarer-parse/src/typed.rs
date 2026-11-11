@@ -409,6 +409,11 @@ pub enum GameEvent {
         n: u64,
         coin: String,
     },
+    /// `hid_item` with coins: `You hid 76 gold crowns.` (a hidden item is `Other`).
+    CoinsHidden {
+        n: u64,
+        coin: String,
+    },
     /// `too_much`: `You cannot carry that much!`
     CannotCarry,
     /// `spells_columns`: the header of the `spells` list, whose rows follow.
@@ -634,6 +639,24 @@ fn coins_copper(coins: &BTreeMap<String, u64>) -> u64 {
             n * unit
         })
         .sum()
+}
+
+/// `76 gold crowns`, the item of a `You hid ...` line, as a count and the coin's name; `None`
+/// for an item (`torch`) or a coin the game does not hide by count.
+fn hidden_coins(item: &str) -> Option<(u64, String)> {
+    const COINS: [&str; 5] = [
+        "runic coin",
+        "platinum piece",
+        "gold crown",
+        "silver noble",
+        "copper farthing",
+    ];
+    let (n, coin) = item.trim().split_once(' ')?;
+    let n = n.parse::<u64>().ok()?;
+    COINS
+        .iter()
+        .any(|c| coin.starts_with(c))
+        .then(|| (n, coin.to_owned()))
 }
 
 fn text(ev: &Event, name: &str) -> String {
@@ -1035,6 +1058,10 @@ impl GameEvent {
                     n: u64::try_from(n).unwrap_or(0),
                     coin: text(ev, "coin"),
                 },
+                None => G::Other(ev.clone()),
+            },
+            "hid_item" => match hidden_coins(&text(ev, "item")) {
+                Some((n, coin)) => G::CoinsHidden { n, coin },
                 None => G::Other(ev.clone()),
             },
             "too_much" => G::CannotCarry,

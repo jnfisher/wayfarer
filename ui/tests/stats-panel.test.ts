@@ -11,6 +11,7 @@ import {
   efficiency,
   perCent,
   sparkline,
+  stashLines,
   startedAt,
   tenths,
   timeLines,
@@ -319,6 +320,56 @@ describe("where the time went", () => {
       onrefresh: () => {},
     });
     expect(zero.container.querySelector(".time")!.textContent).toContain("Nothing counted yet.");
+  });
+});
+
+describe("the coins stashed", () => {
+  afterEach(cleanup);
+
+  const stashed = [
+    { room: "15:12", gold: 1200, silver: 40, copper: 300 },
+    { room: "1:2150", gold: 76, silver: 0, copper: 6 },
+  ];
+
+  it("sums the rooms and leaves out the coins with none", () => {
+    expect(stashLines(undefined)).toBeUndefined();
+    expect(stashLines([{ room: "15:12", gold: 0, silver: 0, copper: 0 }])).toBeUndefined();
+    expect(stashLines(stashed)).toEqual({
+      total: "1,276g 40s 306c",
+      rooms: [
+        { room: "15:12", coins: "1,200g 40s 300c" },
+        { room: "1:2150", coins: "76g 6c" },
+      ],
+    });
+  });
+
+  it("shows the run's stashes above the combat numbers, and says when there are none", () => {
+    const { container, unmount } = render(StatsPanel, {
+      session,
+      character,
+      stats: { ...stats, stashed },
+      attached: true,
+      onrefresh: () => {},
+    });
+    const section = container.querySelector(".stash")!;
+    expect(section.querySelector('[data-stash="total"]')!.textContent!.trim()).toBe(
+      "stashed this run: 1,276g 40s 306c",
+    );
+    expect(section.querySelector('[data-stash-room="15:12"]')!.textContent).toBe("in 15:121,200g 40s 300c");
+    const sections = [...container.querySelectorAll("section")].map((s) => s.className.split(" ")[0]);
+    expect(sections.indexOf("stash")).toBeLessThan(sections.indexOf("combat"));
+    unmount();
+    const none = render(StatsPanel, { session, character, stats, attached: true, onrefresh: () => {} });
+    expect(none.container.querySelector('[data-stash="none"]')!.textContent).toBe("nothing stashed this run");
+    none.unmount();
+    const norun = render(StatsPanel, {
+      session,
+      character: {},
+      stats: { ...stats, stashed },
+      attached: true,
+      onrefresh: () => {},
+    });
+    expect(norun.container.querySelector(".stash")).toBeNull();
   });
 });
 

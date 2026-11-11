@@ -11,7 +11,7 @@ use std::path::Path;
 use game::arena::*;
 use game::*;
 use wayfarer_brain::{Brain, FixedClock, GIVE_UPS, InstantClock, LEG_PAUSE, LEG_TRIES, Store};
-use wayfarer_proto::{BotAction, BotMode, BotState};
+use wayfarer_proto::{BotAction, BotMode, BotState, Stashed};
 
 const NEWHAVEN_LOOP: &str = "1:2140:8:doors:0";
 /// North of the Dungeon Entrance: a Lair of cave bears, the stop the tests untick.
@@ -663,6 +663,16 @@ fn carrying(list: &str) -> String {
 
 /// A loop started in the Arena, its first stop, with the coins of `carrying` (an `i` line's
 /// list) on the character, and the settings of `text`.
+/// The coins the run's stashes hid, as the stats tab asks for them (C-097).
+async fn stashed(g: &mut Game) -> Vec<Stashed> {
+    g.send(ToClient::StatsRequest { session: ID.into() }).await;
+    g.until(|m| match m {
+        ToGateway::Stats { stashed, .. } => Some(stashed.clone()),
+        _ => None,
+    })
+    .await
+}
+
 async fn stashing(carrying: &str, text: &str) -> (Game, Run) {
     let clock = FixedClock(std::time::UNIX_EPOCH + Duration::from_secs(T0));
     let brain = Brain::new(world(), Arc::new(clock), None).with_settings(test_settings(text));
@@ -693,6 +703,16 @@ async fn at_the_loops_first_stop_the_silver_gold_and_copper_are_hidden() {
         .await;
     g.narrated("Stash: done").await;
     g.freeze();
+    // C-097: what the game said was hidden, in the stop, for the stats tab.
+    assert_eq!(
+        stashed(&mut g).await,
+        [Stashed {
+            room: "1:2150".into(),
+            gold: 7,
+            silver: 12,
+            copper: 30
+        }]
+    );
     let (seen, played) = g.close(run).await;
     assert_eq!(
         played,
@@ -749,6 +769,15 @@ async fn a_refused_hide_is_tried_again_with_the_count_carried_now() {
         .await;
     g.narrated("Stash: done").await;
     g.freeze();
+    // The refused hide hid nothing: only the 959 count.
+    assert_eq!(
+        stashed(&mut g).await,
+        [Stashed {
+            room: "1:2150".into(),
+            gold: 959,
+            ..Stashed::default()
+        }]
+    );
     let (_, played) = g.close(run).await;
     assert_eq!(
         played,

@@ -416,6 +416,10 @@ kills (walking and waiting). A long time between kills says there are too few mo
 it hunts; long rests say the fights cost too much. When the brain was not running for part of
 the run, a line says how much of it was not seen.
 
+Then the coins **stashed** this run (C-097): "stashed this run: 1,276g 40s 306c", gold, silver
+and copper as the game confirmed the stash's hides, and a line for each room they went in
+("in 15:12 1,200g 40s 300c"), or "nothing stashed this run".
+
 Under the run, the **combat** numbers ([brain.md](brain.md) "Combat statistics"): since when
 (the last reset, and how long ago), then swings, accuracy and crit rate, then a table in the
 shape of MegaMud's Combat tab: `miss` (with the dodges), `hit`, `crit`, `bs` (with how many

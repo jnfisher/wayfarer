@@ -346,6 +346,17 @@ pub struct TimeSpent {
     pub away_secs: u64,
 }
 
+/// The coins a run's stashes hid in one room (C-097), in a `stats` message: what the game
+/// confirmed (`You hid 76 gold crowns.`). Platinum and runic are never stashed.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct Stashed {
+    /// `map:room`, as the map shows it: `15:12`.
+    pub room: String,
+    pub gold: u64,
+    pub silver: u64,
+    pub copper: u64,
+}
+
 /// The character's combat numbers since the player last reset them (C-050), in a `stats`
 /// message. Rates are in thousandths (`714` is 71.4%), averages in tenths.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -1649,6 +1660,10 @@ pub enum ToClient {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         time: Option<Box<TimeSpent>>,
+        /// The coins the current run's stashes hid, by room (C-097); empty with none.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[ts(as = "Option<Vec<Stashed>>", optional)]
+        stashed: Vec<Stashed>,
     },
     /// Brain → UIs: the answer to a `spell_plan_request`: the spells the character's class could
     /// learn that it does not know, each at its best shop: those it can read now first (the
@@ -2255,6 +2270,10 @@ pub enum ToGateway {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         time: Option<Box<TimeSpent>>,
+        /// The coins the current run's stashes hid, by room (C-097); empty with none.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[ts(as = "Option<Vec<Stashed>>", optional)]
+        stashed: Vec<Stashed>,
     },
     /// Brain → UIs: the answer to a `spell_plan_request`: the spells the character's class could
     /// learn that it does not know, each at its best shop: those it can read now first (the
@@ -2908,12 +2927,14 @@ impl ToGateway {
                 samples,
                 combat,
                 time,
+                stashed,
             } => ToClient::Stats {
                 session,
                 runs,
                 samples,
                 combat,
                 time,
+                stashed,
             },
             Self::SpellPlan {
                 session,

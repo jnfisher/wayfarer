@@ -1,7 +1,7 @@
 // The stats tab (C-029): the brain's `stats` answer, and how its numbers are shown; the combat
 // numbers (C-050) as a table; where the run's time went, and how efficient it is.
 
-import type { CombatStats, DamageRow, ExpSample, TimeSpent, ToClient } from "../proto";
+import type { CombatStats, DamageRow, ExpSample, Stashed, TimeSpent, ToClient } from "../proto";
 
 export type Stats = Extract<ToClient, { type: "stats" }>;
 
@@ -229,4 +229,31 @@ export function efficiency(t: TimeSpent, kills: number, exp: number, runSecs?: n
   }
   if (runSecs !== undefined && runSecs - counted(t) >= 60) e.unseen = duration(runSecs - counted(t));
   return e;
+}
+
+/** Coins as `1,200g 40s 300c`, the coins with none left out; "" with none at all. */
+export function coins(c: { gold: number; silver: number; copper: number }): string {
+  const parts: [number, string][] = [
+    [c.gold, "g"],
+    [c.silver, "s"],
+    [c.copper, "c"],
+  ];
+  return parts
+    .filter(([n]) => n > 0)
+    .map(([n, u]) => `${count(n)}${u}`)
+    .join(" ");
+}
+
+/** The run's stashes (C-097): the coins hidden in all, and in each room, first stashed in
+ * first. `undefined` with none. */
+export function stashLines(
+  list: Stashed[] | undefined,
+): { total: string; rooms: { room: string; coins: string }[] } | undefined {
+  const rooms = (list ?? []).filter((s) => s.gold + s.silver + s.copper > 0);
+  if (rooms.length === 0) return undefined;
+  const sum = rooms.reduce(
+    (t, s) => ({ gold: t.gold + s.gold, silver: t.silver + s.silver, copper: t.copper + s.copper }),
+    { gold: 0, silver: 0, copper: 0 },
+  );
+  return { total: coins(sum), rooms: rooms.map((s) => ({ room: s.room, coins: coins(s) })) };
 }
