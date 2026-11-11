@@ -6,7 +6,9 @@ use std::collections::{HashMap, HashSet};
 use crate::Error;
 use crate::pack::{Monster, Room, WorldPack};
 
-/// `montype` of an NPC: shopkeepers, the ferryman, healers.
+/// `montype` 2: the group of the monsters no group spawn makes, placed by a room's `specmon`
+/// or `genmonster`. Shopkeepers, the ferryman and healers, but also unique evil monsters such
+/// as the ice sorceress and the adult red dragon (C-090).
 pub const MONTYPE_NPC: i64 = 2;
 
 /// The room types the spawn pass visits (`kb/progression.md`, `LJNBKGND.C:2466-2620`): Normal,
@@ -29,13 +31,8 @@ pub fn is_evil(alignment: i64) -> bool {
     matches!(alignment, 1 | 2 | 5 | 6)
 }
 
-/// A boss: a unique monster, one alive at a time (`maxalive` 1) that comes back `regenhrs`
-/// hours after its kill (`kb/progression.md`): the Minotaur Chieftain, the champion. Not an
-/// NPC and worth experience: healers, shopkeepers and quest figures are unique too.
-fn boss(m: &Monster) -> bool {
-    if m.mon_type == MONTYPE_NPC || m.exp <= 0 {
-        return false;
-    }
+/// One alive at a time (`maxalive` 1), back `regenhrs` hours after its kill.
+fn unique_and_back(m: &Monster) -> bool {
     let Ok(raw) = serde_json::from_str::<serde_json::Value>(&m.raw) else {
         return false;
     };
@@ -43,9 +40,24 @@ fn boss(m: &Monster) -> bool {
     field("maxalive") == 1 && field("regenhrs") > 0
 }
 
+/// Someone not to fight: a monster of `montype` 2 other than an evil one that comes back
+/// after its kill. Healers, shopkeepers and quest figures (Cygani, 9 exp, never back) are
+/// NPCs; the ice sorceress (evil, back an hour after) is not (C-090).
+fn npc(m: &Monster) -> bool {
+    m.mon_type == MONTYPE_NPC && !(is_evil(m.alignment) && unique_and_back(m))
+}
+
+/// A boss: a unique monster, one alive at a time (`maxalive` 1) that comes back `regenhrs`
+/// hours after its kill (`kb/progression.md`): the Minotaur Chieftain, the champion, the ice
+/// sorceress. Not an NPC and worth experience: healers, shopkeepers and quest figures are
+/// unique too.
+fn boss(m: &Monster) -> bool {
+    !npc(m) && m.exp > 0 && unique_and_back(m)
+}
+
 /// Worth attacking: evil, not an NPC and worth experience (`kb/combat.md`).
 pub fn huntable(m: &Monster) -> bool {
-    is_evil(m.alignment) && m.mon_type != MONTYPE_NPC && m.exp > 0
+    is_evil(m.alignment) && !npc(m) && m.exp > 0
 }
 
 impl Monsters {
@@ -385,6 +397,7 @@ mod tests {
         once.raw = r#"{"maxalive":1,"regenhrs":0}"#.into();
         let mut healer = monster(160, "healer", MONTYPE_NPC, 0);
         healer.raw = r#"{"maxalive":1,"regenhrs":1}"#.into();
+        healer.alignment = 0;
         let mut merchant = monster(161, "dwarven barkeep", 24, 0);
         merchant.raw = healer.raw.clone();
         merchant.exp = 0;
@@ -409,6 +422,25 @@ mod tests {
         let mut spec = room(0, 5, 11, (4, 4));
         spec.spec_mon = 114;
         assert!(ms.boss_lair(&spec).is_some());
+    }
+
+    #[test]
+    fn an_evil_montype_2_monster_that_comes_back_is_a_boss_to_hunt_not_an_npc() {
+        // C-090: the ice sorceress (108) is montype 2, Chaotic Evil, 9500 exp, back an hour
+        // after her kill. Cygani (543) is montype 2, Chaotic Evil, 9 exp, never back: a quest
+        // figure. A healer is montype 2 and Good.
+        let mut sorceress = monster(108, "ice sorceress", MONTYPE_NPC, 100);
+        sorceress.exp = 9500;
+        sorceress.raw = r#"{"maxalive":1,"regenhrs":1}"#.into();
+        let mut cygani = monster(543, "Cygani", MONTYPE_NPC, 0);
+        cygani.raw = r#"{"maxalive":0,"regenhrs":0}"#.into();
+        let mut healer = monster(160, "healer", MONTYPE_NPC, 0);
+        healer.raw = r#"{"maxalive":1,"regenhrs":1}"#.into();
+        healer.alignment = 0;
+        assert!(huntable(&sorceress) && boss(&sorceress));
+        for m in [&cygani, &healer] {
+            assert!(!huntable(m) && !boss(m), "{}", m.name);
+        }
     }
 
     #[test]

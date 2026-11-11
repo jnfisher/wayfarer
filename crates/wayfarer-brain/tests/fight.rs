@@ -1145,3 +1145,19 @@ async fn on_1_20_a_rest_that_ends_at_full_hp_is_not_sent_again() {
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "u", "meditate", "rest", "rest", "d"]);
 }
+
+/// C-090, the ice golems in the Tower: monsters fighting the party in the room, none of them in
+/// the character's room view, are fought all the same. Here a party member attacks a rat
+/// the bot never saw come in.
+#[tokio::test(start_paused = true)]
+async fn a_monster_seen_fighting_someone_else_in_the_room_is_fought() {
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 35).await;
+    g.narrated("Waiting here").await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.output(&line("Rocco moves to attack fat giant rat.", 35))
+        .await;
+    g.narrated("Fight: fat giant rat").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat"]);
+}

@@ -292,6 +292,13 @@ These texts are not in the C source. They are WCCMSG records that the C code for
 | `monster_arrives` | 236 | `A thin giant rat creeps into the room from nowhere.` | mon, frm | LJNMONST.C:863 |
 | `monster_leaves` | 218 | `The giant rat creeps out of the room to the north.` | mon, to | arrivemsg text 2 |
 | `monster_follows` | 211 | `The giant rat creeps in after you!` | (none) | arrivemsg text 3 |
+
+A movement text can name its monster and have only one `%s`, the direction: "The ice golem
+stomps in from the %s!", "The ice sorceress floats in from %s!" (86 monsters' arrivemsg in the
+game data). Its `%s` is the direction, not the monster; the parser takes the monster from the
+record the text belongs to. On a Quicksilver server the direction arrives obfuscated with a
+backspace (`eP\bast`) and the stock text's own "the" doubles it ("from the the east"). [C data;
+C live 2026-11-10]
 | `monster_death` | 605 | `The giant rat falls to the ground with a tortured squeak.` | monsters (all names sharing the text) | LJNMONST.C:1095 (text 3 of deathmsg) |
 | `mon_hits_you` | 238 | `The fierce kobold thief stabs you for 7 damage!` | mon, dmg | LJNCOMBT.C:3653 (a spellcasting monster's slot can name a spell message: the dark priest, priestess and gypsies name 17, whose text 1 "You cast %s on %s!" is the caster's own line, so "You cast bless on Aldric!" fits this role and is no blow [F]) |
 | `mon_hits_other` | 239 | `The giant rat bites Thornwyn for 5 damage!` | mon, victim, dmg | same, text 2 |
