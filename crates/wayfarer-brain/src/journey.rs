@@ -29,8 +29,11 @@ pub(crate) struct Journey {
     next: usize,
     /// Stop one room short of the last stop, a boss lair (Go to's `stop_short`).
     short: bool,
-    /// Legs to the stop at `next` begun since it last arrived or fought.
+    /// Legs to the stop at `next` begun since it last arrived, fought or got closer.
     tries: u32,
+    /// Steps from the stop when the last leg began: a leg that ends closer is progress, not a
+    /// try (C-091).
+    leg_from: Option<usize>,
     /// A leg was begun to the stop at `next`.
     walked: bool,
     /// Over: arrived, or it could not get there (why).
@@ -50,6 +53,7 @@ impl Journey {
             next: 0,
             short,
             tries: 0,
+            leg_from: None,
             walked: false,
             done: None,
             notes: Vec::new(),
@@ -66,6 +70,7 @@ impl Journey {
             next: 0,
             short: false,
             tries: 0,
+            leg_from: None,
             walked: false,
             done: None,
             notes: Vec::new(),
@@ -151,6 +156,7 @@ impl Journey {
         }
         self.next += 1;
         self.tries = 0;
+        self.leg_from = None;
         self.walked = false;
         if self.next >= self.stops.len() {
             self.done = Some(None);
@@ -202,7 +208,20 @@ impl Mode for Journey {
             .then(|| format!("going to {}", self.stops[self.next].1))
     }
 
-    fn step(&mut self, _v: &View) -> Step {
+    fn step(&mut self, v: &View) -> Step {
+        // As the walker routes a walk the player asked for: hidden exits as a last resort.
+        let left = v.room.and_then(|from| {
+            wayfarer_world::route::route_or_search(&v.atlas.graph, from, self.to(), v.traveller)
+                .map(|r| r.len())
+        });
+        // The last leg ended closer than it began: progress, whatever stopped it (a monster
+        // that left before the fight, a rest, a pickup), so it is not a try (C-091). Only legs
+        // that got nowhere count.
+        if let (Some(was), Some(now)) = (self.leg_from, left)
+            && now < was
+        {
+            self.tries = 0;
+        }
         if self.tries >= LEG_TRIES {
             self.done = Some(Some(format!(
                 "{LEG_TRIES} walks to {} ended elsewhere",
@@ -211,6 +230,7 @@ impl Mode for Journey {
             return Step::wait("Going: could not get there");
         }
         self.tries += 1;
+        self.leg_from = left;
         self.walked = true;
         let (to, name) = self.stops[self.next].clone();
         let last = self.next + 1 == self.stops.len();

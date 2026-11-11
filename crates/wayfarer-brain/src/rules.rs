@@ -109,13 +109,14 @@ impl Default for RuleBook {
 }
 
 impl RuleBook {
-    /// The defaults with the rules the store kept (rows it cannot read are left out).
+    /// The defaults with the player's rules the store kept (rows it cannot read are left
+    /// out). A stalemate's rule kept by an older brain is left out too: those last the session
+    /// only (C-091).
     pub fn new(stored: &[RuleRecord]) -> Self {
         let entries = stored
             .iter()
             .filter_map(|r| {
                 let source = match r.source.as_str() {
-                    "session" => Source::Session,
                     "player" => Source::Player,
                     _ => return None,
                 };
@@ -237,10 +238,12 @@ impl RuleBook {
         default && self.set(pattern, Some(MonsterRule::Off), at)
     }
 
-    /// What the store keeps: the session's rules and the player's.
+    /// What the store keeps: the player's rules. A stalemate's *ignore* lasts the session
+    /// only (C-091): a monster given up on a bad run is fought again after a restart.
     pub fn stored(&self) -> Vec<RuleRecord> {
         self.entries
             .iter()
+            .filter(|e| e.source == Source::Player)
             .map(|e| RuleRecord {
                 pattern: e.pattern.clone(),
                 rule: rule_str(e.rule).to_owned(),
@@ -419,10 +422,22 @@ mod tests {
                 ("stone golem".to_owned(), RuleSource::Player),
             ]
         );
-        // Through the store and back.
+        // Through the store and back: the player's rule is kept, the stalemate's is not
+        // (C-091).
         let again = RuleBook::new(&book.stored());
-        assert_eq!(again.wire(), book.wire());
         assert_eq!(again.stored(), book.stored());
+        let kept: Vec<(String, RuleSource)> = again
+            .wire()
+            .into_iter()
+            .map(|e| (e.pattern, e.source))
+            .collect();
+        assert_eq!(
+            kept,
+            [
+                ("gigantic black ooze".to_owned(), RuleSource::Default),
+                ("stone golem".to_owned(), RuleSource::Player),
+            ]
+        );
     }
 
     #[test]
@@ -458,7 +473,7 @@ mod tests {
     }
 
     #[test]
-    fn the_old_kinds_in_the_store_load_as_ignore() {
+    fn the_old_kinds_in_the_store_load_as_ignore_and_a_kept_stalemate_is_dropped() {
         let stored = |pattern: &str, rule: &str, source: &str| RuleRecord {
             pattern: pattern.into(),
             rule: rule.into(),
@@ -470,11 +485,12 @@ mod tests {
             stored("fat orc", "flee_from", "player"),
             stored("kobold", "avoid", "player"),
         ]);
-        assert_eq!(book.rule_for("stone golem"), Some(MonsterRule::Ignore));
+        // A stalemate's rule an older brain kept is dropped: those last the session (C-091).
+        assert_eq!(book.rule_for("stone golem"), None);
         assert_eq!(book.rule_for("fat orc"), Some(MonsterRule::Ignore));
         assert_eq!(book.rule_for("kobold"), Some(MonsterRule::Avoid));
         let rules: Vec<String> = book.stored().into_iter().map(|r| r.rule).collect();
-        assert_eq!(rules, ["ignore", "ignore", "avoid"]);
+        assert_eq!(rules, ["ignore", "avoid"]);
     }
 
     #[tokio::test(start_paused = true)]

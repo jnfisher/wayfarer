@@ -279,8 +279,10 @@ async fn the_ooze_is_never_fought_by_default() {
     assert!(!said.iter().any(|s| s.starts_with("Fight:")), "{said:?}");
 }
 
-#[tokio::test(start_paused = true)]
-async fn the_recorded_ooze_fight_ends_by_its_fourth_round() {
+/// The recorded ooze fight, its eight rounds played over and over, from a started bot; a
+/// party member's blow on the ooze before round `party_hit` (if any). The rounds until the
+/// stalemate, and what the session saw.
+async fn ooze_stalemate(party_hit: Option<u32>) -> (u32, Vec<ToGateway>) {
     let chunks = ooze_chunks();
     let passage = chunks[0].1.clone();
     let (mut g, run) = Game::start_lost(SessionState::Realm, passage.clone()).await;
@@ -296,12 +298,19 @@ async fn the_recorded_ooze_fight_ends_by_its_fourth_round() {
     g.expect("break", line("*Combat Off*", 208));
     g.bot(BotAction::Start).await;
     g.narrated("Fight: gigantic black ooze").await;
-    // The recorded rounds, 5 s apart; the bot gives up after the fourth.
+    // The recorded rounds, 5 s apart, over and over until the bot gives up.
     let mut rounds = 0;
     let mut said = Vec::new();
-    for (_, text) in &chunks[2..] {
-        g.output(text).await;
+    for (_, text) in chunks[2..].iter().cycle().take(40) {
         rounds += 1;
+        if party_hit == Some(rounds) {
+            g.output(&line(
+                "Rocco smashes gigantic black ooze for 36 damage!",
+                208,
+            ))
+            .await;
+        }
+        g.output(text).await;
         let before = g.seen.len();
         g.idle(Duration::from_secs(5)).await;
         said = notices(&g.seen[before..]);
@@ -309,7 +318,6 @@ async fn the_recorded_ooze_fight_ends_by_its_fourth_round() {
             break;
         }
     }
-    assert_eq!(rounds, STALEMATE_ROUNDS, "{said:?}");
     assert!(
         said.contains(
             &"Stalemate: my swings do nothing to gigantic black ooze; leaving".to_owned()
@@ -320,6 +328,14 @@ async fn the_recorded_ooze_fight_ends_by_its_fourth_round() {
     g.narrated("Stopped: asked to stop").await;
     let (seen, played) = g.close(run).await;
     assert_eq!(played.iter().filter(|c| c.starts_with("a ")).count(), 1);
+    (rounds, seen)
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_recorded_ooze_fight_ends_by_its_tenth_round() {
+    // Close to a second: fifty seconds of rounds on the paused clock, each with its prompts.
+    let (rounds, seen) = ooze_stalemate(None).await;
+    assert_eq!(rounds, STALEMATE_ROUNDS);
     assert!(rules_of(&seen).contains(&entry(
         "gigantic black ooze",
         MonsterRuleKind::Ignore,
@@ -331,6 +347,15 @@ fn brain_on(path: &Path) -> Brain {
     let (store, _) = Store::open(path).unwrap();
     let clock = InstantClock::new(UNIX_EPOCH + Duration::from_secs(T0));
     Brain::new(world(), Arc::new(clock), None).with_store(store)
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_party_members_blow_on_the_target_puts_the_stalemate_off() {
+    // Close to a second: seventy seconds of rounds on the paused clock, each with its prompts.
+    // C-091: Rocco hurts the ooze before round 5, so the rounds before it do not count: the
+    // stalemate comes ten rounds after.
+    let (rounds, _) = ooze_stalemate(Some(5)).await;
+    assert_eq!(rounds, 4 + STALEMATE_ROUNDS);
 }
 
 #[tokio::test(start_paused = true)]

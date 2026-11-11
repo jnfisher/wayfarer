@@ -1939,6 +1939,8 @@ impl Session {
             out.push(self.warning("walk_to: an errand is in progress; cancel it first"));
             return;
         }
+        // The player asked for this walk: the exits given up on so far are tried again (C-091).
+        self.position.clear_blocks();
         self.position
             .refresh(&atlas, &self.character.snapshot(), self.clock.instant());
         let name = atlas
@@ -2413,6 +2415,8 @@ impl Session {
             out.push(self.warning(&format!("walk_loop: no loop {id:?}")));
             return;
         };
+        // The player asked for this walk: the exits given up on so far are tried again (C-091).
+        self.position.clear_blocks();
         let Some(from) = self.position.best() else {
             out.push(self.warning(&format!(
                 "Not walking loop {}: the position is unknown",
@@ -2550,6 +2554,8 @@ impl Session {
             out.push(self.warning(&format!("run_loop: no loop {id:?}")));
             return;
         };
+        // Starting a loop: the exits given up on so far are tried again (C-071, C-091).
+        self.position.clear_blocks();
         if let Some(why) = mm_loop(&atlas, id).and_then(|m| self.mm_not_runnable(&atlas, m)) {
             out.push(self.warning(&format!("Not running loop {}: {why}", l.name)));
             return;

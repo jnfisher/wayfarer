@@ -26,8 +26,9 @@ use wayfarer_world::MonsterRules;
 /// executor does not know is not tried for ever.
 pub const ATTACK_TRIES: u32 = 2;
 /// Rounds of the character's own swings in a row that did no damage, one of them a glance at
-/// least, before the fight is a stalemate.
-pub const STALEMATE_ROUNDS: u32 = 4;
+/// least, with nobody else damaging the target meanwhile, before the fight is a stalemate:
+/// 50 seconds (C-091; four rounds gave up high-AC monsters on a run of bad luck).
+pub const STALEMATE_ROUNDS: u32 = 10;
 /// The character's swings of one round come together (a prompt after each); a swing this long
 /// after the round's first starts the next round. Rounds are 5 s apart (`kb/combat.md`).
 pub const ROUND_GAP: Duration = Duration::from_secs(2);
@@ -289,6 +290,23 @@ impl Mode for Fight {
                 self.swing(target, false, false, now);
             }
             GameEvent::SwingGlanced { target } => self.swing(target, false, true, now),
+            // Someone else damaged the target (a party member's blow or spell): the monster can
+            // be hurt, so no stalemate yet (C-091).
+            GameEvent::Other(e) => {
+                let hurt = match e.name.as_str() {
+                    "other_hits" => e.text("target"),
+                    "spell_cast_room" if e.text("dmg").is_some_and(|d| d != "0") => {
+                        e.text("target")
+                    }
+                    _ => None,
+                };
+                if let (Some(hurt), Some(t)) = (hurt, &self.target) {
+                    let (a, b) = (hurt.to_lowercase(), t.to_lowercase());
+                    if a == b || a.contains(&b) || b.contains(&a) {
+                        self.stall = Stall::default();
+                    }
+                }
+            }
             _ => {}
         }
     }

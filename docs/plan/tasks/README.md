@@ -226,7 +226,7 @@ watches its characters from the laptop's browser.
 | [C-068](C-068-qs120-guard.md) | `GUARD`: a party's tank guards the member the player picks | B | M | C-063, C-064 | |
 | [C-069](C-069-qs120-models.md) | 1.20 numbers in the models: the opener, openings, weaves, knees, casting stat, area resists, class tables as data | B | L | C-064, C-066 | review |
 | [C-070](C-070-kb-item-sources.md) | KB: item and drop sources checked against the game data | C | M | | |
-| [C-071](C-071-temporary-blocks.md) | Loops are not barred by this session's blocked exits: three failed bashes don't lock a loop out | B | S | | |
+| [C-071](C-071-temporary-blocks.md) | Loops are not barred by this session's blocked exits: three failed bashes don't lock a loop out (built in C-091) | B | S | | |
 
 Wave 12 (2026-11-01) runs one card at a time in the order above, one pull request each. Every
 card leaves 1.11p exactly as it was: its 1.11p tests and fixtures give the same results. The class
@@ -273,6 +273,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-088](C-088-harness-waits-fail.md) | A test's wait for what never comes fails, with the brain's last words, instead of running on | C | S | | |
 | [C-089](C-089-hold-not-a-failed-walk.md) | A leader's hold is not a walk that ended elsewhere: a Go to waits for the party and goes on | C | S | | |
 | [C-090](C-090-group-2-is-not-npcs.md) | Monsters the bot missed: montype 2 is a spawn group, not NPCs; movement texts that name their monster; monsters seen fighting the party | C | S | | |
+| [C-091](C-091-give-up-later.md) | Give up later: bashes by the door's odds, write-offs that expire, stalemates over ten rounds, legs that get closer are not failures | B | M | | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or

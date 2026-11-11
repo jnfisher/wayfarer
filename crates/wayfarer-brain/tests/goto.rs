@@ -224,3 +224,61 @@ async fn a_phrase_that_is_only_speech_is_not_taken_for_the_move() {
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["w", "ring chime", "look", "ring chime", "look"]);
 }
+
+/// `room(k)` with `monster` in its `Also here:`.
+fn with_monster(k: Key, monster: &str) -> String {
+    let text = room(k);
+    let atlas = atlas();
+    let name = &atlas.graph.room(k).unwrap().name;
+    let title = format!("\x1b[1;36m{name}\r\n");
+    let at = text.find(&title).unwrap() + title.len();
+    format!(
+        "{}\x1b[0;35mAlso here: \x1b[1;35m{monster}\x1b[0m\x1b[0;35m.\r\n{}",
+        &text[..at],
+        &text[at..]
+    )
+}
+
+/// C-091: a Go to whose legs keep stopping for a monster gone before the fight (no `*Combat
+/// Engaged*`, so no fight reset the count) still gets there, because each leg ended closer.
+/// Before, the third such stop ended it: "3 walks ... ended elsewhere".
+#[tokio::test(start_paused = true)]
+async fn a_go_to_whose_legs_each_get_closer_is_not_given_up() {
+    let from = game::WEAPONS_SHOP;
+    let to = ARENA;
+    let atlas = atlas();
+    let steps = wayfarer_world::route(
+        &atlas.graph,
+        from,
+        to,
+        &wayfarer_world::Traveller::default(),
+    )
+    .expect("a way from the shop to the Arena");
+    assert!(steps.len() >= 4, "{}", steps.len());
+    let (mut g, run) = Game::start(SessionState::Realm, from).await;
+    let rats = ["fat giant rat", "thin giant rat", "large giant rat"];
+    let mut want = Vec::new();
+    for (i, s) in steps.iter().enumerate() {
+        let answer = match rats.get(i) {
+            Some(rat) => with_monster(s.to, rat),
+            None => room(s.to),
+        };
+        g.expect(&s.command, answer);
+        want.push(s.command.clone());
+        if i < rats.len() {
+            g.expect("a rat", says("You do not see rat here!"));
+            g.expect("look", room(s.to));
+            want.extend(["a rat".to_owned(), "look".to_owned()]);
+        }
+    }
+    g.walk_to(to).await;
+    let name = atlas.graph.room(to).unwrap().name.clone();
+    g.walk_narrated(&format!("Arrived: {name}")).await;
+    let (_, played) = g.close(run).await;
+    let tail: Vec<String> = played
+        .iter()
+        .skip_while(|c| *c != &steps[0].command)
+        .cloned()
+        .collect();
+    assert_eq!(tail, want);
+}

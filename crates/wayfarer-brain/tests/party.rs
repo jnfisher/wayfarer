@@ -935,7 +935,8 @@ async fn a_follower_does_not_bash_with_help_off() {
     .await;
     let bashes: Vec<_> = g.lines.iter().filter(|(_, t)| t == "bash n").collect();
     assert!(bashes.iter().all(|(s, _)| s == LEADER), "{:?}", g.lines);
-    assert_eq!(bashes.len(), 3);
+    // As many as the door's odds call for (C-091); the leader's strength is not known here.
+    assert_eq!(bashes.len(), arena_door_bashes(false) as usize);
 }
 
 /// The follower's casts of minor healing on the leader so far.
