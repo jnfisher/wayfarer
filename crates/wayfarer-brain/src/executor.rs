@@ -108,6 +108,10 @@ pub enum Refused {
     Spell,
     /// Not now: just attacked, or a command delay running.
     NotNow,
+    /// The game lost the line to confusion, fear, a stun, sleep and the like ("You fumble in
+    /// confusion!", "You look around stupidly and do nothing!"; `check_confusion`, C-095): it
+    /// did nothing, and the same command may go again.
+    Lost,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,13 +122,17 @@ pub enum Outcome {
 }
 
 /// The game's other answers to an attack that start no fight (`kb/screen-patterns.md`, the
+/// How many times in a row a command lost to confusion goes again before its owner is told it
+/// was refused: confusion's chance is often 5-25%, but sleep, paralysis or petrification lose
+/// every line while they last (C-095).
+pub const LOST_TRIES: u32 = 5;
+
 /// registry's names): unmapped, the attack would only time out, and go again.
-pub const ATTACK_REFUSALS: [&str; 8] = [
+pub const ATTACK_REFUSALS: [&str; 7] = [
     "evil_warning",
     "wrong_weapon",
     "unbalanced",
     "need_rest_attack",
-    "too_afraid",
     "lawful_block",
     "guilt",
     "ambiguous",
@@ -193,6 +201,10 @@ enum Ahead {
 pub struct Executor {
     state: State,
     ahead: Option<Ahead>,
+    /// The times in a row the action queued now was lost to confusion and queued again.
+    lost: u32,
+    /// Lost and queued again since the caller last asked: the command and the try.
+    relost: Option<(String, u32)>,
     /// The belief the last finished action's room left ([`Executor::take_belief`]).
     finished_belief: Option<Belief>,
 }
@@ -202,6 +214,8 @@ impl Default for Executor {
         Executor {
             state: State::Idle,
             ahead: None,
+            lost: 0,
+            relost: None,
             finished_belief: None,
         }
     }
@@ -210,6 +224,10 @@ impl Default for Executor {
 /// The answer `ev` gives an action expecting `expect`, if it is one.
 fn answer(expect: Expect, ev: &GameEvent) -> Option<Outcome> {
     match (expect, ev) {
+        // Lost to confusion (or fear, for an attack): whatever it was, it did nothing (C-095).
+        (_, GameEvent::Other(e)) if matches!(e.name.as_str(), "confused" | "too_afraid") => {
+            Some(Outcome::Refused(Refused::Lost))
+        }
         (Expect::RoomSeen, GameEvent::MoveRefused { reason }) => {
             Some(Outcome::Refused(Refused::Move(*reason)))
         }
@@ -376,6 +394,19 @@ impl Executor {
             _ => return None,
         };
         let action = f.action.clone();
+        // Lost to confusion with nothing ahead of it: the same command again, at the next
+        // prompt, up to [`LOST_TRIES`] in a row (C-095). With a move ahead in flight, that move
+        // went from the wrong room: the caller is told, and the walker plans again.
+        if outcome == Outcome::Refused(Refused::Lost)
+            && self.ahead.is_none()
+            && self.lost < LOST_TRIES
+        {
+            self.lost += 1;
+            self.relost = Some((action.command.clone(), self.lost));
+            self.state = State::Queued(action);
+            return None;
+        }
+        self.lost = 0;
         self.finished_belief = f.belief.clone();
         self.state = match self.ahead.take() {
             Some(Ahead::InFlight(f)) => State::InFlight(f),
@@ -383,6 +414,12 @@ impl Executor {
             None => State::Idle,
         };
         Some((action, outcome))
+    }
+
+    /// A command lost to confusion and queued again since the last call: the command and
+    /// which try this is, for the narration.
+    pub fn take_relost(&mut self) -> Option<(String, u32)> {
+        self.relost.take()
     }
 
     /// When the action in flight times out.

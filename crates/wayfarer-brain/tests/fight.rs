@@ -1222,3 +1222,68 @@ async fn a_monster_seen_fighting_someone_else_in_the_room_is_fought() {
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "a rat"]);
 }
+
+/// C-095: an attack lost to confusion ("You fumble in confusion!", the spell's own text) goes
+/// again, and is not taken for a refusal.
+#[tokio::test(start_paused = true)]
+async fn an_attack_lost_to_confusion_goes_again() {
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    g.expect("a rat", line("You fumble in confusion!", 35));
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Confused: \"a rat\" was lost, sending it again (1/5)")
+        .await;
+    let mut attacks = 1;
+    g.until(|m| match m {
+        ToGateway::InputLine { text, .. } if text == "a rat" => {
+            attacks += 1;
+            (attacks == 2).then_some(())
+        }
+        _ => None,
+    })
+    .await;
+    g.freeze();
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "a rat"]);
+}
+
+/// C-095: a move lost to confusion goes again, and the walk arrives.
+#[tokio::test(start_paused = true)]
+async fn a_move_lost_to_confusion_goes_again() {
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 35).await;
+    g.narrated("Waiting here").await;
+    g.expect("u", line("You look around stupidly and do nothing!", 35));
+    g.expect("u", room(NARROW_ROAD));
+    g.walk_to(NARROW_ROAD).await;
+    g.narrated("Arrived: Newhaven, Narrow Road").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u", "u"]);
+}
+
+/// C-095: lost five times in a row (asleep, say), the move is given up as held: the walk
+/// stops without the exit marked refused.
+#[tokio::test(start_paused = true)]
+async fn a_move_lost_five_times_is_given_up_as_held() {
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 35).await;
+    g.narrated("Waiting here").await;
+    for _ in 0..=wayfarer_brain::LOST_TRIES {
+        g.expect("u", line("You are fast asleep.", 35));
+    }
+    g.walk_to(NARROW_ROAD).await;
+    g.narrated("Confused: \"u\" was lost, sending it again (5/5)")
+        .await;
+    g.narrated("Stopped walking: `u` lost to confusion").await;
+    // Held: the Go to waits a moment and goes again, as after a stun (C-082).
+    g.narrated("Can't move for now: waiting a moment").await;
+    g.freeze();
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played.iter().filter(|c| *c == "u").count(), 6, "{played:?}");
+    assert!(
+        !seen
+            .iter()
+            .any(|m| matches!(m, ToGateway::Notice { text, .. } if text.contains("refused"))),
+        "the exit is not marked refused"
+    );
+}

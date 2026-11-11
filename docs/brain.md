@@ -588,6 +588,16 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
   the adult red dragon and the chess pieces are bosses to fight, not NPCs (C-090). **A room spawns**
   when the spawn pass makes monsters there or it holds one worth fighting; a room the position
   is not sure of counts as spawning. A shopkeeper's room is quiet.
+- **Confusion** (C-095): a confused character loses each typed line with the effect's chance,
+  whatever it was (`kb/spells.md`), and sees the effect's own text: "You fumble in
+  confusion!", "You look around stupidly and do nothing!", "You are fast asleep." and about 20
+  more, taken from the world's spells and items, plus "You are too afraid!" for an attack. The
+  executor sends the same command again at the next prompt ("Confused: "u" was lost, sending
+  it again (1/5)"), up to 5 times in a row, for whoever sent it: a move, an attack, a cast, a
+  `look`. Lost a sixth time, or with a pipelined move ahead (which went from the wrong room),
+  its owner hears it was lost: a walk stops as when held ("Can't move for now"), not marking
+  the exit refused, and a Go to or loop goes on after a moment. A lost attack is never a
+  refused target.
 - **Engaged** comes from `*Combat Engaged*` and `*Combat Off*`. Auto-combat can also end without
   a word (pitfall 42): 12 s with none of the character's own blows and it counts as over, and
   the snapshot's `in_combat` turns `false`. Knocked down (`You are smashed to the ground!`)

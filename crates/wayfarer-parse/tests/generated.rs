@@ -21,7 +21,7 @@ fn registry_matches_the_prototype() {
     let got: Vec<_> = reg
         .patterns()
         .iter()
-        .filter(|p| p.rules.is_none())
+        .filter(|p| p.rules.is_none() && !p.own)
         .collect();
     assert_eq!(got.len(), want.len());
     let mut generated = 0;

@@ -62,6 +62,7 @@ mod walker;
 pub use brain::{Atlas, BUILD, Brain, BrainError, World};
 pub use character::{Character, apply_patch, merge_patch};
 pub use clock::{Clock, FixedClock, InstantClock, ReplayClock, Sleep, SystemClock, rfc3339};
+pub use executor::LOST_TRIES;
 pub use fight::{ATTACK_TRIES, ROUND_GAP, STALEMATE_ROUNDS};
 pub use link::{ChannelLink, ConnectError, Link, WsLink};
 pub use position::HIDDEN_FOR;

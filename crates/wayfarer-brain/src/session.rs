@@ -4020,7 +4020,15 @@ impl Session {
         self.refresh_settings(out);
         self.check_hangup(out);
         self.lie_still(out);
-        if let Some((action, outcome)) = self.executor.finished(self.at_prompt, now)
+        let finished = self.executor.finished(self.at_prompt, now);
+        if let Some((command, n)) = self.executor.take_relost() {
+            let text = format!(
+                "Confused: \"{command}\" was lost, sending it again ({n}/{})",
+                crate::executor::LOST_TRIES
+            );
+            out.push(self.notice(&text));
+        }
+        if let Some((action, outcome)) = finished
             && let Some(atlas) = self.atlas.clone()
         {
             tracing::debug!(session = %self.id, cmd = %action.command, ?outcome, "action done");

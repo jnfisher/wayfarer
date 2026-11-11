@@ -29,7 +29,7 @@ mod text;
 pub mod typed;
 
 pub use event::{Event, Fields, Value};
-pub use game_texts::{GameTexts, ItemTexts, Message, MonsterAttack, MonsterTexts};
+pub use game_texts::{GameTexts, ItemTexts, Message, MonsterAttack, MonsterTexts, confuse_msg};
 pub use parser::Parser;
 pub use prompt::{Peeled, PromptMode, PromptParser, PromptProgress, compile_statline};
 pub use registry::{JoinRule, Pattern, Registry, split_monster, template_regex};

@@ -824,6 +824,12 @@ impl Walker {
             }
             // Knocked flat, held or stunned (C-082): the walk stops, and it is not the route's
             // fault; a journey begins it again once the character can move.
+            // Lost to confusion each time it was sent (C-095), or with a move ahead from the
+            // wrong room: not the route's fault; held, so a journey begins it again.
+            (_, Outcome::Refused(Refused::Lost)) => {
+                next.held = true;
+                Err(format!("`{}` lost to confusion", step.command))
+            }
             (Doing::Move, Outcome::Refused(Refused::Move(Refusal::CantMove))) => {
                 next.held = true;
                 Err(format!(
