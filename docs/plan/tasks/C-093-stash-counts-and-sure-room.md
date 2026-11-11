@@ -53,9 +53,13 @@ sure of its room so we dont accidentally put coins in the wrong place."
 
   If any of them fails, the stash narrates "Stash: not sure this is <room>, not hiding" and
   is dropped for this time round. It isn't put off to a later tick in another room.
-- **A follower** hides only when it is also certain of its room and that room is the
-  leader's first stop (the leader's reported room key). A follower that isn't sure skips
-  the round.
+- **A follower** borrows the leader's certainty. It hides when the leader is certain it is at
+  its first stop (the leader's reported room key) and the follower is in the same room: it
+  came in by "-- Following your Party leader … --", the room shows the leader ("Also here:
+  Rocco") and the title and exits match. Otherwise it skips the round. Its own belief is not
+  required: on the 07:00–07:50 watch Sasha's belief was sure in only 23 of 635 room
+  displays, usually 8 or 135 look-alikes. A rule that needed her to be sure would mean she
+  never stashed.
 - The narration names the room and its key ("Stash: hiding 571 gold in Huge Cavern, Training
   Area (5/123)"), so the player can find the right copy.
 
@@ -76,7 +80,9 @@ sure of its room so we dont accidentally put coins in the wrong place."
   count.
 - `task.rs`: with the belief unsure at the first stop (two look-alike rooms), nothing is
   hidden and the narration says why.
-- `party.rs`: a follower that isn't certain of its room hides nothing while the leader does.
+- `party.rs`: a follower that is unsure itself but followed the leader in, and sees it in the
+  room, hides its coins. One that is not in the leader's room hides nothing.
+- `party.rs`: with the leader unsure at the first stop, nobody hides.
 - Rust: fmt, clippy `-D warnings`, nextest.
 - Live: a give right before the first stop, then check that `i` shows no silver, gold or
   copper after the stash.
@@ -87,6 +93,9 @@ As in "Done when", next to C-092's tests in `tests/task.rs` and `tests/party.rs`
 
 ## Notes for the agent
 
+- Out of scope, worth its own card: a follower that keeps following the leader stays unsure
+  among look-alikes (Sasha: 135 candidates for Huge Cavern, Training Area, while Rocco was
+  sure of 15/12). It could take the leader's room each time it follows it in.
 - Never stash on a guess. When in doubt, skip the round: the next round tries again.
 - If the parser lacks "You don't have %d %s to hide!", add it from the game texts and note it
   in the KB (`docs/kb/economy.md`, changelog).
