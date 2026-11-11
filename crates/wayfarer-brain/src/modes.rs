@@ -1524,6 +1524,8 @@ impl Bot {
         }
         // A round of swings that is over counts now: it may be the stalemate's last.
         self.fight.settle(v.now);
+        // Skips last while it stays in the room they were made in (C-094).
+        self.fight.in_room(v.room);
         if let Some(name) = self.fight.take_stalemate() {
             self.stalemate(name, &mut says);
         }

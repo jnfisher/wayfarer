@@ -1088,3 +1088,22 @@ fn a_movement_text_that_names_its_monster_is_that_monster() {
         }]
     );
 }
+
+/// C-095: the texts a confused character sees when it loses an action are each confusing
+/// spell's or item's own "Confuse Message", generated from the world's data, besides the
+/// static default.
+#[test]
+fn a_lost_action_is_confused_whatever_the_effect_says() {
+    for t in [
+        "You look around stupidly and do nothing!",
+        "You fumble in confusion!",
+        "You retch uncontrollably!",
+        "You are too afraid to do that!",
+    ] {
+        let evs = line(t);
+        assert!(
+            matches!(evs.as_slice(), [GameEvent::Other(e)] if e.name == "confused"),
+            "{t:?}: {evs:?}"
+        );
+    }
+}

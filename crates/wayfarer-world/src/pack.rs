@@ -721,9 +721,26 @@ impl WorldPack {
         let mut st = self.conn.prepare("SELECT name FROM rooms ORDER BY rowid")?;
         let room_names: Vec<String> = st.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?;
 
-        Ok(GameTexts::from_records(
-            messages, monsters, items, spell_msgs, room_names,
-        ))
+        // The confuse messages of the spells and items that confuse (C-095).
+        let ints = |v: &serde_json::Value, key: &str| -> Vec<i64> {
+            v.get(key)
+                .and_then(serde_json::Value::as_array)
+                .map(|a| a.iter().filter_map(serde_json::Value::as_i64).collect())
+                .unwrap_or_default()
+        };
+        let mut confuse_msgs = Vec::new();
+        for t in ["spells", "items"] {
+            for r in raws(t)?.iter() {
+                if let Some(n) =
+                    wayfarer_parse::confuse_msg(&ints(r, "abilities"), &ints(r, "abilvals"))
+                {
+                    confuse_msgs.push(n);
+                }
+            }
+        }
+        let mut texts = GameTexts::from_records(messages, monsters, items, spell_msgs, room_names);
+        texts.confuse_msgs = confuse_msgs;
+        Ok(texts)
     }
 
     /// MegaMud's named waypoints (`Rooms.md`), in file order.

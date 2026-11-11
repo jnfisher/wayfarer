@@ -276,6 +276,8 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-091](C-091-give-up-later.md) | Give up later: bashes by the door's odds, write-offs that expire, stalemates over ten rounds, legs that get closer are not failures | B | M | | |
 | [C-092](C-092-stash-currency-and-loop-map.md) | Stash currency at the loop's first stop, the party's too; the running loop on the map | C | M | | |
 | [C-093](C-093-stash-counts-and-sure-room.md) | Stash what is carried now (`i` first, retry on "don't have"), and only in the stop the bot is sure it is in; connect to recover in Silvermere | C | M | C-092 | |
+| [C-094](C-094-blind-is-not-a-refusal.md) | Blind is not a refusal; a refused target is skipped in its room, not for the session | B | S | | |
+| [C-095](C-095-confusion-retries.md) | A command lost to confusion goes again: every confuse message from the world's data, any command, five tries, then held | B | S | | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or

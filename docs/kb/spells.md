@@ -125,7 +125,17 @@
   record): each action is lost with the ability's percent chance (`genrdn(0,100) < chance`),
   giving "You look around stupidly and do nothing!" and the room "%s looks around stupidly
   and foams at the mouth!" (or the message's first two texts), plus one round of delay. [C]
-  `LJNUTIL.C:10382-10440`
+  `LJNUTIL.C:10382-10440`. **Every typed line** is checked, before the command parser
+  (stage 5 of `LJNPEND.C`: a move, an attack, a cast, `look`, anything; only a sysop's
+  `sysop` in development mode gets through), and so is each autocombat round
+  (`LJNCOMBT.C:1806, 2648`) and each cast (`LJNSPELL.C:1932, 4982, 6918, 8531`). In the stock
+  data 85 spells and items have Confusion; their Confuse Messages give about 22 texts for a
+  lost action: "You fumble in confusion!" (15), "You are stunned!" (10), the default (8), "You
+  retch uncontrollably!" (6), "You are too afraid to do that!" (4), "You struggle, but you are
+  solid stone and do not move." (4), "You are fast asleep." (3), "You reel drunkenly!", "You
+  shake and shiver!", "You are paralyzed!", "You cannot move a muscle!", "You are in limbo!"
+  and others; 18 have an empty text. Many are 100% while they last (sleep, paralysis, the
+  "temp" spells). [C stock data, 2026-11-11]
 - **Death ends every spell on the dead character** without the "cast on ending" follow-up
   spells, and cures poison; a suicide does the same. [C] `LJNUTIL.C:4375-4392`,
   `LJNMISC5.C:500-515`

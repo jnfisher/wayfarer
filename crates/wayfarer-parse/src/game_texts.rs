@@ -62,6 +62,28 @@ pub struct GameTexts {
     pub spell_msgs: Vec<i32>,
     /// WCCMP001 room names: a line equal to one is a room title.
     pub room_names: Vec<String>,
+    /// The "Confuse Message" (ability 101) of each spell and item with the Confusion ability
+    /// (71): its first text is what a confused character sees when it loses an action
+    /// ("You fumble in confusion!"; `LJNUTIL.C` `check_confusion`, C-095).
+    pub confuse_msgs: Vec<i32>,
+}
+
+/// The Confusion ability.
+pub const ABL_CONFUSION: i64 = 71;
+/// The Confuse Message ability: its value is the WCCMSG record of the texts.
+pub const ABL_CONFUSEMSG: i64 = 101;
+
+/// The Confuse Message of a record with these `abilities` and `abilvals`, when it has the
+/// Confusion ability and one.
+pub fn confuse_msg(abilities: &[i64], abilvals: &[i64]) -> Option<i32> {
+    if !abilities.contains(&ABL_CONFUSION) {
+        return None;
+    }
+    let i = abilities.iter().position(|&a| a == ABL_CONFUSEMSG)?;
+    abilvals
+        .get(i)
+        .and_then(|&v| i32::try_from(v).ok())
+        .filter(|&v| v != 0)
 }
 
 #[derive(Deserialize)]
@@ -85,6 +107,19 @@ struct ItemRow {
 #[derive(Deserialize)]
 struct SpellRow {
     msgnum: i32,
+    #[serde(default)]
+    abilities: Vec<i64>,
+    #[serde(default)]
+    abilvals: Vec<i64>,
+}
+
+/// An item's abilities, for its Confuse Message.
+#[derive(Deserialize)]
+struct ItemAbilities {
+    #[serde(default)]
+    abilities: Vec<i64>,
+    #[serde(default)]
+    abilvals: Vec<i64>,
 }
 
 #[derive(Deserialize)]
@@ -186,13 +221,21 @@ impl GameTexts {
                 miss_msg: i.missmsg,
                 destroy_msg: i.destroymsg,
             });
-        let spell_msgs = read_table::<SpellRow>(dir, "WCCSPELS")?
-            .into_iter()
-            .map(|s| s.msgnum);
+        let spells = read_table::<SpellRow>(dir, "WCCSPELS")?;
+        let mut confuse_msgs: Vec<i32> = spells
+            .iter()
+            .filter_map(|s| confuse_msg(&s.abilities, &s.abilvals))
+            .collect();
+        confuse_msgs.extend(
+            read_table::<ItemAbilities>(dir, "WCCITEMS")?
+                .iter()
+                .filter_map(|i| confuse_msg(&i.abilities, &i.abilvals)),
+        );
+        let spell_msgs = spells.into_iter().map(|s| s.msgnum);
         let room_names = read_room_names(dir)?;
-        Ok(GameTexts::from_records(
-            messages, monsters, items, spell_msgs, room_names,
-        ))
+        let mut texts = GameTexts::from_records(messages, monsters, items, spell_msgs, room_names);
+        texts.confuse_msgs = confuse_msgs;
+        Ok(texts)
     }
 
     /// The texts from plain records, each table in its record order (the export's file order),
@@ -210,6 +253,7 @@ impl GameTexts {
             items: items.into_iter().collect(),
             spell_msgs: spell_msgs.into_iter().collect(),
             room_names: room_names.into_iter().collect(),
+            confuse_msgs: Vec::new(),
         }
     }
 }

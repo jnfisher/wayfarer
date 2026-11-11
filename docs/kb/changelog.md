@@ -1,5 +1,6 @@
 # KB changelog
 
+- **2026-11-11**: `spells.md` Confusion: every typed line is checked before the parser (`LJNPEND.C` stage 5), autocombat rounds and casts too; the stock data's 85 confusing spells and items and their lost-action texts [C] (wayfarer C-095).
 - **2026-10-13**: KB created from the first play session: a Kang Witchunter, levels 1→2,
   Newhaven, Silvermere slums, back to the arena. Covers connection and login, screen patterns,
   navigation and exit types, combat targeting and BASH, recovery and light, the economy and
