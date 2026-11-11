@@ -250,7 +250,8 @@ atkmaxs[5], 182 atkenergies[5], 192 deathspell, 194 createspell, 196 spelllvls[5
 the manual's own Flee example, the gigantic black ooze, is 5]: 2 Friend (195 records: the
 NPCs, quest figures, shopkeepers, healers, trainers, class spirits and the ten gem guardians),
 3 Avoid (128: harmless animals such as the cow, pig, chicken and squirrel, and some dangerous
-ones such as the storm giant king, ancient sand dragon, Kai Master and Morukai), 4 Enemy (803:
+ones such as the storm giant king, the giant roc, Morukai, and the forms of the ancient sand
+dragon (435) and Kai Master (447) worth no experience, whose fightable forms are Enemy), 4 Enemy (803:
 attacked), 5 Flee (2: gigantic black ooze, huge gruesome creation); no Hangup (6). A name with
 two records may have two relationships (giant rat, Kai Master, sandworm: Avoid and Enemy).
 Bytes 33 (bit flags 0x08, 0x10, 0x20, 0x40, 0x80) and 34 (0x01, 0x02, 0x04) vary too and are

@@ -55,5 +55,9 @@ grinding like a nomadic shaman".
 
 ## Notes for the agent
 
-- Needs John: whether the giant roc, Kai Master, ancient sand dragon or storm giant king should
-  be default *ignore* or *avoid* too. MegaMud avoids them; they are worth a lot of exp.
+- The bosses MegaMud avoids follow MegaMud (John, 2026-11-11). By form, in the game data: the
+  giant roc 1039 is evil and a boss (12,000 exp), so `giant roc` is a default *ignore*; 571 and
+  792 are neutral, not hunted anyway. The Kai Master and the ancient sand dragon have two forms:
+  MegaMud avoids the one worth no experience (447, 435) and fights the other (448; 434 and
+  1034), as wayfarer does already. The storm giant, its king and commander are neutral and
+  Morukai is worth nothing: no rule needed.

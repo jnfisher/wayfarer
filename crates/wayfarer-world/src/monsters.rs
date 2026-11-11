@@ -208,7 +208,9 @@ pub enum MonsterRule {
 /// Besides wayfarer's own test (evil, not an NPC, worth experience), these follow MegaMud's
 /// shipped monster list (`Default/Monsters.md`, its relationship byte; C-096): of its
 /// Friend, Avoid and Flee monsters, the ones that test would still fight and that are not
-/// worth it. Bosses it avoids (the giant roc) are left to the player.
+/// worth it. Of the bosses it avoids, only the giant roc needs a rule: the avoided forms of
+/// the Kai Master and the ancient sand dragon are worth no experience (its fightable forms
+/// are Enemy), and the storm giants and Morukai are not evil or worth nothing.
 pub const DEFAULT_RULES: &[(&str, MonsterRule, &str)] = &[
     (
         "gigantic black ooze",
@@ -223,6 +225,13 @@ pub const DEFAULT_RULES: &[(&str, MonsterRule, &str)] = &[
         "huge gruesome creation",
         MonsterRule::Ignore,
         "32,000 HP for 50 exp; MegaMud's monster list flees it",
+    ),
+    (
+        "giant roc",
+        MonsterRule::Ignore,
+        // Monsters 571 and 792 are neutral, already not hunted; 1039 is evil, a boss (12,000
+        // exp, 1,000 HP regenerating 150 a round) that would otherwise be attacked first.
+        "MegaMud's monster list avoids every giant roc: never attacked, fought back if it attacks",
     ),
     (
         "amber guardian",
