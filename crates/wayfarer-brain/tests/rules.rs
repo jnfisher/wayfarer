@@ -58,12 +58,24 @@ impl Game {
     }
 }
 
+/// The rules the bot shows, without the defaults these tests do not touch: the ooze's stays,
+/// MegaMud's (C-096) are left out.
 fn rules_of(seen: &[ToGateway]) -> Vec<MonsterRuleEntry> {
-    bot(seen).monster_rules
+    bot(seen)
+        .monster_rules
+        .into_iter()
+        .filter(|e| {
+            e.source != RuleSource::Default
+                || e.pattern == "gigantic black ooze"
+                || !wayfarer_world::DEFAULT_RULES
+                    .iter()
+                    .any(|(p, _, _)| *p == e.pattern)
+        })
+        .collect()
 }
 
 fn entry(pattern: &str, rule: MonsterRuleKind, source: RuleSource) -> MonsterRuleEntry {
-    // A default carries its reason; only the ooze is one.
+    // A default carries its reason.
     let reason = (source == RuleSource::Default).then(|| {
         wayfarer_world::DEFAULT_RULES
             .iter()
@@ -212,11 +224,16 @@ async fn four_rounds_of_glancing_blows_end_the_fight_and_the_bot_leaves() {
     let (seen, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "a rat", "u"]);
     let said = notices(&seen);
+    // No rule (C-096): the player is told how to make one.
     assert!(
-        said.contains(&"Monster rule: ignore large giant rat (a stalemate)".to_owned()),
+        said.contains(&"Stalemate with large giant rat: its room is kept out of for 30 minutes; a monster rule can ignore it for good".to_owned()),
         "{said:?}"
     );
-    assert!(rules_of(&seen).contains(&entry(RAT, MonsterRuleKind::Ignore, RuleSource::Session)));
+    assert!(
+        !rules_of(&seen).iter().any(|e| e.pattern == RAT),
+        "{:?}",
+        rules_of(&seen)
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -336,11 +353,19 @@ async fn the_recorded_ooze_fight_ends_by_its_tenth_round() {
     // Close to a second: fifty seconds of rounds on the paused clock, each with its prompts.
     let (rounds, seen) = ooze_stalemate(None).await;
     assert_eq!(rounds, STALEMATE_ROUNDS);
+    // No rule of its own (C-096): the player's *avoid* stays as it was.
     assert!(rules_of(&seen).contains(&entry(
         "gigantic black ooze",
-        MonsterRuleKind::Ignore,
-        RuleSource::Session
+        MonsterRuleKind::Avoid,
+        RuleSource::Player
     )));
+    assert!(
+        !rules_of(&seen)
+            .iter()
+            .any(|e| e.source == RuleSource::Session),
+        "{:?}",
+        rules_of(&seen)
+    );
 }
 
 fn brain_on(path: &Path) -> Brain {

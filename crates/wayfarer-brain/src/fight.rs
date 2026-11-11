@@ -677,6 +677,8 @@ impl Fight {
             let t = self.target.take().expect("swings at a target");
             tracing::info!(target = %t, rounds = self.stall.rounds, "stalemate");
             self.stall = Stall::default();
+            // Left alone while it stays in this room; no rule (C-096): the player makes one.
+            self.skip.insert(t.clone());
             self.stalemate = Some(t);
         }
     }

@@ -737,14 +737,20 @@ either kind, a `set_monster_rule` with either name and `--flee-from` are read as
 - **Matching** as MegaMud's monster lists: a pattern matches a name that holds it, in any case,
   and the longest matching pattern wins. So `ooze` would match the glittering ooze too (monster
   172, fightable): use the full name.
-- **Three layers**, later over earlier for the same pattern: wayfarer's **defaults** (in code,
-  `DEFAULT_RULES` in `crates/wayfarer-world/src/monsters.rs`, one entry with why: the
-  *gigantic black ooze* is *ignored*: 2,500 HP, 500 regenerated a round, damage reduction
-  40); what the bot learned this **session** (a stalemate); and the **player**'s
-  (`set_monster_rule` from the stats tab, or `wayfarer brain --ignore NAME`, repeatable).
-  The player's are kept with the bot's record (the store's `monster_rules`) and survive a
-  brain restart; a stalemate's last the session only (C-091), and one an older brain kept is
-  dropped when the record is read. The snapshot's `bot.monster_rules` lists all three, a default
+- **Two layers**, later over earlier for the same pattern: wayfarer's **defaults** (in code,
+  `DEFAULT_RULES` in `crates/wayfarer-world/src/monsters.rs`, each with why) and the
+  **player**'s (`set_monster_rule` from the stats tab, or `wayfarer brain --ignore NAME`,
+  repeatable). **The bot makes no rule itself** (C-096; a stalemate made one until then). The
+  defaults *ignore* the *gigantic black ooze* (2,500 HP, 500 regenerated a round, damage
+  reduction 40), the *huge gruesome creation* (32,000 HP for 50 exp) and the ten gem
+  guardians (amber, amethyst, diamond, emerald, gold, onyx, ruby, sapphire, silver, topaz: 1
+  exp for 350 HP). Those last eleven come from MegaMud's shipped monster list
+  (`kb/megamud-formats.md`): of its 1,128 records, 803 are *enemy* (attack), the rest
+  *friend*, *avoid* or *flee*; wayfarer's own test (evil, not an NPC, worth experience) already
+  leaves all but about twenty of those alone, and of those the bosses (the giant roc, the Kai
+  Master) are left to the player. The player's are kept with the bot's record (the store's
+  `monster_rules`) and survive a brain restart; a learned rule an older brain kept is dropped
+  when the record is read (C-091). The snapshot's `bot.monster_rules` lists both, a default
   with its reason. The bosses' defaults (*attack first*) are not a list of their own: a boss
   no rule names is *attack first*, matched by the game data's names (not as a pattern, so
   `dark mage` does not catch a dark mage apprentice); one is listed once the character has seen
@@ -758,9 +764,10 @@ either kind, a `set_monster_rule` with either name and `--flee-from` are read as
   dealt by the character or by anyone else on the target (a party member's blow or damage
   spell starts the count again, C-091), one of them a glance at least (`Your swing at <name> hits, but glances off its armour.`):
   "Stalemate: my swings do nothing to gigantic black ooze; leaving". Fight gives the target
-  up, the monster becomes *ignored* for the session ("Monster rule: ignore gigantic black
-  ooze (a stalemate)"), and the bot leaves as Flee does. A monster already ignored is not
-  added again.
+  up while the character stays in that room, the room is kept out of for 30 minutes
+  ("Sightings", below), and the bot leaves as Flee does (in a party it stays, ignoring it). No
+  rule is made (C-096): "Stalemate with gigantic black ooze: its room is kept out of for 30
+  minutes; a monster rule can ignore it for good", unless a rule already ignores it.
 - **Sightings**: where a monster to avoid (or one a stalemate gave up) was last
   seen this session, for 30 minutes. The router treats those rooms as costly (1,000 a step,
   not impassable: another way wins when there is one, the only way is still taken). Recover

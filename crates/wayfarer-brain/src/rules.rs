@@ -1,8 +1,9 @@
-//! The monster rules (docs/brain.md "Monster rules"): *ignore* and *avoid* by name, in three
-//! layers: wayfarer's defaults ([`DEFAULT_RULES`]), what the bot learned this session (a
-//! stalemate makes a monster *ignored*) and what the player set (`set_monster_rule`,
-//! `wayfarer brain --ignore`), which may also switch a rule below it *off*. The last two are kept
-//! with the bot's record; the old *never fight* and *flee from* are read as *ignore* (C-073).
+//! The monster rules (docs/brain.md "Monster rules"): *ignore* and *avoid* by name, in two
+//! layers: wayfarer's defaults ([`DEFAULT_RULES`], with MegaMud's monster list behind them) and
+//! what the player set (`set_monster_rule`, `wayfarer brain --ignore`), which may also switch a
+//! default *off*; the player's are kept with the bot's record. The bot makes no rule itself: a
+//! stalemate used to (C-096). The old *never fight* and *flee from* are read as *ignore*
+//! (C-073).
 //! And where the monsters to avoid were last seen, for the router.
 
 use std::collections::{BTreeSet, HashMap};
@@ -161,24 +162,6 @@ impl RuleBook {
     }
 
     /// A stalemate with `name`: *ignore* it from now on, unless a rule already does. Whether
-    /// that added a rule.
-    pub fn learn(&mut self, name: &str, at: i64) -> bool {
-        if self.rule_for(name) == Some(MonsterRule::Ignore) {
-            return false;
-        }
-        let pattern = name.trim().to_lowercase();
-        self.entries
-            .retain(|e| !(e.source == Source::Session && e.pattern.eq_ignore_ascii_case(&pattern)));
-        self.entries.push(Entry {
-            pattern,
-            rule: MonsterRule::Ignore,
-            source: Source::Session,
-            at,
-        });
-        self.compile();
-        true
-    }
-
     /// The player's rule for `pattern`: set, changed, or removed (`None`). Whether anything
     /// changed.
     pub fn set(&mut self, pattern: &str, rule: Option<MonsterRule>, at: i64) -> bool {
@@ -383,18 +366,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn layers_go_defaults_then_the_session_then_the_player() {
+    fn layers_go_defaults_then_the_player() {
         let mut book = RuleBook::default();
         assert_eq!(
             book.rule_for("gigantic black ooze"),
             Some(MonsterRule::Ignore)
         );
-        // Already ignored: a stalemate adds nothing.
-        assert!(!book.learn("gigantic black ooze", 10));
-        assert!(book.learn("Stone Golem", 10));
-        assert!(!book.learn("stone golem", 11));
-        assert_eq!(book.rule_for("stone golem"), Some(MonsterRule::Ignore));
-        // The player's rule for the same pattern wins over the session's and the default.
+        // MegaMud's: the gem guardians are not worth a fight (C-096).
+        assert_eq!(book.rule_for("ruby guardian"), Some(MonsterRule::Ignore));
+        // The player's rule wins over the default.
         assert!(book.set("stone golem", Some(MonsterRule::Avoid), 12));
         assert_eq!(book.rule_for("stone golem"), Some(MonsterRule::Avoid));
         assert!(book.set("Gigantic Black Ooze", Some(MonsterRule::Avoid), 13));
@@ -409,28 +389,24 @@ mod tests {
             book.rule_for("gigantic black ooze"),
             Some(MonsterRule::Ignore)
         );
-        let wire: Vec<(String, RuleSource)> = book
-            .wire()
-            .into_iter()
-            .map(|e| (e.pattern, e.source))
-            .collect();
+        let ours = |b: &RuleBook| -> Vec<(String, RuleSource)> {
+            b.wire()
+                .into_iter()
+                .filter(|e| e.pattern == "gigantic black ooze" || e.pattern == "stone golem")
+                .map(|e| (e.pattern, e.source))
+                .collect()
+        };
         assert_eq!(
-            wire,
+            ours(&book),
             [
                 ("gigantic black ooze".to_owned(), RuleSource::Default),
-                ("stone golem".to_owned(), RuleSource::Session),
                 ("stone golem".to_owned(), RuleSource::Player),
             ]
         );
-        // Through the store and back: the player's rule is kept, the stalemate's is not
-        // (C-091).
+        // Through the store and back: the player's rule is kept.
         let again = RuleBook::new(&book.stored());
         assert_eq!(again.stored(), book.stored());
-        let kept: Vec<(String, RuleSource)> = again
-            .wire()
-            .into_iter()
-            .map(|e| (e.pattern, e.source))
-            .collect();
+        let kept = ours(&again);
         assert_eq!(
             kept,
             [
@@ -443,12 +419,8 @@ mod tests {
     #[test]
     fn removing_takes_the_top_rule_off_and_a_default_is_switched_off_and_back() {
         let mut book = RuleBook::default();
-        assert!(book.learn("stone golem", 10));
         assert!(book.set("stone golem", Some(MonsterRule::Avoid), 11));
-        // The player's first, then the learned one.
         assert!(book.remove("Stone Golem", 12));
-        assert_eq!(book.rule_for("stone golem"), Some(MonsterRule::Ignore));
-        assert!(book.remove("stone golem", 13));
         assert_eq!(book.rule_for("stone golem"), None);
         assert!(!book.remove("stone golem", 14));
         // A default: switched off by a player `off`, kept in the store.
