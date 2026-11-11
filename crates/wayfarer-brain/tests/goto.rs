@@ -261,6 +261,9 @@ async fn a_go_to_whose_legs_each_get_closer_is_not_given_up() {
     for (i, s) in steps.iter().enumerate() {
         let answer = match rats.get(i) {
             Some(rat) => with_monster(s.to, rat),
+            // The captured Arena lists a rat: a skip lasts one room now (C-094), so it would
+            // be fought there.
+            None if s.to == ARENA => game::arena::arena(&[], 35),
             None => room(s.to),
         };
         g.expect(&s.command, answer);

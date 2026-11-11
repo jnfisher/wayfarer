@@ -175,6 +175,10 @@ impl Character {
             }
             GameEvent::RoomTitle { title } => {
                 s.room_title = Some(title.clone());
+                // A room shown: the character sees (C-094).
+                if let Some(st) = s.statuses.as_mut() {
+                    st.retain(|x| x != "blind");
+                }
                 // The new room's exits follow its title; the old ones are not its.
                 s.room_exits = None;
             }

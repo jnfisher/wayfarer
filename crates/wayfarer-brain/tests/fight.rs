@@ -427,7 +427,9 @@ async fn a_monster_attacking_a_character_that_is_not_fighting_is_fought() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_refused_target_is_skipped_for_the_session() {
+async fn a_refused_target_is_skipped_in_its_room_and_fought_again_elsewhere() {
+    // C-094: in the room it was refused in, it is left alone; out and back, it is fought (a
+    // skip for the session left Penny, blind once, ignoring every nomadic shaman after).
     let (mut g, run) = in_arena(&[]).await;
     start(&mut g, &["large giant rat"], 35).await;
     g.expect("a rat", line("You do not see rat here!", 35));
@@ -435,8 +437,67 @@ async fn a_refused_target_is_skipped_for_the_session() {
     g.narrated("Fight: large giant rat").await;
     g.narrated("Waiting here").await;
     g.idle(Duration::from_secs(30)).await;
+    g.expect("u", room(NARROW_ROAD));
+    g.walk_to(NARROW_ROAD).await;
+    g.narrated("Arrived: Newhaven, Narrow Road").await;
+    g.expect("d", arena(&["large giant rat"], 35));
+    g.expect("a rat", line(ENGAGED, 35));
+    g.walk_to(ARENA).await;
+    g.narrated("Arrived: Newhaven, Arena").await;
+    g.idle(Duration::from_secs(10)).await;
     let (_, played) = g.close(run).await;
-    assert_eq!(played, ["st", "look", "a rat", "look"]);
+    assert_eq!(played, ["st", "look", "a rat", "look", "u", "d", "a rat"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_blind_character_skips_nothing_and_looks_until_it_sees() {
+    // C-094, Penny on 2026-11-11: a black curse blinds her; her `bash shaman` comes back as
+    // speech and her `look` as "You are blind.". Nothing is skipped: once a look shows the room
+    // again, she attacks the same monster.
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    g.expect("a rat", line("You say \"a rat\"", 35));
+    g.expect("look", line("You are blind.", 35));
+    g.expect("look", arena(&["large giant rat"], 35));
+    g.expect("a rat", line(ENGAGED, 35));
+    // Until the second attack: it saw again and went for the same monster.
+    let mut attacks = 0;
+    g.until(|m| match m {
+        ToGateway::InputLine { text, .. } if text == "a rat" => {
+            attacks += 1;
+            (attacks == 2).then_some(())
+        }
+        _ => None,
+    })
+    .await;
+    g.freeze();
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "look", "look", "a rat"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_refusal_that_turns_out_to_be_blindness_skips_nothing() {
+    // C-094, Lexi on 2026-11-11: "You do not see shaman here!", and only her `look` after says
+    // "You are blind.". The skip goes with it.
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    g.expect("a rat", line("You do not see rat here!", 35));
+    g.expect("look", line("You are blind.", 35));
+    g.expect("look", arena(&["large giant rat"], 35));
+    g.expect("a rat", line(ENGAGED, 35));
+    // Until the second attack: it saw again and went for the same monster.
+    let mut attacks = 0;
+    g.until(|m| match m {
+        ToGateway::InputLine { text, .. } if text == "a rat" => {
+            attacks += 1;
+            (attacks == 2).then_some(())
+        }
+        _ => None,
+    })
+    .await;
+    g.freeze();
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "look", "look", "a rat"]);
 }
 
 #[tokio::test(start_paused = true)]

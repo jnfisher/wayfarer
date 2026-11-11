@@ -25,6 +25,9 @@ use wayfarer_world::MonsterRules;
 /// before it is left alone for the session: a missed line is tried again, a refusal the
 /// executor does not know is not tried for ever.
 pub const ATTACK_TRIES: u32 = 2;
+
+/// While blind and out of combat, how often it looks to see whether it can see again.
+pub const BLIND_LOOK: std::time::Duration = std::time::Duration::from_secs(10);
 /// Rounds of the character's own swings in a row that did no damage, one of them a glance at
 /// least, with nobody else damaging the target meanwhile, before the fight is a stalemate:
 /// 50 seconds (C-091; four rounds gave up high-AC monsters on a run of bad luck).
@@ -62,8 +65,18 @@ pub(crate) struct Fight {
     /// Look before choosing again: after a kill, `*Combat Off*` or a refused target.
     look: bool,
     /// Monsters the game refused as targets (not here, the weapon does nothing), or whose
-    /// attacks went unanswered [`ATTACK_TRIES`] times: left alone for the rest of the session.
+    /// attacks went unanswered [`ATTACK_TRIES`] times: left alone while the character stays in
+    /// `skip_room`. Never for the session: a name the bot grinds comes back in every room
+    /// (Penny, 2026-11-11, blind, wrote off every "nomadic shaman" for the session).
     skip: BTreeSet<String>,
+    /// The room the skips were made in; leaving it clears them.
+    skip_room: Option<wayfarer_world::Key>,
+    /// The character is blind ("You are blind.", a black curse): it cannot see a target, so
+    /// the game answers an attack with "You do not see …" or takes it for speech. Nothing is
+    /// skipped for that; a room shown again means it sees (C-094).
+    blind: bool,
+    /// While blind and out of combat, when it looks again to see whether it can.
+    blind_look: Option<Instant>,
     /// The attacks on each monster that timed out.
     timeouts: BTreeMap<String, u32>,
     stall: Stall,
@@ -138,6 +151,11 @@ impl Mode for Fight {
         if v.engaged {
             return Some("in combat".to_owned());
         }
+        if self.blind {
+            // Nothing to aim at: it waits to see again, looking now and then.
+            return (!v.presence.here.is_empty() || self.blind_look.is_none_or(|t| v.now >= t))
+                .then(|| "blind".to_owned());
+        }
         if self.look {
             return Some("looking for the next".to_owned());
         }
@@ -161,8 +179,21 @@ impl Mode for Fight {
             if let Some(step) = self.switch_to_first(v) {
                 return step;
             }
+            if self.blind {
+                return Step::wait("Fight: blind, swinging at what attacks");
+            }
             let t = self.target.as_deref().unwrap_or("in combat");
             return Step::wait(format!("Fight: {t}"));
+        }
+        if self.blind {
+            if self.blind_look.is_none_or(|t| v.now >= t) {
+                self.blind_look = Some(v.now + BLIND_LOOK);
+                return Step::send(
+                    Action::new("look", Expect::RoomSeen),
+                    "Fight: blind, looking whether it can see",
+                );
+            }
+            return Step::wait("Fight: blind, waiting to see again");
         }
         if self.look {
             // `look`, not an empty line: an empty line shows the room only in statline FULL
@@ -253,6 +284,21 @@ impl Mode for Fight {
                 self.stall = Stall::default();
             }
             GameEvent::YouDoNotSee { .. } | GameEvent::NoEffect => self.refused(),
+            // Blind: the refusals that came before it knew (Lexi, 2026-11-11: "You do not see
+            // shaman here!", then "You are blind.") were the blindness too.
+            GameEvent::Blind => {
+                if !self.blind {
+                    tracing::info!(unskipped = ?self.skip, "blind: nothing is skipped until it sees again");
+                }
+                self.blind = true;
+                self.skip.clear();
+                self.timeouts.clear();
+            }
+            // A room shown: it sees again.
+            GameEvent::RoomTitle { .. } | GameEvent::AlsoHere { .. } => {
+                self.blind = false;
+                self.blind_look = None;
+            }
             // A cast at the target, hit or missed: counted for the limit.
             GameEvent::SpellCast { .. } | GameEvent::CastFailed { .. } if self.spell_fight => {
                 self.casts += 1;
@@ -292,6 +338,21 @@ impl Mode for Fight {
             GameEvent::SwingGlanced { target } => self.swing(target, false, true, now),
             // Someone else damaged the target (a party member's blow or spell): the monster can
             // be hurt, so no stalemate yet (C-091).
+            // An attack the game took for speech (`You say "bash shaman"`): a blind character's
+            // command that names what it cannot see.
+            GameEvent::Other(e)
+                if e.name == "you_say"
+                    && self.target.as_deref().is_some_and(|t| {
+                        let msg = e.text("msg").unwrap_or_default().to_lowercase();
+                        t.split_whitespace()
+                            .last()
+                            .is_some_and(|w| msg.ends_with(&w.to_lowercase()))
+                    }) =>
+            {
+                self.blind = true;
+                self.target = None;
+                self.look = false;
+            }
             GameEvent::Other(e) => {
                 let hurt = match e.name.as_str() {
                     "other_hits" => e.text("target"),
@@ -320,12 +381,18 @@ impl Mode for Fight {
             }
             (Expect::Engaged, Outcome::Refused(Refused::Target)) => self.refused(),
             (Expect::Engaged, Outcome::Refused(Refused::Spell)) => self.spell_refused = true,
+            // Blind: the attack went nowhere because it cannot see; that says nothing about
+            // the monster.
+            (Expect::Engaged, Outcome::TimedOut) if self.blind => {
+                self.target = None;
+                self.stall = Stall::default();
+            }
             (Expect::Engaged, Outcome::TimedOut) => {
                 if let Some(t) = self.target.take() {
                     let n = self.timeouts.entry(t.clone()).or_default();
                     *n += 1;
                     if *n >= ATTACK_TRIES {
-                        tracing::info!(target = %t, "unanswered: skipped for the session");
+                        tracing::info!(target = %t, "unanswered: skipped in this room");
                         self.skip.insert(t);
                     }
                 }
@@ -528,6 +595,19 @@ impl Fight {
         !presence.attackers.is_empty() || self.pick(atlas, rules, presence).is_some()
     }
 
+    /// The bot's tick: in another room than the skips were made in, they go (a monster
+    /// refused here is fought in the next room).
+    pub fn in_room(&mut self, room: Option<wayfarer_world::Key>) {
+        if room != self.skip_room {
+            if !self.skip.is_empty() {
+                tracing::info!(skipped = ?self.skip, "left the room: the skips go");
+            }
+            self.skip.clear();
+            self.timeouts.clear();
+            self.skip_room = room;
+        }
+    }
+
     /// On a passive Go to (`true`): fight nothing, not even what attacks the character.
     pub fn set_passive(&mut self, passive: bool) {
         self.passive = passive;
@@ -544,10 +624,13 @@ impl Fight {
         self.sneaking = sneaking;
     }
 
-    /// The game refused the target: leave it alone for the session, and look again.
+    /// The game refused the target: leave it alone in this room, and look again. Blind, the
+    /// refusal is the blindness, not the monster: nothing is skipped.
     fn refused(&mut self) {
-        if let Some(t) = self.target.take() {
-            tracing::info!(target = %t, "refused: skipped for the session");
+        if let Some(t) = self.target.take()
+            && !self.blind
+        {
+            tracing::info!(target = %t, "refused: skipped in this room");
             self.skip.insert(t);
         }
         self.look = true;
