@@ -2746,12 +2746,17 @@ impl Session {
         now: Instant,
         out: &mut Vec<ToGateway>,
     ) {
-        if self.bot.running() {
-            self.bot_control(BotAction::Stop, now, out);
-        }
         if self.errand.is_some() {
             self.errand_control(BotAction::CancelErrand, out);
         }
+        // Stopped outright: the ■ button's `Stop` only drops the loop and plays on.
+        if self.bot_walk && self.walker.walking() {
+            self.stop_walk("recovering", out);
+        }
+        let says = self
+            .bot
+            .stop(&format!("recovering in {}", town.name), false);
+        self.say(says, out);
         if self.state == SessionState::Realm {
             self.goto = Some(Goto {
                 town,
