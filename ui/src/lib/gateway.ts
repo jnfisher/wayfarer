@@ -237,6 +237,12 @@ export class GatewayClient {
     return this.send({ type: "sys_goto", session, town });
   }
 
+  /** Get a character nearly killed out to a town (C-093): connect it if it is not, leave its bot
+   * stopped and `sysop goto` the town at the first prompt; false when not connected. */
+  recoverTo(session: string, town: string): boolean {
+    return this.send({ type: "recover_to", session, town });
+  }
+
   /** Stop a character's walk after the move in flight; false when not connected. */
   walkStop(session: string): boolean {
     return this.send({ type: "walk_stop", session });

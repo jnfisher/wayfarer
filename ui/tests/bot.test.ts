@@ -219,6 +219,21 @@ describe("the tile", () => {
     expect(linkButton("connecting")).toBeNull();
   });
 
+  it("offers to connect and recover in Silvermere from the connect button's menu (C-093)", async () => {
+    const recoverTo = vi.fn();
+    const recoverClient = { sendLine: vi.fn(), sendKeys: vi.fn(), botControl, sessionControl, recoverTo } as never;
+    render(Tile, { info: { ...info, state: "lost" }, number: 1, focused: false, zoom: 0, offline: null, client: recoverClient, sinks, onfocus() {}, onhelp() {}, character: null });
+    expect(screen.queryByRole("menu", { name: "Connect options" })).toBeNull();
+    await fireEvent.click(screen.getByRole("button", { name: "Connect options" }));
+    await fireEvent.click(screen.getByRole("menuitem", { name: "Connect and recover in Silvermere" }));
+    expect(recoverTo).toHaveBeenCalledWith("a", "silvermere");
+    expect(screen.queryByRole("menu", { name: "Connect options" })).toBeNull();
+    cleanup();
+    // In the realm there is log off, and no connect menu.
+    tile({ bot: stopped });
+    expect(screen.queryByRole("button", { name: "Connect options" })).toBeNull();
+  });
+
   it("has a start button and no narration while stopped", async () => {
     const el = tile({ bot: stopped });
     expect(el.querySelector(".narration")).toBeNull();

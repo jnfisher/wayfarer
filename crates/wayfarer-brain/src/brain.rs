@@ -627,6 +627,20 @@ impl Brain {
                     }
                 }
             }
+            // A character nearly killed, out to a town (C-093): this one alone.
+            ToClient::RecoverTo { session, town } => {
+                let Some(t) = crate::sysop::town(&town) else {
+                    out.push(ToGateway::Warning {
+                        session: Some(session),
+                        text: format!("recover: no town {town:?}"),
+                    });
+                    return;
+                };
+                match self.sessions.get_mut(&session) {
+                    Some(s) => s.recover_to(t, now, out),
+                    None => out.push(no_session("recover_to", &session)),
+                }
+            }
             ToClient::BotControl { session, action } => match self.sessions.get_mut(&session) {
                 // An errand that walks takes a follower out of its party first.
                 Some(_)

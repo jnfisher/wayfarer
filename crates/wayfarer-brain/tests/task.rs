@@ -653,6 +653,14 @@ async fn an_arena_is_waited_in_not_stepped_out_of() {
     assert_eq!(played, ["st", "look"]);
 }
 
+const STASH_COINS: &str =
+    "12 silver nobles, 7 gold crowns, 30 copper farthings, 2 platinum pieces, 1 runic coin, torch";
+
+/// The game's answer to `i`, carrying `list`.
+fn carrying(list: &str) -> String {
+    line(&format!("You are carrying {list}"), 35)
+}
+
 /// A loop started in the Arena, its first stop, with the coins of `carrying` (an `i` line's
 /// list) on the character, and the settings of `text`.
 async fn stashing(carrying: &str, text: &str) -> (Game, Run) {
@@ -672,18 +680,16 @@ async fn stashing(carrying: &str, text: &str) -> (Game, Run) {
 /// `hide` each, and `i` reads the coins again; platinum and runic stay carried.
 #[tokio::test(start_paused = true)]
 async fn at_the_loops_first_stop_the_silver_gold_and_copper_are_hidden() {
-    let (mut g, run) = stashing(
-        "12 silver nobles, 7 gold crowns, 30 copper farthings, 2 platinum pieces, 1 runic coin",
-        "",
-    )
-    .await;
-    g.expect("hide 12 silver", line("", 35));
-    g.expect("hide 7 gold", line("", 35));
-    g.expect("hide 30 copper", line("", 35));
+    let (mut g, run) = stashing(STASH_COINS, "").await;
+    g.expect("i", carrying(STASH_COINS));
+    g.expect("hide 12 silver", line("You hid 12 silver nobles.", 35));
+    g.expect("hide 7 gold", line("You hid 7 gold crowns.", 35));
+    g.expect("hide 30 copper", line("You hid 30 copper farthings.", 35));
+    g.expect("i", carrying("2 platinum pieces, 1 runic coin, torch"));
     g.run_loop(&[]).await;
-    g.narrated("Stash: hiding 12 silver in Newhaven, Arena")
+    g.narrated("Stash: hiding 12 silver in Newhaven, Arena (1/2150)")
         .await;
-    g.narrated("Stash: hiding 30 copper in Newhaven, Arena")
+    g.narrated("Stash: hiding 30 copper in Newhaven, Arena (1/2150)")
         .await;
     g.narrated("Stash: done").await;
     g.freeze();
@@ -693,9 +699,11 @@ async fn at_the_loops_first_stop_the_silver_gold_and_copper_are_hidden() {
         [
             "st",
             "look",
+            "i",
             "hide 12 silver",
             "hide 7 gold",
-            "hide 30 copper"
+            "hide 30 copper",
+            "i"
         ]
     );
     let lines = sent(&seen);
@@ -705,6 +713,54 @@ async fn at_the_loops_first_stop_the_silver_gold_and_copper_are_hidden() {
         !lines
             .iter()
             .any(|l| l.contains("platinum") || l.contains("runic"))
+    );
+}
+
+/// C-093: the coins hidden are the ones `i` shows when the stash starts, not the last `i`'s.
+/// A give just before (Rocco, 2026-11-11: "Sasha gave you 900 gold crowns") is counted.
+#[tokio::test(start_paused = true)]
+async fn the_coins_given_just_before_the_stash_are_hidden_too() {
+    let (mut g, run) = stashing("1 gold crown, torch", "").await;
+    g.expect("i", carrying("901 gold crowns, torch"));
+    g.expect("hide 901 gold", line("You hid 901 gold crowns.", 35));
+    g.expect("i", carrying("torch"));
+    g.run_loop(&[]).await;
+    g.narrated("Stash: done").await;
+    g.freeze();
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "i", "hide 901 gold", "i"]);
+}
+
+/// C-093: a `hide` the game refuses (the count changed under it: Sasha, 2026-11-11, "You
+/// don't have 1859 gold crowns to hide!") is read again and tried once more with the new count.
+#[tokio::test(start_paused = true)]
+async fn a_refused_hide_is_tried_again_with_the_count_carried_now() {
+    let (mut g, run) = stashing("1859 gold crowns, torch", "").await;
+    g.expect("i", carrying("1859 gold crowns, torch"));
+    g.expect(
+        "hide 1859 gold",
+        line("You don't have 1859 gold crowns to hide!", 35),
+    );
+    g.expect("i", carrying("959 gold crowns, torch"));
+    g.expect("hide 959 gold", line("You hid 959 gold crowns.", 35));
+    g.expect("i", carrying("torch"));
+    g.run_loop(&[]).await;
+    g.narrated("Stash: 959 gold still carried, hiding them again")
+        .await;
+    g.narrated("Stash: done").await;
+    g.freeze();
+    let (_, played) = g.close(run).await;
+    assert_eq!(
+        played,
+        [
+            "st",
+            "look",
+            "i",
+            "hide 1859 gold",
+            "i",
+            "hide 959 gold",
+            "i"
+        ]
     );
 }
 

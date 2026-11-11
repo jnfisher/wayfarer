@@ -30,6 +30,8 @@ fn said(text: &str) -> String {
     format!("\x1b[79D\x1b[K\x1b[0;37m{text}\r\n{PROMPT}")
 }
 
+const STASH_WORDS: [&str; 4] = ["silver", "gold", "copper", "platinum"];
+
 /// The game behind the gateway: where each character is, and the party between them.
 #[derive(Default)]
 struct World {
@@ -51,6 +53,21 @@ struct World {
     qs120: bool,
     /// Those who cannot move: held, as by a spell ("You are held").
     held: BTreeSet<String>,
+    /// The coins each carries, by `hide`'s word, where a test gave them: `i` lists them and
+    /// `hide` takes them away (C-093).
+    purse: BTreeMap<String, BTreeMap<&'static str, u64>>,
+    /// The Arena's `look` shows the other one there, in its `Also here:`.
+    together: bool,
+}
+
+/// The game's name for a coin, by `hide`'s word.
+fn coin_name(word: &str) -> &'static str {
+    match word {
+        "silver" => "silver nobles",
+        "gold" => "gold crowns",
+        "copper" => "copper farthings",
+        _ => "platinum pieces",
+    }
 }
 
 impl World {
@@ -218,7 +235,41 @@ impl Gateway {
                     ),
                 ]
             }
+            "look"
+                if self.world.together
+                    && self.world.rooms[session] == ARENA
+                    && self.world.rooms[other] == ARENA =>
+            {
+                me(game::arena::arena(&[first(other)], 35))
+            }
             "look" => me(shown(self.world.rooms[session])),
+            "i" if self.world.purse.contains_key(session) => {
+                let list: Vec<String> = self.world.purse[session]
+                    .iter()
+                    .filter(|(_, n)| **n > 0)
+                    .map(|(w, n)| format!("{n} {}", coin_name(w)))
+                    .chain(["torch".to_owned()])
+                    .collect();
+                me(said(&format!("You are carrying {}", list.join(", "))))
+            }
+            t if t.starts_with("hide ") && self.world.purse.contains_key(session) => {
+                let mut words = t.split_whitespace().skip(1);
+                let n: u64 = words.next().unwrap().parse().unwrap();
+                let word = words.next().unwrap();
+                let purse = self.world.purse.get_mut(session).unwrap();
+                let have = purse
+                    .entry(STASH_WORDS.iter().find(|w| **w == word).unwrap())
+                    .or_default();
+                if *have < n {
+                    me(said(&format!(
+                        "You don't have {n} {} to hide!",
+                        coin_name(word)
+                    )))
+                } else {
+                    *have -= n;
+                    me(said(&format!("You hid {n} {}.", coin_name(word))))
+                }
+            }
             "n" if self.world.locked && self.world.rooms[session] == ARENA => {
                 me(said("The door is closed!"))
             }
@@ -1171,11 +1222,16 @@ async fn a_go_to_ends_when_a_member_does_not_catch_up_in_time() {
     assert_eq!(g.world.rooms[LEADER], ARENA);
 }
 
-/// C-092: a leader whose loop reaches its first stop hides its silver, gold and copper there,
-/// and its follower beside it hides its own too, once.
-#[tokio::test(start_paused = true)]
-async fn at_the_leaders_first_stop_every_member_with_it_hides_its_coins() {
+/// A formed party in the Arena with the coins of `purses`, the leader's loop started there:
+/// its first stop. Runs until each of `until` has said the narration it starts with.
+async fn stash_round(together: bool, until: &[(&str, &str)]) -> Gateway {
     let (mut g, _run) = Gateway::start(brain(None)).await;
+    g.world.together = together;
+    g.world.purse.insert(LEADER.into(), [("gold", 7)].into());
+    g.world.purse.insert(
+        FOLLOWER.into(),
+        [("silver", 12), ("gold", 3), ("platinum", 2)].into(),
+    );
     formed(&mut g).await;
     for (s, coins) in [
         (LEADER, "7 gold crowns"),
@@ -1199,30 +1255,109 @@ async fn at_the_leaders_first_stop_every_member_with_it_hides_its_coins() {
         ]),
     })
     .await;
-    // Until both have hidden theirs and read their coins again. The fake game's loop has no
-    // respawn clock and its `i` shows no coins taken away, so it would go round and hide
-    // again at once, forever on the paused clock: the test stops at the first round.
-    let mut read = BTreeSet::new();
-    g.until(|m| match m {
-        ToGateway::InputLine { session, text } if text == "i" => {
-            read.insert(session.clone());
-            (read.len() == 2).then_some(())
-        }
-        _ => None,
-    })
-    .await;
-    let hides = |s: &str| -> Vec<String> {
-        g.lines
-            .iter()
-            .filter(|(who, l)| who == s && l.starts_with("hide"))
-            .map(|(_, l)| l.clone())
-            .collect()
-    };
-    assert_eq!(hides(LEADER), ["hide 7 gold"], "{:?}", g.lines);
+    // The fake game's loop has no respawn clock: it would go round and round on the paused
+    // clock, so the test stops once each has said what it waits for.
+    let mut said = BTreeSet::new();
+    let mut lines = 0;
+    let done = g
+        .until(|m| match m {
+            // A spinning loop never moves the paused clock: give up after this many lines.
+            ToGateway::InputLine { .. } => {
+                lines += 1;
+                (lines > 300).then_some(false)
+            }
+            ToGateway::Notice {
+                session: Some(session),
+                text,
+            } if until
+                .iter()
+                .any(|(s, t)| s == session && text.starts_with(t)) =>
+            {
+                said.insert(session.clone());
+                (said.len() == until.len()).then_some(true)
+            }
+            _ => None,
+        })
+        .await;
+    assert!(
+        done,
+        "leader: {:?}\nfollower: {:?}",
+        notices_of(&g, LEADER),
+        notices_of(&g, FOLLOWER)
+    );
+    g
+}
+
+fn hides(g: &Gateway, s: &str) -> Vec<String> {
+    g.lines
+        .iter()
+        .filter(|(who, l)| who == s && l.starts_with("hide"))
+        .map(|(_, l)| l.clone())
+        .collect()
+}
+
+/// C-092, C-093: a leader whose loop reaches its first stop, sure of it, hides its silver,
+/// gold and copper there, and its follower beside it, with the leader in sight, hides its own
+/// too, once. Each reads its coins with `i` first.
+#[tokio::test(start_paused = true)]
+async fn at_the_leaders_first_stop_every_member_with_it_hides_its_coins() {
+    let g = stash_round(true, &[(LEADER, "Stash: done"), (FOLLOWER, "Stash: done")]).await;
+    assert_eq!(hides(&g, LEADER), ["hide 7 gold"], "{:?}", g.lines);
     assert_eq!(
-        hides(FOLLOWER),
+        hides(&g, FOLLOWER),
         ["hide 12 silver", "hide 3 gold"],
         "{:?}",
         g.lines
     );
+    for s in [LEADER, FOLLOWER] {
+        let mine: Vec<&str> = g
+            .lines
+            .iter()
+            .filter(|(who, _)| who == s)
+            .map(|(_, l)| l.as_str())
+            .collect();
+        let first_hide = mine.iter().position(|l| l.starts_with("hide")).unwrap();
+        assert_eq!(mine[first_hide - 1], "i", "{s}: {mine:?}");
+    }
+    assert!(g.world.purse[FOLLOWER]["platinum"] == 2);
+    // The leader stays until its follower has read its coins after hiding them: the game would
+    // take the follower along, to hide them a room on.
+    let at = |who: &str, what: &dyn Fn(&str) -> bool| {
+        g.lines.iter().position(|(s, l)| s == who && what(l))
+    };
+    let follower_hid = g
+        .lines
+        .iter()
+        .rposition(|(s, l)| s == FOLLOWER && l.starts_with("hide"))
+        .unwrap();
+    let follower_read = follower_hid
+        + g.lines[follower_hid..]
+            .iter()
+            .position(|(s, l)| s == FOLLOWER && l == "i")
+            .unwrap();
+    if let Some(moved) = at(LEADER, &|l| is_direction(l)) {
+        assert!(moved > follower_read, "{:?}", g.lines);
+    }
+    assert!(
+        notices_of(&g, LEADER)
+            .iter()
+            .any(|n| n == "Waiting for Lauren to hide their coins"),
+        "{:?}",
+        notices_of(&g, LEADER)
+    );
+}
+
+/// C-093: a follower that does not see the leader in its room hides nothing, and says why.
+#[tokio::test(start_paused = true)]
+async fn a_follower_that_does_not_see_its_leader_hides_nothing() {
+    let g = stash_round(
+        false,
+        &[
+            (LEADER, "Stash: done"),
+            (FOLLOWER, "Stash: not sure this is"),
+        ],
+    )
+    .await;
+    assert_eq!(hides(&g, LEADER), ["hide 7 gold"], "{:?}", g.lines);
+    assert!(hides(&g, FOLLOWER).is_empty(), "{:?}", g.lines);
 }

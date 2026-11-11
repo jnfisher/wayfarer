@@ -1207,6 +1207,19 @@ and the re-sync below puts the position right.
   does not know where the character went until it sees a room, so followers may try to walk to the
   leader from where they were.
 
+### Recovering a character nearly killed
+
+`recover_to` (C-093; the tile's **[connect] ▾ → Connect and recover in Silvermere**): for a
+character the bot hung up at low HP, with monsters likely still in the room it left. A plain
+connect would start the bot (`bot.start_on_logon`), which would see its HP under the hang-up line
+and something hitting it, and hang up again at once. Instead the brain asks the gateway to
+connect, stops the bot if it runs, and on entering the realm leaves it stopped (a stopped bot
+never hangs up) and sends `sysop goto <town>` at the first prompt, ahead of the re-sync and
+without waiting for a fight to end: the game refuses it under attack (`kb/navigation.md`
+"SYSOP GOTO"), and right after logon nothing has attacked yet. Silvermere lands in the Temple,
+Halls of the Dead, with a healer. Already in the realm, it stops the bot and goes at once. The
+character alone, not its party.
+
 ## Buying spells
 
 `spell_plan_request` is answered with a `spell_plan`: the spells the character's class could learn
@@ -1403,11 +1416,24 @@ search reveals it), then `i` to read its coins again. Platinum and runic are nev
 round's coins collect in that room out of sight, and Loot never takes them back, since no room
 view shows them; the player takes them later (`search`, then `get`). It hides only with
 nothing to fight there (mode `stash`, below Fight, above Task: "Stash: hiding 7 gold in
-Newhaven, Arena").
+Newhaven, Arena (1/2150)": the room's key too, to find the right copy of a look-alike).
 
-- **A party**: a leader with it on has each member with it (joined, in its room) hide its own
-  coins too, once each time the leader's loop reaches its first stop, whatever the member's
-  own setting. The coordinator passes the leader's *stash round* on to the followers with it.
+- **What is carried now** (C-093): it starts with `i` and hides what that shows, so coins given
+  or shared since the last `i` are counted. A coin still carried after its `hide` ("You don't
+  have 1859 gold crowns to hide!": the count changed under it) is read again and hidden once
+  more. With nothing to hide by the last count, no `i` is sent.
+- **Only where it is sure** (C-093): coins hidden in the wrong one of a maze of look-alike rooms
+  are lost to the player, so it hides only when the belief is sure it is in the first stop. If
+  not, it looks once, and if still not sure it says "Stash: not sure this is …, not hiding" and
+  skips this time round.
+- **A party**: a leader with it on has each member with it hide its own coins too, once each
+  time the leader's loop reaches its first stop, whatever the member's own setting. The
+  coordinator passes the leader's *stash round* and the stop on to the followers, only while the
+  leader is sure it is in that room. A follower's own belief need not be sure (a follower often
+  is not, among look-alikes): it borrows the leader's, and hides only if its belief allows the
+  leader's room and the room's `Also here:` shows the leader. The leader holds at the first stop
+  ("Waiting for Lauren to hide their coins", at most a minute) until its members have done, since
+  the game takes a follower along when the leader moves.
 
 ## Spells
 

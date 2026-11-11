@@ -55,6 +55,16 @@ pub(crate) struct Presence {
 }
 
 impl Presence {
+    /// The player `name` (its first name, as `Also here:` gives it) is in the room.
+    pub fn sees_player(&self, name: &str) -> bool {
+        let first = name.split_whitespace().next().unwrap_or(name);
+        self.players.iter().any(|p| {
+            p.split_whitespace()
+                .next()
+                .is_some_and(|q| q.eq_ignore_ascii_case(first))
+        })
+    }
+
     /// Out of the realm (the line dropped, or logged off): nothing is attacking any more.
     pub fn left_the_realm(&mut self) {
         self.attackers.clear();
@@ -765,6 +775,9 @@ pub(crate) struct Bot {
     stash_round: u64,
     /// The leader's stash round this follower last hid its coins for.
     stash_followed: u64,
+    /// The belief is sure the bot is at its loop's first stop: only then is the round passed
+    /// on to the party (C-093).
+    stash_sure: bool,
     /// A follower bashing the leader's door with it.
     bash_help: crate::bash_help::BashHelp,
     /// The gateway is logging the character off under attack: Flee alone runs, then the bot
@@ -1096,11 +1109,22 @@ impl Bot {
         self.stop_loop(why)
     }
 
+    /// For the party coordinator (C-093): the last leader's stash round this follower is done
+    /// with.
+    pub fn stash_done(&self) -> u64 {
+        if self.stash.active() {
+            self.stash_followed.saturating_sub(1)
+        } else {
+            self.stash_followed
+        }
+    }
+
     /// For the party coordinator (C-092): while its loop is at its first stop with the coins
-    /// stashed there, the round its members hide theirs for.
-    pub fn stash_round(&self) -> Option<u64> {
-        (self.stash_round > 0 && self.task.as_ref().is_some_and(Task::at_first_stop))
-            .then_some(self.stash_round)
+    /// stashed there, the round its members hide theirs for, and the stop. Only while the
+    /// belief is sure of the stop: the members hide theirs on the leader's word (C-093).
+    pub fn stash_round(&self) -> Option<(u64, Key)> {
+        let first = self.task.as_ref()?.first()?;
+        (self.stash_round > 0 && self.stash_sure).then_some((self.stash_round, first))
     }
 
     /// The loop it runs, if it runs one.
@@ -1516,10 +1540,13 @@ impl Bot {
             // (C-092).
             if t.take_at_first() && v.settings.bool("cash.stash_on_loop") {
                 self.stash_round += 1;
-                if let Some(room) = v.room {
-                    self.stash.begin(room);
-                }
+                self.stash.begin(t.home());
             }
+            // Published while the leader is in the first stop's room, sure of it, whatever its
+            // loop does: its hold keeps it there while the members hide theirs (C-093).
+            self.stash_sure = t
+                .first()
+                .is_some_and(|k| crate::stash::sure_of(k, v.room, v.certain));
             // Recover rests from, and walks back to, the stop Task is at or walking to.
             self.recover.set_home(t.home());
         }
@@ -1535,13 +1562,11 @@ impl Bot {
         }
         // A follower with its leader at the leader's first stop: its coins are hidden too, once
         // a round (C-092).
-        if let Some(round) = v.party.stash()
+        if let Some((round, room)) = v.party.stash()
             && round > self.stash_followed
         {
             self.stash_followed = round;
-            if let Some(room) = v.room {
-                self.stash.begin(room);
-            }
+            self.stash.begin_following(room);
         }
         self.stash.observe(v);
         if let Some(j) = &mut self.journey {

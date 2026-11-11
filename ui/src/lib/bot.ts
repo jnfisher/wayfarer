@@ -97,11 +97,16 @@ export function linkButton(state: string): LinkButton | null {
   }
 }
 
-/** Cells the connection button takes, with the space before it; 0 when there is none. */
+/** Cells the connection button takes, with the space before it (and connect's `▾`); 0 when
+ * there is none. */
 export function linkWidth(state: string): number {
   const b = linkButton(state);
-  return b ? b.label.length + 3 : 0;
+  return b ? b.label.length + 3 + (b.action === "connect" ? 1 : 0) : 0;
 }
+
+/** What the connect menu's recovery does (C-093). */
+export const RECOVER_TITLE =
+  "Connect with the bot left stopped (so it does not hang up again at low HP) and sysop goto Silvermere at the first prompt, before anything attacks";
 
 /** The towns `sysop goto` takes (C-080, `kb/navigation.md` "SYSOP GOTO"), as the brain names them. */
 export const TOWNS: { town: string; label: string }[] = [
