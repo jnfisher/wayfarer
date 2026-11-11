@@ -67,6 +67,9 @@ pub(crate) enum PartyRole {
         /// The locked door the leader is bashing, when it is with the leader: the room and
         /// the direction.
         bash: Option<(Key, u8)>,
+        /// The leader's stash round (C-092), when it is with the leader at the leader's
+        /// loop's first stop with the coins stashed there: it hides its own once a round.
+        stash: Option<u64>,
         /// The party rests (C-045): why. A follower below its own rest-until lines rests with
         /// it, as the leader does.
         rest: Option<String>,
@@ -187,6 +190,14 @@ impl PartyRole {
             _ => None,
         }
     }
+
+    /// The leader's stash round, for a follower with it at its loop's first stop (C-092).
+    pub fn stash(&self) -> Option<u64> {
+        match self {
+            PartyRole::Follower { stash, .. } => *stash,
+            _ => None,
+        }
+    }
 }
 
 /// A member's HP and mana against its own lines (`health.*`), as its session sees them.
@@ -259,6 +270,8 @@ pub(crate) struct MemberInfo {
     pub target: Option<String>,
     /// The locked door its walk is bashing: the room and direction.
     pub bashing: Option<(Key, u8)>,
+    /// Its stash round while its loop is at its first stop with the coins stashed (C-092).
+    pub stash: Option<u64>,
     /// The rank it should have in its party (`party.rank`).
     pub rank: Option<Rank>,
     /// Resting or fighting: a rank command would end the rest, so it waits.
@@ -1077,6 +1090,7 @@ impl Parties {
                             .then(|| l.target.clone())
                             .flatten(),
                         bash: (joined && same_room(fi, l)).then_some(l.bashing).flatten(),
+                        stash: (joined && same_room(fi, l)).then_some(l.stash).flatten(),
                         rest: None,
                         mates: Vec::new(),
                     },
@@ -1350,6 +1364,7 @@ mod tests {
             },
             target: None,
             bashing: None,
+            stash: None,
             rank: None,
             busy: false,
             rules: wayfarer_world::RuleSet::Unknown,
@@ -1440,6 +1455,7 @@ mod tests {
                 with_leader: false,
                 assist: None,
                 bash: None,
+                stash: None,
                 rest: None,
                 mates: Vec::new(),
             }

@@ -21,6 +21,7 @@
     roomAt,
     stopTip,
     walkBar,
+    loopBar,
     walkText,
     zoomAt,
     ZOOMS,
@@ -288,7 +289,31 @@
     onsaveloop?.(session.id, newName, base.id, insertStops(base.stops, staged));
     staged = [];
   }
-  const drawnLoop = $derived(loopShape(hoverLoop ?? pickedLoop));
+  /** The loop the bot runs as the map draws it: its listed shape, else its stops alone. */
+  function runningShape() {
+    if (!task) return null;
+    const shape = loopShape(task.loop_id) ?? loopShape(`mm:${task.loop_id}`) ?? { path: [], stops: task.stops };
+    return { ...shape, at: task.stop, skip: task.skip };
+  }
+  /** Whether the listed loop `id` is the one the bot runs. */
+  const isRunning = (id: string | null) => !!task && !!id && (id === task.loop_id || id === `mm:${task.loop_id}`);
+  // A loop hovered or picked in the list; else the one the bot runs, its stop marked (C-092).
+  const drawnLoop = $derived.by(() => {
+    const id = hoverLoop ?? pickedLoop;
+    if (id && !isRunning(id)) return loopShape(id);
+    return runningShape();
+  });
+  /** A room's name, from the map or the loops listed. */
+  function roomName(k: RoomKey): string | undefined {
+    const r = view?.rooms.find((x) => keyOf(x) === keyOf(k));
+    if (r?.name) return r.name;
+    const all = [...(loops?.generated ?? []), ...(loops?.custom ?? []), ...(loops?.megamud ?? [])];
+    for (const l of all) {
+      const s = l.stops.find((x) => keyOf(x) === keyOf(k));
+      if (s) return s.name;
+    }
+    return undefined;
+  }
 
   /** A loop `run_loop` names: a generated loop by its id, a MegaMud loop by its file. */
   type Runnable = Pick<GeneratedLoop, "id" | "name" | "stops">;
@@ -563,10 +588,13 @@
     if (session && walking) lastWalk = { session: session.id, walking };
     else if (!character?.bot?.journey || character.bot.state === "stopped") lastWalk = undefined;
   });
+  // The loop the bot runs has the bar while no Go to is on: its legs are walks too (C-092).
+  const lbar = $derived(loopBar(character?.bot, walking, roomName));
   const bar = $derived(
-    walkBar(walking, character?.bot, lastWalk && lastWalk.session === session?.id ? lastWalk.walking : undefined),
+    lbar ? undefined : walkBar(walking, character?.bot, lastWalk && lastWalk.session === session?.id ? lastWalk.walking : undefined),
   );
   const route = $derived(walkText(bar?.walking));
+  const loopRoute = $derived(walkText(lbar?.walking));
 </script>
 
 <!-- A loop's run button, or that it is running; its stops to tick are listed under its row. -->
@@ -865,6 +893,14 @@
         {/if}
         <button class="stop" onclick={() => onstop(session.id)}>stop</button>
         <div class="route" class:stale={!!bar.paused}>{route || "…"}</div>
+      {:else if lbar}
+        <span class="to">↻ {lbar.name}</span>
+        <span class="short">{lbar.progress}{lbar.stop ? `: ${lbar.stop}` : ""}</span>
+        {#if lbar.walking}
+          <span class="dim">step {lbar.walking.step}, {lbar.walking.steps_left} left</span>
+        {/if}
+        <button class="stop" onclick={() => onstop(session.id)}>stop</button>
+        {#if lbar.walking}<div class="route">{loopRoute || "…"}</div>{/if}
       {:else}
         <span class="dim">Click a room to walk there.</span>
       {/if}

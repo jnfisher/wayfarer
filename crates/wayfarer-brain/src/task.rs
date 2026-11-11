@@ -219,6 +219,9 @@ pub(crate) struct Task {
     phase: Phase,
     /// Legs to the stop at `index` begun since it last arrived, fought or got closer.
     tries: u32,
+    /// It arrived at the loop's first stop since last asked (C-092: the coins are hidden
+    /// there).
+    at_first: bool,
     /// Steps from the stop when the last leg began: a leg that ends closer is progress, not a
     /// try (C-091).
     leg_from: Option<usize>,
@@ -277,6 +280,7 @@ impl Task {
             stops,
             phase: Phase::Going,
             tries: 0,
+            at_first: false,
             leg_from: None,
             failed_at: None,
             notes: Vec::new(),
@@ -356,11 +360,22 @@ impl Task {
             self.tries = 0;
             self.give_ups = 0;
             self.passed[self.index] = None;
+            self.at_first |= self.index == 0;
             self.phase = Phase::At {
                 kills: Vec::new(),
                 quiet_from: v.now,
             };
         }
+    }
+
+    /// It arrived at the loop's first stop since last asked.
+    pub fn take_at_first(&mut self) -> bool {
+        std::mem::take(&mut self.at_first)
+    }
+
+    /// At the loop's first stop (hunting or waiting there), not walking to it.
+    pub fn at_first_stop(&self) -> bool {
+        self.index == 0 && self.phase != Phase::Going
     }
 
     /// A monster died: one more for the stop, if it is at one.

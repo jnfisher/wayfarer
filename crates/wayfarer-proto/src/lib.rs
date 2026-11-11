@@ -442,6 +442,8 @@ pub enum BotMode {
     Sneak,
     /// Running a loop (`run_loop`): walking to its next stop, or waiting there for respawns.
     Task,
+    /// Hiding the silver, gold and copper carried in a loop's first stop (C-092).
+    Stash,
 }
 
 /// What the bot is doing for a character.

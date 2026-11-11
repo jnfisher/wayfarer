@@ -66,8 +66,12 @@ export interface ViewState {
   panY: number;
   level: number;
   hover?: RoomKey | null;
-  /** A loop to draw: every room it passes, and its stops (numbered in loop order). */
-  loop?: { path: RoomKey[]; stops: RoomKey[] } | null;
+  /**
+   * A loop to draw: every room it passes, and its stops (numbered in loop order). For the loop
+   * the bot runs, `at` is the stop it is at or walking to (from 0) and `skip` its unticked stops
+   * (C-092).
+   */
+  loop?: { path: RoomKey[]; stops: RoomKey[]; at?: number; skip?: RoomKey[] } | null;
 }
 
 /** The part of `CanvasRenderingContext2D` the drawing uses. */
@@ -286,6 +290,31 @@ export function walkBar(walking: Walking | undefined, bot: Bot | undefined, last
   return { name: last?.name ?? journey.name, walking: last, paused: bot?.narration || "planning the next leg" };
 }
 
+/** The loop bar under the map while the bot runs a loop (C-092). */
+export interface LoopBar {
+  /** "Loop Gate". */
+  name: string;
+  /** "stop 2/9". */
+  progress: string;
+  /** The stop's room name, when known. */
+  stop?: string;
+  /** The leg on the way to it. */
+  walking?: Walking;
+}
+
+/** The running loop's bar: where it is on the loop, and the leg to its stop when one is on. */
+export function loopBar(bot: Bot | undefined, walking: Walking | undefined, name: (k: RoomKey) => string | undefined): LoopBar | undefined {
+  const task = bot && bot.state !== "stopped" ? bot.task : undefined;
+  if (!task || bot?.journey) return undefined;
+  const at = task.stops[task.stop];
+  return {
+    name: `Loop ${task.loop_name}`,
+    progress: `stop ${task.stop + 1}/${task.stops.length}`,
+    stop: at ? name(at) : undefined,
+    walking,
+  };
+}
+
 /** One zoom step at the point (px, py), keeping what is under it in place. */
 export function zoomAt(v: ViewState, step: number, px: number, py: number): Pick<ViewState, "zoom" | "panX" | "panY"> {
   const zoom = Math.min(Math.max(v.zoom + step, 0), ZOOMS.length - 1);
@@ -342,6 +371,8 @@ export function drawMap(ctx: Ctx, view: MapView, v: ViewState, fontFamily: strin
   const loop = v.loop?.path ?? [];
   const stop = new Map<string, number>();
   v.loop?.stops.forEach((k, i) => stop.set(keyOf(k), i + 1));
+  const atStop = v.loop?.at !== undefined ? v.loop.stops[v.loop.at] : undefined;
+  const skipped = new Set((v.loop?.skip ?? []).map(keyOf));
   ctx.setLineDash([]);
   ctx.strokeStyle = COLOURS.yellow;
   ctx.lineWidth = Math.max(2, 3 * s);
@@ -379,6 +410,8 @@ export function drawMap(ctx: Ctx, view: MapView, v: ViewState, fontFamily: strin
       down: down.has(k),
       step: step.get(k),
       stop: stop.get(k),
+      atStop: atStop !== undefined && keyOf(atStop) === k,
+      skipped: skipped.has(k),
       hover: !!v.hover && same(v.hover, r),
     });
   }
@@ -438,6 +471,10 @@ interface Marks {
   step?: number;
   /** Its stop on the loop drawn, from 1. */
   stop?: number;
+  /** The stop the running loop is at or walking to (C-092). */
+  atStop?: boolean;
+  /** An unticked stop of the running loop. */
+  skipped?: boolean;
   hover: boolean;
 }
 
@@ -488,11 +525,17 @@ function drawRoom(ctx: Ctx, view: MapView, r: MapRoom, v: ViewState, m: Metrics,
     ctx.fillStyle = COLOURS.yellow;
     ctx.fillText(KIND_LETTERS[r.kind], col(1), top);
   }
-  if (marks.step !== undefined) {
+  if (marks.atStop) {
+    // The running loop's stop: framed and numbered in light cyan (C-092).
+    ctx.strokeStyle = COLOURS.lightcyan;
+    ctx.lineWidth = lw;
+    ctx.strokeRect(x - 2 * lw, y - 2 * lw, w + 4 * lw, h + 4 * lw);
+  }
+  if (marks.stop !== undefined && (marks.atStop || marks.step === undefined)) {
+    ctx.fillStyle = marks.atStop ? COLOURS.lightcyan : marks.skipped ? COLOURS.darkgray : COLOURS.yellow;
+    ctx.fillText(String(marks.stop), col(1), bottom);
+  } else if (marks.step !== undefined) {
     ctx.fillStyle = COLOURS.lightgreen;
     ctx.fillText(String(marks.step), col(1), bottom);
-  } else if (marks.stop !== undefined) {
-    ctx.fillStyle = COLOURS.yellow;
-    ctx.fillText(String(marks.stop), col(1), bottom);
   }
 }
