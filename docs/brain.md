@@ -1571,7 +1571,8 @@ own, one at a time:
   no way to the leader's room known, the follower is `unreachable` ("no way to Penny's room is
   known", a warning on its tile) and tries again after 30 s or when the leader moves. After
   `party.wait_separated_minutes` (Party, 5 by default) the leader's loop stops with a warning
-  ("Loop stopped: Lauren did not catch up in 5 minutes"); it never walks on without the
+  ("Loop stopped: Lauren did not catch up in 5 minutes"), and so does a Go to ("Not going to
+  Newhaven, Narrow Road: Lauren did not catch up in 5 minutes; playing here"); it never walks on without the
   member, and the follower keeps trying. While the leader is out of the realm its followers
   stand where they are.
 - **Party rests.** The leader and the followers with it (joined, in its room, bots running)
@@ -1586,7 +1587,7 @@ own, one at a time:
   standing, a character gets its HP back several times more slowly than resting (C-045). A
   monster that comes is fought,
   then the rest goes on. After `party.wait_rest_minutes` (Party, 10 by default) the leader's
-  loop stops with a warning naming who has not recovered. Afterwards the leader walks back to
+  loop, or Go to, stops with a warning naming who has not recovered. Afterwards the leader walks back to
   its loop as after any rest.
 - **Party flees.** One flee per party, the leader's. A follower in the leader's party in the
   game (joined, by `par`) never flees on its own, wherever the beliefs put it (C-074: around a

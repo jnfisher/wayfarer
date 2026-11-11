@@ -388,7 +388,7 @@ pub const CATALOGUE: &[Setting] = &[
     Setting {
         key: "party.wait_separated_minutes",
         label: "Wait for a separated member",
-        help: "How long a party's leader waits for a member the game dropped from the party to walk back and join again, before it stops its loop and tells you. It never walks on without the member.",
+        help: "How long a party's leader waits for a member the game dropped from the party to walk back and join again, before it stops its loop or Go to and tells you. It never walks on without the member.",
         kind: Kind::Int { min: 1, max: 60 },
         default: Value::Int(5),
         unit: "minutes",
@@ -454,7 +454,7 @@ pub const CATALOGUE: &[Setting] = &[
     Setting {
         key: "party.wait_rest_minutes",
         label: "Wait for a resting party",
-        help: "How long a party's leader holds for a party rest (anyone below its own rest line, until everyone is back to its own rest-until line) before it stops its loop and tells you who has not recovered.",
+        help: "How long a party's leader holds for a party rest (anyone below its own rest line, until everyone is back to its own rest-until line) before it stops its loop or Go to and tells you who has not recovered.",
         kind: Kind::Int { min: 1, max: 60 },
         default: Value::Int(10),
         unit: "minutes",

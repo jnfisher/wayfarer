@@ -179,6 +179,14 @@ impl Journey {
         self.tries = self.tries.saturating_sub(1);
     }
 
+    /// The party gave up waiting for a member who did not catch up (C-089): the journey is
+    /// over, why.
+    pub fn give_up(&mut self, why: &str) {
+        if self.done.is_none() {
+            self.done = Some(Some(why.to_owned()));
+        }
+    }
+
     /// The walker could not start the leg (no route), or gave it up (it said why): the
     /// journey is over.
     pub fn walk_failed(&mut self) {

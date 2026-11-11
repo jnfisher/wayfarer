@@ -1044,6 +1044,15 @@ impl Bot {
         says
     }
 
+    /// The leader waited `party.wait_separated_minutes` for a member who did not catch up:
+    /// its loop stops, and a Go to ends at the next tick ("Not going to …: why").
+    pub fn party_gave_up(&mut self, why: &str) -> Vec<Say> {
+        if let Some(j) = &mut self.journey {
+            j.give_up(why);
+        }
+        self.stop_loop(why)
+    }
+
     /// The loop it runs, if it runs one.
     pub fn task_mut(&mut self) -> Option<&mut Task> {
         self.task.as_mut()
