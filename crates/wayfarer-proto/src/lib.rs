@@ -1713,6 +1713,10 @@ pub enum ToClient {
         session: SessionId,
         town: String,
     },
+    RecoverTo {
+        session: SessionId,
+        town: String,
+    },
     JourneyFight {
         session: SessionId,
         fight: bool,
@@ -1978,6 +1982,13 @@ pub enum ToGateway {
     /// UI → brain: teleport the character's party (or the character alone) to a town with
     /// `sysop goto` (C-080): `newhaven`, `silvermere`, `rhudaur`, `khazarad` or `lostcity`.
     SysGoto {
+        session: SessionId,
+        town: String,
+    },
+    /// UI → brain: get a character nearly killed out of danger (C-093): connect it if it is
+    /// not, leave its bot stopped (so no hang-up at low HP), and `sysop goto` the town at the
+    /// first prompt in the realm, before anything attacks it. This character alone.
+    RecoverTo {
         session: SessionId,
         town: String,
     },
@@ -2430,6 +2441,7 @@ impl ToClient {
             Self::WalkTo { .. } => "walk_to",
             Self::WalkStop { .. } => "walk_stop",
             Self::SysGoto { .. } => "sys_goto",
+            Self::RecoverTo { .. } => "recover_to",
             Self::JourneyFight { .. } => "journey_fight",
             Self::MapRequest { .. } => "map_request",
             Self::BotControl { .. } => "bot_control",
@@ -2491,6 +2503,7 @@ impl ToClient {
             | Self::WalkTo { session, .. }
             | Self::WalkStop { session }
             | Self::SysGoto { session, .. }
+            | Self::RecoverTo { session, .. }
             | Self::JourneyFight { session, .. }
             | Self::MapRequest { session, .. }
             | Self::BotControl { session, .. }
@@ -2621,6 +2634,7 @@ impl ToGateway {
             Self::WalkTo { .. } => "walk_to",
             Self::WalkStop { .. } => "walk_stop",
             Self::SysGoto { .. } => "sys_goto",
+            Self::RecoverTo { .. } => "recover_to",
             Self::JourneyFight { .. } => "journey_fight",
             Self::MapRequest { .. } => "map_request",
             Self::BotControl { .. } => "bot_control",
@@ -2684,6 +2698,7 @@ impl ToGateway {
             | Self::WalkTo { .. }
             | Self::WalkStop { .. }
             | Self::SysGoto { .. }
+            | Self::RecoverTo { .. }
             | Self::JourneyFight { .. }
             | Self::MapRequest { .. }
             | Self::BotControl { .. }
@@ -2753,6 +2768,7 @@ impl ToGateway {
             },
             Self::WalkStop { session } => ToClient::WalkStop { session },
             Self::SysGoto { session, town } => ToClient::SysGoto { session, town },
+            Self::RecoverTo { session, town } => ToClient::RecoverTo { session, town },
             Self::JourneyFight { session, fight } => ToClient::JourneyFight { session, fight },
             Self::MapRequest { session, radius } => ToClient::MapRequest { session, radius },
             Self::BotControl { session, action } => ToClient::BotControl { session, action },

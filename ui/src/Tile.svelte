@@ -4,7 +4,7 @@
   import { FitAddon } from "@xterm/addon-fit";
   import { WebglAddon } from "@xterm/addon-webgl";
   import "@xterm/xterm/css/xterm.css";
-  import { TOWNS, botButtons, errandItems, linkButton, narrationLine, sysGotoTitle } from "./lib/bot";
+  import { RECOVER_TITLE, TOWNS, botButtons, errandItems, linkButton, narrationLine, sysGotoTitle } from "./lib/bot";
   import { keyBytes, type GatewayClient } from "./lib/gateway";
   import { HEADER_CELL_PX, bar, barSize, expText, fitHeader, levelClass, roomText } from "./lib/header";
   import { InputHistory } from "./lib/input";
@@ -88,6 +88,8 @@
   let menuOpen = $state(false);
   /** The spell plan is showing. */
   let planOpen = $state(false);
+  /** The connect button's menu is open (C-093). */
+  let connectOpen = $state(false);
   /** The errand menu's sysop goto towns are showing (C-080). */
   let gotoOpen = $state(false);
   /** In a party: a sysop goto takes all of it. */
@@ -319,7 +321,16 @@
           e.stopPropagation();
           client.sessionControl(info.id, link.action);
         }}>[{link.label}]</button
-      >
+      >{#if link.action === "connect"}<button
+          class="ctl link more"
+          aria-label="Connect options"
+          aria-expanded={connectOpen}
+          title="Other ways to connect: recover a character nearly killed"
+          onclick={(e) => {
+            e.stopPropagation();
+            connectOpen = !connectOpen;
+          }}>▾</button
+        >{/if}
     {/if}
     {#if onminimize}
       <button
@@ -365,6 +376,21 @@
             >
           </li>
         {/each}
+      </ul>
+    {/if}
+    {#if connectOpen && link?.action === "connect"}
+      <ul class="errands" role="menu" aria-label="Connect options">
+        <li role="none">
+          <button
+            role="menuitem"
+            title={RECOVER_TITLE}
+            onclick={(e) => {
+              e.stopPropagation();
+              connectOpen = false;
+              client.recoverTo(info.id, "silvermere");
+            }}>Connect and recover in Silvermere</button
+          >
+        </li>
       </ul>
     {/if}
     {#if menuOpen}

@@ -245,7 +245,10 @@ and works nothing out itself.
   logs the character off cleanly, as the gateway does when it stops (the brain is told and stops
   the bot first), and the session stays closed, not reconnected, until **connect**; **connect**
   opens the connection and runs the logon again. After a hang-up (`health.hangup`,
-  [brain.md](brain.md) "Flee") the tile shows `closed` the same way.
+  [brain.md](brain.md) "Flee") the tile shows `closed` the same way. The **▾** beside
+  **[connect]** opens a menu with **Connect and recover in Silvermere** (C-093): for a character
+  hung up nearly dead, it connects with the bot left stopped, so it does not hang up again, and
+  sends `sysop goto silvermere` at the first prompt ([brain.md](brain.md) "Sysop goto").
 - **Minimizing a tile**: the `[▬]` button in a tile's header hides the tile to a bar at the bottom
   of the page, one chip per minimized character (`2 Waydeva 65/65 ►`: its number, name and HP, in
   the HP colours, or `closed` while it is not in the realm; `►` when the bot is playing it). The

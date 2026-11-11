@@ -234,6 +234,9 @@ struct Goto {
     sent: bool,
     /// "after the fight" has been said.
     waiting_said: bool,
+    /// A recovery (C-093): it goes at the first prompt, fight or no fight, ahead of the
+    /// re-sync. The game refuses it under attack; on logon nothing has attacked yet.
+    urgent: bool,
 }
 
 /// What a re-sync step did, for the brain to report.
@@ -389,6 +392,9 @@ pub(crate) struct Session {
     errand: Option<Active>,
     /// A `sysop goto` asked for and not yet landed (C-080).
     goto: Option<Goto>,
+    /// Connecting to recover (C-093): on entering the realm the bot is not started and this
+    /// town's `sysop goto` goes at the first prompt.
+    recovering: Option<&'static crate::sysop::Town>,
     /// The connection was dropped at the hang-up line and the realm has not been left yet.
     hung_up: bool,
     /// The gateway is logging the character off (`logging_off`): nothing more is sent.
@@ -513,6 +519,7 @@ impl Session {
             wounded_noted: false,
             errand: None,
             goto: None,
+            recovering: None,
             hung_up: false,
             leaving: false,
             flee_out: false,
@@ -638,6 +645,23 @@ impl Session {
         }
         if state == SessionState::Realm && !self.synced && self.resync == Resync::Off {
             self.request_resync();
+        }
+        // Connected to recover (C-093): no bot, so no hang-up at low HP; out to the town.
+        if was != SessionState::Realm
+            && state == SessionState::Realm
+            && let Some(town) = self.recovering.take()
+        {
+            self.goto = Some(Goto {
+                town,
+                sent: false,
+                waiting_said: false,
+                urgent: true,
+            });
+            out.push(self.notice(&format!(
+                "Entered the realm to recover: sysop goto {}, the bot stays stopped",
+                town.name
+            )));
+            return;
         }
         // Into the realm: the bot starts where the character stands, so it defends itself at
         // once (C-054). A bot a brain before this one left is resumed instead (`resume`).
@@ -2706,10 +2730,49 @@ impl Session {
             town,
             sent: false,
             waiting_said: false,
+            urgent: false,
         });
         out.push(self.notice(&format!("Sysop goto {}", town.name)));
         self.drive(now, out);
         self.flush_views(out);
+    }
+
+    /// Get a character nearly killed out to `town` (C-093): its bot stops (a stopped bot never
+    /// hangs up at low HP), and it connects if it is not connected; the `sysop goto` goes at
+    /// the first prompt in the realm, before anything attacks it.
+    pub fn recover_to(
+        &mut self,
+        town: &'static crate::sysop::Town,
+        now: Instant,
+        out: &mut Vec<ToGateway>,
+    ) {
+        if self.bot.running() {
+            self.bot_control(BotAction::Stop, now, out);
+        }
+        if self.errand.is_some() {
+            self.errand_control(BotAction::CancelErrand, out);
+        }
+        if self.state == SessionState::Realm {
+            self.goto = Some(Goto {
+                town,
+                sent: false,
+                waiting_said: false,
+                urgent: true,
+            });
+            out.push(self.notice(&format!("Recover: sysop goto {}", town.name)));
+            self.drive(now, out);
+            self.flush_views(out);
+            return;
+        }
+        self.recovering = Some(town);
+        out.push(self.notice(&format!(
+            "Recover: connecting, then sysop goto {}; the bot stays stopped",
+            town.name
+        )));
+        out.push(ToGateway::SessionControl {
+            session: self.id.clone(),
+            action: SessionAction::Connect,
+        });
     }
 
     /// Send the `sysop goto` asked for when the game will take it: not in combat (it is refused
@@ -2726,7 +2789,7 @@ impl Session {
         let engaged = !heeded.attackers.is_empty()
             || self.character.state().in_combat == Some(true)
             || self.mortally_wounded();
-        if engaged {
+        if engaged && !g.urgent {
             if !g.waiting_said {
                 let text = format!("Sysop goto {}: after the fight", g.town.name);
                 out.push(self.notice(&text));
@@ -2740,7 +2803,7 @@ impl Session {
             self.stop_walk("a sysop goto", out);
             return;
         }
-        if !self.at_prompt || self.executor.busy() || self.resync != Resync::Off {
+        if !self.at_prompt || self.executor.busy() || (self.resync != Resync::Off && !g.urgent) {
             return;
         }
         let word = g.town.word;
@@ -3352,6 +3415,7 @@ impl Session {
             target: self.bot.fight_target().map(str::to_owned),
             bashing: self.walker.bashing(),
             stash: self.bot.stash_round(),
+            stashed: self.bot.stash_done(),
             rank: Some(match self.settings.choice("party.rank") {
                 "back" => Rank::Back,
                 "mid" => Rank::Mid,

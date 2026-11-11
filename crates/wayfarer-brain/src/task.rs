@@ -373,9 +373,9 @@ impl Task {
         std::mem::take(&mut self.at_first)
     }
 
-    /// At the loop's first stop (hunting or waiting there), not walking to it.
-    pub fn at_first_stop(&self) -> bool {
-        self.index == 0 && self.phase != Phase::Going
+    /// The loop's first stop: where its coins are stashed (C-092).
+    pub fn first(&self) -> Option<Key> {
+        self.stops.first().map(|s| s.key)
     }
 
     /// A monster died: one more for the stop, if it is at one.

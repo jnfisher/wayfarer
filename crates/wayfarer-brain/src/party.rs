@@ -67,9 +67,10 @@ pub(crate) enum PartyRole {
         /// The locked door the leader is bashing, when it is with the leader: the room and
         /// the direction.
         bash: Option<(Key, u8)>,
-        /// The leader's stash round (C-092), when it is with the leader at the leader's
-        /// loop's first stop with the coins stashed there: it hides its own once a round.
-        stash: Option<u64>,
+        /// The leader's stash round (C-092) and the stop, when the leader is sure it is at
+        /// its loop's first stop and this follower may be there with it (C-093): it hides its
+        /// own once a round.
+        stash: Option<(u64, Key)>,
         /// The party rests (C-045): why. A follower below its own rest-until lines rests with
         /// it, as the leader does.
         rest: Option<String>,
@@ -192,7 +193,7 @@ impl PartyRole {
     }
 
     /// The leader's stash round, for a follower with it at its loop's first stop (C-092).
-    pub fn stash(&self) -> Option<u64> {
+    pub fn stash(&self) -> Option<(u64, Key)> {
         match self {
             PartyRole::Follower { stash, .. } => *stash,
             _ => None,
@@ -270,8 +271,12 @@ pub(crate) struct MemberInfo {
     pub target: Option<String>,
     /// The locked door its walk is bashing: the room and direction.
     pub bashing: Option<(Key, u8)>,
-    /// Its stash round while its loop is at its first stop with the coins stashed (C-092).
-    pub stash: Option<u64>,
+    /// Its stash round and the stop, while its loop is at its first stop and its belief is
+    /// sure of it (C-092, C-093).
+    pub stash: Option<(u64, Key)>,
+    /// The last leader's stash round it is done with, as a follower: hidden, nothing to
+    /// hide, or not sure of the room (C-093).
+    pub stashed: u64,
     /// The rank it should have in its party (`party.rank`).
     pub rank: Option<Rank>,
     /// Resting or fighting: a rank command would end the rest, so it waits.
@@ -297,6 +302,10 @@ pub(crate) struct Plan {
     pub notes: Vec<(String, String)>,
 }
 
+/// How long a leader holds at its loop's first stop for its members to hide their coins
+/// (C-093): a look and three or four commands each take seconds.
+pub const STASH_HOLD: Duration = Duration::from_secs(60);
+
 #[derive(Debug, Default)]
 pub(crate) struct Parties {
     defs: Vec<PartyDef>,
@@ -305,6 +314,9 @@ pub(crate) struct Parties {
     invited: HashMap<String, Instant>,
     /// Leaders' last `par`.
     par_at: HashMap<String, Instant>,
+    /// Each leader's stash round and when it began: the leader holds for the members hiding
+    /// their coins for at most [`STASH_HOLD`] from then (C-093).
+    stash_since: HashMap<String, (u64, Instant)>,
     /// Joined followers seen out of their leader's room, since when.
     apart: HashMap<String, Instant>,
     /// Sessions taken out of a party that still owe the game a `leave`.
@@ -938,6 +950,8 @@ impl Parties {
             );
             // The followers walking back, by name, for the leader's hold.
             let mut waiting: Vec<String> = Vec::new();
+            // The followers still hiding their coins for the leader's stash round (C-093).
+            let mut stashing: Vec<String> = Vec::new();
             let mut members = vec![MemberStatus {
                 session: def.leader.clone(),
                 state: if l.realm {
@@ -1077,6 +1091,18 @@ impl Parties {
                         (MemberState::NotJoined, Some(detail.to_owned()))
                     }
                 };
+                // Only in the leader's room: the follower's belief may not be sure of it, but
+                // must allow it (C-093).
+                let stash = l
+                    .stash
+                    .filter(|&(_, k)| joined && (fi.room == Some(k) || fi.rooms.contains(&k)));
+                if let Some((round, _)) = stash
+                    && fi.stashed < round
+                    && fi.realm
+                    && fi.running
+                {
+                    stashing.push(ffirst.map_or_else(|| f.clone(), str::to_owned));
+                }
                 plan.roles.insert(
                     f.clone(),
                     PartyRole::Follower {
@@ -1090,7 +1116,9 @@ impl Parties {
                             .then(|| l.target.clone())
                             .flatten(),
                         bash: (joined && same_room(fi, l)).then_some(l.bashing).flatten(),
-                        stash: (joined && same_room(fi, l)).then_some(l.stash).flatten(),
+                        // Only in the leader's room: the follower's belief may not be sure
+                        // of it, but must allow it (C-093).
+                        stash,
                         rest: None,
                         mates: Vec::new(),
                     },
@@ -1121,6 +1149,34 @@ impl Parties {
                 && let Some(PartyRole::Leader { hold, .. }) = plan.roles.get_mut(&def.leader)
             {
                 *hold = Some(format!("Waiting for {} to catch up", waiting.join(" and ")));
+            }
+            // The leader stays at its first stop while its members hide their coins: the
+            // game moves a follower when the leader moves, and coins hidden a room on are
+            // lost (C-093). Not for ever: a member that never finishes is left after a while.
+            match l.stash {
+                Some((round, _)) => {
+                    let since = self
+                        .stash_since
+                        .entry(def.leader.clone())
+                        .or_insert((round, now));
+                    if since.0 != round {
+                        *since = (round, now);
+                    }
+                    if !stashing.is_empty()
+                        && now < since.1 + STASH_HOLD
+                        && let Some(PartyRole::Leader { hold, .. }) =
+                            plan.roles.get_mut(&def.leader)
+                        && hold.is_none()
+                    {
+                        *hold = Some(format!(
+                            "Waiting for {} to hide their coins",
+                            stashing.join(" and ")
+                        ));
+                    }
+                }
+                None => {
+                    self.stash_since.remove(&def.leader);
+                }
             }
             // Party rest and flee, over the leader and the followers with it.
             let together: Vec<(&String, &MemberInfo)> = std::iter::once((&def.leader, l))
@@ -1365,6 +1421,7 @@ mod tests {
             target: None,
             bashing: None,
             stash: None,
+            stashed: 0,
             rank: None,
             busy: false,
             rules: wayfarer_world::RuleSet::Unknown,

@@ -89,3 +89,59 @@ async fn a_sysop_goto_waits_for_the_fight_and_the_bot_keeps_running() {
     assert_eq!(played, ["st", "look", "a rat", "sysop goto silvermere"]);
     assert_eq!(bot(&seen).state, BotState::Running);
 }
+
+/// C-093: a character hung up nearly dead, with a monster in its room, is connected to recover:
+/// the brain asks the gateway to connect, and on entering the realm leaves the bot stopped
+/// (a stopped bot never hangs up) and sends `sysop goto silvermere` at the first prompt,
+/// before the re-sync and before anything attacks it.
+#[tokio::test(start_paused = true)]
+async fn connecting_to_recover_goes_to_the_town_with_the_bot_stopped() {
+    use game::arena::*;
+    use wayfarer_proto::{BotState, SessionAction};
+    let clock = Arc::new(wayfarer_brain::FixedClock(
+        std::time::UNIX_EPOCH + Duration::from_secs(T0),
+    ));
+    let brain = wayfarer_brain::Brain::new(world(), clock, None);
+    let (mut g, run) =
+        Game::start_brain(SessionState::Closed, arena(&["large giant rat"], 2), brain).await;
+    g.send(ToClient::RecoverTo {
+        session: ID.into(),
+        town: "silvermere".into(),
+    })
+    .await;
+    g.until(|m| match m {
+        ToGateway::SessionControl {
+            action: SessionAction::Connect,
+            ..
+        } => Some(()),
+        _ => None,
+    })
+    .await;
+    g.expect("sysop goto silvermere", prompt(2));
+    g.set_state(SessionState::Realm).await;
+    g.output(&prompt(2)).await;
+    g.narrated("Entered the realm to recover: sysop goto Silvermere, the bot stays stopped")
+        .await;
+    g.until(|m| match m {
+        ToGateway::Notice { text, .. } if text.starts_with("Sysop goto: in") => Some(()),
+        _ => None,
+    })
+    .await;
+    g.idle(Duration::from_secs(20)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(
+        played.first().map(String::as_str),
+        Some("sysop goto silvermere")
+    );
+    assert!(
+        !seen.iter().any(|m| matches!(
+            m,
+            ToGateway::SessionControl {
+                action: SessionAction::HangUp,
+                ..
+            }
+        )),
+        "hung up"
+    );
+    assert_ne!(bot(&seen).state, BotState::Running);
+}
