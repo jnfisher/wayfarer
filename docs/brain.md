@@ -688,7 +688,11 @@ sent yet is dropped, and Flee acts at the next prompt.
   HP under the line and something hitting the character, the brain stops the bot ("Stopped: hung up
   at 8% HP (under 10%): something was hitting it"), warns, and sends the gateway
   `session_control` `hang_up`: the connection is dropped at once, the session shows `closed`
-  and stays so until **connect** on its tile. The game ends the fight but may punish a hang-up in
+  and stays so until **connect** on its tile, a restart of the gateway included: it leaves a
+  `hung-up` mark in the session's log directory, and at start-up it does not log on a session
+  so marked (`autostart` or not), since logged on it would be hit and hung up again at once,
+  each time punished. Any connect clears the mark; to get it out, use **Connect and recover in
+  Silvermere** ("Recovering a character nearly killed"). The game ends the fight but may punish a hang-up in
   the realm: with `PUNHUP HIGH` it costs 25–50% of the maximum HP and half the inventory, which
   can kill (`kb/recovery.md`, "Hanging up"), so on such a server turn it off. The place shows in
   the recent places as "stopped". It is the one exception to "log off cleanly".

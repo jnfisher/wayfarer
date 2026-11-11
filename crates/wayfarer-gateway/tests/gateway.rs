@@ -481,3 +481,40 @@ async fn credentials_are_private_and_the_password_is_never_written() {
         assert!(!text.contains(PASSWORD), "{what} holds the password");
     }
 }
+
+/// A session hung up (by the brain at the player's HP line, or the player's button) is not
+/// logged on again when the gateway restarts: it was hit near death, and logged on it would be
+/// hit and hung up again at once, which the game punishes at each entry. Connecting it clears
+/// that, and the next restart connects it as usual.
+#[tokio::test]
+async fn a_hung_up_session_stays_off_across_a_restart_until_connected() {
+    let (listener, port) = listener().await;
+    let dir = tempfile::tempdir().unwrap();
+    let paths = Paths::in_dir(dir.path());
+    std::fs::write(&paths.config, config_text(port, true)).unwrap();
+
+    let first = Gateway::start(&paths, Options::default()).unwrap();
+    let _sock = accept(&listener).await;
+    first.hang_up(ID).await.unwrap();
+    assert!(first.hung_up(ID));
+    drop(first);
+
+    let second = Gateway::start(&paths, Options::default()).unwrap();
+    let none = tokio::time::timeout(Duration::from_millis(300), listener.accept()).await;
+    assert!(none.is_err(), "a hung-up session was connected on restart");
+    assert_eq!(second.sessions()[0].state, SessionState::Closed);
+    assert_eq!(
+        second.reason(ID).unwrap().as_deref(),
+        Some("hung up: stays off until you connect it")
+    );
+    // The player connects it: the mark goes.
+    second.open(ID).unwrap();
+    let _sock = accept(&listener).await;
+    assert!(!second.hung_up(ID));
+    second.close_now(ID).await.unwrap();
+    drop(second);
+
+    // Closed without a hang-up: the next restart connects it.
+    let _third = Gateway::start(&paths, Options::default()).unwrap();
+    let _sock = accept(&listener).await;
+}

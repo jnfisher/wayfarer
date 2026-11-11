@@ -244,7 +244,8 @@ and works nothing out itself.
   connected (logon, menu or realm) and **[connect]** when it is `closed` or `lost`. **log off**
   logs the character off cleanly, as the gateway does when it stops (the brain is told and stops
   the bot first), and the session stays closed, not reconnected, until **connect**; **connect**
-  opens the connection and runs the logon again. After a hang-up (`health.hangup`,
+  opens the connection and runs the logon again. A hung-up character stays `closed` when the
+  gateway restarts, until you connect it. After a hang-up (`health.hangup`,
   [brain.md](brain.md) "Flee") the tile shows `closed` the same way. The **▾** beside
   **[connect]** opens a menu with **Connect and recover in Silvermere** (C-093): for a character
   hung up nearly dead, it connects with the bot left stopped, so it does not hang up again, and
