@@ -758,6 +758,13 @@ pub(crate) struct Bot {
     recover: Recover,
     bless: crate::bless::Bless,
     sneak: crate::sneak::Sneak,
+    /// Hiding the coins in a loop's first stop (C-092).
+    stash: crate::stash::Stash,
+    /// The times this bot's loop reached its first stop with `cash.stash_on_loop` on: its
+    /// party's members hide their coins once for each (C-092).
+    stash_round: u64,
+    /// The leader's stash round this follower last hid its coins for.
+    stash_followed: u64,
     /// A follower bashing the leader's door with it.
     bash_help: crate::bash_help::BashHelp,
     /// The gateway is logging the character off under attack: Flee alone runs, then the bot
@@ -1089,6 +1096,13 @@ impl Bot {
         self.stop_loop(why)
     }
 
+    /// For the party coordinator (C-092): while its loop is at its first stop with the coins
+    /// stashed there, the round its members hide theirs for.
+    pub fn stash_round(&self) -> Option<u64> {
+        (self.stash_round > 0 && self.task.as_ref().is_some_and(Task::at_first_stop))
+            .then_some(self.stash_round)
+    }
+
     /// The loop it runs, if it runs one.
     pub fn task_mut(&mut self) -> Option<&mut Task> {
         self.task.as_mut()
@@ -1380,6 +1394,7 @@ impl Bot {
             Some(BotMode::Loot) => self.loot.outcome(action, outcome),
             Some(BotMode::Bless) => self.bless.outcome(action, outcome),
             Some(BotMode::Sneak) => self.sneak.outcome(action, outcome),
+            Some(BotMode::Stash) => self.stash.outcome(action, outcome),
             // Idle's only action: a follower's bash at its leader's door.
             Some(BotMode::Idle) => self.bash_help.outcome(&outcome),
             _ => {}
@@ -1435,6 +1450,7 @@ impl Bot {
             }
             BotMode::Recover => "resting".to_owned(),
             BotMode::Loot => "picking up".to_owned(),
+            BotMode::Stash => "stashing coins".to_owned(),
             BotMode::Bless => "blessing".to_owned(),
             BotMode::Sneak => "sneaking".to_owned(),
             BotMode::Task if walking => match v.party.following() {
@@ -1496,6 +1512,14 @@ impl Bot {
         );
         if let Some(t) = &mut self.task {
             t.observe(v);
+            // At the loop's first stop: its coins are hidden there, the party's with them
+            // (C-092).
+            if t.take_at_first() && v.settings.bool("cash.stash_on_loop") {
+                self.stash_round += 1;
+                if let Some(room) = v.room {
+                    self.stash.begin(room);
+                }
+            }
             // Recover rests from, and walks back to, the stop Task is at or walking to.
             self.recover.set_home(t.home());
         }
@@ -1509,6 +1533,17 @@ impl Bot {
             }
             self.recover.set_home(here);
         }
+        // A follower with its leader at the leader's first stop: its coins are hidden too, once
+        // a round (C-092).
+        if let Some(round) = v.party.stash()
+            && round > self.stash_followed
+        {
+            self.stash_followed = round;
+            if let Some(room) = v.room {
+                self.stash.begin(room);
+            }
+        }
+        self.stash.observe(v);
         if let Some(j) = &mut self.journey {
             j.observe(v);
             let (notes, done, name, to) =
@@ -1582,6 +1617,9 @@ impl Bot {
                 (BotMode::Sneak, r)
             } else if let Some(r) = self.fight.wants(v) {
                 (BotMode::Fight, r)
+            } else if let Some(r) = self.stash.wants(v) {
+                // Nothing to fight: the coins are hidden before the loop goes on (C-092).
+                (BotMode::Stash, r)
             } else if v.party.rejoin().is_some_and(|k| v.room != Some(k)) {
                 // Out of its party: back to the leader, the one walk a follower makes.
                 (BotMode::Task, "walking back to the party".to_owned())
@@ -1600,6 +1638,7 @@ impl Bot {
                 BotMode::Flee => self.flee.step(v),
                 BotMode::Recover => self.recover.step(v),
                 BotMode::Loot => self.loot.step(v),
+                BotMode::Stash => self.stash.step(v),
                 BotMode::Bless => self.bless.step(v),
                 BotMode::Sneak => self.sneak.step(v),
                 BotMode::Fight => self.fight.step(v),

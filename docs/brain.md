@@ -1394,6 +1394,21 @@ between stops are not stopped for: Loot acts only when the bot stands still.
   anything its table knows; this list is the attacks silvermere's table has (there is no
   `smash`).
 
+### Stash currency
+
+`cash.stash_on_loop` (Cash, on by default; C-092): each time a loop gets to its **first stop**,
+the bot hides the silver, gold and copper it carries there, one `hide <n> <coin>` each
+(`kb/economy.md`: a hidden coin is in the room's hidden list, and `get` finds it only after a
+search reveals it), then `i` to read its coins again. Platinum and runic are never hidden. The
+round's coins collect in that room out of sight, and Loot never takes them back, since no room
+view shows them; the player takes them later (`search`, then `get`). It hides only with
+nothing to fight there (mode `stash`, below Fight, above Task: "Stash: hiding 7 gold in
+Newhaven, Arena").
+
+- **A party**: a leader with it on has each member with it (joined, in its room) hide its own
+  coins too, once each time the leader's loop reaches its first stop, whatever the member's
+  own setting. The coordinator passes the leader's *stash round* on to the followers with it.
+
 ## Spells
 
 A character whose class has magery (the pack's class record: Paladin, Cleric, Priest, Missionary,

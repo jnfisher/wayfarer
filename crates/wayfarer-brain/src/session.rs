@@ -1187,7 +1187,7 @@ impl Session {
             _ if resting => Activity::Rest,
             _ if self.walker.walking() => Activity::Walk,
             BotMode::Recover => Activity::Rest,
-            BotMode::Loot | BotMode::Bless | BotMode::Sneak => Activity::Upkeep,
+            BotMode::Loot | BotMode::Bless | BotMode::Sneak | BotMode::Stash => Activity::Upkeep,
             BotMode::Task | BotMode::Idle => Activity::Wait,
         }
     }
@@ -3351,6 +3351,7 @@ impl Session {
             health: self.party_health(),
             target: self.bot.fight_target().map(str::to_owned),
             bashing: self.walker.bashing(),
+            stash: self.bot.stash_round(),
             rank: Some(match self.settings.choice("party.rank") {
                 "back" => Rank::Back,
                 "mid" => Rank::Mid,

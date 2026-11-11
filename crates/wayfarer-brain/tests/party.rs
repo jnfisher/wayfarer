@@ -1170,3 +1170,59 @@ async fn a_go_to_ends_when_a_member_does_not_catch_up_in_time() {
     );
     assert_eq!(g.world.rooms[LEADER], ARENA);
 }
+
+/// C-092: a leader whose loop reaches its first stop hides its silver, gold and copper there,
+/// and its follower beside it hides its own too, once.
+#[tokio::test(start_paused = true)]
+async fn at_the_leaders_first_stop_every_member_with_it_hides_its_coins() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    formed(&mut g).await;
+    for (s, coins) in [
+        (LEADER, "7 gold crowns"),
+        (
+            FOLLOWER,
+            "12 silver nobles, 3 gold crowns, 2 platinum pieces",
+        ),
+    ] {
+        g.output(s, format!("You are carrying {coins}\r\n{PROMPT}"))
+            .await;
+    }
+    g.send(ToClient::RunLoop {
+        session: LEADER.into(),
+        id: "1:2140:8:doors:0".into(),
+        skip: Some(vec![
+            wayfarer_proto::RoomKey {
+                map: BEYOND_ARENA.0,
+                room: BEYOND_ARENA.1,
+            },
+            wayfarer_proto::RoomKey { map: 1, room: 2153 },
+        ]),
+    })
+    .await;
+    // Until both have hidden theirs and read their coins again. The fake game's loop has no
+    // respawn clock and its `i` shows no coins taken away, so it would go round and hide
+    // again at once, forever on the paused clock: the test stops at the first round.
+    let mut read = BTreeSet::new();
+    g.until(|m| match m {
+        ToGateway::InputLine { session, text } if text == "i" => {
+            read.insert(session.clone());
+            (read.len() == 2).then_some(())
+        }
+        _ => None,
+    })
+    .await;
+    let hides = |s: &str| -> Vec<String> {
+        g.lines
+            .iter()
+            .filter(|(who, l)| who == s && l.starts_with("hide"))
+            .map(|(_, l)| l.clone())
+            .collect()
+    };
+    assert_eq!(hides(LEADER), ["hide 7 gold"], "{:?}", g.lines);
+    assert_eq!(
+        hides(FOLLOWER),
+        ["hide 12 silver", "hide 3 gold"],
+        "{:?}",
+        g.lines
+    );
+}

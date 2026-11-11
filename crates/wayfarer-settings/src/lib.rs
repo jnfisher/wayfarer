@@ -540,6 +540,17 @@ pub const CATALOGUE: &[Setting] = &[
         megamud: Some("DontBeHeavy"),
     },
     Setting {
+        key: "cash.stash_on_loop",
+        label: "Stash currency at the loop's start",
+        help: "Each time a loop gets to its first stop, hide the silver, gold and copper carried there (never platinum or runic), so a loop's coins collect in one room, out of sight of the bot's own pickups, for you to take later. A party leader with it on has every member with it hide theirs there too.",
+        kind: Kind::Bool,
+        default: Value::Bool(true),
+        unit: "",
+        tier: Tier::Essential,
+        group: Group::Cash,
+        megamud: None,
+    },
+    Setting {
         key: "spells.heal_resting_below_hp",
         label: "Heal while resting below",
         help: "While recovering, cast a healing spell on yourself whenever HP is below this per cent and the mana is there, and rest in between: it shortens a rest. 0 turns it off (resting alone).",

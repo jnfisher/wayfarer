@@ -212,6 +212,11 @@ and works nothing out itself.
   the bot is doing instead in yellow (`Fight: giant rat`), and **stop**, which stops the bot
   and drops the Go to. It goes when the Go to is over or the bot stops. Clicking another room while walking replaces the walk. Two
   characters can walk at once; the panel shows the focused one.
+- **The loop the bot runs** (C-092): with no loop hovered or picked in the list, the map draws
+  the running loop in yellow with each stop numbered; the stop it is at or walking to is
+  framed and numbered in light cyan, and unticked stops are numbered in grey. The bar under
+  the map says `↻ Loop Gate`, `stop 3/9: Tower, Library` and, on a leg, its step, the steps
+  left and the commands to come; **stop** drops the loop, as `■` does.
 - **Go to**: the map only shows its 15 steps, so for anywhere farther there is the **go**
   box (`Alt+G`, or the `go` button on the tools line). Type part of a name, two letters or
   more (`woo`, `chief`, `skali`), or a room by its number, `1:1217` (`1217` alone is a room on

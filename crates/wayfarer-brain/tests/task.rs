@@ -10,7 +10,7 @@ use std::path::Path;
 
 use game::arena::*;
 use game::*;
-use wayfarer_brain::{Brain, GIVE_UPS, InstantClock, LEG_PAUSE, LEG_TRIES, Store};
+use wayfarer_brain::{Brain, FixedClock, GIVE_UPS, InstantClock, LEG_PAUSE, LEG_TRIES, Store};
 use wayfarer_proto::{BotAction, BotMode, BotState};
 
 const NEWHAVEN_LOOP: &str = "1:2140:8:doors:0";
@@ -651,4 +651,70 @@ async fn an_arena_is_waited_in_not_stepped_out_of() {
     g.idle(Duration::from_secs(60)).await;
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look"]);
+}
+
+/// A loop started in the Arena, its first stop, with the coins of `carrying` (an `i` line's
+/// list) on the character, and the settings of `text`.
+async fn stashing(carrying: &str, text: &str) -> (Game, Run) {
+    let clock = FixedClock(std::time::UNIX_EPOCH + Duration::from_secs(T0));
+    let brain = Brain::new(world(), Arc::new(clock), None).with_settings(test_settings(text));
+    let (mut g, run) = Game::start_brain(SessionState::Realm, room(ARENA), brain).await;
+    g.pipelining = true;
+    g.idle(Duration::from_secs(20)).await;
+    g.output(&line(&format!("You are carrying {carrying}"), 35))
+        .await;
+    g.expect("st", status(35));
+    g.expect("look", arena(&[], 35));
+    (g, run)
+}
+
+/// C-092: at the loop's first stop the silver, gold and copper carried are hidden there, one
+/// `hide` each, and `i` reads the coins again; platinum and runic stay carried.
+#[tokio::test(start_paused = true)]
+async fn at_the_loops_first_stop_the_silver_gold_and_copper_are_hidden() {
+    let (mut g, run) = stashing(
+        "12 silver nobles, 7 gold crowns, 30 copper farthings, 2 platinum pieces, 1 runic coin",
+        "",
+    )
+    .await;
+    g.expect("hide 12 silver", line("", 35));
+    g.expect("hide 7 gold", line("", 35));
+    g.expect("hide 30 copper", line("", 35));
+    g.run_loop(&[]).await;
+    g.narrated("Stash: hiding 12 silver in Newhaven, Arena")
+        .await;
+    g.narrated("Stash: hiding 30 copper in Newhaven, Arena")
+        .await;
+    g.narrated("Stash: done").await;
+    g.freeze();
+    let (seen, played) = g.close(run).await;
+    assert_eq!(
+        played,
+        [
+            "st",
+            "look",
+            "hide 12 silver",
+            "hide 7 gold",
+            "hide 30 copper"
+        ]
+    );
+    let lines = sent(&seen);
+    let copper = lines.iter().position(|l| l == "hide 30 copper").unwrap();
+    assert_eq!(lines[copper + 1], "i", "{lines:?}");
+    assert!(
+        !lines
+            .iter()
+            .any(|l| l.contains("platinum") || l.contains("runic"))
+    );
+}
+
+/// With `cash.stash_on_loop` off, nothing is hidden.
+#[tokio::test(start_paused = true)]
+async fn with_stashing_off_nothing_is_hidden() {
+    let (mut g, run) = stashing("7 gold crowns", "[cash]\nstash_on_loop = false\n").await;
+    g.run_loop(&[]).await;
+    g.narrated("Stop 1/3 cleared: nothing there").await;
+    g.freeze();
+    let (seen, _) = g.close(run).await;
+    assert!(!sent(&seen).iter().any(|l| l.starts_with("hide")));
 }

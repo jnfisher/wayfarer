@@ -51,6 +51,7 @@ mod session_settings;
 mod shopping;
 mod sneak;
 mod spellcraft;
+mod stash;
 mod stats;
 mod sysop;
 mod task;

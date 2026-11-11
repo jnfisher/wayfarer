@@ -344,6 +344,35 @@ describe("the map panel", () => {
     expect(onrunloop).toHaveBeenCalledWith("aria", "ROADLOOP.mp", [{ map: 1, room: 11 }]);
   });
 
+  it("says where the running loop is in the bar, with a stop that drops it (C-092)", async () => {
+    const running: CharacterState = {
+      ...here,
+      walking: { to: { map: 1, room: 12 }, name: "Lair", steps_left: 1, step: 1, commands: ["n"] },
+      bot: {
+        state: "running",
+        mode: "task",
+        narration: "Loop Gate: to stop 2/2 Lair (one step)",
+        task: {
+          loop_id: "1:10:8:doors:0",
+          loop_name: "Gate",
+          stop: 1,
+          stops: [
+            { map: 1, room: 11 },
+            { map: 1, room: 12 },
+          ],
+          skip: [],
+        },
+      },
+    };
+    const { onstop } = mount({ character: running, loops });
+    const bar = screen.getByLabelText("Walk");
+    expect(within(bar).getByText("↻ Loop Gate")).toBeTruthy();
+    expect(within(bar).getByText("stop 2/2: Lair")).toBeTruthy();
+    expect(within(bar).getByText("step 1, 1 left")).toBeTruthy();
+    await fireEvent.click(within(bar).getByRole("button", { name: "stop" }));
+    expect(onstop).toHaveBeenCalledWith("aria");
+  });
+
   it("shows the MegaMud loop the bot runs", async () => {
     const running: CharacterState = {
       ...here,

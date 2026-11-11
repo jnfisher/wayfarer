@@ -17,6 +17,7 @@ import {
   roomBox,
   roomCentre,
   walkBar,
+  loopBar,
   walkText,
   zoomAt,
   ZOOMS,
@@ -390,5 +391,21 @@ describe("making a loop from another", () => {
 
   it("counts in the loop as listed, so adding one does not shift another", () => {
     expect(insertStops(base, [room(870, 1), room(871, 1), room(872, 3)])).toEqual(at(1, 870, 871, 2, 3, 872));
+  });
+});
+
+describe("the loop bar (C-092)", () => {
+  const task = { loop_id: "1:10:8:doors:0", loop_name: "Gate", stop: 1, stops: [k(11), k(12), k(13)], skip: [] };
+  const bot = (over: object = {}) => ({ state: "running", mode: "task", narration: "", task, ...over }) as never;
+  const names = (key: { room: number }) => (key.room === 12 ? "Lair" : undefined);
+  it("says the stop the loop is at or walking to, its name, and the leg", () => {
+    const leg = { to: k(12), name: "Lair", steps_left: 1, step: 1, commands: ["n"] };
+    expect(loopBar(bot(), leg, names)).toEqual({ name: "Loop Gate", progress: "stop 2/3", stop: "Lair", walking: leg });
+    expect(loopBar(bot(), undefined, names)?.walking).toBeUndefined();
+  });
+  it("is nothing without a loop, with the bot stopped, or during a Go to", () => {
+    expect(loopBar(bot({ task: undefined }), undefined, names)).toBeUndefined();
+    expect(loopBar(bot({ state: "stopped" }), undefined, names)).toBeUndefined();
+    expect(loopBar(bot({ journey: { name: "Road", to: k(11) } }), undefined, names)).toBeUndefined();
   });
 });
