@@ -572,7 +572,9 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
   | Idle | Otherwise | Sends nothing: "Waiting here" |
 
 - **Worth fighting**: every record the name finds (adjectives stripped: `fat giant rat` is a
-  giant rat) is evil, not an NPC and worth experience (`kb/pitfalls.md` 1). **A room spawns**
+  giant rat) is evil, not an NPC and worth experience (`kb/pitfalls.md` 1). An NPC is a
+  `montype` 2 monster, except an evil one that comes back after its kill: the ice sorceress,
+  the adult red dragon and the chess pieces are bosses to fight, not NPCs (C-090). **A room spawns**
   when the spawn pass makes monsters there or it holds one worth fighting; a room the position
   is not sure of counts as spawning. A shopkeeper's room is quiet.
 - **Engaged** comes from `*Combat Engaged*` and `*Combat Off*`. Auto-combat can also end without

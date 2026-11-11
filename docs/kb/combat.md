@@ -15,8 +15,16 @@ For the full formulas, see `test/play/notes/combat.md` (with source references).
     ferryman and the like are refused because they are Magical, not because they are Neutral. [C]
   - In the stock data: 688 Chaotic Evil, 164 Neutral, 84 Lawful Good, 71 Good, 45 Neutral Evil,
     34 Evil, 15 Lawful Evil. [C]
-- Also skip `montype` 2 (NPC) and monsters worth 0 exp. If a name matches several records,
-  require **all** of them to be evil. [C]
+- Also skip NPCs and monsters worth 0 exp. If a name matches several records, require **all**
+  of them to be evil. [C]
+- `montype` is the monster's spawn group (`progression.md`), not a kind. Group 2 is made by no
+  group spawn, only a room's `specmon` or `genmonster`. It holds the shopkeepers, healers and
+  quest figures, and also the unique evil monsters: in the game data, the 15 evil group-2
+  monsters that come back after their kill (`maxalive` 1, `regenhrs` 1–75; 9,500–60,000 exp)
+  are the ice sorceress, the adult red dragon, the enormous blue dragon, Lord Feyr, Nahr, the
+  beautiful woman and handsome man, and the chess pieces. The ice sorceress blasts players on
+  sight. So group 2 means an NPC only when the monster is not evil or never comes back
+  (Cygani and Aderem: Chaotic Evil, 9 exp, `regenhrs` 0). [C data; C live 2026-11-10]
 - In-game, monster name colour shows alignment. [F, John]
 
 ## What attacks you [C LJNBKGND.C:2683-2942]

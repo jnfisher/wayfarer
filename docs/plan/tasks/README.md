@@ -272,6 +272,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-087](C-087-go-panel-persists.md) | The walk bar stays through a Go to: between legs, while the bot fights or plans, with its stop button | C | S | | |
 | [C-088](C-088-harness-waits-fail.md) | A test's wait for what never comes fails, with the brain's last words, instead of running on | C | S | | |
 | [C-089](C-089-hold-not-a-failed-walk.md) | A leader's hold is not a walk that ended elsewhere: a Go to waits for the party and goes on | C | S | | |
+| [C-090](C-090-group-2-is-not-npcs.md) | Montype 2 is a spawn group, not NPCs: the ice sorceress and the other unique evil monsters are fought | C | S | | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or
