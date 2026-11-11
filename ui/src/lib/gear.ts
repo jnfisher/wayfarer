@@ -354,7 +354,7 @@ export function sourceText(row: GearRow): string {
   }
   if (row.sources.some((s) => s.kind === "quest")) return "quest";
   if (row.sources.some((s) => s.kind === "placed")) return "placed";
-  return "";
+  return "none known";
 }
 
 /** Every source, a line each, for the source cell's tooltip. */
@@ -371,6 +371,7 @@ export function sourcesTitle(row: GearRow): string {
         return "placed in a room";
     }
   });
+  if (lines.length === 0) lines.push("No shop, drop, quest or room has it: it cannot be had, so it is never the best");
   if (row.limited !== undefined) lines.push(`limited: at most ${row.limited} in play`);
   if (row.deleted_at_cleanup) lines.push("deleted at cleanup");
   return lines.join("\n");

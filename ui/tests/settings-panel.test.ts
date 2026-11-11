@@ -110,6 +110,20 @@ describe("the settings tab", () => {
     expect(container.querySelector('[data-key="bot.leg_tries"]')).not.toBeNull();
   });
 
+  it("ends with the monster rules, folded away, for the focused character", async () => {
+    const onrule = vi.fn();
+    const { container } = render_({
+      rules: [{ pattern: "giant roc", rule: "ignore", source: "default" }],
+      onrule,
+    });
+    const details = container.querySelector(".list > details.monster-rules") as HTMLDetailsElement;
+    expect(details.parentElement!.lastElementChild).toBe(details);
+    expect(details.open).toBe(false);
+    expect(details.querySelector("summary")!.textContent).toBe("monster rules (1)");
+    await fireEvent.click(screen.getByRole("button", { name: "remove giant roc" }));
+    expect(onrule).toHaveBeenLastCalledWith("a", "giant roc", null);
+  });
+
   it("hides the advanced settings with 'all' off", async () => {
     const { container } = render_();
     await fireEvent.click(screen.getByLabelText("all"));

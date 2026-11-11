@@ -263,7 +263,7 @@ describe("what a row says", () => {
     expect(sourceText(STAFF)).toBe("25% minotaur champion, boss, first kill");
     expect(sourceText(SWORD)).toBe("quest");
     expect(sourceText(row(1, "x", { sources: [{ kind: "placed", name: "" }] }))).toBe("placed");
-    expect(sourceText(BOW)).toBe("");
+    expect(sourceText(BOW)).toBe("none known");
   });
 
   it("shows the Str shortfall", () => {

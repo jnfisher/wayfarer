@@ -1,7 +1,8 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { LAYERS, groupRows, isOwn, numberChange, resetChange, show, sourceLabel, type SettingsMessage } from "./lib/settings";
-  import type { SessionInfo, SettingChange, SettingRow } from "./proto";
+  import MonsterRules from "./MonsterRules.svelte";
+  import type { MonsterRuleEntry, MonsterRuleKind, SessionInfo, SettingChange, SettingRow } from "./proto";
 
   interface Props {
     /** The focused tile's session, which the panel follows. */
@@ -13,9 +14,14 @@
     onrequest: (session: string, layer: string) => void;
     /** Change the file of a layer. */
     onsave: (session: string, layer: string, changes: SettingChange[]) => void;
+    /** The character's monster rules (its snapshot's `bot.monster_rules`), folded away at the
+     * end of the list. */
+    rules?: MonsterRuleEntry[];
+    /** Set the player's monster rule for a pattern, or remove it (`null`). */
+    onrule?: (session: string, pattern: string, rule: MonsterRuleKind | null) => void;
   }
 
-  let { session, settings, attached, onrequest, onsave }: Props = $props();
+  let { session, settings, attached, onrequest, onsave, rules = [], onrule = () => {} }: Props = $props();
 
   /** The layer being edited, and whether the standard and advanced settings show too. */
   let layer = $state<string>("character");
@@ -138,6 +144,13 @@
           {/each}
         </section>
       {/each}
+      {#if session}
+        {@const id = session.id}
+        <details class="monster-rules">
+          <summary title="What the bot does about a monster, by name: the defaults and yours">monster rules ({rules.length})</summary>
+          <MonsterRules {rules} onrule={(pattern, rule) => onrule(id, pattern, rule)} />
+        </details>
+      {/if}
     </div>
   {/if}
 </div>
@@ -229,6 +242,14 @@
   }
   button.on {
     background: var(--vga-yellow);
+  }
+  .monster-rules {
+    margin-top: 8px;
+  }
+  .monster-rules summary {
+    color: var(--vga-yellow);
+    border-bottom: 1px solid var(--frame);
+    cursor: pointer;
   }
   .all {
     margin-left: auto;

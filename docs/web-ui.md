@@ -433,14 +433,6 @@ spells). They are kept across runs, stops and restarts until their own **Reset**
 since" (`only: "combat"`; the run goes on): press it after changing weapons or settings,
 starting a loop or a level-up.
 
-Between the two, the **monster rules** the bot plays by ([brain.md](brain.md) "Monster
-rules"): each rule (*ignore*, *avoid*, *attack first*: every boss seen, by default), its pattern and where it comes from (`default`, dim,
-its reason as the tooltip; `session`, learned from a stalemate; `player`). Every rule has an `x`:
-the player's is removed, a learned one forgotten, and a default switched off for this character,
-shown struck through with an *off* row whose **put back** restores it. The line under the list
-adds one (`set_monster_rule`): pick the rule, type the name, `add`. A pattern matches any monster whose name holds it, so use the full name (`ooze`
-would also catch the glittering ooze). The settings page (M4) replaces this list.
-
 ## The settings
 
 The focused character's settings as a form (`docs/plan/04-settings.md`), from the brain's
@@ -464,6 +456,14 @@ shows the standard and advanced settings too; untick it for the essential ones o
   below shows through (the default, a preset, or another file).
 - A change made to the file by hand shows up too: the brain sends the form again when it
   reloads a file.
+
+At the end of the settings list, folded away under "monster rules (N)", the **monster rules** the bot plays by ([brain.md](brain.md) "Monster
+rules"): each rule (*ignore*, *avoid*, *attack first*: every boss seen, by default), its pattern and where it comes from (`default`, dim,
+its reason as the tooltip; `player`). Every rule has an `x`:
+the player's is removed, and a default switched off for this character,
+shown struck through with an *off* row whose **put back** restores it. The line under the list
+adds one (`set_monster_rule`): pick the rule, type the name, `add`. A pattern matches any monster whose name holds it, so use the full name (`ooze`
+would also catch the glittering ooze).
 
 ## The accounts
 
