@@ -39,8 +39,32 @@ use crate::executor::{Action, Confirmed, Expect, Outcome, Refused};
 use crate::flee::dir_name;
 use crate::position::Position;
 
-/// `bash` commands sent at one locked door before the walker gives up on it.
-pub const MAX_BASHES: u32 = 3;
+/// `bash` commands sent at one locked door, at most, before the walker gives up on it.
+pub const MAX_BASHES: u32 = 50;
+/// The fewest `bash` commands at a door before giving up on it.
+pub const MIN_BASHES: u32 = 3;
+/// `bash` commands at a door whose odds are not known (the character's strength not seen yet).
+pub const BASHES_UNKNOWN: u32 = 15;
+
+/// How many `bash` commands to send at a locked door the character opens with `odds` per cent
+/// a time (`Traveller::lock_odds`; `kb/navigation.md`: genrdn(0,100) < Str + exitpar2): until
+/// failing that many times in a row is under one chance in a hundred, between [`MIN_BASHES`]
+/// and [`MAX_BASHES`] (C-091). At 30% that is 13; at 10%, 44. A failed bash costs two ticks and
+/// now and then 1-4 HP, so three in a row was giving a door up on a coin toss.
+pub fn bash_limit(odds: Option<u32>) -> u32 {
+    let Some(odds) = odds else {
+        return BASHES_UNKNOWN;
+    };
+    if odds == 0 || odds >= 100 {
+        return MIN_BASHES;
+    }
+    let miss = 1.0 - f64::from(odds) / 100.0;
+    let n = (0.01f64.ln() / miss.ln()).ceil();
+    // n is positive and small: odds 1% gives 459, clamped below.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let n = n as u32;
+    n.clamp(MIN_BASHES, MAX_BASHES)
+}
 /// The default of `movement.search_limit`: `search` commands for one hidden exit that find nothing
 /// before the walker blocks it for the
 /// session. A search is a dice roll (`max(3, perception - 15)` percent, `kb/navigation.md`
@@ -823,7 +847,11 @@ impl Walker {
             (Doing::Open, Outcome::Confirmed(Confirmed::DoorOpened))
             | (Doing::Bash, Outcome::Confirmed(Confirmed::Bash { ok: true })) => Ok(Doing::Move),
             (Doing::Bash, Outcome::Confirmed(Confirmed::Bash { ok: false })) => {
-                if w.bashes < MAX_BASHES {
+                let odds = atlas
+                    .graph
+                    .edge(step.from, step.dir)
+                    .and_then(|e| pos.traveller.lock_odds(e));
+                if w.bashes < bash_limit(odds) {
                     Ok(Doing::Bash)
                 } else {
                     pos.block(step.from, step.dir);

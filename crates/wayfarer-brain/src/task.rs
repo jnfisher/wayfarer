@@ -51,6 +51,11 @@ pub const GIVE_UPS: u32 = 3;
 /// game with moves.
 pub const LEG_PAUSE: Duration = Duration::from_secs(5);
 
+/// Steps from where the character is to `to` by the routes the traveller can take, if any.
+pub(crate) fn steps_to(v: &View, to: Key) -> Option<usize> {
+    route(&v.atlas.graph, v.room?, to, v.traveller).map(|r| r.len())
+}
+
 /// How long until a stop passed by at `passed_at` is tried again ([`PASSED_FOR`]); zero when
 /// it never was, or the time is up.
 pub fn passed_left(now: Instant, passed_at: Option<Instant>, passed_for: Duration) -> Duration {
@@ -212,8 +217,11 @@ pub(crate) struct Task {
     /// Why the bot should stop itself, once [`GIVE_UPS`] stops are passed by in a row.
     gave_up: Option<String>,
     phase: Phase,
-    /// Legs to the stop at `index` begun since it last arrived or fought.
+    /// Legs to the stop at `index` begun since it last arrived, fought or got closer.
     tries: u32,
+    /// Steps from the stop when the last leg began: a leg that ends closer is progress, not a
+    /// try (C-091).
+    leg_from: Option<usize>,
     /// When the last leg was seen to have ended away from its stop: the next waits
     /// [`LEG_PAUSE`] from then.
     failed_at: Option<Instant>,
@@ -269,6 +277,7 @@ impl Task {
             stops,
             phase: Phase::Going,
             tries: 0,
+            leg_from: None,
             failed_at: None,
             notes: Vec::new(),
             rest: false,
@@ -453,6 +462,7 @@ impl Task {
         self.phase = Phase::Going;
         self.tries += 1;
         self.failed_at = None;
+        self.leg_from = steps_to(v, self.stops[i].key);
         let s = &self.stops[i];
         let steps = v
             .room
@@ -679,6 +689,16 @@ impl Mode for Task {
                     self.tries = 0;
                 }
                 Phase::Going => {}
+            }
+            // The last leg ended closer to the stop than it began: progress, whatever stopped
+            // it (a monster that left, a rest, a pickup), so it is not a try (C-091).
+            if self.tries > 0
+                && let (Some(was), Some(now)) =
+                    (self.leg_from, steps_to(v, self.stops[self.index].key))
+                && now < was
+            {
+                self.tries = 0;
+                self.failed_at = None;
             }
             if self.tries > 0 {
                 // The last leg ended away from the stop: a pause before the next.

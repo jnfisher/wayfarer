@@ -10,7 +10,7 @@ use std::path::Path;
 
 use game::arena::*;
 use game::*;
-use wayfarer_brain::{Brain, GIVE_UPS, InstantClock, LEG_PAUSE, LEG_TRIES, MAX_BASHES, Store};
+use wayfarer_brain::{Brain, GIVE_UPS, InstantClock, LEG_PAUSE, LEG_TRIES, Store};
 use wayfarer_proto::{BotAction, BotMode, BotState};
 
 const NEWHAVEN_LOOP: &str = "1:2140:8:doors:0";
@@ -559,7 +559,7 @@ async fn stops_it_cannot_reach_are_passed_by_each_round_without_giving_up() {
     let (mut g, run) = ready_with(arena(&[], 35)).await;
     g.expect("look", arena(&[], 35));
     g.expect("n", says("The door is closed!"));
-    for _ in 0..MAX_BASHES {
+    for _ in 0..arena_door_bashes(true) {
         g.expect("bash n", says("Your attempts to bash through fail!"));
     }
     g.run_loop(&[]).await;
@@ -584,9 +584,15 @@ async fn stops_it_cannot_reach_are_passed_by_each_round_without_giving_up() {
         !said.iter().any(|s| s.starts_with("Skipping 2")),
         "{said:?}"
     );
-    g.idle(Duration::from_secs(30 * 60)).await;
+    // Under BLOCKED_FOR: after it, the door is tried again (C-091).
+    g.idle(Duration::from_secs(5 * 60)).await;
     let (seen, played) = g.close(run).await;
-    assert_eq!(played[2..6], ["n", "bash n", "bash n", "bash n"]);
+    let bashes = arena_door_bashes(true) as usize;
+    assert_eq!(played[2], "n");
+    assert!(
+        played[3..3 + bashes].iter().all(|l| l == "bash n"),
+        "{played:?}"
+    );
     assert_eq!(bot(&seen).state, BotState::Running);
     assert!(!notices(&seen).iter().any(|s| s.starts_with("Stopped:")));
 }
@@ -598,7 +604,7 @@ async fn the_bot_stops_at_once_when_no_stop_can_be_reached() {
     let (mut g, run) = ready_with(arena(&[], 35)).await;
     g.expect("look", arena(&[], 35));
     g.expect("n", says("The door is closed!"));
-    for _ in 0..MAX_BASHES {
+    for _ in 0..arena_door_bashes(true) {
         g.expect("bash n", says("Your attempts to bash through fail!"));
     }
     g.run_loop(&[ARENA]).await;
@@ -606,7 +612,9 @@ async fn the_bot_stops_at_once_when_no_stop_can_be_reached() {
     g.narrated(why).await;
     g.idle(Duration::from_secs(30 * 60)).await;
     let (seen, played) = g.close(run).await;
-    assert_eq!(played[2..], ["n", "bash n", "bash n", "bash n"]);
+    let mut want = vec!["n".to_owned()];
+    want.extend((0..arena_door_bashes(true)).map(|_| "bash n".to_owned()));
+    assert_eq!(played[2..], want);
     let b = bot(&seen);
     assert_eq!((b.state, b.task), (BotState::Stopped, None));
 }

@@ -675,3 +675,22 @@ pub fn is_bots_own(line: &str) -> bool {
         || line == "re-synced"
         || line == "Waiting here"
 }
+
+/// The `bash` commands the walker sends at the Arena's locked north door before it gives up
+/// (C-091): from the door's odds when the character's strength (50, the status screen's) is
+/// known, else [`wayfarer_brain::BASHES_UNKNOWN`].
+#[allow(dead_code)]
+pub fn arena_door_bashes(strength_known: bool) -> u32 {
+    if !strength_known {
+        return wayfarer_brain::BASHES_UNKNOWN;
+    }
+    let atlas = atlas();
+    let e = atlas
+        .graph
+        .edges(ARENA)
+        .iter()
+        .find(|e| e.to == BEYOND_ARENA)
+        .expect("the Arena's door north");
+    let odds = u32::try_from((50 + e.params[1]).clamp(0, 100)).unwrap();
+    wayfarer_brain::bash_limit(Some(odds))
+}

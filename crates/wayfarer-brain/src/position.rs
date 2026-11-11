@@ -21,6 +21,10 @@ use crate::brain::Atlas;
 /// A reach of this many rooms or fewer is a sealed pocket: its Hidden exits out are taken as known.
 pub const POCKET_ROOMS: usize = 60;
 pub const HIDDEN_FOR: Duration = Duration::from_secs(5 * 60);
+/// How long an exit the walker gave up on (a door that would not bash open, a refused move, a
+/// hidden exit not found or not opened) stays out of the routes (C-091). A door that failed its
+/// bashes was unlucky, not shut for good; a guard moves on; a lever is pulled by someone else.
+pub const BLOCKED_FOR: Duration = Duration::from_secs(10 * 60);
 
 /// A room as the game showed it: its title (when it was not lost behind a prompt), the
 /// directions of its `Obvious exits` (when that line came), or too dark to see.
@@ -53,6 +57,9 @@ pub(crate) struct Position {
     pub visited: HashSet<Key>,
     /// When each hidden exit in the traveller's `found` was found.
     found_at: BTreeMap<(Key, u8), Instant>,
+    /// When each exit in the traveller's `blocked` was first seen blocked by [`Position::refresh`]
+    /// (C-091): it is taken again [`BLOCKED_FOR`] after.
+    blocked_at: BTreeMap<(Key, u8), Instant>,
     /// The rooms whose pockets were last looked at ([`POCKET_ROOMS`]).
     pocket_at: BTreeSet<Key>,
     /// Moves that went to the game and whose rooms have not come yet, oldest first: one, or
@@ -393,15 +400,41 @@ impl Position {
         self.traveller.blocked.extend(exits);
     }
 
-    /// Mark one exit blocked (a door that would not bash open).
+    /// Mark one exit blocked (a door that would not bash open), for [`BLOCKED_FOR`].
     pub fn block(&mut self, from: Key, dir: u8) {
         self.traveller.blocked.insert((from, dir));
+    }
+
+    /// Forget every exit blocked so far: the player started a walk or a loop (C-091), and a
+    /// few unlucky bashes earlier must not leave it with no route.
+    pub fn clear_blocks(&mut self) {
+        self.traveller.blocked.clear();
+        self.blocked_at.clear();
+    }
+
+    /// Time the blocks: each new one from `now`, and the ones [`BLOCKED_FOR`] old are taken
+    /// again.
+    fn expire_blocks(&mut self, now: Instant) {
+        for &at in &self.traveller.blocked {
+            self.blocked_at.entry(at).or_insert(now);
+        }
+        let gone: Vec<(Key, u8)> = self
+            .blocked_at
+            .iter()
+            .filter(|&(_, &at)| now.saturating_duration_since(at) >= BLOCKED_FOR)
+            .map(|(&k, _)| k)
+            .collect();
+        for at in gone {
+            self.blocked_at.remove(&at);
+            self.traveller.blocked.remove(&at);
+        }
     }
 
     /// Plan for the character as the model knows it at `now`: level, class, race and strength;
     /// the hidden exits found long enough ago have hidden again.
     pub fn refresh(&mut self, atlas: &Atlas, c: &CharacterState, now: Instant) {
         self.forget_hidden(now);
+        self.expire_blocks(now);
         self.traveller.strength = c.stats.as_ref().and_then(|s| s.strength).map(i64::from);
         self.traveller.level = c.level.map(i64::from);
         self.traveller.class = c.class.as_ref().and_then(|n| atlas.classes.get(n).copied());
@@ -492,5 +525,28 @@ impl Position {
             candidates: u32::try_from(self.belief.candidates().len()).unwrap_or(u32::MAX),
             title: self.title.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn a_blocked_exit_is_taken_again_after_ten_minutes_or_at_once_when_cleared() {
+        // C-091: a door that failed its bashes is unlucky, not shut for good.
+        let mut p = Position::default();
+        let t0 = Instant::now();
+        p.block((1, 2), 0);
+        p.expire_blocks(t0);
+        p.expire_blocks(t0 + BLOCKED_FOR - Duration::from_secs(1));
+        assert!(p.traveller.blocked.contains(&((1, 2), 0)));
+        p.expire_blocks(t0 + BLOCKED_FOR);
+        assert!(p.traveller.blocked.is_empty());
+        // Cleared by a walk the player asks for.
+        p.block((1, 3), 1);
+        p.expire_blocks(t0 + BLOCKED_FOR);
+        p.clear_blocks();
+        assert!(p.traveller.blocked.is_empty() && p.blocked_at.is_empty());
     }
 }

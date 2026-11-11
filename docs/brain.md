@@ -149,8 +149,9 @@ progress (after the move in flight).
 
 - **The route**: the cheapest from the believed room for the character's level, class and race
   (as the model knows them): the shortest route, through rooms that spawn monsters as readily
-  as any other (a setting later), avoiding the exits the game refused this session and the
-  locked doors the character cannot open. Narrated: "Walking to Newhaven,
+  as any other (a setting later), avoiding the exits given up on in the last 10 minutes
+  (`BLOCKED_FOR`; a Go to or loop the player starts clears them, C-091) and the locked doors
+  the character cannot open. Narrated: "Walking to Newhaven,
   Arena: 3 steps" (", one door" when there are doors). No route, or an unknown position: a
   warning, and nothing is sent.
 - **Locked doors and the character**: a door or gate counts as the game last showed it this
@@ -167,8 +168,11 @@ progress (after the move in flight).
   time: a re-sync waits for the walk's action and the walk for a re-sync command. A room that is
   not the one expected replans from the belief once; a second time stops the walk.
 - **Doors**: `The door is Closed!` (shut) sends `open <dir>`, then the move again. `The door is
-  closed!` (locked), or `The door is locked.` after `open`, sends `bash <dir>`, at most three
-  times; then the exit is marked refused and the route planned again. A locked door whose odds
+  closed!` (locked), or `The door is locked.` after `open`, sends `bash <dir>` until failing
+  that often in a row would be under one chance in a hundred at the door's odds (Str +
+  `exitpar2` per cent a bash): 7 at 50%, 13 at 30%, 44 at 10%, between 3 and 50, and 15 while
+  the character's strength is not known (`bash_limit`, C-091). Then the exit is marked refused
+  for 10 minutes and the route planned again. A locked door whose odds
   are nil for the character is given up at once, with no `bash`: "The door east is beyond my
   strength (needs more than 999)", the exit marked refused, the route planned again.
 - **Keys and items**: a Key exit (exit type 2, `exitpar1` the key's item number) is routed through
@@ -214,7 +218,7 @@ progress (after the move in flight).
   class and item bonuses), so it keeps searching until the exit is found: a `look` after the
   first empty search and every fifth after, and "Still searching for the hidden exit north (10
   tries)" every tenth. Only after `MAX_SEARCHES` (300) empty searches does it mark the exit
-  refused for the session and plan again. A fight, a flee or a stop ends the walk and so the
+  refused (for 10 minutes) and plan again. A fight, a flee or a stop ends the walk and so the
   search; the next walk starts counting again. A search needs light: in a room too dark to see the game answers
   "The room is very dark - you can't see anything" and the walk stops ("too dark to search
   for the hidden exit north"; the bot does not light a torch yet). A found exit hides again after about five minutes (one step of 300
@@ -227,7 +231,7 @@ progress (after the move in flight).
   west in the sewers opens at `push switch`, the Dark Sanctum's at `press d`, `press e`,
   `press a`, `press t`, `press h`, typed in that order. Arriving at one that is not showing,
   the walker types its phrases ("Opening the hidden exit west: push switch"), then `look`s: it
-  moves if the exit shows (`secret passage west`), else marks the exit refused for the session
+  moves if the exit shows (`secret passage west`), else marks the exit refused for 10 minutes
   and plans again ("the hidden exit west did not open").
 - **Sealed hidden exits and path windows**: a blocked exit whose phrases are typed in other
   rooms (or that asks for an item) is *sealed* (`Edge::sealed`): it is never searched for,
@@ -243,7 +247,7 @@ progress (after the move in flight).
   gates a path opens with a lever, and phrases the pack knows nothing about, are not windows
   yet.
 - **Refusals** (level, alignment, class or race, not permitted, a spell or item needed, a toll
-  not covered, a timed exit): the exit is marked refused for the session and the route planned
+  not covered, a timed exit): the exit is marked refused for 10 minutes and the route planned
   again, at most five times a walk.
 - **"There is no exit in that direction!"** means the belief is wrong (`kb/pitfalls.md` 34):
   the brain sends `look`, relocates from the room shown, and plans again. A second one in the
@@ -364,8 +368,11 @@ for the map panel's go box (`docs/web-ui.md`, "The map").
   bot fights on the way and walks on from wherever the fight left it; a journey's moves go one
   at a time. At the end the journey is over and the bot plays there, that room its home. A
   walk the walker cannot start (no route) or gives up by itself (lost, a door that will not
-  open) ends the journey: "Not going to Burning Valley: the walk stopped; playing here". The
-  snapshot's `bot.journey` says where it goes (`{name, to}`). See "The bot's states".
+  open) ends the journey: "Not going to Burning Valley: the walk stopped; playing here". A walk
+  stopped for anything else (a fight, a rest, a pickup) is begun again from where the
+  character is; three such legs in a row that got no closer and had no fight between end it
+  ("3 walks to Burning Valley ended elsewhere"). A leg that got closer is progress, not a try
+  (C-091). The `bot.journey` says where it goes (`{name, to}`). See "The bot's states".
 - **Passing monsters by.** `walk_to` with `fight: false` (the map panel's *fight on the way*
   unticked) makes the journey *passive*: on the way the bot fights nothing, not even a monster
   that attacks the character; it walks on, and the walk does not stop for one. Flee still runs
@@ -721,8 +728,9 @@ either kind, a `set_monster_rule` with either name and `--flee-from` are read as
   *gigantic black ooze* is *ignored*: 2,500 HP, 500 regenerated a round, damage reduction
   40); what the bot learned this **session** (a stalemate); and the **player**'s
   (`set_monster_rule` from the stats tab, or `wayfarer brain --ignore NAME`, repeatable).
-  The session's and the player's are kept with the bot's record (the store's `monster_rules`)
-  and survive a brain restart. The snapshot's `bot.monster_rules` lists all three, a default
+  The player's are kept with the bot's record (the store's `monster_rules`) and survive a
+  brain restart; a stalemate's last the session only (C-091), and one an older brain kept is
+  dropped when the record is read. The snapshot's `bot.monster_rules` lists all three, a default
   with its reason. The bosses' defaults (*attack first*) are not a list of their own: a boss
   no rule names is *attack first*, matched by the game data's names (not as a pattern, so
   `dark mage` does not catch a dark mage apprentice); one is listed once the character has seen
@@ -732,8 +740,9 @@ either kind, a `set_monster_rule` with either name and `--flee-from` are read as
   for this character by a player *off* (kept, shown struck through with **put back**, which
   removes the *off*).
 - **A stalemate**: the character's own swings at its target are counted by round (a round's
-  swings come within 2 s; rounds are 5 s apart). Four rounds in a row with no damage dealt,
-  one of them a glance at least (`Your swing at <name> hits, but glances off its armour.`):
+  swings come within 2 s; rounds are 5 s apart). Ten rounds in a row (50 s) with no damage
+  dealt by the character or by anyone else on the target (a party member's blow or damage
+  spell starts the count again, C-091), one of them a glance at least (`Your swing at <name> hits, but glances off its armour.`):
   "Stalemate: my swings do nothing to gigantic black ooze; leaving". Fight gives the target
   up, the monster becomes *ignored* for the session ("Monster rule: ignore gigantic black
   ooze (a stalemate)"), and the bot leaves as Flee does. A monster already ignored is not
@@ -808,7 +817,8 @@ stop it is at or walking to, and the stops it passes by.
   "fight here"; after a flee Recover rests and walks back to the stop. After a leg that ends
   elsewhere the next waits 5 s (`LEG_PAUSE`, "Loop Newhaven: did not get to stop 2/3; trying
   again in a moment"), so a walk that keeps failing at once never floods the game (C-053). A leg
-  that ends elsewhere three times with no fight between is given up: the stop is passed by this time round, with a
+  that ends elsewhere three times with no fight between, none of them ending closer to the stop
+  than it began (a leg that got closer is progress whatever stopped it, C-091), is given up: the stop is passed by this time round, with a
   warning-like notice ("Stop 2/3 Dungeon, Entrance: could not get there; passing it by this time
   round"). A stop passed by (a leg that would not get there, a monster to keep away from, a
   stalemate) is left alone for five minutes (`PASSED_FOR`) before the bot tries it again. Three stops passed by in a row, with no stop reached and nothing

@@ -5,7 +5,6 @@ mod game;
 
 use game::arena::{arena, bot};
 use game::*;
-use wayfarer_brain::MAX_BASHES;
 use wayfarer_proto::{BotState, ExitKind};
 
 #[tokio::test(start_paused = true)]
@@ -189,7 +188,7 @@ async fn a_shut_door_is_opened_then_walked_through() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_locked_door_is_bashed_at_most_three_times() {
+async fn a_locked_door_is_bashed_as_often_as_its_odds_call_for() {
     // Bashed open on the second try.
     let (mut g, run) = Game::start_with(SessionState::Realm, arena(&[], 35)).await;
     g.expect("n", says("The door is closed!"));
@@ -202,10 +201,11 @@ async fn a_locked_door_is_bashed_at_most_three_times() {
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["n", "bash n", "bash n", "n"]);
 
-    // Three failures: the door is marked, and there is no other way.
+    // Its bashes all fail (as many as the door's odds call for, C-091): the door is marked, and
+    // there is no other way.
     let (mut g, run) = Game::start_with(SessionState::Realm, arena(&[], 35)).await;
     g.expect("n", says("The door is closed!"));
-    for _ in 0..MAX_BASHES {
+    for _ in 0..arena_door_bashes(false) {
         g.expect("bash n", says("Your attempts to bash through fail!"));
     }
     g.walk_to(BEYOND_ARENA).await;
@@ -217,7 +217,9 @@ async fn a_locked_door_is_bashed_at_most_three_times() {
         "{said}"
     );
     let (_, played) = g.close(run).await;
-    assert_eq!(played, ["n", "bash n", "bash n", "bash n"]);
+    let mut want = vec!["n".to_owned()];
+    want.extend((0..arena_door_bashes(false)).map(|_| "bash n".to_owned()));
+    assert_eq!(played, want);
 }
 
 #[tokio::test(start_paused = true)]
@@ -253,15 +255,22 @@ async fn a_refusal_marks_the_exit_and_the_replan_avoids_it() {
         said.starts_with("Stopped walking: `w` refused: level too high; no way to"),
         "{said}"
     );
-    // The exit stays marked for the session: a second walk doesn't try it.
+    // A walk the player asks for again starts with the exits given up on cleared (C-091): it
+    // tries the exit once more, and is refused again.
+    g.expect(
+        "w",
+        says("You have progressed too far to go through this exit!"),
+    );
     g.walk_to(healer).await;
     let said = g.walk_narration().await;
+    assert_eq!(said, "Walking to Newhaven, Healer: one step");
+    let said = g.walk_narration().await;
     assert!(
-        said.starts_with("Not walking to Newhaven, Healer: no way there"),
+        said.starts_with("Stopped walking: `w` refused: level too high; no way to"),
         "{said}"
     );
     let (_, played) = g.close(run).await;
-    assert_eq!(played, ["w"]);
+    assert_eq!(played, ["w", "w"]);
 }
 
 #[tokio::test(start_paused = true)]
