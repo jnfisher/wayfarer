@@ -1044,6 +1044,15 @@ impl Bot {
         says
     }
 
+    /// The leader waited `party.wait_separated_minutes` for a member who did not catch up:
+    /// its loop stops, and a Go to ends at the next tick ("Not going to …: why").
+    pub fn party_gave_up(&mut self, why: &str) -> Vec<Say> {
+        if let Some(j) = &mut self.journey {
+            j.give_up(why);
+        }
+        self.stop_loop(why)
+    }
+
     /// The loop it runs, if it runs one.
     pub fn task_mut(&mut self) -> Option<&mut Task> {
         self.task.as_mut()
@@ -1404,6 +1413,16 @@ impl Bot {
         }
     }
 
+    /// The leg Task mode asked for was not walked (a party hold, a sneak first): the Go to,
+    /// or else the loop, that asked for it takes back the try (C-089).
+    fn walk_deferred(&mut self) {
+        if let Some(j) = &mut self.journey {
+            j.walk_deferred();
+        } else if let Some(t) = &mut self.task {
+            t.walk_deferred();
+        }
+    }
+
     /// Decide: nothing is in flight, nothing is walking, and the game is at a prompt.
     pub fn tick(&mut self, v: &View) -> (Option<Do>, Vec<Say>) {
         let mut says = Vec::new();
@@ -1580,13 +1599,19 @@ impl Bot {
             // A follower goes where its leader takes it: none of its own modes walks it, Flee
             // aside (docs/plan/10-party-play.md §5).
             let rejoining = v.party.rejoin().is_some() && mode == BotMode::Task;
+            // A leg held back is not a leg walked: the Go to or loop that asked for it does
+            // not count it among the walks that ended elsewhere (C-089).
             let step = match (&step.act, v.party.following(), v.party.hold()) {
                 (Some(Do::Walk(..)), Some(leader), _) if mode != BotMode::Flee && !rejoining => {
+                    if mode == BotMode::Task {
+                        self.walk_deferred();
+                    }
                     Step::wait(format!("Following {leader}: staying with the party"))
                         .doing(format!("following {leader}"))
                 }
-                // A leader holds its loop while a member walks back (C-041).
-                (Some(Do::Walk(..)), _, Some(why)) if mode == BotMode::Task => {
+                // A leader holds its loop or Go to while a member walks back (C-041).
+                (Some(Do::Walk(..)), _, Some(why)) if mode == BotMode::Task && !rejoining => {
+                    self.walk_deferred();
                     Step::wait(why.to_owned()).doing("waiting for the party")
                 }
                 _ => step,
@@ -1596,11 +1621,7 @@ impl Bot {
                 if self.sneak.before_move(v) {
                     match mode {
                         BotMode::Recover => self.recover.walk_deferred(),
-                        BotMode::Task if !rejoining => {
-                            if let Some(t) = &mut self.task {
-                                t.walk_deferred();
-                            }
-                        }
+                        BotMode::Task if !rejoining => self.walk_deferred(),
                         _ => {}
                     }
                     mode = BotMode::Sneak;

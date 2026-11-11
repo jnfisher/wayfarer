@@ -173,9 +173,18 @@ impl Journey {
         }
     }
 
-    /// The leg it asked for did not count: the character could not move (C-083).
+    /// The leg it asked for did not count: the character could not move (C-083), or it was
+    /// not walked (a party hold, a sneak first; C-089).
     pub fn walk_deferred(&mut self) {
         self.tries = self.tries.saturating_sub(1);
+    }
+
+    /// The party gave up waiting for a member who did not catch up (C-089): the journey is
+    /// over, why.
+    pub fn give_up(&mut self, why: &str) {
+        if self.done.is_none() {
+            self.done = Some(Some(why.to_owned()));
+        }
     }
 
     /// The walker could not start the leg (no route), or gave it up (it said why): the

@@ -3535,7 +3535,7 @@ impl Session {
     /// The party's leader waited too long for a member: its loop stops, it fights on where it
     /// is, and the player is told.
     pub(crate) fn party_give_up(&mut self, why: &str, out: &mut Vec<ToGateway>) {
-        let says = self.bot.stop_loop(why);
+        let says = self.bot.party_gave_up(why);
         self.say(says, out);
     }
 
