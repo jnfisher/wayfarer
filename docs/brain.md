@@ -653,11 +653,18 @@ hardest hit this fight" on 2026-10-19) the bot leaves the fight. Every HP value 
 whatever is in flight: a walk of the bot's stops after the move in flight, an action of its not
 sent yet is dropped, and Flee acts at the next prompt.
 
-- **The exit**, from the room the position is sure of, best first: plain exits to rooms that
-  spawn nothing, then plain exits to rooms that spawn, then doors and gates (quiet first).
-  Within each, a room that is not protected comes first (a protected room, the shops and the
-  Guild in Newhaven, refuses a character in combat: `You may not enter that room while in
-  combat.`), and not back to the room it just left if another is as good. Never an exit the
+- **The exit**, from the room the position is sure of, best first: plain exits that lead on,
+  then plain exits into a dead end, then doors and gates in the same order. An exit leads on
+  when at least 3 other rooms are within 3 steps of the room it goes to, by exits Flee could
+  take and not back through the room it leaves; a dead end (Dark Cave, Barracks, whose one
+  exit is the way in) or a pocket of two or three rooms off a corridor does not, and a monster
+  that follows the character in corners it there (C-098: Lexi ran into one Barracks, then the
+  Large Cavern, then the Barracks again, followed each time, until she hung up at 8%). Within
+  each, a room not on this flee's trail comes first: the trail is every room fled from or
+  through, and every room cornered in, since HP was last at or above the line, the rooms the
+  monsters it ran from are in. Then a room that spawns nothing, then a room that is not
+  protected (a protected room, the shops and the Guild in Newhaven, refuses a character in
+  combat: `You may not enter that room while in combat.`), then the direction's order. Never an exit the
   game refused this session, a gated exit (level, class, race, alignment, item, toll, spell,
   key), a Text, Hidden, Action or Remote Action exit, or a door that is locked: a door counts
   as the game last showed it this session (`open door north` in the exits, `The door is

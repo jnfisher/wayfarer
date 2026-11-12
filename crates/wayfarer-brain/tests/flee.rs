@@ -584,6 +584,101 @@ fn from_a_dead_end_its_one_exit_even_into_a_room_that_spawns() {
     );
 }
 
+// The Dark Cave's junction south of the Barracks (Lexi on silver-mirror, 2026-11-11): its
+// south and northwest exits go into a Barracks, each a dead end whose one exit is the way in;
+// west and northeast lead on through the tunnels.
+const JUNCTION: Key = (1, 172);
+const BARRACKS: Key = (1, 421);
+const OTHER_BARRACKS: Key = (1, 2699);
+const WEST_TUNNEL: Key = (1, 2698);
+const NE_TUNNEL: Key = (1, 173);
+const NE: u8 = 4;
+const NW: u8 = 5;
+
+#[test]
+fn from_the_dark_cave_junction_the_ways_on_first_and_the_dead_end_barracks_last() {
+    let c = exits(JUNCTION, &BTreeMap::new());
+    assert_eq!(
+        dirs(&c),
+        [
+            (W, WEST_TUNNEL),
+            (NE, NE_TUNNEL),
+            (S, BARRACKS),
+            (NW, OTHER_BARRACKS)
+        ]
+    );
+    assert_eq!(
+        c.iter().map(|c| c.dead_end).collect::<Vec<_>>(),
+        [false, false, true, true]
+    );
+    // From the tunnel beside the Large Cavern: on to the northeast, the Cavern (one exit,
+    // east, the way in) last, though west comes before northeast.
+    let c = exits((1, 161), &BTreeMap::new());
+    assert_eq!(dirs(&c), [(NE, (1, 162)), (W, (1, 154))]);
+    assert!(c[1].dead_end && !c[0].dead_end);
+    // From inside a dead end its one exit is still taken: it leads on.
+    let c = exits(BARRACKS, &BTreeMap::new());
+    assert_eq!(dirs(&c), [(N, JUNCTION)]);
+    assert!(!c[0].dead_end);
+}
+
+/// The junction with `monsters` in it, at `hp`.
+fn junction(monsters: &[&str], hp: i32) -> String {
+    let r = room(JUNCTION);
+    let at = r.find("\x1b[0;32mObvious exits").unwrap();
+    let also = if monsters.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\x1b[0;35mAlso here: \x1b[1;35m{}\x1b[0m\x1b[0;35m.\r\n",
+            monsters.join(", ")
+        )
+    };
+    at_hp(&format!("{}{also}{}", &r[..at], &r[at..]), hp)
+}
+
+#[tokio::test(start_paused = true)]
+async fn followed_out_of_the_junction_it_runs_on_through_the_tunnels_not_into_a_barracks() {
+    // Lexi fled south into the Barracks with three bugbears behind her, was cornered there,
+    // then ran between it and the Large Cavern until she hung up at 8%. Now the dead ends go
+    // last, and the way back along the flee last but for them.
+    let settings = test_settings("[health]\nflee_rooms = 2\n");
+    let clock = Arc::new(FixedClock(UNIX_EPOCH + Duration::from_secs(T0)));
+    let brain = Brain::new(world(), clock, None).with_settings(settings);
+    let (mut g, run) = Game::start_brain(SessionState::Realm, junction(&[RAT], 35), brain).await;
+    g.until(|m| matches!(m, ToGateway::MapView { .. }).then_some(()))
+        .await;
+    g.idle(Duration::from_secs(20)).await;
+    g.expect("st", status(35));
+    g.expect("look", junction(&[RAT], 35));
+    g.bot(BotAction::Start).await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    for _ in 0..2 {
+        g.round("The large giant rat lunges at you!", 20).await;
+    }
+    g.expect(
+        "w",
+        format!("{}{}", at_hp(&room(WEST_TUNNEL), 8), follows(8)),
+    );
+    // From the west tunnel: on to the northwest, not back east to the junction.
+    g.expect("nw", format!("{}{}", at_hp(&room((1, 171)), 8), follows(8)));
+    g.output(&lunge(8)).await;
+    let said = g
+        .narrated("Flee: followed by large giant rat through 2 rooms; fighting back")
+        .await;
+    for hop in [
+        "Fleeing: HP 22%: west to Dark Cave, Tunnel",
+        "Followed by large giant rat: northwest to Dark Cave, Tunnel",
+    ] {
+        assert!(said.contains(&hop.to_owned()), "{said:?}");
+    }
+    g.freeze();
+    let (_, played) = g.close(run).await;
+    let fight = played.iter().position(|c| c == "a rat").unwrap();
+    assert_eq!(played[fight + 1..fight + 3], ["w", "nw"], "{played:?}");
+}
+
 #[test]
 fn not_sure_of_the_room_no_candidate() {
     let a = atlas();
