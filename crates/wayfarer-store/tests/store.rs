@@ -54,6 +54,8 @@ fn the_bot_state_round_trips_and_is_replaced() {
                 at: T0 - 30,
             },
         ],
+        // The attack spell the player chose (C-099).
+        attack_spell: Some("mmis".into()),
     };
     store.save_bot("aldric", &paused, T0).unwrap();
     assert_eq!(store.bot("aldric").unwrap().as_ref(), Some(&paused));

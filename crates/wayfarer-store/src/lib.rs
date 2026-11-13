@@ -136,6 +136,8 @@ const MIGRATIONS: &[&str] = &[
      );",
     // 11: who guards whom in each party (C-068), a `guard ward` pair a line.
     "ALTER TABLE parties ADD COLUMN guards TEXT NOT NULL DEFAULT '';",
+    // 12: the attack spell the player chose for the bot (C-099), by short name; null is auto.
+    "ALTER TABLE bot_state ADD COLUMN attack_spell TEXT;",
 ];
 
 /// The schema version this build writes.
@@ -283,6 +285,8 @@ pub struct BotRecord {
     pub paused_reason: Option<String>,
     /// The monster rules the session learned and the player set, oldest first.
     pub monster_rules: Vec<RuleRecord>,
+    /// The attack spell the player chose (C-099), by short name; None is auto.
+    pub attack_spell: Option<String>,
 }
 
 impl BotRecord {
@@ -296,6 +300,7 @@ impl BotRecord {
             skip: Vec::new(),
             paused_reason: None,
             monster_rules: Vec::new(),
+            attack_spell: None,
         }
     }
 }
@@ -573,7 +578,7 @@ impl Store {
             .conn
             .query_row(
                 "SELECT state, home_map, home_room, loop_id, loop_stops, stop_index, skip,
-                        paused_reason
+                        paused_reason, attack_spell
                  FROM bot_state WHERE session = ?1",
                 [session],
                 |r| {
@@ -586,11 +591,14 @@ impl Store {
                         r.get::<_, i64>(5)?,
                         r.get::<_, String>(6)?,
                         r.get::<_, Option<String>>(7)?,
+                        r.get::<_, Option<String>>(8)?,
                     ))
                 },
             )
             .optional()?;
-        let Some((state, map, room, loop_id, stops, stop_index, skip, paused_reason)) = row else {
+        let Some((state, map, room, loop_id, stops, stop_index, skip, paused_reason, attack_spell)) =
+            row
+        else {
             return Ok(None);
         };
         let stops = ints(&stops)?;
@@ -609,6 +617,7 @@ impl Store {
                 .collect(),
             paused_reason,
             monster_rules: self.monster_rules(session)?,
+            attack_spell,
         }))
     }
 
@@ -912,8 +921,8 @@ impl Store {
         tx.execute(
             "INSERT OR REPLACE INTO bot_state
                  (session, state, home_map, home_room, loop_id, loop_stops, stop_index, skip,
-                  paused_reason, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                  paused_reason, attack_spell, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 session,
                 bot.state.as_str(),
@@ -924,6 +933,7 @@ impl Store {
                 i64::try_from(bot.stop_index).unwrap_or(i64::MAX),
                 format!("[{}]", skip.join(",")),
                 bot.paused_reason,
+                bot.attack_spell,
                 at,
             ],
         )?;

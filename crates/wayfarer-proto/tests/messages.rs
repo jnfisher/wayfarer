@@ -2,10 +2,10 @@
 //! examples in the README and `docs/protocol.md`.
 
 use wayfarer_proto::{
-    AccountCharacter, AccountServer, Accounts, BlessingSpell, Blessings, Bot, BotAction, BotMode,
-    BotState, CharacterState, Chunk, ClientKind, CoinCount, Coins, CombatStats, DamageRow,
-    DecodeError, Encumbrance, ExitKind, ExpSample, Family, Found, FoundKind, FoundRoom, GearBuff,
-    GearDetail, GearDetailMove, GearDetailRequest, GearFilter, GearInputs, GearMonster,
+    AccountCharacter, AccountServer, Accounts, AttackSpellOption, BlessingSpell, Blessings, Bot,
+    BotAction, BotMode, BotState, CharacterState, Chunk, ClientKind, CoinCount, Coins, CombatStats,
+    DamageRow, DecodeError, Encumbrance, ExitKind, ExpSample, Family, Found, FoundKind, FoundRoom,
+    GearBuff, GearDetail, GearDetailMove, GearDetailRequest, GearFilter, GearInputs, GearMonster,
     GearMonsterScore, GearMonsters, GearMove, GearMoveScore, GearPlan, GearPlanRequest, GearRow,
     GearSource, GearSourceKind, GearStatus, GearWhatIf, GeneratedLoop, Journey, LoopStop, MapExit,
     MapRoom, MegaMudLoop, MemberState, MemberStatus, MonsterRuleEntry, MonsterRuleKind, PROTOCOL,
@@ -114,11 +114,17 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                             source: RuleSource::Default,
                             reason: None,
                         }],
+                        attack_spells: vec![AttackSpellOption {
+                            short: "mmis".into(),
+                            name: "magic missile".into(),
+                            mana: 3,
+                        }],
+                        attack_spell: Some("mmis".into()),
                     }),
                     ..CharacterState::default()
                 }),
             },
-            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]},"bot":{"state":"running","mode":"fight","narration":"Fight: large giant rat","doing":"attacking large giant rat","journey":{"name":"Newhaven, Arena","to":{"map":1,"room":2150}},"monster_rules":[{"pattern":"gigantic black ooze","rule":"ignore","source":"default"}]}}}"#,
+            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]},"bot":{"state":"running","mode":"fight","narration":"Fight: large giant rat","doing":"attacking large giant rat","journey":{"name":"Newhaven, Arena","to":{"map":1,"room":2150}},"monster_rules":[{"pattern":"gigantic black ooze","rule":"ignore","source":"default"}],"attack_spells":[{"short":"mmis","name":"magic missile","mana":3}],"attack_spell":"mmis"}}}"#,
         ),
         (
             ToGateway::CharacterPatch {
@@ -823,6 +829,13 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
             },
             r#"{"type":"set_monster_rule","session":"kasimir","pattern":"giant rat","rule":"ignore"}"#,
         ),
+        (
+            ToGateway::SetAttackSpell {
+                session: "kasimir".into(),
+                spell: Some("mmis".into()),
+            },
+            r#"{"type":"set_attack_spell","session":"kasimir","spell":"mmis"}"#,
+        ),
         (ToGateway::PartiesRequest, r#"{"type":"parties_request"}"#),
         (
             ToGateway::PartySave {
@@ -1362,6 +1375,18 @@ fn a_monster_rule_is_removed_with_a_null() {
 }
 
 #[test]
+fn an_attack_spell_goes_back_to_auto_with_a_null() {
+    let json = r#"{"type":"set_attack_spell","session":"kasimir","spell":null}"#;
+    let msg = ToGateway::SetAttackSpell {
+        session: "kasimir".into(),
+        spell: None,
+    };
+    assert_eq!(msg.to_json(), json);
+    assert_eq!(ToGateway::from_json(json).unwrap(), msg);
+    assert!(include_str!("../../../docs/protocol.md").contains(json));
+}
+
+#[test]
 fn every_example_is_in_the_docs() {
     let readme = include_str!("../README.md");
     let protocol = include_str!("../../../docs/protocol.md");
@@ -1403,6 +1428,7 @@ fn families_say_who_may_send_what() {
             | "delete_loop"
             | "find"
             | "set_monster_rule"
+            | "set_attack_spell"
             | "parties_request"
             | "party_save"
             | "party_delete"

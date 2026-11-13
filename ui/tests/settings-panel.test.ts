@@ -124,6 +124,48 @@ describe("the settings tab", () => {
     expect(onrule).toHaveBeenLastCalledWith("a", "giant roc", null);
   });
 
+  it("shows the attack spell to choose under 'Attack spells', and sends the choice", async () => {
+    const attack: SettingRow = { ...heal, key: "spells.attack", label: "Attack spells" };
+    const onattackspell = vi.fn();
+    const spells = [
+      { short: "blaz", name: "blaze", mana: 12 },
+      { short: "isto", name: "ice storm", mana: 20 },
+    ];
+    const { container } = render_({
+      settings: { ...settings, rows: [flee, attack, heal] },
+      attackSpells: spells,
+      onattackspell,
+    });
+    const row = container.querySelector('[data-key="attack_spell"]')!;
+    // Right after the Attack spells row.
+    expect(row.previousElementSibling!.getAttribute("data-key")).toBe("spells.attack");
+    const select = row.querySelector("select") as HTMLSelectElement;
+    expect(select.value).toBe("");
+    expect([...select.options].map((o) => o.textContent)).toEqual([
+      "auto (the strongest it can pay for)",
+      "blaze (blaz, 12 mana)",
+      "ice storm (isto, 20 mana)",
+    ]);
+    await fireEvent.change(select, { target: { value: "isto" } });
+    expect(onattackspell).toHaveBeenLastCalledWith("a", "isto");
+    await fireEvent.change(select, { target: { value: "" } });
+    expect(onattackspell).toHaveBeenLastCalledWith("a", null);
+  });
+
+  it("shows the chosen attack spell, and no list for a character with none", () => {
+    const attack: SettingRow = { ...heal, key: "spells.attack", label: "Attack spells" };
+    const rows = [flee, attack, heal];
+    const { container } = render_({
+      settings: { ...settings, rows },
+      attackSpells: [{ short: "isto", name: "ice storm", mana: 20 }],
+      attackSpell: "isto",
+    });
+    expect((container.querySelector('[data-key="attack_spell"] select') as HTMLSelectElement).value).toBe("isto");
+    cleanup();
+    const none = render_({ settings: { ...settings, rows } });
+    expect(none.container.querySelector('[data-key="attack_spell"]')).toBeNull();
+  });
+
   it("hides the advanced settings with 'all' off", async () => {
     const { container } = render_();
     await fireEvent.click(screen.getByLabelText("all"));

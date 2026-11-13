@@ -718,6 +718,10 @@ impl Brain {
                 Some(s) => s.set_monster_rule(&pattern, rule.map(rules::from_wire), now, out),
                 None => out.push(no_session("set_monster_rule", &session)),
             },
+            ToClient::SetAttackSpell { session, spell } => match self.sessions.get_mut(&session) {
+                Some(s) => s.set_attack_spell(spell.as_deref(), now, out),
+                None => out.push(no_session("set_attack_spell", &session)),
+            },
             ToClient::SpellPlanRequest { session } => match self.sessions.get_mut(&session) {
                 Some(s) => s.spell_plan(out),
                 None => out.push(no_session("spell_plan_request", &session)),

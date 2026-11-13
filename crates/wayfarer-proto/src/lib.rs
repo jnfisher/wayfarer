@@ -486,6 +486,24 @@ pub struct Bot {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<MonsterRuleEntry>>", optional)]
     pub monster_rules: Vec<MonsterRuleEntry>,
+    /// The attack spells the character knows, for the player to choose from (C-099). Left
+    /// out when it knows none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<AttackSpellOption>>", optional)]
+    pub attack_spells: Vec<AttackSpellOption>,
+    /// The attack spell the player chose (`set_attack_spell`), by short name: Fight casts only
+    /// it. Left out for auto, the strongest it can pay for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub attack_spell: Option<String>,
+}
+
+/// An attack spell a character knows (C-099).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct AttackSpellOption {
+    pub short: String,
+    pub name: String,
+    pub mana: u32,
 }
 
 /// What the bot does about a monster, by name.
@@ -1828,6 +1846,10 @@ pub enum ToClient {
         pattern: String,
         rule: Option<MonsterRuleKind>,
     },
+    SetAttackSpell {
+        session: SessionId,
+        spell: Option<String>,
+    },
     PartiesRequest,
     PartySave {
         party: PartyDef,
@@ -2139,6 +2161,13 @@ pub enum ToGateway {
         pattern: String,
         rule: Option<MonsterRuleKind>,
     },
+    /// UI → brain: fight with this attack spell (a short name from the bot's
+    /// `attack_spells`), or the strongest it can pay for (`spell` null), C-099. Stored with
+    /// the bot's record; the bot's `attack_spell` shows the result.
+    SetAttackSpell {
+        session: SessionId,
+        spell: Option<String>,
+    },
     /// UI → brain: ask for the parties; the brain answers with `parties`.
     PartiesRequest,
     /// UI → brain: make a party (`id` empty) or replace one. A member in another party is
@@ -2411,6 +2440,7 @@ impl ToClient {
         "delete_loop",
         "find",
         "set_monster_rule",
+        "set_attack_spell",
         "parties_request",
         "party_save",
         "party_delete",
@@ -2479,6 +2509,7 @@ impl ToClient {
             Self::DeleteLoop { .. } => "delete_loop",
             Self::Find { .. } => "find",
             Self::SetMonsterRule { .. } => "set_monster_rule",
+            Self::SetAttackSpell { .. } => "set_attack_spell",
             Self::PartiesRequest => "parties_request",
             Self::PartySave { .. } => "party_save",
             Self::PartyDelete { .. } => "party_delete",
@@ -2516,6 +2547,7 @@ impl ToClient {
             | Self::Found { session, .. }
             | Self::Find { session, .. }
             | Self::SetMonsterRule { session, .. }
+            | Self::SetAttackSpell { session, .. }
             | Self::PartyLeave { session }
             | Self::PartyJoin { session, .. }
             | Self::BlessingsSave { session, .. }
@@ -2610,6 +2642,7 @@ impl ToGateway {
         "delete_loop",
         "find",
         "set_monster_rule",
+        "set_attack_spell",
         "parties_request",
         "party_save",
         "party_delete",
@@ -2673,6 +2706,7 @@ impl ToGateway {
             Self::DeleteLoop { .. } => "delete_loop",
             Self::Find { .. } => "find",
             Self::SetMonsterRule { .. } => "set_monster_rule",
+            Self::SetAttackSpell { .. } => "set_attack_spell",
             Self::PartiesRequest => "parties_request",
             Self::PartySave { .. } => "party_save",
             Self::PartyDelete { .. } => "party_delete",
@@ -2737,6 +2771,7 @@ impl ToGateway {
             | Self::DeleteLoop { .. }
             | Self::Find { .. }
             | Self::SetMonsterRule { .. }
+            | Self::SetAttackSpell { .. }
             | Self::PartiesRequest
             | Self::PartySave { .. }
             | Self::PartyDelete { .. }
@@ -2849,6 +2884,7 @@ impl ToGateway {
                 pattern,
                 rule,
             },
+            Self::SetAttackSpell { session, spell } => ToClient::SetAttackSpell { session, spell },
             Self::PartiesRequest => ToClient::PartiesRequest,
             Self::PartySave { party } => ToClient::PartySave { party },
             Self::PartyDelete { id } => ToClient::PartyDelete { id },

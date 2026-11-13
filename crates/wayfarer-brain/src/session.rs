@@ -317,6 +317,8 @@ pub(crate) struct Session {
     /// A `spells` screen has been seen, so empty rows mean no spells rather than not known.
     spells_seen: bool,
     spellbook: Spellbook,
+    /// The attack spell the player chose (C-099), by short name; None is auto.
+    attack_choice: Option<String>,
     registry: Arc<Registry>,
     parser: Parser,
     pub character: Character,
@@ -469,6 +471,7 @@ impl Session {
             .filter(|b| b.state != BotState::Stopped)
             .cloned();
         let mut rules = RuleBook::new(ledger.stored().map_or(&[], |b| &b.monster_rules));
+        let attack_choice = ledger.stored().and_then(|b| b.attack_spell.clone());
         for name in ignore {
             rules.set(name, Some(world::MonsterRule::Ignore), unix(clock.now()));
         }
@@ -499,6 +502,7 @@ impl Session {
             blessings: Vec::new(),
             spells_seen: false,
             spellbook: Spellbook::default(),
+            attack_choice,
             map_radius: MAP_RADIUS,
             map_center: None,
             map_dirty: false,
@@ -1037,6 +1041,46 @@ impl Session {
         self.flush_views(out);
     }
 
+    /// `set_attack_spell` (C-099): fight with the attack spell `short` (one the character
+    /// knows), or the strongest it can pay for (None). A spell it does not know is refused.
+    pub fn set_attack_spell(
+        &mut self,
+        short: Option<&str>,
+        now: Instant,
+        out: &mut Vec<ToGateway>,
+    ) {
+        let chosen = match short.map(str::trim).filter(|s| !s.is_empty()) {
+            None => None,
+            Some(short) => match self
+                .spellbook
+                .attacks()
+                .iter()
+                .find(|s| s.short.eq_ignore_ascii_case(short))
+            {
+                Some(def) => Some(def),
+                None => {
+                    out.push(self.warning(&format!(
+                        "set_attack_spell: {short} is not an attack spell this character knows"
+                    )));
+                    return;
+                }
+            },
+        };
+        let short = chosen.map(|d| d.short.clone());
+        if short == self.attack_choice {
+            return;
+        }
+        let text = match chosen {
+            Some(d) => format!("Attack spell: {} ({})", d.name, d.short),
+            None => "Attack spell: auto, the strongest it can pay for".to_owned(),
+        };
+        self.attack_choice = short;
+        out.push(self.notice(&text));
+        self.persist(out);
+        self.drive(now, out);
+        self.flush_views(out);
+    }
+
     /// What the combat numbers count (C-050): the character's own blows and casts, kills, and
     /// its lowest HP and mana. A failed cast counts as an attack's miss only in a fight.
     fn count_combat(&mut self, ev: &GameEvent, now: Instant) {
@@ -1190,6 +1234,7 @@ impl Session {
         }
         let mut record = self.bot.record();
         record.monster_rules = self.rules.stored();
+        record.attack_spell = self.attack_choice.clone();
         if self.ledger.stopping(&record) {
             let why = self.bot.snapshot().narration;
             let room = self.position.best();
@@ -3349,6 +3394,7 @@ impl Session {
                 .map(|(h, m)| (i64::from(h), i64::from(m))),
             level: c.level.map_or(1, i64::from),
             book: &self.spellbook,
+            attack_choice: self.attack_choice.as_deref(),
             load: c
                 .encumbrance
                 .as_ref()
@@ -4208,6 +4254,17 @@ impl Session {
         if self.atlas.is_some() {
             let mut bot = self.bot.snapshot();
             bot.monster_rules = self.rules.wire();
+            bot.attack_spells = self
+                .spellbook
+                .attacks()
+                .iter()
+                .map(|s| wayfarer_proto::AttackSpellOption {
+                    short: s.short.clone(),
+                    name: s.name.clone(),
+                    mana: u32::try_from(s.mana).unwrap_or(0),
+                })
+                .collect();
+            bot.attack_spell = self.attack_choice.clone();
             s.bot = Some(bot);
             s.run = self.ledger.snapshot();
             s.places = Some(self.places());
