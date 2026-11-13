@@ -496,6 +496,11 @@ pub struct Bot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub attack_spell: Option<String>,
+    /// Boss fight mode (`set_boss_mode`, C-100): it fights where it stands, never flees or
+    /// walks, casts no blessings and hangs up at its own line. Left out when off.
+    #[serde(default, skip_serializing_if = "is_false")]
+    #[ts(as = "Option<bool>", optional)]
+    pub boss_mode: bool,
 }
 
 /// An attack spell a character knows (C-099).
@@ -1850,6 +1855,10 @@ pub enum ToClient {
         session: SessionId,
         spell: Option<String>,
     },
+    SetBossMode {
+        session: SessionId,
+        on: bool,
+    },
     PartiesRequest,
     PartySave {
         party: PartyDef,
@@ -2168,6 +2177,13 @@ pub enum ToGateway {
         session: SessionId,
         spell: Option<String>,
     },
+    /// UI → brain: boss fight mode on or off (C-100). On ends a loop or walk under way and
+    /// starts a stopped bot where it stands; off plays on there. Stored with the bot's record;
+    /// the bot's `boss_mode` shows it.
+    SetBossMode {
+        session: SessionId,
+        on: bool,
+    },
     /// UI → brain: ask for the parties; the brain answers with `parties`.
     PartiesRequest,
     /// UI → brain: make a party (`id` empty) or replace one. A member in another party is
@@ -2441,6 +2457,7 @@ impl ToClient {
         "find",
         "set_monster_rule",
         "set_attack_spell",
+        "set_boss_mode",
         "parties_request",
         "party_save",
         "party_delete",
@@ -2510,6 +2527,7 @@ impl ToClient {
             Self::Find { .. } => "find",
             Self::SetMonsterRule { .. } => "set_monster_rule",
             Self::SetAttackSpell { .. } => "set_attack_spell",
+            Self::SetBossMode { .. } => "set_boss_mode",
             Self::PartiesRequest => "parties_request",
             Self::PartySave { .. } => "party_save",
             Self::PartyDelete { .. } => "party_delete",
@@ -2548,6 +2566,7 @@ impl ToClient {
             | Self::Find { session, .. }
             | Self::SetMonsterRule { session, .. }
             | Self::SetAttackSpell { session, .. }
+            | Self::SetBossMode { session, .. }
             | Self::PartyLeave { session }
             | Self::PartyJoin { session, .. }
             | Self::BlessingsSave { session, .. }
@@ -2643,6 +2662,7 @@ impl ToGateway {
         "find",
         "set_monster_rule",
         "set_attack_spell",
+        "set_boss_mode",
         "parties_request",
         "party_save",
         "party_delete",
@@ -2707,6 +2727,7 @@ impl ToGateway {
             Self::Find { .. } => "find",
             Self::SetMonsterRule { .. } => "set_monster_rule",
             Self::SetAttackSpell { .. } => "set_attack_spell",
+            Self::SetBossMode { .. } => "set_boss_mode",
             Self::PartiesRequest => "parties_request",
             Self::PartySave { .. } => "party_save",
             Self::PartyDelete { .. } => "party_delete",
@@ -2772,6 +2793,7 @@ impl ToGateway {
             | Self::Find { .. }
             | Self::SetMonsterRule { .. }
             | Self::SetAttackSpell { .. }
+            | Self::SetBossMode { .. }
             | Self::PartiesRequest
             | Self::PartySave { .. }
             | Self::PartyDelete { .. }
@@ -2885,6 +2907,7 @@ impl ToGateway {
                 rule,
             },
             Self::SetAttackSpell { session, spell } => ToClient::SetAttackSpell { session, spell },
+            Self::SetBossMode { session, on } => ToClient::SetBossMode { session, on },
             Self::PartiesRequest => ToClient::PartiesRequest,
             Self::PartySave { party } => ToClient::PartySave { party },
             Self::PartyDelete { id } => ToClient::PartyDelete { id },

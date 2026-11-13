@@ -472,6 +472,10 @@ impl Session {
             .cloned();
         let mut rules = RuleBook::new(ledger.stored().map_or(&[], |b| &b.monster_rules));
         let attack_choice = ledger.stored().and_then(|b| b.attack_spell.clone());
+        // Boss fight mode stays on across a restart until the player turns it off (C-100).
+        if ledger.stored().is_some_and(|b| b.boss_mode) {
+            let _ = bot.set_boss(true, None);
+        }
         for name in ignore {
             rules.set(name, Some(world::MonsterRule::Ignore), unix(clock.now()));
         }
@@ -1037,6 +1041,30 @@ impl Session {
                 .seen(self.rules.rules(), room, &self.presence.here, now);
             self.position.traveller.avoid = self.sightings.rooms(now);
         }
+        self.drive(now, out);
+        self.flush_views(out);
+    }
+
+    /// `set_boss_mode` (C-100): on drops the loop or walk under way (its walk stops after the
+    /// move in flight) and starts a stopped bot where it stands; off plays on there.
+    pub fn set_boss_mode(&mut self, on: bool, now: Instant, out: &mut Vec<ToGateway>) {
+        if on == self.bot.boss() {
+            return;
+        }
+        if on && self.bot_walk && self.walker.walking() {
+            self.stop_walk("boss fight mode", out);
+        }
+        let says = self.bot.set_boss(on, self.position.best());
+        self.say(says, out);
+        if on && !self.bot.running() && self.state == SessionState::Realm {
+            // A paused bot plays again, a stopped one starts where it stands.
+            if self.bot.stopped() {
+                self.bot_control(BotAction::Start, now, out);
+            } else {
+                self.bot_control(BotAction::Resume, now, out);
+            }
+        }
+        self.persist(out);
         self.drive(now, out);
         self.flush_views(out);
     }
@@ -3025,7 +3053,13 @@ impl Session {
         let Some(pct) = hp_percent(c.hp, c.hp_max) else {
             return;
         };
-        let line = i32::try_from(self.settings.int("health.hangup_below_hp")).unwrap_or(10);
+        // Boss fight mode has its own line: it never flees, so this is its only way out (C-100).
+        let key = if self.bot.boss() {
+            "health.boss_hangup_below_hp"
+        } else {
+            "health.hangup_below_hp"
+        };
+        let line = i32::try_from(self.settings.int(key)).unwrap_or(10);
         if pct >= line || (self.presence.attackers.is_empty() && c.in_combat != Some(true)) {
             return;
         }
@@ -3395,6 +3429,7 @@ impl Session {
             level: c.level.map_or(1, i64::from),
             book: &self.spellbook,
             attack_choice: self.attack_choice.as_deref(),
+            boss: self.bot.boss(),
             load: c
                 .encumbrance
                 .as_ref()

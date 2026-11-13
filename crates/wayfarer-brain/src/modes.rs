@@ -297,6 +297,9 @@ pub(crate) struct View<'a> {
     pub book: &'a Spellbook,
     /// The attack spell the player chose (C-099), by short name; None is auto.
     pub attack_choice: Option<&'a str>,
+    /// Boss fight mode (C-100): no flee, no walk, no blessing; its own casts limit, no mana
+    /// floor for attack spells.
+    pub boss: bool,
     /// What the character carries, in weight units now and at most (`i`'s `Encumbrance:`),
     /// and the coins it holds.
     pub load: Option<(u64, u64)>,
@@ -351,8 +354,14 @@ impl View<'_> {
     }
 
     /// The most attack casts at one monster before the weapon takes over (0: no limit).
+    /// In boss fight mode, `spells.boss_max_casts_per_monster` (C-100).
     pub fn max_casts(&self) -> u32 {
-        u32::try_from(self.settings.int("spells.max_casts_per_monster")).unwrap_or(0)
+        let key = if self.boss {
+            "spells.boss_max_casts_per_monster"
+        } else {
+            "spells.max_casts_per_monster"
+        };
+        u32::try_from(self.settings.int(key)).unwrap_or(0)
     }
 
     /// Mana in per cent of the maximum, when both are known.
@@ -388,9 +397,12 @@ impl View<'_> {
 
     /// Mana at or below `spells.attack_mana_above` per cent: no attack spell, the weapon
     /// fights (a fight under way changes to it).
+    /// Never in boss fight mode: the caster casts while the mana lasts (C-100).
     pub fn attack_mana_short(&self) -> bool {
-        self.mana_percent()
-            .is_some_and(|m| m <= self.setting("spells.attack_mana_above", 15))
+        !self.boss
+            && self
+                .mana_percent()
+                .is_some_and(|m| m <= self.setting("spells.attack_mana_above", 15))
     }
 
     /// The heal for the HP that are missing, if there is a spell and the mana for one.
@@ -810,6 +822,9 @@ pub(crate) struct Bot {
     learned: Vec<String>,
     /// Ignored monsters attacking it, said once each (C-073).
     ignoring: Vec<String>,
+    /// Boss fight mode (C-100): it fights where it stands, never flees or walks, casts no
+    /// blessings.
+    boss: bool,
 }
 
 impl Bot {
@@ -863,6 +878,7 @@ impl Bot {
             monster_rules: Vec::new(),
             attack_spells: Vec::new(),
             attack_spell: None,
+            boss_mode: self.boss,
         }
     }
 
@@ -1095,8 +1111,44 @@ impl Bot {
         self.flee.below()
     }
 
-    /// The party's leader is to run now, for a member under its flee line (C-042).
+    /// Boss fight mode is on (C-100).
+    pub fn boss(&self) -> bool {
+        self.boss
+    }
+
+    /// Boss fight mode on or off (C-100). On drops the loop or walk it was on, and it plays
+    /// where it stands; off plays on there without them. Said only when it changes.
+    pub fn set_boss(&mut self, on: bool, here: Option<Key>) -> Vec<Say> {
+        let mut says = Vec::new();
+        if on == self.boss {
+            return says;
+        }
+        self.boss = on;
+        if let Some(here) = here {
+            self.recover.set_home(here);
+        }
+        if on {
+            let dropped = match (self.task.take(), self.journey.take()) {
+                (Some(t), _) => format!("; stopped loop {}", t.snapshot().loop_name),
+                (_, Some(j)) => format!("; stopped {}", j.name()),
+                _ => String::new(),
+            };
+            self.narrate(
+                format!("Boss fight mode{dropped}: fighting here, no fleeing or walking"),
+                &mut says,
+            );
+        } else {
+            self.narrate("Boss fight mode off: playing here".to_owned(), &mut says);
+        }
+        says
+    }
+
+    /// The party's leader is to run now, for a member under its flee line (C-042). Not in
+    /// boss fight mode.
     pub fn party_flee(&mut self, why: &str) {
+        if self.boss {
+            return;
+        }
         self.flee.run_from(format!("Fleeing with the party: {why}"));
     }
 
@@ -1209,7 +1261,10 @@ impl Bot {
     /// A stalemate wants out, and Flee would take control now: what the bot has in flight
     /// gives way, as for the flee line.
     pub fn flee_urgent(&self) -> bool {
-        self.active() && self.acting != Some(BotMode::Flee) && self.flee.forced_waiting()
+        !self.boss
+            && self.active()
+            && self.acting != Some(BotMode::Flee)
+            && self.flee.forced_waiting()
     }
 
     /// The monsters stalemates gave up since last asked: the session makes them *never
@@ -1226,7 +1281,12 @@ impl Bot {
     /// Fight gave up `name`: say so, and leave as Flee does; a follower in a party gives it up
     /// and stays with the party, fighting what else attacks (C-074).
     fn stalemate(&mut self, name: String, says: &mut Vec<Say>) {
-        if self.in_party {
+        if self.boss {
+            self.narrate(
+                format!("Stalemate: my swings do nothing to {name}; ignoring it (boss fight: not leaving)"),
+                says,
+            );
+        } else if self.in_party {
             self.narrate(
                 format!(
                     "Stalemate: my swings do nothing to {name}; ignoring it, staying with the party"
@@ -1270,6 +1330,7 @@ impl Bot {
             // The session's: it keeps the rules and the attack spell.
             monster_rules: Vec::new(),
             attack_spell: None,
+            boss_mode: self.boss,
         }
     }
 
@@ -1422,7 +1483,7 @@ impl Bot {
     /// way (its walk stops after the move in flight; an action not sent yet is dropped).
     pub fn hp(&mut self, hp: Option<i32>) -> bool {
         self.flee.hp(hp);
-        self.active() && self.acting != Some(BotMode::Flee) && self.flee.urgent(hp)
+        !self.boss && self.active() && self.acting != Some(BotMode::Flee) && self.flee.urgent(hp)
     }
 
     /// The outcome of the bot's action: to the mode that asked for it. A pause asked for
@@ -1579,6 +1640,13 @@ impl Bot {
             }
             self.recover.set_home(here);
         }
+        // Boss fight mode: the room it is in is home, so nothing walks it back anywhere.
+        if self.boss
+            && v.certain
+            && let Some(here) = v.room
+        {
+            self.recover.set_home(here);
+        }
         // A follower with its leader at the leader's first stop: its coins are hidden too, once
         // a round (C-092).
         if let Some((round, room)) = v.party.stash()
@@ -1624,7 +1692,7 @@ impl Bot {
         // stack is asked again, once.
         let fighting = v.engaged || !v.presence.attackers.is_empty();
         for _ in 0..2 {
-            let (mut mode, reason) = if let Some(r) = self.flee.wants(v) {
+            let (mut mode, reason) = if let Some(r) = self.flee.wants(v).filter(|_| !self.boss) {
                 (BotMode::Flee, r)
             } else if self.leaving {
                 says.extend(self.stop("the gateway is logging off", false));
@@ -1632,7 +1700,10 @@ impl Bot {
             } else if let Some(r) = self.loot.wants(v) {
                 (BotMode::Loot, r)
             } else if let Some(r) = self.bless.wants(v).filter(|_| {
-                if fighting {
+                if self.boss {
+                    // No blessings in boss fight mode (C-100).
+                    false
+                } else if fighting {
                     self.fight.may_bless(v)
                 } else {
                     self.recover.yields_to_bless(v)
@@ -1664,7 +1735,7 @@ impl Bot {
             } else if let Some(r) = self.stash.wants(v) {
                 // Nothing to fight: the coins are hidden before the loop goes on (C-092).
                 (BotMode::Stash, r)
-            } else if v.party.rejoin().is_some_and(|k| v.room != Some(k)) {
+            } else if !self.boss && v.party.rejoin().is_some_and(|k| v.room != Some(k)) {
                 // Out of its party: back to the leader, the one walk a follower makes.
                 (BotMode::Task, "walking back to the party".to_owned())
             } else if let Some(r) = self.journey.as_ref().and_then(|j| j.wants(v)) {
@@ -1734,6 +1805,15 @@ impl Bot {
                     Step::wait(why.to_owned()).doing("waiting for the party")
                 }
                 _ => step,
+            };
+            // Boss fight mode moves nothing (C-100): a walk any mode asks for waits here.
+            let step = if self.boss && matches!(step.act, Some(Do::Walk(..))) {
+                if mode == BotMode::Recover {
+                    self.recover.walk_deferred();
+                }
+                Step::wait("Boss fight: staying here")
+            } else {
+                step
             };
             // A sneaker sneaks before a move it makes itself; Flee never waits (C-048).
             let step = if matches!(step.act, Some(Do::Walk(..))) && mode != BotMode::Flee {

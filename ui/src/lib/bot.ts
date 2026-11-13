@@ -132,9 +132,18 @@ export interface ErrandItem {
   disabled: boolean;
 }
 
-/** Cells the errand menu button `[▼]` takes, with the space before it; 0 when there is none. */
-export function menuWidth(state: string, hasBrain: boolean): number {
-  return hasBrain && state === "realm" ? 4 : 0;
+/** Cells the boss fight toggle `[-]` (`[☠]` when on, C-100; only with a bot) and the errand
+ * menu button `[▼]` (with a brain) take, each with the space before it. */
+export function menuWidth(state: string, hasBrain: boolean, hasBot = hasBrain): number {
+  if (state !== "realm") return 0;
+  return (hasBrain ? 4 : 0) + (hasBot ? 4 : 0);
+}
+
+/** The boss fight toggle's title: what it does now (C-100). */
+export function bossTitle(on: boolean): string {
+  return on
+    ? "Boss fight mode is on: fighting where it stands, no fleeing, no walking, no blessings; hangs up at its own line. Click to turn it off."
+    : "Boss fight mode: fight where it stands, never flee or walk, no blessings, its own casts limit and hang-up line. Turning it on stops a loop or Go to and starts a stopped bot.";
 }
 
 /**

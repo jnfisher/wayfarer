@@ -7,12 +7,12 @@ wave: 16
 depends: [C-099]
 crate: wayfarer-proto, wayfarer-store, wayfarer-settings, wayfarer-brain, ui
 touches:
-  - crates/wayfarer-settings/src/lib.rs (`boss.max_casts_per_monster`, `boss.hangup_below_hp`)
+  - crates/wayfarer-settings/src/lib.rs (`spells.boss_max_casts_per_monster`, `health.boss_hangup_below_hp`)
   - crates/wayfarer-proto/src/lib.rs (`bot.boss_mode`, `set_boss_mode`)
   - crates/wayfarer-store/src/lib.rs (`BotRecord::boss_mode`)
-  - crates/wayfarer-brain/src/session.rs, modes.rs, flee.rs, fight.rs, recover.rs, bless.rs, guard.rs
-  - ui/src/CharacterTile.svelte (the skull toggle), ui/src/lib/gateway.ts
-  - docs/brain.md, docs/protocol.md, docs/web-ui.md, docs/plan/04-settings.md
+  - crates/wayfarer-brain/src/session.rs, modes.rs, recover.rs, brain.rs
+  - ui/src/Tile.svelte (the skull toggle), ui/src/lib/bot.ts, ui/src/lib/header.ts, ui/src/lib/gateway.ts
+  - docs/brain.md, docs/protocol.md, docs/web-ui.md
 ---
 
 ## Goal
@@ -41,14 +41,15 @@ in this mode. no flees."
     home, no walk back to a party, no errand or trip. The game's party follow is not the bot's
     and goes on.
   - Fights what is in the room, by the monster rules.
-  - Casts the attack spell chosen with C-099 (or auto's), up to `boss.max_casts_per_monster`
+  - Casts the attack spell chosen with C-099 (or auto's), up to `spells.boss_max_casts_per_monster`
     (default 10; 0 is no limit) at one monster, with no mana floor
     (`spells.attack_mana_above` does not apply).
   - Heals itself and the party in and out of a fight, as the healing settings say.
   - Rests where it stands between fights.
   - Loots as usual.
   - Casts no blessings, in a fight or out of one.
-  - Hangs up below `boss.hangup_below_hp` (default 10%) in place of `health.hangup_below_hp`.
+  - Hangs up below `health.boss_hangup_below_hp` (default 10%) in place of
+    `health.hangup_below_hp`.
 - **Turning it off** returns the bot to normal play where it stands: it does not take up the
   loop or walk it was on.
 

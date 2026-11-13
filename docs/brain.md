@@ -725,6 +725,36 @@ sent yet is dropped, and Flee acts at the next prompt.
   the line so the first blow sets a flee off (`tests/live/README.md` "flee"). The settings give
   the player the line in M4.
 
+## Boss fight mode
+
+For a boss the player fights at the keys (C-100; John, 2026-11-12, for the Champion of Blood
+and the greater hellion it turns into): the player walks the party into the room, and each
+bot with the mode on fights there and keeps the party healed. It moves only when the player
+moves it, and a follower only where the game's party follow takes it. `set_boss_mode {session,
+on}`, the skull on the tile; `bot.boss_mode` in the snapshot; kept with the bot's record (store
+migration 13), so it stays on across a restart until turned off.
+
+- **On** drops a loop or Go to under way (the walk stops after the move in flight) and plays
+  where it stands: "Boss fight mode; stopped loop Newhaven: fighting here, no fleeing or
+  walking". A stopped bot starts there (re-syncing first), a paused one resumes.
+- **No flee**: not under the flee line, not for a stalemate (it says so and leaves the monster
+  alone: "...; ignoring it (boss fight: not leaving)"), not for a member's flee line, and not
+  before a log-off (the bot stops and the log-off goes on). Nothing in flight gives way for
+  one either.
+- **No walk**: the room it is in is its home, so Recover rests there (a room that spawns too,
+  whatever `health.rest_quiet_room` says) and walks nowhere after; a follower out of its party
+  does not walk back. Any walk a mode asks for waits: "Boss fight: staying here".
+- **Attack spells**: the chosen one (C-099) or auto's, up to
+  `spells.boss_max_casts_per_monster` (10; 0 is no limit) at one monster in place of
+  `spells.max_casts_per_monster`, and with no mana floor: `spells.attack_mana_above` does not
+  hold, so a caster casts while the mana lasts.
+- **Heals** as always, its own and the party's, in a fight and out of one.
+- **No blessing**, in a fight or out of one.
+- **Hang-up**: below `health.boss_hangup_below_hp` (10%) in place of `health.hangup_below_hp`,
+  with something hitting it, when `health.hangup` is on: the one way out it takes by itself.
+- **Off** plays on where it stands ("Boss fight mode off: playing here"): the loop or Go to it
+  was on is not taken up again.
+
 ## Monster rules
 
 Per monster name, from `docs/plan/04-settings.md` "Monsters and players" (brought forward

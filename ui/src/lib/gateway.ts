@@ -290,6 +290,12 @@ export class GatewayClient {
     return this.send({ type: "set_attack_spell", session, spell });
   }
 
+  /** Boss fight mode on or off (C-100); the bot's `boss_mode` shows it. False when not
+   * connected. */
+  setBossMode(session: string, on: boolean): boolean {
+    return this.send({ type: "set_boss_mode", session, on });
+  }
+
   /** Ask for the spells the character lacks (a `spell_plan` answer); false when not connected. */
   requestSpellPlan(session: string): boolean {
     return this.send({ type: "spell_plan_request", session });
