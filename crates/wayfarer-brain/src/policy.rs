@@ -178,13 +178,84 @@ pub struct Candidate {
     pub door: Option<LockState>,
     /// Nothing spawns in the room it leads to.
     pub quiet: bool,
+    /// The room it leads to is a dead end, or a pocket of one or two rooms: from there
+    /// Flee could only come back this way ([`leads_on`]). A monster that follows in corners
+    /// the character there.
+    pub dead_end: bool,
 }
 
-/// The exits to flee by from `room`, best first: plain exits to rooms that spawn nothing,
-/// then plain exits to rooms that spawn, then doors and gates (quiet first). Within each, a
-/// room that is not protected comes first (a protected one refuses a character in combat),
-/// then the direction's order. Never one in `blocked` (refused this session), a gated exit, a
-/// Text, Hidden, Action or other exit that needs more than a direction, or a door known (or,
+/// How many steps beyond an exit's room Flee looks for a way on.
+const WAY_ON_STEPS: u32 = 3;
+/// The rooms Flee must reach within [`WAY_ON_STEPS`] beyond an exit's room, not back through
+/// the room it leaves, for that exit to lead on.
+const WAY_ON_ROOMS: usize = 3;
+
+/// Whether Flee may take exit `e`, and the door's state if it has one: plain, or a door or
+/// gate not known (or, unseen, packed) locked; never one in `blocked`, a gated exit, or a Text,
+/// Hidden, Action or other exit that needs more than a direction.
+fn flee_door(
+    e: &wayfarer_world::Edge,
+    blocked: &BTreeSet<(Key, u8)>,
+    doors: &BTreeMap<(Key, u8), LockState>,
+) -> Option<Option<LockState>> {
+    if e.gate != Gate::None || blocked.contains(&(e.from, e.dir)) {
+        return None;
+    }
+    match e.kind {
+        ExitType::Normal
+        | ExitType::BlockGuard
+        | ExitType::MapChange
+        | ExitType::Ticket
+        | ExitType::UserCount
+        | ExitType::Delay => Some(None),
+        ExitType::Door | ExitType::Gate => match doors.get(&(e.from, e.dir)).copied().or(e.door) {
+            Some(LockState::Locked) | None => None,
+            state => Some(state),
+        },
+        _ => None,
+    }
+}
+
+/// Whether room `to`, entered from `from`, leads on: within [`WAY_ON_STEPS`] steps of it,
+/// by exits Flee could take and not back through `from`, there are at least
+/// [`WAY_ON_ROOMS`] other rooms. A dead end does not (Dark Cave, Barracks, whose one exit is
+/// the way in), nor does a pocket of two rooms off a corridor.
+pub fn leads_on(
+    atlas: &Atlas,
+    from: Key,
+    to: Key,
+    blocked: &BTreeSet<(Key, u8)>,
+    doors: &BTreeMap<(Key, u8), LockState>,
+) -> bool {
+    let mut seen = BTreeSet::from([from, to]);
+    let mut edge = vec![to];
+    for _ in 0..WAY_ON_STEPS {
+        let mut next = Vec::new();
+        for k in edge {
+            for e in atlas.graph.edges(k) {
+                if flee_door(e, blocked, doors).is_some()
+                    && atlas.graph.contains(e.to)
+                    && seen.insert(e.to)
+                {
+                    next.push(e.to);
+                }
+            }
+        }
+        // `seen` holds `from` and `to` besides the rooms beyond.
+        if seen.len() - 2 >= WAY_ON_ROOMS {
+            return true;
+        }
+        edge = next;
+    }
+    false
+}
+
+/// The exits to flee by from `room`, best first: plain exits that lead on ([`leads_on`]) to
+/// rooms that spawn nothing, then those to rooms that spawn, then plain exits into a dead end
+/// (quiet first), then doors and gates in the same order. Within each, a room that is not
+/// protected comes first (a protected one refuses a character in combat), then the
+/// direction's order. Never one in `blocked` (refused this session), a gated exit, a Text,
+/// Hidden, Action or other exit that needs more than a direction, or a door known (or,
 /// unseen, packed) locked: `doors` holds the states seen this session, over the pack's. Empty
 /// when the belief is not sure of the room.
 pub fn flee_exits(
@@ -197,43 +268,26 @@ pub fn flee_exits(
     let Some(from) = room.filter(|_| certain) else {
         return Vec::new();
     };
-    let mut ranked: Vec<((u8, bool, u8), Candidate)> = atlas
+    // A door, a dead end, spawns, protected, the direction: the lowest first.
+    type Rank = (bool, bool, bool, bool, u8);
+    let mut ranked: Vec<(Rank, Candidate)> = atlas
         .graph
         .edges(from)
         .iter()
-        .filter(|e| e.gate == Gate::None && !blocked.contains(&(from, e.dir)))
         .filter_map(|e| {
-            let door = match e.kind {
-                ExitType::Normal
-                | ExitType::BlockGuard
-                | ExitType::MapChange
-                | ExitType::Ticket
-                | ExitType::UserCount
-                | ExitType::Delay => None,
-                ExitType::Door | ExitType::Gate => {
-                    match doors.get(&(from, e.dir)).copied().or(e.door) {
-                        Some(LockState::Locked) | None => return None,
-                        state => state,
-                    }
-                }
-                _ => return None,
-            };
+            let door = flee_door(e, blocked, doors)?;
             let to = atlas.graph.node(e.to)?;
             let quiet = !spawns_here(atlas, Some(e.to), true);
-            let tier = match (door.is_some(), quiet) {
-                (false, true) => 0,
-                (false, false) => 1,
-                (true, true) => 2,
-                (true, false) => 3,
-            };
+            let dead_end = !leads_on(atlas, from, e.to, blocked, doors);
             let protected = to.room.flags & PROTECTED != 0;
             let c = Candidate {
                 dir: e.dir,
                 to: e.to,
                 door,
                 quiet,
+                dead_end,
             };
-            Some(((tier, protected, e.dir), c))
+            Some(((door.is_some(), dead_end, !quiet, protected, e.dir), c))
         })
         .collect();
     ranked.sort_by_key(|(rank, _)| *rank);

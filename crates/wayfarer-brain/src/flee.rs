@@ -72,8 +72,9 @@ pub(crate) struct Flee {
     tried: BTreeSet<(Key, u8)>,
     /// Exits the game refused, or doors it said were locked, for the session.
     refused: BTreeSet<(Key, u8)>,
-    /// The room the last hop left.
-    left: Option<Key>,
+    /// The rooms fled from or through since HP was last at or above the line, the rooms
+    /// it was cornered in too: the monsters it ran from are there, so another way goes first.
+    trail: BTreeSet<Key>,
     /// A hop landed: the watch for a follower starts at the next prompt.
     landed: bool,
     /// Watching for a follower until then.
@@ -122,7 +123,7 @@ impl Flee {
             hop: None,
             tried: BTreeSet::new(),
             refused: BTreeSet::new(),
-            left: None,
+            trail: BTreeSet::new(),
             landed: false,
             watch: None,
             followed: None,
@@ -185,6 +186,7 @@ impl Flee {
             self.spent = false;
             self.hops = 0;
             self.cornered = None;
+            self.trail.clear();
         }
     }
 
@@ -229,6 +231,9 @@ impl Flee {
     /// does an HP flee (the monster that followed through every room is fought, healing as it
     /// can). Only a log-off under attack gives up: the bot stops itself so the log-off can go on.
     fn corner(&mut self, v: &View, why: String) -> Step {
+        if let Some(room) = v.room.filter(|_| v.certain) {
+            self.trail.insert(room);
+        }
         if self.forced.is_some() && !self.leaving {
             let why = format!("{why}; fighting only what attacks");
             let step = self.finish(format!("Flee: {why}"));
@@ -388,11 +393,19 @@ impl Mode for Flee {
             .chain(&self.tried)
             .copied()
             .collect();
+        self.trail.insert(from);
         let mut exits = flee_exits(v.atlas, Some(from), true, &blocked, v.doors);
-        // Not back where it came from, if there is anywhere else as good.
+        // Not into a dead end while there is a way on, and not back along this flee's trail
+        // (toward what it ran from) while there is somewhere new: a monster that follows into
+        // a dead end, or meets the character back where they fought, corners it (Lexi ran
+        // between two dead-end lairs of the Dark Cave until she hung up, 2026-11-11).
         exits.sort_by_key(|c| {
-            let tier = (c.door.is_some(), !c.quiet);
-            (tier, Some(c.to) == self.left)
+            (
+                c.door.is_some(),
+                c.dead_end,
+                self.trail.contains(&c.to),
+                !c.quiet,
+            )
         });
         let Some(&exit) = exits.first() else {
             return self.corner(v, format!("cornered in {here}: no exit to flee by"));
@@ -465,7 +478,7 @@ impl Mode for Flee {
                 self.hop = None;
                 self.hops += 1;
                 self.landed = true;
-                self.left = Some(hop.from);
+                self.trail.insert(hop.from);
                 self.tried.clear();
             }
             (Expect::RoomSeen, Outcome::Refused(Refused::DoorClosed { locked: false })) => {
