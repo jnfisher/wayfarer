@@ -4,7 +4,7 @@
   import { FitAddon } from "@xterm/addon-fit";
   import { WebglAddon } from "@xterm/addon-webgl";
   import "@xterm/xterm/css/xterm.css";
-  import { RECOVER_TITLE, TOWNS, botButtons, errandItems, linkButton, narrationLine, sysGotoTitle } from "./lib/bot";
+  import { RECOVER_TITLE, TOWNS, bossTitle, botButtons, errandItems, linkButton, narrationLine, sysGotoTitle } from "./lib/bot";
   import { keyBytes, type GatewayClient } from "./lib/gateway";
   import { HEADER_CELL_PX, bar, barSize, expText, fitHeader, levelClass, roomText } from "./lib/header";
   import { InputHistory } from "./lib/input";
@@ -341,6 +341,20 @@
           e.stopPropagation();
           onminimize?.();
         }}>[▬]</button
+      >
+    {/if}
+    {#if c?.bot && info.state === "realm"}
+      {@const boss = c.bot.boss_mode ?? false}
+      <button
+        class="ctl boss"
+        class:on={boss}
+        aria-label="Boss fight mode"
+        aria-pressed={boss}
+        title={bossTitle(boss)}
+        onclick={(e) => {
+          e.stopPropagation();
+          client.setBossMode(info.id, !boss);
+        }}>{boss ? "[☠]" : "[-]"}</button
       >
     {/if}
     {#if c && info.state === "realm"}
@@ -687,6 +701,14 @@
   }
   .tile.hidden {
     display: none;
+  }
+  .controls .ctl.boss {
+    margin-left: 1ch;
+    color: var(--vga-darkgray);
+  }
+  .controls .ctl.boss.on {
+    color: var(--vga-black);
+    background: var(--vga-lightred);
   }
   .controls .ctl.minimize {
     margin-left: 1ch;

@@ -213,7 +213,7 @@ impl Mode for Recover {
                         v.room,
                         v.certain,
                         v.traveller,
-                        v.settings.bool("health.rest_quiet_room"),
+                        v.settings.bool("health.rest_quiet_room") && !v.boss,
                     )
                 {
                     self.walks_out += 1;
@@ -268,7 +268,7 @@ impl Mode for Recover {
                     v.room,
                     v.certain,
                     v.traveller,
-                    v.settings.bool("health.rest_quiet_room")
+                    v.settings.bool("health.rest_quiet_room") && !v.boss
                 ),
                 RestAt::Walk(_)
             );
@@ -278,7 +278,7 @@ impl Mode for Recover {
                 v.room,
                 v.certain,
                 v.traveller,
-                v.settings.bool("health.rest_quiet_room"),
+                v.settings.bool("health.rest_quiet_room") && !v.boss,
             ) {
                 RestAt::Walk(quiet) => {
                     self.walks_out += 1;

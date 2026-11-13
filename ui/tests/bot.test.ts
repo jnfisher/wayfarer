@@ -130,6 +130,24 @@ describe("the tile", () => {
     expect(botControl).toHaveBeenLastCalledWith("a", "cancel_errand");
   });
 
+  it("shows boss fight mode as [-] or a skull, and the click turns it over (C-100)", async () => {
+    const setBossMode = vi.fn();
+    const bossClient = { sendLine: vi.fn(), sendKeys: vi.fn(), botControl, setBossMode } as never;
+    const props = { info, number: 1, focused: false, zoom: 0, offline: null, client: bossClient, sinks, onfocus() {}, onhelp() {} };
+    const r = render(Tile, { ...props, character: { bot: running } });
+    const toggle = screen.getByRole("button", { name: "Boss fight mode" });
+    expect(toggle.textContent).toBe("[-]");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    await fireEvent.click(toggle);
+    expect(setBossMode).toHaveBeenLastCalledWith("a", true);
+    await r.rerender({ ...props, character: { bot: { ...running, boss_mode: true } } });
+    const on = screen.getByRole("button", { name: "Boss fight mode" });
+    expect(on.textContent).toBe("[☠]");
+    expect(on.getAttribute("aria-pressed")).toBe("true");
+    await fireEvent.click(on);
+    expect(setBossMode).toHaveBeenLastCalledWith("a", false);
+  });
+
   it("sends a sysop goto from the errand menu's towns (C-080)", async () => {
     const sysGoto = vi.fn();
     const gotoClient = { sendLine: vi.fn(), sendKeys: vi.fn(), botControl, sysGoto } as never;
@@ -244,7 +262,7 @@ describe("the tile", () => {
   it("shows the narration under the header while running, with pause and stop", async () => {
     const el = tile({ bot: going });
     expect(el.querySelector(".controls + .narration")?.textContent).toBe("Fight: large giant rat");
-    expect([...el.querySelectorAll(".controls .ctl:not(.link):not([aria-label=Errands])")].map((b) => b.textContent)).toEqual(["[║]", "[■]"]);
+    expect([...el.querySelectorAll(".controls .ctl:not(.link):not([aria-label=Errands]):not(.boss)")].map((b) => b.textContent)).toEqual(["[║]", "[■]"]);
     await fireEvent.click(screen.getByRole("button", { name: "pause the bot" }));
     await fireEvent.click(screen.getByRole("button", { name: "stop the bot" }));
     expect(botControl.mock.calls).toEqual([
@@ -263,7 +281,7 @@ describe("the tile", () => {
   it("has no controls without a bot (no world pack, or no brain)", () => {
     for (const character of [{}, null]) {
       const el = tile(character);
-      expect(el.querySelector(".controls .ctl:not(.link):not([aria-label=Errands])")).toBeNull();
+      expect(el.querySelector(".controls .ctl:not(.link):not([aria-label=Errands]):not(.boss)")).toBeNull();
       cleanup();
     }
   });

@@ -258,6 +258,11 @@ and works nothing out itself.
   its terminal keeps receiving output and its bot keeps playing, so idle or following characters can
   be put away. The minimized set is kept in the browser. Minimizing the focused tile moves the focus
   to one still showing.
+- **Boss fight mode**: `[-]` in a tile's header (in the realm, with a bot), before `[▼]`; click
+  it for boss fight mode, and it shows a skull, `[☠]`, on red (C-100, [brain.md](brain.md) "Boss
+  fight mode"): the bot fights where it stands, never flees or walks, casts no blessings, and
+  hangs up at its own line. Turning it on stops a loop or Go to and starts a stopped bot; click
+  the skull to turn it off.
 - **Errands**: the `[▼]` button in a tile's header (in the realm, with a brain attached) opens
   a menu: **Pick up all** (the coins and the items on the floor, copper included) and **Equip all**
   (wear and wield what is carried, into empty slots only; nothing worn is replaced), and

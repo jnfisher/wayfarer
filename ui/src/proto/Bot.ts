@@ -45,4 +45,9 @@ attack_spells?: Array<AttackSpellOption>,
  * The attack spell the player chose (`set_attack_spell`), by short name: Fight casts only
  * it. Left out for auto, the strongest it can pay for.
  */
-attack_spell?: string, };
+attack_spell?: string, 
+/**
+ * Boss fight mode (`set_boss_mode`, C-100): it fights where it stands, never flees or
+ * walks, casts no blessings and hangs up at its own line. Left out when off.
+ */
+boss_mode?: boolean, };

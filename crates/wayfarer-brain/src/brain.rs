@@ -722,6 +722,10 @@ impl Brain {
                 Some(s) => s.set_attack_spell(spell.as_deref(), now, out),
                 None => out.push(no_session("set_attack_spell", &session)),
             },
+            ToClient::SetBossMode { session, on } => match self.sessions.get_mut(&session) {
+                Some(s) => s.set_boss_mode(on, now, out),
+                None => out.push(no_session("set_boss_mode", &session)),
+            },
             ToClient::SpellPlanRequest { session } => match self.sessions.get_mut(&session) {
                 Some(s) => s.spell_plan(out),
                 None => out.push(no_session("spell_plan_request", &session)),

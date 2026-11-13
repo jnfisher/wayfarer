@@ -128,9 +128,9 @@ export function fixedWidth(h: HeaderText): number {
 export function controlsWidth(h: HeaderText, chip = 0): number {
   const sides = 2 + 1; // ║ on each side, and the space before the right one
   const bot = botWidth(h.character?.bot); // "[║][■] │ "
-  // "realm [log off] [▬] [▼]"
+  // "realm [log off] [▬] [-] [▼]"
   const badge =
-    h.state.length + linkWidth(h.state) + menuWidth(h.state, h.character !== null) + MINIMIZE_CELLS;
+    h.state.length + linkWidth(h.state) + menuWidth(h.state, h.character !== null, h.character?.bot !== undefined) + MINIMIZE_CELLS;
   const noBrain = h.character ? 0 : 9; // " no brain"
   return sides + ROOM_MIN + chip + bot + badge + noBrain;
 }

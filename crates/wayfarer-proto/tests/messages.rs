@@ -120,11 +120,12 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                             mana: 3,
                         }],
                         attack_spell: Some("mmis".into()),
+                        boss_mode: true,
                     }),
                     ..CharacterState::default()
                 }),
             },
-            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]},"bot":{"state":"running","mode":"fight","narration":"Fight: large giant rat","doing":"attacking large giant rat","journey":{"name":"Newhaven, Arena","to":{"map":1,"room":2150}},"monster_rules":[{"pattern":"gigantic black ooze","rule":"ignore","source":"default"}],"attack_spells":[{"short":"mmis","name":"magic missile","mana":3}],"attack_spell":"mmis"}}}"#,
+            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]},"bot":{"state":"running","mode":"fight","narration":"Fight: large giant rat","doing":"attacking large giant rat","journey":{"name":"Newhaven, Arena","to":{"map":1,"room":2150}},"monster_rules":[{"pattern":"gigantic black ooze","rule":"ignore","source":"default"}],"attack_spells":[{"short":"mmis","name":"magic missile","mana":3}],"attack_spell":"mmis","boss_mode":true}}}"#,
         ),
         (
             ToGateway::CharacterPatch {
@@ -836,6 +837,13 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
             },
             r#"{"type":"set_attack_spell","session":"kasimir","spell":"mmis"}"#,
         ),
+        (
+            ToGateway::SetBossMode {
+                session: "kasimir".into(),
+                on: true,
+            },
+            r#"{"type":"set_boss_mode","session":"kasimir","on":true}"#,
+        ),
         (ToGateway::PartiesRequest, r#"{"type":"parties_request"}"#),
         (
             ToGateway::PartySave {
@@ -1429,6 +1437,7 @@ fn families_say_who_may_send_what() {
             | "find"
             | "set_monster_rule"
             | "set_attack_spell"
+            | "set_boss_mode"
             | "parties_request"
             | "party_save"
             | "party_delete"

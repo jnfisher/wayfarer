@@ -138,6 +138,8 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE parties ADD COLUMN guards TEXT NOT NULL DEFAULT '';",
     // 12: the attack spell the player chose for the bot (C-099), by short name; null is auto.
     "ALTER TABLE bot_state ADD COLUMN attack_spell TEXT;",
+    // 13: boss fight mode, on or off (C-100).
+    "ALTER TABLE bot_state ADD COLUMN boss_mode INTEGER NOT NULL DEFAULT 0;",
 ];
 
 /// The schema version this build writes.
@@ -287,6 +289,8 @@ pub struct BotRecord {
     pub monster_rules: Vec<RuleRecord>,
     /// The attack spell the player chose (C-099), by short name; None is auto.
     pub attack_spell: Option<String>,
+    /// Boss fight mode is on (C-100).
+    pub boss_mode: bool,
 }
 
 impl BotRecord {
@@ -301,6 +305,7 @@ impl BotRecord {
             paused_reason: None,
             monster_rules: Vec::new(),
             attack_spell: None,
+            boss_mode: false,
         }
     }
 }
@@ -578,7 +583,7 @@ impl Store {
             .conn
             .query_row(
                 "SELECT state, home_map, home_room, loop_id, loop_stops, stop_index, skip,
-                        paused_reason, attack_spell
+                        paused_reason, attack_spell, boss_mode
                  FROM bot_state WHERE session = ?1",
                 [session],
                 |r| {
@@ -592,12 +597,23 @@ impl Store {
                         r.get::<_, String>(6)?,
                         r.get::<_, Option<String>>(7)?,
                         r.get::<_, Option<String>>(8)?,
+                        r.get::<_, bool>(9)?,
                     ))
                 },
             )
             .optional()?;
-        let Some((state, map, room, loop_id, stops, stop_index, skip, paused_reason, attack_spell)) =
-            row
+        let Some((
+            state,
+            map,
+            room,
+            loop_id,
+            stops,
+            stop_index,
+            skip,
+            paused_reason,
+            attack_spell,
+            boss_mode,
+        )) = row
         else {
             return Ok(None);
         };
@@ -618,6 +634,7 @@ impl Store {
             paused_reason,
             monster_rules: self.monster_rules(session)?,
             attack_spell,
+            boss_mode,
         }))
     }
 
@@ -921,8 +938,8 @@ impl Store {
         tx.execute(
             "INSERT OR REPLACE INTO bot_state
                  (session, state, home_map, home_room, loop_id, loop_stops, stop_index, skip,
-                  paused_reason, attack_spell, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                  paused_reason, attack_spell, boss_mode, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 session,
                 bot.state.as_str(),
@@ -934,6 +951,7 @@ impl Store {
                 format!("[{}]", skip.join(",")),
                 bot.paused_reason,
                 bot.attack_spell,
+                bot.boss_mode,
                 at,
             ],
         )?;
