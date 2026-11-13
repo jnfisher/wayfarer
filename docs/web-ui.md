@@ -457,6 +457,11 @@ shows the standard and advanced settings too; untick it for the essential ones o
 - A change made to the file by hand shows up too: the brain sends the form again when it
   reloads a file.
 
+Under **Attack spells**, a caster has an **Attack spell** list: "auto (the strongest it can pay for)" and each attack spell it
+knows, with its short name and mana (`bot.attack_spells`). Choosing one sends `set_attack_spell` and holds in every mode; it is kept
+with the bot, not in a settings file, so the row says "this character" ([brain.md](brain.md) "Spells", C-099). A character with no
+attack spell has no list.
+
 At the end of the settings list, folded away under "monster rules (N)", the **monster rules** the bot plays by ([brain.md](brain.md) "Monster
 rules"): each rule (*ignore*, *avoid*, *attack first*: every boss seen, by default), its pattern and where it comes from (`default`, dim,
 its reason as the tooltip; `player`). Every rule has an `x`:

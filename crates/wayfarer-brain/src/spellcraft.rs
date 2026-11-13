@@ -82,6 +82,22 @@ impl Spellbook {
         !self.party_heals.is_empty() || self.heals.iter().any(|s| matches!(s.target, 0 | 2 | 6))
     }
 
+    /// The attack spells it knows, in the order of the `spells` screen.
+    pub fn attacks(&self) -> &[SpellDef] {
+        &self.attacks
+    }
+
+    /// The attack the player chose (C-099), by short name: it, when the mana pays for it; None
+    /// when it does not. Not known (no longer in the book): `Err`, and auto chooses.
+    pub fn chosen_attack(&self, short: &str, mana: i64) -> Result<Option<&SpellDef>, ()> {
+        let def = self
+            .attacks
+            .iter()
+            .find(|s| s.short.eq_ignore_ascii_case(short))
+            .ok_or(())?;
+        Ok((def.mana <= mana).then_some(def))
+    }
+
     /// The attack to cast with `mana` at `level`: the one that does the most damage of those
     /// that can be paid for, the cheaper of two that do the same.
     pub fn attack(&self, level: i64, mana: i64) -> Option<&SpellDef> {
@@ -194,6 +210,18 @@ mod tests {
         // Five mana pays for the missile only.
         assert_eq!(b.attack(5, 5).unwrap().short, "mmis");
         assert!(b.attack(5, 0).is_none());
+    }
+
+    #[test]
+    fn a_chosen_attack_is_cast_while_the_mana_lasts_and_auto_otherwise() {
+        let b = book();
+        // Chosen over the stronger bolt, any case.
+        assert_eq!(b.chosen_attack("MMIS", 20).unwrap().unwrap().short, "mmis");
+        // Short of mana for the choice: nothing (the weapon), not the cheaper missile.
+        assert_eq!(b.chosen_attack("lbolt", 5), Ok(None));
+        // Not known (and a heal is no attack): auto chooses.
+        assert!(b.chosen_attack("fbal", 99).is_err());
+        assert!(b.chosen_attack("mend", 99).is_err());
     }
 
     #[test]

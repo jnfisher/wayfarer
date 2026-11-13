@@ -284,6 +284,12 @@ export class GatewayClient {
     return p.length >= 2 && this.send({ type: "set_monster_rule", session, pattern: p, rule });
   }
 
+  /** Fight with this attack spell (a short name from the bot's `attack_spells`), or auto
+   * (`null`): C-099. False when not connected. */
+  setAttackSpell(session: string, spell: string | null): boolean {
+    return this.send({ type: "set_attack_spell", session, spell });
+  }
+
   /** Ask for the spells the character lacks (a `spell_plan` answer); false when not connected. */
   requestSpellPlan(session: string): boolean {
     return this.send({ type: "spell_plan_request", session });

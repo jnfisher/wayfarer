@@ -1496,6 +1496,14 @@ screen usually comes first). The data is `crates/wayfarer-world/data/quicksilver
   at the same monster ("Fight: mana 40%, now the weapon"), as after the casts per monster. A cast the game refuses (`You do not have enough mana`,
   `You have already cast a spell this round!`) is not the target's fault: the fight uses the
   weapon for 12 s.
+- **The attack spell the player chose** (C-099). `set_attack_spell` names one of the attack
+  spells the character knows (`bot.attack_spells`, from the `spells` screen), and Fight casts
+  only that one in every mode, in place of the strongest. Short of mana for it, the weapon
+  fights. `spells.attack` off, `spells.attack_mana_above` and `spells.max_casts_per_monster`
+  still hold. `null` goes back to auto. The choice is kept with the bot's record, not in a
+  settings file, since a character's spells are its own; a chosen spell it no longer knows
+  falls back to auto. It is for a monster that resists the strongest: the greater hellion
+  takes nothing from fire.
 - **Casts per monster.** `spells.max_casts_per_monster` (0, the default, is no limit) caps the
   casts of the attack spell at one monster to spend a little mana on each fight: auto-combat
   casts the spell every round on its own, so after that many casts (counted from the game's

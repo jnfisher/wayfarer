@@ -281,6 +281,8 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-096](C-096-megamud-monster-defaults.md) | Monster rules are the player's, over defaults from MegaMud's list; a stalemate makes no rule | B | S | C-094 | |
 | [C-097](C-097-stash-stats.md) | The stats tab shows the coins stashed this run, and where | B | S | C-093 | |
 | [C-098](C-098-flee-dead-ends.md) | Flee runs on, not into a dead end or back along its trail | B | S | | |
+| [C-099](C-099-attack-spell-choice.md) | Choose the attack spell a caster fights with, in every mode | B | S | | |
+| [C-100](C-100-boss-fight-mode.md) | Boss fight mode: fight in place, never flee or walk, its own casts and hang-up | B | M | C-099 | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or

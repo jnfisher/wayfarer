@@ -655,6 +655,9 @@
             onsave={(id, layer, changes) => client.saveSettings(id, layer, changes)}
             rules={focusedId ? (brain.characters[focusedId]?.bot?.monster_rules ?? []) : []}
             onrule={(id, pattern, rule) => client.setMonsterRule(id, pattern, rule)}
+            attackSpells={focusedId ? (brain.characters[focusedId]?.bot?.attack_spells ?? []) : []}
+            attackSpell={focusedId ? (brain.characters[focusedId]?.bot?.attack_spell ?? undefined) : undefined}
+            onattackspell={(id, spell) => client.setAttackSpell(id, spell)}
           />
         {:else if devPrefs.panel === "stats"}
           <StatsPanel

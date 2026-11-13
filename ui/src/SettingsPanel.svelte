@@ -2,7 +2,7 @@
   import { untrack } from "svelte";
   import { LAYERS, groupRows, isOwn, numberChange, resetChange, show, sourceLabel, type SettingsMessage } from "./lib/settings";
   import MonsterRules from "./MonsterRules.svelte";
-  import type { MonsterRuleEntry, MonsterRuleKind, SessionInfo, SettingChange, SettingRow } from "./proto";
+  import type { AttackSpellOption, MonsterRuleEntry, MonsterRuleKind, SessionInfo, SettingChange, SettingRow } from "./proto";
 
   interface Props {
     /** The focused tile's session, which the panel follows. */
@@ -19,9 +19,29 @@
     rules?: MonsterRuleEntry[];
     /** Set the player's monster rule for a pattern, or remove it (`null`). */
     onrule?: (session: string, pattern: string, rule: MonsterRuleKind | null) => void;
+    /** The attack spells the character knows (`bot.attack_spells`), and the one chosen
+     * (`bot.attack_spell`, undefined for auto): C-099. */
+    attackSpells?: AttackSpellOption[];
+    attackSpell?: string;
+    /** Fight with this attack spell, or auto (`null`). */
+    onattackspell?: (session: string, spell: string | null) => void;
   }
 
-  let { session, settings, attached, onrequest, onsave, rules = [], onrule = () => {} }: Props = $props();
+  let {
+    session,
+    settings,
+    attached,
+    onrequest,
+    onsave,
+    rules = [],
+    onrule = () => {},
+    attackSpells = [],
+    attackSpell,
+    onattackspell = () => {},
+  }: Props = $props();
+
+  const ATTACK_SPELL_HELP =
+    "The attack spell this character fights with, in every mode: auto casts the strongest it can pay for. Pick one a monster does not resist (no fire at a greater hellion), and back to auto after. Kept with the bot, not in a settings file.";
 
   /** The layer being edited, and whether the standard and advanced settings show too. */
   let layer = $state<string>("character");
@@ -141,6 +161,26 @@
               {/if}
               <div class="help">{row.help}</div>
             </div>
+            {#if row.key === "spells.attack" && session && attackSpells.length > 0}
+              {@const id = session.id}
+              <div class="row" data-key="attack_spell" class:own={attackSpell !== undefined}>
+                <label class="name" for="s-attack-spell" title={ATTACK_SPELL_HELP}>Attack spell</label>
+                <span class="control">
+                  <select
+                    id="s-attack-spell"
+                    value={attackSpell ?? ""}
+                    onchange={(e) => onattackspell(id, e.currentTarget.value || null)}
+                  >
+                    <option value="">auto (the strongest it can pay for)</option>
+                    {#each attackSpells as sp (sp.short)}
+                      <option value={sp.short}>{sp.name} ({sp.short}, {sp.mana} mana)</option>
+                    {/each}
+                  </select>
+                </span>
+                <span class="source" title="Kept with the bot, for this character">this character</span>
+                <div class="help">{ATTACK_SPELL_HELP}</div>
+              </div>
+            {/if}
           {/each}
         </section>
       {/each}

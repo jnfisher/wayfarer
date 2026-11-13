@@ -295,6 +295,8 @@ pub(crate) struct View<'a> {
     pub hp_points: Option<(i64, i64)>,
     pub level: i64,
     pub book: &'a Spellbook,
+    /// The attack spell the player chose (C-099), by short name; None is auto.
+    pub attack_choice: Option<&'a str>,
     /// What the character carries, in weight units now and at most (`i`'s `Encumbrance:`),
     /// and the coins it holds.
     pub load: Option<(u64, u64)>,
@@ -374,6 +376,12 @@ impl View<'_> {
         self.mana_percent()?;
         if !self.casts_attacks() || self.attack_mana_short() {
             return None;
+        }
+        // The player's choice while the character knows it; short of mana for it, the weapon.
+        if let Some(short) = self.attack_choice
+            && let Ok(chosen) = self.book.chosen_attack(short, mana)
+        {
+            return chosen;
         }
         self.book.attack(self.level, mana)
     }
@@ -851,8 +859,10 @@ impl Bot {
             reason: self.reason.clone(),
             task: self.task.as_ref().map(Task::snapshot),
             journey: self.journey.as_ref().map(Journey::snapshot),
-            // The session's: it keeps the rules.
+            // The session's: it keeps the rules and the attack spell.
             monster_rules: Vec::new(),
+            attack_spells: Vec::new(),
+            attack_spell: None,
         }
     }
 
@@ -1257,8 +1267,9 @@ impl Bot {
                 .reason
                 .clone()
                 .filter(|_| self.state == BotState::Paused),
-            // The session's: it keeps the rules.
+            // The session's: it keeps the rules and the attack spell.
             monster_rules: Vec::new(),
+            attack_spell: None,
         }
     }
 

@@ -11,7 +11,7 @@ use std::time::UNIX_EPOCH;
 use game::arena::*;
 use game::*;
 use wayfarer_brain::{Brain, FixedClock};
-use wayfarer_proto::BotAction;
+use wayfarer_proto::{BotAction, ToClient};
 
 /// The capture's status screen as a character of `class` with `mana` of 20.
 fn caster_status(class: &str, hp: i32, mana: i32) -> String {
@@ -78,6 +78,62 @@ async fn a_mage_opens_with_magic_missile_and_leaves_starlight_alone() {
         .await;
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "spells", "mmis rat"]);
+}
+
+/// A mage with magic missile and the stronger lightning bolt.
+const BOLT_SPELLS: [(i32, i32, &str, &str); 2] = [
+    (1, 1, "mmis", "magic missile"),
+    (8, 5, "lbol", "lightning bolt"),
+];
+
+#[tokio::test(start_paused = true)]
+async fn auto_casts_the_strongest_attack_it_can_pay_for() {
+    let (mut g, run) = in_arena(&["large giant rat"]).await;
+    start_caster(&mut g, "Mage", &BOLT_SPELLS, &["large giant rat"], 35, 20).await;
+    g.expect("lbol rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat with lightning bolt")
+        .await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "spells", "lbol rat"]);
+    // The spells to choose from, and no choice: auto.
+    let bot = bot(&seen);
+    let known: Vec<_> = bot
+        .attack_spells
+        .iter()
+        .map(|s| (s.short.as_str(), s.mana))
+        .collect();
+    assert_eq!(known, [("mmis", 1), ("lbol", 5)]);
+    assert_eq!(bot.attack_spell, None);
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_attack_spell_the_player_chose_is_cast_in_place_of_the_strongest() {
+    // C-099: the player picks magic missile; the fight casts it, not the bolt auto would.
+    let (mut g, run) = in_arena(&[]).await;
+    start_caster(&mut g, "Mage", &BOLT_SPELLS, &[], 35, 20).await;
+    // The spellbook is read in the re-sync.
+    g.narrated("re-synced").await;
+    let choose = |spell: Option<&str>| ToClient::SetAttackSpell {
+        session: ID.into(),
+        spell: spell.map(str::to_owned),
+    };
+    // One it does not know is refused, and changes nothing.
+    g.send(choose(Some("fbal"))).await;
+    g.narrated("set_attack_spell: fbal is not an attack spell this character knows")
+        .await;
+    g.send(choose(Some("mmis"))).await;
+    g.narrated("Attack spell: magic missile (mmis)").await;
+    g.expect("mmis rat", line(ENGAGED, 35));
+    g.output(&arena(&["large giant rat"], 35)).await;
+    g.narrated("Fight: large giant rat with magic missile")
+        .await;
+    g.send(choose(None)).await;
+    g.narrated("Attack spell: auto, the strongest it can pay for")
+        .await;
+    g.freeze();
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "spells", "mmis rat"]);
+    assert_eq!(bot(&seen).attack_spell, None);
 }
 
 #[tokio::test(start_paused = true)]
