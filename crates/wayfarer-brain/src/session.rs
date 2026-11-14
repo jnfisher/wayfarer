@@ -73,6 +73,11 @@ pub const OWN_PATIENCE: Duration = Duration::from_secs(10);
 /// How long a line the player typed beside the bot waits for a prompt with nothing in flight
 /// before it goes anyway (the game showed text and no prompt after it).
 pub const TYPED_PATIENCE: Duration = Duration::from_secs(5);
+/// How long the game must be quiet after a whole line it showed with no prompt after it (a
+/// party member's `frontrank`, someone arriving) before a typed line goes, when the game has
+/// already answered the last line sent with a prompt: nothing is coming, the line can go
+/// (C-101).
+pub const TYPED_QUIET: Duration = Duration::from_millis(300);
 /// Chunks asked for per `history_request`.
 pub const HISTORY_CHUNKS: u32 = 2000;
 /// The widest area a `loops_request` may ask for, in steps from the anchor.
@@ -337,6 +342,11 @@ pub(crate) struct Session {
     buffer: Vec<Chunk>,
     /// The last chunk ended in a prompt.
     at_prompt: bool,
+    /// A prompt has come since the last line went to the game: the game answered it.
+    prompted: bool,
+    /// When the last chunk came, if it showed text ending a whole line with no prompt after
+    /// it: a typed line goes once the game has been quiet [`TYPED_QUIET`] since (C-101).
+    stray_line: Option<Instant>,
     /// When a line last went to the game (or the brain attached).
     last_sent: Instant,
     /// The brain's own lines and when each went, until the gateway's `sent` for each comes
@@ -545,6 +555,8 @@ impl Session {
             caught_up: false,
             buffer: Vec::new(),
             at_prompt: false,
+            prompted: false,
+            stray_line: None,
             last_sent: now,
             own: VecDeque::new(),
             resync: Resync::Off,
@@ -908,6 +920,12 @@ impl Session {
             Some(ev) => self.at_prompt = ev.name == "prompt",
             None if visible(&chunk.text) => self.at_prompt = false,
             None => {}
+        }
+        if self.at_prompt {
+            self.prompted = true;
+            self.stray_line = None;
+        } else if visible(&chunk.text) || !events.is_empty() {
+            self.stray_line = chunk.text.ends_with('\n').then_some(now);
         }
         if changed {
             self.character.set_updated_seq(chunk.seq);
@@ -1909,7 +1927,8 @@ impl Session {
         let Some(line) = self.typed.front() else {
             return false;
         };
-        let prompt = self.at_prompt || now >= line.at + TYPED_PATIENCE;
+        let prompt =
+            self.at_prompt || self.quiet_after_stray(now) || now >= line.at + TYPED_PATIENCE;
         if self.state != SessionState::Realm
             || !self.live()
             || self.leaving
@@ -1934,6 +1953,20 @@ impl Session {
             *idle = true;
         }
         true
+    }
+
+    /// The game answered the last line sent with a prompt, then showed whole lines with no
+    /// prompt after them (a party member's rank change prints so), and has been quiet
+    /// [`TYPED_QUIET`] since: nothing is coming, as good as a prompt for a typed line (C-101).
+    fn quiet_after_stray(&self, now: Instant) -> bool {
+        self.stray_quiet_at().is_some_and(|at| now >= at)
+    }
+
+    /// When [`Self::quiet_after_stray`] comes true, if it will without more output.
+    fn stray_quiet_at(&self) -> Option<Instant> {
+        self.stray_line
+            .filter(|_| self.prompted && !self.at_prompt)
+            .map(|at| at + TYPED_QUIET)
     }
 
     /// The player moved the character by hand (a typed move, keys): the bot's walk stops after
@@ -1983,6 +2016,8 @@ impl Session {
         self.own.push_back((cmd.to_owned(), now));
         self.last_sent = now;
         self.at_prompt = false;
+        self.prompted = false;
+        self.stray_line = None;
         out.push(ToGateway::InputLine {
             session: self.id.clone(),
             text: cmd.to_owned(),
@@ -1997,6 +2032,8 @@ impl Session {
         self.own.push_back((cmd.to_owned(), now));
         self.last_sent = now;
         self.at_prompt = false;
+        self.prompted = false;
+        self.stray_line = None;
         out.push(ToGateway::InputLine {
             session: self.id.clone(),
             text: cmd.to_owned(),
@@ -4388,7 +4425,13 @@ impl Session {
         let typed = self
             .typed
             .front()
-            .map(|line| line.at + TYPED_PATIENCE)
+            .map(|line| {
+                let patience = line.at + TYPED_PATIENCE;
+                // Once past, the next output wakes it: a deadline gone by would spin.
+                self.stray_quiet_at()
+                    .filter(|&q| q > now)
+                    .map_or(patience, |q| q.min(patience))
+            })
             .filter(|_| !self.at_prompt);
         // The snapshot's `in_combat` goes false when the fight lapses.
         let engaged = lapse.filter(|&t| t > now && self.character.state().in_combat == Some(true));
