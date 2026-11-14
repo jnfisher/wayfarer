@@ -947,8 +947,11 @@ against silvermere's oracle, `tests/fixtures/command-words/`) and sends it as it
   bot drops its route and plays where the character ends up.
 - **One line at a time**: a typed line goes only at a prompt with nothing in flight and no
   re-sync command waiting for its answer, so it never interleaves with the bot's exchange;
-  several typed lines go one per prompt, in order. One that has waited 5 s for a prompt goes
-  anyway (the game showed text and no prompt after it).
+  several typed lines go one per prompt, in order. When the game has answered the last line
+  sent with a prompt and then shows whole lines with no prompt after them (a party member's
+  `frontrank`, someone arriving), a typed line goes once it has been quiet 300 ms (C-101).
+  Otherwise one that has waited 5 s for a prompt goes anyway (the game showed text, perhaps
+  half a line, and no prompt after it).
 - **Stopped**, the brain arbitrates nothing (`arbitrate` off): the gateway sends lines straight
   to the game, and a typed line pauses nothing (it still stops a walk from the map). A line
   that reaches the brain after its bot stopped, or out of the realm, goes at once. While the

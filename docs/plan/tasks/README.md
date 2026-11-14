@@ -283,6 +283,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-098](C-098-flee-dead-ends.md) | Flee runs on, not into a dead end or back along its trail | B | S | | |
 | [C-099](C-099-attack-spell-choice.md) | Choose the attack spell a caster fights with, in every mode | B | S | | |
 | [C-100](C-100-boss-fight-mode.md) | Boss fight mode: fight in place, never flee or walk, its own casts and hang-up | B | M | C-099 | |
+| [C-101](C-101-typed-line-after-stray-text.md) | A typed line goes once the game is quiet after a stray line, not 5 s later | B | S | | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or

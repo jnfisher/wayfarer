@@ -323,3 +323,36 @@ async fn a_line_waiting_when_logging_off_starts_is_dropped_and_nothing_typed_goe
         ]
     );
 }
+
+/// C-101: a party member's `frontrank` shows on the leader's screen as a whole line with no
+/// prompt after it. The game has answered everything sent, so a line typed then goes once the
+/// game has been quiet a moment, not after [`TYPED_PATIENCE`].
+#[tokio::test(start_paused = true)]
+async fn a_line_typed_after_a_stray_whole_line_goes_once_the_game_is_quiet() {
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 35).await;
+    g.narrated("Waiting here").await;
+    g.output("Lexi just moved to the front rank in your group.\r\n")
+        .await;
+    g.expect("gossip hi", line("You gossip: hi", 35));
+    g.user_input("gossip hi").await;
+    g.idle(Duration::from_millis(500)).await;
+    g.freeze();
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "gossip hi"]);
+}
+
+/// C-101: half a line with no prompt after it may be the game still printing: a typed line
+/// waits for the prompt (or [`TYPED_PATIENCE`]).
+#[tokio::test(start_paused = true)]
+async fn a_line_typed_after_half_a_line_waits_for_the_prompt() {
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 35).await;
+    g.narrated("Waiting here").await;
+    g.output("Lexi just moved to the fr").await;
+    g.user_input("gossip hi").await;
+    g.idle(Duration::from_secs(1)).await;
+    g.freeze();
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look"]);
+}
