@@ -79,6 +79,9 @@ pub struct Atlas {
     pub trainers: Vec<wayfarer_world::trainers::Trainer>,
     /// The items Item and Key exits ask for that a shop sells: the walker buys one on the way.
     pub exit_items: std::collections::BTreeMap<i64, wayfarer_world::ExitItem>,
+    /// Every item a character can pick up, by lower-case name: the game's name and its
+    /// weight, for the items the bot collects (C-102).
+    pub gettable: HashMap<String, (String, i64)>,
 }
 
 /// Room types (`kb/game-data.md` "Enumerations") and shop types (`kb/economy.md`).
@@ -195,6 +198,11 @@ impl Atlas {
             })
             .collect();
         let exit_items = wayfarer_world::exit_items::load(pack, &gate_items)?;
+        let gettable = pack
+            .gettable_items()?
+            .into_iter()
+            .map(|i| (i.name.to_lowercase(), (i.name, i.weight)))
+            .collect();
         let monsters = Monsters::load(pack)?;
         let mm_loops = wayfarer_world::loops::megamud_loops(pack, &graph, &monsters)?;
         Ok(Atlas {
@@ -217,6 +225,7 @@ impl Atlas {
             item_names,
             trainers: wayfarer_world::trainers::load(pack)?,
             exit_items,
+            gettable,
             godfrey: pack
                 .rooms_by_name("Bank of Godfrey")?
                 .into_iter()
@@ -725,6 +734,10 @@ impl Brain {
             ToClient::SetBossMode { session, on } => match self.sessions.get_mut(&session) {
                 Some(s) => s.set_boss_mode(on, now, out),
                 None => out.push(no_session("set_boss_mode", &session)),
+            },
+            ToClient::SetCollectItems { session, items } => match self.sessions.get_mut(&session) {
+                Some(s) => s.set_collect_items(&items, now, out),
+                None => out.push(no_session("set_collect_items", &session)),
             },
             ToClient::SpellPlanRequest { session } => match self.sessions.get_mut(&session) {
                 Some(s) => s.spell_plan(out),

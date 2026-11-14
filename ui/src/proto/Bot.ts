@@ -2,6 +2,7 @@
 import type { AttackSpellOption } from "./AttackSpellOption";
 import type { BotMode } from "./BotMode";
 import type { BotState } from "./BotState";
+import type { CollectItem } from "./CollectItem";
 import type { Journey } from "./Journey";
 import type { MonsterRuleEntry } from "./MonsterRuleEntry";
 import type { Task } from "./Task";
@@ -50,4 +51,9 @@ attack_spell?: string,
  * Boss fight mode (`set_boss_mode`, C-100): it fights where it stands, never flees or
  * walks, casts no blessings and hangs up at its own line. Left out when off.
  */
-boss_mode?: boolean, };
+boss_mode?: boolean, 
+/**
+ * The items it picks up and how many of each it keeps carried (`set_collect_items`,
+ * C-102). Left out when none.
+ */
+collect_items?: Array<CollectItem>, };

@@ -280,6 +280,28 @@ fn bless_check(settings: &Settings) -> Duration {
 }
 
 /// Whether `text` shows anything but escapes and white space.
+/// Up to three item names a character can pick up that hold every word of `asked`, shortest
+/// first, for a name the player mistyped (C-102).
+fn near_items(atlas: &Atlas, asked: &str) -> Vec<String> {
+    let words: Vec<String> = asked
+        .to_lowercase()
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect();
+    let mut near: Vec<&String> = atlas
+        .gettable
+        .values()
+        .map(|(name, _)| name)
+        .filter(|name| {
+            let lower = name.to_lowercase();
+            words.iter().all(|w| lower.contains(w.as_str()))
+        })
+        .collect();
+    near.sort_by_key(|n| (n.len(), n.to_string()));
+    near.dedup();
+    near.into_iter().take(3).cloned().collect()
+}
+
 fn visible(text: &str) -> bool {
     let mut chars = text.chars();
     while let Some(c) = chars.next() {
@@ -324,6 +346,9 @@ pub(crate) struct Session {
     spellbook: Spellbook,
     /// The attack spell the player chose (C-099), by short name; None is auto.
     attack_choice: Option<String>,
+    /// The items the player listed for it to collect (C-102): the game's name and how many
+    /// to keep carried.
+    collect: Vec<(String, u32)>,
     registry: Arc<Registry>,
     parser: Parser,
     pub character: Character,
@@ -482,6 +507,10 @@ impl Session {
             .cloned();
         let mut rules = RuleBook::new(ledger.stored().map_or(&[], |b| &b.monster_rules));
         let attack_choice = ledger.stored().and_then(|b| b.attack_spell.clone());
+        let collect = ledger
+            .stored()
+            .map(|b| b.collect_items.clone())
+            .unwrap_or_default();
         // Boss fight mode stays on across a restart until the player turns it off (C-100).
         if ledger.stored().is_some_and(|b| b.boss_mode) {
             let _ = bot.set_boss(true, None);
@@ -517,6 +546,7 @@ impl Session {
             spells_seen: false,
             spellbook: Spellbook::default(),
             attack_choice,
+            collect,
             map_radius: MAP_RADIUS,
             map_center: None,
             map_dirty: false,
@@ -1127,6 +1157,63 @@ impl Session {
         self.flush_views(out);
     }
 
+    /// `set_collect_items` (C-102): the items it picks up off the floor and how many of each
+    /// it keeps carried, the whole list. A name that is no item a character can pick up is
+    /// refused with a warning (with the nearest names, if any); the rest are kept, by the
+    /// game's name. A count of 0 drops the item.
+    pub fn set_collect_items(
+        &mut self,
+        items: &[wayfarer_proto::CollectItem],
+        now: Instant,
+        out: &mut Vec<ToGateway>,
+    ) {
+        let Some(atlas) = self.atlas.clone() else {
+            out.push(self.warning("set_collect_items: no world pack, no items to collect"));
+            return;
+        };
+        let mut list: Vec<(String, u32)> = Vec::new();
+        for item in items {
+            let asked = item.name.trim();
+            if asked.is_empty() || item.count == 0 {
+                continue;
+            }
+            match atlas.gettable.get(&asked.to_lowercase()) {
+                Some((name, _)) => match list.iter_mut().find(|(n, _)| n == name) {
+                    Some(entry) => entry.1 = item.count,
+                    None => list.push((name.clone(), item.count)),
+                },
+                None => {
+                    let text = match near_items(&atlas, asked).as_slice() {
+                        [] => format!("Collect: no item called \"{asked}\""),
+                        near => format!(
+                            "Collect: no item called \"{asked}\"; did you mean {}?",
+                            near.join(", ")
+                        ),
+                    };
+                    out.push(self.warning(&text));
+                }
+            }
+        }
+        if list == self.collect {
+            self.flush_views(out);
+            return;
+        }
+        let text = if list.is_empty() {
+            "Collect: no items".to_owned()
+        } else {
+            let names: Vec<String> = list
+                .iter()
+                .map(|(name, n)| format!("{name} (up to {n})"))
+                .collect();
+            format!("Collect: {}", names.join(", "))
+        };
+        self.collect = list;
+        out.push(self.notice(&text));
+        self.persist(out);
+        self.drive(now, out);
+        self.flush_views(out);
+    }
+
     /// What the combat numbers count (C-050): the character's own blows and casts, kills, and
     /// its lowest HP and mana. A failed cast counts as an attack's miss only in a fight.
     fn count_combat(&mut self, ev: &GameEvent, now: Instant) {
@@ -1281,6 +1368,7 @@ impl Session {
         let mut record = self.bot.record();
         record.monster_rules = self.rules.stored();
         record.attack_spell = self.attack_choice.clone();
+        record.collect_items = self.collect.clone();
         if self.ledger.stopping(&record) {
             let why = self.bot.snapshot().narration;
             let room = self.position.best();
@@ -3472,6 +3560,8 @@ impl Session {
                 .as_ref()
                 .and_then(|e| Some((u64::from(e.current?), u64::from(e.max?)))),
             coins: c.coins.as_ref().map_or(&[], |c| c.carried.as_slice()),
+            items: &self.character.items,
+            collect: &self.collect,
             regen,
             qs120: self.detect.rules().qs120(),
         };
@@ -4337,6 +4427,14 @@ impl Session {
                 })
                 .collect();
             bot.attack_spell = self.attack_choice.clone();
+            bot.collect_items = self
+                .collect
+                .iter()
+                .map(|(name, count)| wayfarer_proto::CollectItem {
+                    name: name.clone(),
+                    count: *count,
+                })
+                .collect();
             s.bot = Some(bot);
             s.run = self.ledger.snapshot();
             s.places = Some(self.places());

@@ -501,6 +501,19 @@ pub struct Bot {
     #[serde(default, skip_serializing_if = "is_false")]
     #[ts(as = "Option<bool>", optional)]
     pub boss_mode: bool,
+    /// The items it picks up and how many of each it keeps carried (`set_collect_items`,
+    /// C-102). Left out when none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<CollectItem>>", optional)]
+    pub collect_items: Vec<CollectItem>,
+}
+
+/// An item the bot picks up off the floor until it carries `count` of it (C-102).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct CollectItem {
+    /// The game's name for it (`darkwood ring`).
+    pub name: String,
+    pub count: u32,
 }
 
 /// An attack spell a character knows (C-099).
@@ -1859,6 +1872,10 @@ pub enum ToClient {
         session: SessionId,
         on: bool,
     },
+    SetCollectItems {
+        session: SessionId,
+        items: Vec<CollectItem>,
+    },
     PartiesRequest,
     PartySave {
         party: PartyDef,
@@ -2184,6 +2201,14 @@ pub enum ToGateway {
         session: SessionId,
         on: bool,
     },
+    /// UI → brain: the items the bot picks up off the floor and how many of each it keeps
+    /// carried, the whole list (empty: none) (C-102). A name that is no item a character can
+    /// pick up is refused with a warning; the rest are kept. Stored with the bot's record; the
+    /// bot's `collect_items` shows it.
+    SetCollectItems {
+        session: SessionId,
+        items: Vec<CollectItem>,
+    },
     /// UI → brain: ask for the parties; the brain answers with `parties`.
     PartiesRequest,
     /// UI → brain: make a party (`id` empty) or replace one. A member in another party is
@@ -2458,6 +2483,7 @@ impl ToClient {
         "set_monster_rule",
         "set_attack_spell",
         "set_boss_mode",
+        "set_collect_items",
         "parties_request",
         "party_save",
         "party_delete",
@@ -2528,6 +2554,7 @@ impl ToClient {
             Self::SetMonsterRule { .. } => "set_monster_rule",
             Self::SetAttackSpell { .. } => "set_attack_spell",
             Self::SetBossMode { .. } => "set_boss_mode",
+            Self::SetCollectItems { .. } => "set_collect_items",
             Self::PartiesRequest => "parties_request",
             Self::PartySave { .. } => "party_save",
             Self::PartyDelete { .. } => "party_delete",
@@ -2567,6 +2594,7 @@ impl ToClient {
             | Self::SetMonsterRule { session, .. }
             | Self::SetAttackSpell { session, .. }
             | Self::SetBossMode { session, .. }
+            | Self::SetCollectItems { session, .. }
             | Self::PartyLeave { session }
             | Self::PartyJoin { session, .. }
             | Self::BlessingsSave { session, .. }
@@ -2663,6 +2691,7 @@ impl ToGateway {
         "set_monster_rule",
         "set_attack_spell",
         "set_boss_mode",
+        "set_collect_items",
         "parties_request",
         "party_save",
         "party_delete",
@@ -2728,6 +2757,7 @@ impl ToGateway {
             Self::SetMonsterRule { .. } => "set_monster_rule",
             Self::SetAttackSpell { .. } => "set_attack_spell",
             Self::SetBossMode { .. } => "set_boss_mode",
+            Self::SetCollectItems { .. } => "set_collect_items",
             Self::PartiesRequest => "parties_request",
             Self::PartySave { .. } => "party_save",
             Self::PartyDelete { .. } => "party_delete",
@@ -2794,6 +2824,7 @@ impl ToGateway {
             | Self::SetMonsterRule { .. }
             | Self::SetAttackSpell { .. }
             | Self::SetBossMode { .. }
+            | Self::SetCollectItems { .. }
             | Self::PartiesRequest
             | Self::PartySave { .. }
             | Self::PartyDelete { .. }
@@ -2908,6 +2939,9 @@ impl ToGateway {
             },
             Self::SetAttackSpell { session, spell } => ToClient::SetAttackSpell { session, spell },
             Self::SetBossMode { session, on } => ToClient::SetBossMode { session, on },
+            Self::SetCollectItems { session, items } => {
+                ToClient::SetCollectItems { session, items }
+            }
             Self::PartiesRequest => ToClient::PartiesRequest,
             Self::PartySave { party } => ToClient::PartySave { party },
             Self::PartyDelete { id } => ToClient::PartyDelete { id },

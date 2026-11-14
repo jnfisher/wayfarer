@@ -152,6 +152,32 @@ describe("the settings tab", () => {
     expect(onattackspell).toHaveBeenLastCalledWith("a", null);
   });
 
+  it("lists the items to collect under 'Carry coins up to', and sends the whole list", async () => {
+    const carry: SettingRow = { ...heal, key: "cash.max_encumbrance", label: "Carry coins up to" };
+    const oncollect = vi.fn();
+    const { container } = render_({
+      settings: { ...settings, rows: [flee, carry, heal] },
+      collectItems: [{ name: "darkwood ring", count: 4 }],
+      oncollect,
+    });
+    const row = container.querySelector('[data-key="collect_items"]')!;
+    expect(row.previousElementSibling!.getAttribute("data-key")).toBe("cash.max_encumbrance");
+    expect(row.querySelector(".collect-name")!.textContent).toBe("darkwood ring");
+    // Add one: the whole list goes.
+    await fireEvent.input(screen.getByLabelText("item to collect"), { target: { value: "black diamond" } });
+    await fireEvent.input(screen.getByLabelText("how many to collect"), { target: { value: "10" } });
+    await fireEvent.submit(row.querySelector("form")!);
+    expect(oncollect).toHaveBeenLastCalledWith("a", [
+      { name: "darkwood ring", count: 4 },
+      { name: "black diamond", count: 10 },
+    ]);
+    // A new count, then remove it.
+    await fireEvent.change(screen.getByLabelText("how many darkwood ring"), { target: { value: "2" } });
+    expect(oncollect).toHaveBeenLastCalledWith("a", [{ name: "darkwood ring", count: 2 }]);
+    await fireEvent.click(screen.getByLabelText("stop collecting darkwood ring"));
+    expect(oncollect).toHaveBeenLastCalledWith("a", []);
+  });
+
   it("shows the chosen attack spell, and no list for a character with none", () => {
     const attack: SettingRow = { ...heal, key: "spells.attack", label: "Attack spells" };
     const rows = [flee, attack, heal];

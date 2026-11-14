@@ -1472,6 +1472,26 @@ between stops are not stopped for: Loot acts only when the bot stands still.
   anything its table knows; this list is the attacks silvermere's table has (there is no
   `smash`).
 
+### Collecting items
+
+The player lists items for a character to collect (`set_collect_items`, the settings tab's
+**Collect items**, C-102): a name and a count each, kept with the bot's record, in every mode.
+Loot takes them before coins: when the last room view showed one on the floor and the
+character carries fewer than the count, it sends `get <name>` ("Loot: picking up darkwood ring
+(2/4)"), one at a time.
+
+- **What counts**: the items `i` showed it carrying, plus each `You took <item>.` since; the
+  ones it wears or holds do not count (spares to hand out). One given away counts until the
+  next `i`.
+- **Names**: the game's, checked against the items a character can pick up (`gettable`); a
+  name that is none is refused with a warning and up to three names holding its words
+  ("did you mean darkwood ring?"), and the rest of the list is kept. A count of 0 drops one.
+- **Weight**: one more must fit under `cash.max_encumbrance`, by the item's weight; without a
+  known load it is taken and the game's own limit stands. `You cannot carry that much!` ends
+  the tries, items and coins, for the room view; a `get` not answered is tried twice.
+- **Where**: only the room the bot stands in, as with coins: it never walks for an item, and
+  items that need a `search` to show are not looked for.
+
 ### Stash currency
 
 `cash.stash_on_loop` (Cash, on by default; C-092): each time a loop gets to its **first stop**,

@@ -141,3 +141,115 @@ async fn the_attack_command_is_the_one_in_the_settings() {
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "bash rat"]);
 }
+
+impl Game {
+    /// The items the player lists for the character to collect (C-102).
+    async fn collect(&self, items: &[(&str, u32)]) {
+        self.send(ToClient::SetCollectItems {
+            session: ID.into(),
+            items: items
+                .iter()
+                .map(|(name, count)| wayfarer_proto::CollectItem {
+                    name: (*name).into(),
+                    count: *count,
+                })
+                .collect(),
+        })
+        .await;
+    }
+}
+
+/// The inventory screen carrying `items`, with a light load.
+fn carrying(items: &str, hp: i32) -> String {
+    format!(
+        "You are carrying {items}\r\nWealth: 0 copper farthings\r\n\
+         Encumbrance: 100/1000 - None [10%]\r\n{}",
+        prompt(hp)
+    )
+}
+
+/// C-102: an item the player listed is picked up after a kill, and the count says how many
+/// it now carries of how many.
+#[tokio::test(start_paused = true)]
+async fn a_listed_item_is_picked_up_after_a_kill() {
+    let (mut g, run) = in_arena_with(&["large giant rat"], "").await;
+    g.collect(&[("Darkwood Ring", 4)]).await;
+    g.narrated("Collect: darkwood ring (up to 4)").await;
+    kill_a_rat_leaving(&mut g, None, "darkwood ring").await;
+    g.expect("get darkwood ring", line("You took darkwood ring.", 35));
+    g.narrated("Loot: picking up darkwood ring (1/4)").await;
+    g.narrated("Waiting here").await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "look", "get darkwood ring"]);
+    let listed = bot(&seen).collect_items;
+    assert_eq!(listed.len(), 1);
+    assert_eq!(
+        (listed[0].name.as_str(), listed[0].count),
+        ("darkwood ring", 4)
+    );
+}
+
+/// C-102: it stops at the count; one it wears does not count, and the coins come after.
+#[tokio::test(start_paused = true)]
+async fn it_takes_items_up_to_the_count_not_counting_the_one_it_wears() {
+    let (mut g, run) = in_arena_with(&["large giant rat"], "").await;
+    g.collect(&[("darkwood ring", 4)]).await;
+    g.narrated("Collect: darkwood ring (up to 4)").await;
+    g.expect("st", status(35));
+    g.expect("i", carrying("3 darkwood ring, darkwood ring (Finger)", 35));
+    g.expect("look", arena(&["large giant rat"], 35));
+    g.bot(BotAction::Start).await;
+    g.narrated("Starting in Newhaven, Arena: re-syncing").await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    g.expect(
+        "look",
+        floor_room(&[], 35, "5 platinum pieces, 2 darkwood ring"),
+    );
+    g.output(&kill(35)).await;
+    g.expect("get darkwood ring", line("You took darkwood ring.", 35));
+    g.expect(
+        "get 5 platinum",
+        format!("You picked up 5 platinum pieces\r\n{}", prompt(35)),
+    );
+    g.narrated("Loot: picking up darkwood ring (4/4)").await;
+    g.narrated("Loot: picking up 5 platinum").await;
+    g.narrated("Waiting here").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(
+        played,
+        [
+            "st",
+            "i",
+            "look",
+            "a rat",
+            "look",
+            "get darkwood ring",
+            "get 5 platinum"
+        ]
+    );
+}
+
+/// C-102: a name that is no item is refused with the nearest names; the rest are kept.
+#[tokio::test(start_paused = true)]
+async fn a_name_that_is_no_item_is_refused_and_the_rest_kept() {
+    let (mut g, run) = in_arena_with(&[], "").await;
+    g.collect(&[("black diamnd", 3), ("darkwood ring", 4)])
+        .await;
+    g.narrated("Collect: darkwood ring (up to 4)").await;
+    g.collect(&[("darkwood", 2)]).await;
+    g.idle(Duration::from_secs(1)).await;
+    let (seen, _) = g.close(run).await;
+    let said = notices(&seen);
+    assert!(
+        said.contains(&"Collect: no item called \"black diamnd\"".to_owned()),
+        "{said:?}"
+    );
+    let near = said
+        .iter()
+        .find(|n| n.starts_with("Collect: no item called \"darkwood\"; did you mean "))
+        .unwrap_or_else(|| panic!("{said:?}"));
+    assert!(near.contains("darkwood ring"), "{near}");
+    // The second list had nothing valid in it: it replaced the first with none.
+    assert!(said.contains(&"Collect: no items".to_owned()), "{said:?}");
+}

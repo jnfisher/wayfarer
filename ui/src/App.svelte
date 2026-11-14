@@ -658,6 +658,8 @@
             attackSpells={focusedId ? (brain.characters[focusedId]?.bot?.attack_spells ?? []) : []}
             attackSpell={focusedId ? (brain.characters[focusedId]?.bot?.attack_spell ?? undefined) : undefined}
             onattackspell={(id, spell) => client.setAttackSpell(id, spell)}
+            collectItems={focusedId ? (brain.characters[focusedId]?.bot?.collect_items ?? []) : []}
+            oncollect={(id, items) => client.setCollectItems(id, items)}
           />
         {:else if devPrefs.panel === "stats"}
           <StatsPanel
