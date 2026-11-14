@@ -3,16 +3,16 @@
 
 use wayfarer_proto::{
     AccountCharacter, AccountServer, Accounts, AttackSpellOption, BlessingSpell, Blessings, Bot,
-    BotAction, BotMode, BotState, CharacterState, Chunk, ClientKind, CoinCount, Coins, CombatStats,
-    DamageRow, DecodeError, Encumbrance, ExitKind, ExpSample, Family, Found, FoundKind, FoundRoom,
-    GearBuff, GearDetail, GearDetailMove, GearDetailRequest, GearFilter, GearInputs, GearMonster,
-    GearMonsterScore, GearMonsters, GearMove, GearMoveScore, GearPlan, GearPlanRequest, GearRow,
-    GearSource, GearSourceKind, GearStatus, GearWhatIf, GeneratedLoop, Journey, LoopStop, MapExit,
-    MapRoom, MegaMudLoop, MemberState, MemberStatus, MonsterRuleEntry, MonsterRuleKind, PROTOCOL,
-    ParseCounts, PartyDef, PartyRank, PartyStatus, Position, RoomKey, RoomKind, RuleSource,
-    RunSummary, SessionAction, SessionInfo, SessionState, SettingChange, SettingKind, SettingRow,
-    SettingValue, SettingsFile, SpellPlanItem, Stashed, Stats, StatsPart, TimeSpent, ToClient,
-    ToGateway, Walking, WorldPackInfo, protocol_mismatch,
+    BotAction, BotMode, BotState, CharacterState, Chunk, ClientKind, CoinCount, Coins, CollectItem,
+    CombatStats, DamageRow, DecodeError, Encumbrance, ExitKind, ExpSample, Family, Found,
+    FoundKind, FoundRoom, GearBuff, GearDetail, GearDetailMove, GearDetailRequest, GearFilter,
+    GearInputs, GearMonster, GearMonsterScore, GearMonsters, GearMove, GearMoveScore, GearPlan,
+    GearPlanRequest, GearRow, GearSource, GearSourceKind, GearStatus, GearWhatIf, GeneratedLoop,
+    Journey, LoopStop, MapExit, MapRoom, MegaMudLoop, MemberState, MemberStatus, MonsterRuleEntry,
+    MonsterRuleKind, PROTOCOL, ParseCounts, PartyDef, PartyRank, PartyStatus, Position, RoomKey,
+    RoomKind, RuleSource, RunSummary, SessionAction, SessionInfo, SessionState, SettingChange,
+    SettingKind, SettingRow, SettingValue, SettingsFile, SpellPlanItem, Stashed, Stats, StatsPart,
+    TimeSpent, ToClient, ToGateway, Walking, WorldPackInfo, protocol_mismatch,
 };
 
 fn kasimir(state: SessionState, last_seq: u64) -> SessionInfo {
@@ -121,11 +121,15 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                         }],
                         attack_spell: Some("mmis".into()),
                         boss_mode: true,
+                        collect_items: vec![CollectItem {
+                            name: "darkwood ring".into(),
+                            count: 4,
+                        }],
                     }),
                     ..CharacterState::default()
                 }),
             },
-            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]},"bot":{"state":"running","mode":"fight","narration":"Fight: large giant rat","doing":"attacking large giant rat","journey":{"name":"Newhaven, Arena","to":{"map":1,"room":2150}},"monster_rules":[{"pattern":"gigantic black ooze","rule":"ignore","source":"default"}],"attack_spells":[{"short":"mmis","name":"magic missile","mana":3}],"attack_spell":"mmis","boss_mode":true}}}"#,
+            r#"{"type":"character","session":"kasimir","state":{"name":"Kasimir","race":"Human","class":"Warrior","level":3,"hp":30,"hp_max":35,"exp":1520,"stats":{"strength":60,"agility":50},"room_title":"Newhaven, Village Entrance","room_exits":["north","south"],"in_combat":false,"statuses":[],"prompt_form":"hp","parse":{"lines":412,"unclassified":3},"synced_at":"2026-10-19T12:00:05Z","updated_seq":43,"coins":{"copper":320,"carried":[{"coin":"silver nobles","count":32}]},"carrying":["padded vest","dagger"],"encumbrance":{"current":520,"max":3792,"level":"None"},"kills":4,"position":{"map":1,"room":2140,"candidates":1,"title":"Newhaven, Village Entrance"},"walking":{"to":{"map":1,"room":2150},"name":"Newhaven, Arena","steps_left":3,"step":1,"commands":["w","w","d"]},"bot":{"state":"running","mode":"fight","narration":"Fight: large giant rat","doing":"attacking large giant rat","journey":{"name":"Newhaven, Arena","to":{"map":1,"room":2150}},"monster_rules":[{"pattern":"gigantic black ooze","rule":"ignore","source":"default"}],"attack_spells":[{"short":"mmis","name":"magic missile","mana":3}],"attack_spell":"mmis","boss_mode":true,"collect_items":[{"name":"darkwood ring","count":4}]}}}"#,
         ),
         (
             ToGateway::CharacterPatch {
@@ -844,6 +848,16 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
             },
             r#"{"type":"set_boss_mode","session":"kasimir","on":true}"#,
         ),
+        (
+            ToGateway::SetCollectItems {
+                session: "kasimir".into(),
+                items: vec![CollectItem {
+                    name: "darkwood ring".into(),
+                    count: 4,
+                }],
+            },
+            r#"{"type":"set_collect_items","session":"kasimir","items":[{"name":"darkwood ring","count":4}]}"#,
+        ),
         (ToGateway::PartiesRequest, r#"{"type":"parties_request"}"#),
         (
             ToGateway::PartySave {
@@ -1438,6 +1452,7 @@ fn families_say_who_may_send_what() {
             | "set_monster_rule"
             | "set_attack_spell"
             | "set_boss_mode"
+            | "set_collect_items"
             | "parties_request"
             | "party_save"
             | "party_delete"

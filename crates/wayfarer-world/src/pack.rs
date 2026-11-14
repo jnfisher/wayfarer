@@ -450,6 +450,26 @@ impl WorldPack {
             .optional()?)
     }
 
+    /// Every item a character can pick up (`gettable`), by number (C-102).
+    pub fn gettable_items(&self) -> Result<Vec<Item>, Error> {
+        let mut st = self.conn.prepare_cached(
+            "SELECT number, name, type, weight, cost, currency, raw FROM items \
+             WHERE json_extract(raw, '$.gettable') = 1 ORDER BY number",
+        )?;
+        let rows = st.query_map([], |r| {
+            Ok(Item {
+                number: r.get(0)?,
+                name: r.get(1)?,
+                item_type: r.get(2)?,
+                weight: r.get(3)?,
+                cost: r.get(4)?,
+                currency: r.get(5)?,
+                raw: r.get(6)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
     /// Every item of a type (`kb/game-data.md` "Item types"), by number.
     pub fn items_of_type(&self, item_type: i64) -> Result<Vec<Item>, Error> {
         let mut st = self.conn.prepare_cached(

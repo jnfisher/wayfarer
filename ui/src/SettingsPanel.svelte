@@ -2,7 +2,7 @@
   import { untrack } from "svelte";
   import { LAYERS, groupRows, isOwn, numberChange, resetChange, show, sourceLabel, type SettingsMessage } from "./lib/settings";
   import MonsterRules from "./MonsterRules.svelte";
-  import type { AttackSpellOption, MonsterRuleEntry, MonsterRuleKind, SessionInfo, SettingChange, SettingRow } from "./proto";
+  import type { AttackSpellOption, CollectItem, MonsterRuleEntry, MonsterRuleKind, SessionInfo, SettingChange, SettingRow } from "./proto";
 
   interface Props {
     /** The focused tile's session, which the panel follows. */
@@ -25,6 +25,10 @@
     attackSpell?: string;
     /** Fight with this attack spell, or auto (`null`). */
     onattackspell?: (session: string, spell: string | null) => void;
+    /** The items the bot collects and how many of each (`bot.collect_items`): C-102. */
+    collectItems?: CollectItem[];
+    /** Collect these items, the whole list. */
+    oncollect?: (session: string, items: CollectItem[]) => void;
   }
 
   let {
@@ -38,7 +42,34 @@
     attackSpells = [],
     attackSpell,
     onattackspell = () => {},
+    collectItems = [],
+    oncollect = () => {},
   }: Props = $props();
+
+  const COLLECT_HELP =
+    "Items this character picks up off the floor where it stands, out of a fight, until it carries as many as the count: quest items, rings to hand out. The ones it wears do not count. Names are the game's (checked: a misspelt one is refused). Kept with the bot, not in a settings file.";
+
+  /** The item being added to the collect list. */
+  let collectName = $state("");
+  let collectCount = $state(1);
+
+  function addCollect(id: string) {
+    const name = collectName.trim();
+    if (!name || collectCount < 1) return;
+    const rest = collectItems.filter((c) => c.name.toLowerCase() !== name.toLowerCase());
+    oncollect(id, [...rest, { name, count: Math.floor(collectCount) }]);
+    collectName = "";
+    collectCount = 1;
+  }
+
+  function setCollectCount(id: string, name: string, count: number) {
+    if (!Number.isFinite(count)) return;
+    const n = Math.max(0, Math.floor(count));
+    oncollect(
+      id,
+      collectItems.flatMap((c) => (c.name === name ? (n > 0 ? [{ name, count: n }] : []) : [c])),
+    );
+  }
 
   const ATTACK_SPELL_HELP =
     "The attack spell this character fights with, in every mode: auto casts the strongest it can pay for. Pick one a monster does not resist (no fire at a greater hellion), and back to auto after. Kept with the bot, not in a settings file.";
@@ -181,6 +212,41 @@
                 <div class="help">{ATTACK_SPELL_HELP}</div>
               </div>
             {/if}
+            {#if row.key === "cash.max_encumbrance" && session}
+              {@const id = session.id}
+              <div class="row" data-key="collect_items" class:own={collectItems.length > 0}>
+                <span class="name" title={COLLECT_HELP}>Collect items</span>
+                <span class="control collect">
+                  {#each collectItems as c (c.name)}
+                    <span class="collect-item">
+                      <span class="collect-name">{c.name}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="999"
+                        aria-label={`how many ${c.name}`}
+                        value={c.count}
+                        onchange={(e) => setCollectCount(id, c.name, e.currentTarget.valueAsNumber)}
+                      />
+                      <button aria-label={`stop collecting ${c.name}`} title="Stop collecting it" onclick={() => setCollectCount(id, c.name, 0)}>×</button>
+                    </span>
+                  {/each}
+                  <form
+                    class="collect-add"
+                    onsubmit={(e) => {
+                      e.preventDefault();
+                      addCollect(id);
+                    }}
+                  >
+                    <input type="text" placeholder="item name" aria-label="item to collect" bind:value={collectName} />
+                    <input type="number" min="1" max="999" aria-label="how many to collect" bind:value={collectCount} />
+                    <button type="submit" disabled={!collectName.trim()}>add</button>
+                  </form>
+                </span>
+                <span class="source" title="Kept with the bot, for this character">this character</span>
+                <div class="help">{COLLECT_HELP}</div>
+              </div>
+            {/if}
           {/each}
         </section>
       {/each}
@@ -196,6 +262,23 @@
 </div>
 
 <style>
+  .collect {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+  .collect-item,
+  .collect-add {
+    display: flex;
+    gap: 0.3rem;
+    align-items: center;
+  }
+  .collect-name {
+    flex: 1;
+  }
+  .collect input[type="number"] {
+    width: 4em;
+  }
   /* The settings tab of the drawer (App.svelte). */
   .settings {
     flex: 1;

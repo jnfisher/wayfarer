@@ -467,6 +467,11 @@ knows, with its short name and mana (`bot.attack_spells`). Choosing one sends `s
 with the bot, not in a settings file, so the row says "this character" ([brain.md](brain.md) "Spells", C-099). A character with no
 attack spell has no list.
 
+Under **Carry coins up to**, **Collect items** lists the items the character picks up off the floor and how many of each it
+keeps carried (`bot.collect_items`): a count box and × each, and a name and count to add. Any change sends the whole list
+(`set_collect_items`); a name that is no item is refused with a warning naming the nearest ones. Kept with the bot, so the row
+says "this character" ([brain.md](brain.md) "Collecting items", C-102).
+
 At the end of the settings list, folded away under "monster rules (N)", the **monster rules** the bot plays by ([brain.md](brain.md) "Monster
 rules"): each rule (*ignore*, *avoid*, *attack first*: every boss seen, by default), its pattern and where it comes from (`default`, dim,
 its reason as the tooltip; `player`). Every rule has an `x`:

@@ -304,6 +304,11 @@ pub(crate) struct View<'a> {
     /// and the coins it holds.
     pub load: Option<(u64, u64)>,
     pub coins: &'a [wayfarer_proto::CoinCount],
+    /// What the last `i` showed it carrying and wearing, with what it took since.
+    pub items: &'a [wayfarer_parse::helpers::Carried],
+    /// The items the player listed for it to collect (C-102): the game's name and how many
+    /// to keep carried.
+    pub collect: &'a [(String, u32)],
     /// How fast it gets HP and mana back (C-045).
     pub regen: crate::regen::Regen,
     /// The server is known to play Quicksilver 1.20 (docs/brain.md "Rule sets").
@@ -335,6 +340,16 @@ impl View<'_> {
             .iter()
             .find(|c| crate::loot::coin_word(&c.coin) == word)
             .map_or(0, |c| c.count)
+    }
+
+    /// How many of the item `name` the character carries, not counting the ones it wears or
+    /// holds (C-102).
+    pub fn items_carried(&self, name: &str) -> u32 {
+        self.items
+            .iter()
+            .filter(|c| c.slot.is_none() && c.name.eq_ignore_ascii_case(name))
+            .map(|c| c.count)
+            .sum()
     }
 
     /// The command word that starts a fight (`combat.attack_command`).
@@ -879,6 +894,7 @@ impl Bot {
             attack_spells: Vec::new(),
             attack_spell: None,
             boss_mode: self.boss,
+            collect_items: Vec::new(),
         }
     }
 
@@ -1331,6 +1347,7 @@ impl Bot {
             monster_rules: Vec::new(),
             attack_spell: None,
             boss_mode: self.boss,
+            collect_items: Vec::new(),
         }
     }
 

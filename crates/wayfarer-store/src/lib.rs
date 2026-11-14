@@ -140,7 +140,28 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE bot_state ADD COLUMN attack_spell TEXT;",
     // 13: boss fight mode, on or off (C-100).
     "ALTER TABLE bot_state ADD COLUMN boss_mode INTEGER NOT NULL DEFAULT 0;",
+    // 14: the items the bot collects (C-102), a `count name` pair a line.
+    "ALTER TABLE bot_state ADD COLUMN collect_items TEXT NOT NULL DEFAULT '';",
 ];
+
+/// The items a bot collects as stored: a `count name` pair a line (C-102).
+fn collect_to_text(items: &[(String, u32)]) -> String {
+    items
+        .iter()
+        .map(|(name, n)| format!("{n} {name}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The items a bot collects from their stored text; a line that does not read is dropped.
+fn collect_from_text(text: &str) -> Vec<(String, u32)> {
+    text.lines()
+        .filter_map(|line| {
+            let (n, name) = line.split_once(' ')?;
+            Some((name.to_owned(), n.parse().ok()?))
+        })
+        .collect()
+}
 
 /// The schema version this build writes.
 pub const SCHEMA_VERSION: u32 = MIGRATIONS.len() as u32;
@@ -291,6 +312,8 @@ pub struct BotRecord {
     pub attack_spell: Option<String>,
     /// Boss fight mode is on (C-100).
     pub boss_mode: bool,
+    /// The items the bot picks up and how many of each it keeps carried (C-102).
+    pub collect_items: Vec<(String, u32)>,
 }
 
 impl BotRecord {
@@ -306,6 +329,7 @@ impl BotRecord {
             monster_rules: Vec::new(),
             attack_spell: None,
             boss_mode: false,
+            collect_items: Vec::new(),
         }
     }
 }
@@ -583,7 +607,7 @@ impl Store {
             .conn
             .query_row(
                 "SELECT state, home_map, home_room, loop_id, loop_stops, stop_index, skip,
-                        paused_reason, attack_spell, boss_mode
+                        paused_reason, attack_spell, boss_mode, collect_items
                  FROM bot_state WHERE session = ?1",
                 [session],
                 |r| {
@@ -598,6 +622,7 @@ impl Store {
                         r.get::<_, Option<String>>(7)?,
                         r.get::<_, Option<String>>(8)?,
                         r.get::<_, bool>(9)?,
+                        r.get::<_, String>(10)?,
                     ))
                 },
             )
@@ -613,6 +638,7 @@ impl Store {
             paused_reason,
             attack_spell,
             boss_mode,
+            collect_items,
         )) = row
         else {
             return Ok(None);
@@ -635,6 +661,7 @@ impl Store {
             monster_rules: self.monster_rules(session)?,
             attack_spell,
             boss_mode,
+            collect_items: collect_from_text(&collect_items),
         }))
     }
 
@@ -938,8 +965,8 @@ impl Store {
         tx.execute(
             "INSERT OR REPLACE INTO bot_state
                  (session, state, home_map, home_room, loop_id, loop_stops, stop_index, skip,
-                  paused_reason, attack_spell, boss_mode, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                  paused_reason, attack_spell, boss_mode, collect_items, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 session,
                 bot.state.as_str(),
@@ -952,6 +979,7 @@ impl Store {
                 bot.paused_reason,
                 bot.attack_spell,
                 bot.boss_mode,
+                collect_to_text(&bot.collect_items),
                 at,
             ],
         )?;

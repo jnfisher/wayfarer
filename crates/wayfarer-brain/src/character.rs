@@ -251,6 +251,25 @@ impl Character {
                 s.carrying = Some(items.iter().map(|i| i.name.clone()).collect());
                 self.items = items.clone();
             }
+            // An item taken: carried, until the next `i` says it exactly (C-102).
+            GameEvent::ItemTaken { item } => {
+                match self
+                    .items
+                    .iter_mut()
+                    .find(|c| c.slot.is_none() && c.name.eq_ignore_ascii_case(item))
+                {
+                    Some(c) => c.count += 1,
+                    None => self.items.push(Carried {
+                        name: item.clone(),
+                        slot: None,
+                        count: 1,
+                    }),
+                }
+                let carrying = s.carrying.get_or_insert_with(Vec::new);
+                if !carrying.iter().any(|n| n.eq_ignore_ascii_case(item)) {
+                    carrying.push(item.clone());
+                }
+            }
             GameEvent::Wealth { coins } => {
                 s.coins.get_or_insert_with(Coins::default).copper = u64_of(Some(*coins));
             }

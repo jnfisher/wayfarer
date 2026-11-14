@@ -1,5 +1,7 @@
-//! Loot (docs/brain.md "Coins"): pick up the coins left in the room (after a kill, say), the
-//! kinds the settings want, as many as the load allows. It takes the character only when
+//! Loot (docs/brain.md "Coins", "Collecting items"): pick up the items the player listed
+//! for the character, one at a time until it carries as many as asked (C-102), then the coins
+//! left in the room (after a kill, say), the kinds the settings want, as many as the load
+//! allows. It takes the character only when
 //! nothing is attacking and nothing is in flight; Flee comes before it, Recover and Fight after.
 //!
 //! The weight of coins and the words for a load are the game's (`kb/economy.md` "Encumbrance"):
@@ -68,21 +70,77 @@ pub fn room_for(have: u64, current: u64, max: u64, limit: u64) -> u64 {
     (3 * (units(have) + spare) + 2).saturating_sub(have)
 }
 
+/// Whether one more item of `weight` fits under the load limit: the character carries
+/// `current` of `max` weight units and the load may reach `limit` per cent.
+pub fn item_fits(weight: u64, current: u64, max: u64, limit: u64) -> bool {
+    max > 0 && current + weight <= ((limit + 1) * max).saturating_sub(1) / 100
+}
+
+/// What Loot picks up next.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Pick {
+    /// An item the player listed (C-102): its name on the floor, how many the character
+    /// carries and how many it is to.
+    Item { name: String, have: u32, want: u32 },
+    /// Coins: the word `get` takes, and how many.
+    Coin(&'static str, u64),
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct Loot {
-    /// `get` sent for a coin since the room was last shown.
-    tries: BTreeMap<&'static str, u32>,
+    /// `get` sent for a coin or an item (by lower-case name) since the room was last shown.
+    tries: BTreeMap<String, u32>,
+    /// The game said the load is too much since the room was last shown.
+    full: bool,
 }
 
 impl Loot {
-    /// What to pick up: the coin's word and how many, the first kind that is wanted, on the
-    /// floor, not tried to the limit and fits the load.
-    fn next(&self, v: &View) -> Option<(&'static str, u64)> {
+    fn tried_out(&self, key: &str) -> bool {
+        self.full || self.tries.get(key).copied().unwrap_or(0) >= TRIES
+    }
+
+    /// What to pick up: first an item the player listed that is on the floor, short of its
+    /// count, not tried to the limit and fits the load; then the first coin that is wanted, on
+    /// the floor, not tried to the limit and fits the load.
+    fn next(&self, v: &View) -> Option<Pick> {
         if v.engaged || !v.presence.attackers.is_empty() {
             return None;
         }
+        self.next_item(v).or_else(|| self.next_coin(v))
+    }
+
+    fn next_item(&self, v: &View) -> Option<Pick> {
+        let limit = limit_pct(v.settings.choice("cash.max_encumbrance"));
+        v.collect.iter().find_map(|(want_name, want)| {
+            let key = want_name.to_lowercase();
+            let floor = v
+                .presence
+                .floor_items
+                .iter()
+                .find(|c| c.name.eq_ignore_ascii_case(want_name))?;
+            let have = v.items_carried(want_name);
+            if have >= *want || self.tried_out(&key) {
+                return None;
+            }
+            let weight = v.atlas.gettable.get(&key).map_or(0, |(_, w)| *w);
+            let fits = match v.load {
+                Some((current, max)) => {
+                    item_fits(u64::try_from(weight).unwrap_or(0), current, max, limit)
+                }
+                // The load is not known (no `i` yet): the game has its limit.
+                None => true,
+            };
+            fits.then(|| Pick::Item {
+                name: floor.name.clone(),
+                have,
+                want: *want,
+            })
+        })
+    }
+
+    fn next_coin(&self, v: &View) -> Option<Pick> {
         for word in COINS {
-            if !v.wants_coin(word) || self.tries.get(word).copied().unwrap_or(0) >= TRIES {
+            if !v.wants_coin(word) || self.tried_out(word) {
                 continue;
             }
             let on_floor = v
@@ -105,7 +163,7 @@ impl Loot {
                 None => on_floor,
             };
             if n > 0 {
-                return Some((word, n.min(MOST_AT_ONCE)));
+                return Some(Pick::Coin(word, n.min(MOST_AT_ONCE)));
             }
         }
         None
@@ -114,18 +172,29 @@ impl Loot {
     /// The room is shown again: the tries start over.
     pub fn room_changed(&mut self) {
         self.tries.clear();
+        self.full = false;
     }
 }
 
 impl Mode for Loot {
     fn wants(&self, v: &View) -> Option<String> {
-        self.next(v).map(|(coin, n)| format!("{n} {coin} here"))
+        self.next(v).map(|pick| match pick {
+            Pick::Item { name, .. } => format!("{name} here"),
+            Pick::Coin(coin, n) => format!("{n} {coin} here"),
+        })
     }
 
     fn step(&mut self, v: &View) -> Step {
         match self.next(v) {
-            Some((coin, n)) => {
-                *self.tries.entry(coin).or_default() += 1;
+            Some(Pick::Item { name, have, want }) => {
+                *self.tries.entry(name.to_lowercase()).or_default() += 1;
+                Step::send(
+                    Action::new(format!("get {name}"), Expect::Prompt),
+                    format!("Loot: picking up {name} ({}/{want})", have + 1),
+                )
+            }
+            Some(Pick::Coin(coin, n)) => {
+                *self.tries.entry(coin.to_owned()).or_default() += 1;
                 Step::send(
                     Action::new(format!("get {n} {coin}"), Expect::Prompt),
                     format!("Loot: picking up {n} {coin}"),
@@ -138,12 +207,8 @@ impl Mode for Loot {
     fn on_event(&mut self, ev: &GameEvent, _now: Instant) {
         match ev {
             GameEvent::RoomTitle { .. } => self.room_changed(),
-            // The game says the load is too much: not for any coin, this view.
-            GameEvent::CannotCarry => {
-                for coin in COINS {
-                    self.tries.insert(coin, TRIES);
-                }
-            }
+            // The game says the load is too much: nothing more, this view.
+            GameEvent::CannotCarry => self.full = true,
             _ => {}
         }
     }

@@ -58,6 +58,8 @@ fn the_bot_state_round_trips_and_is_replaced() {
         attack_spell: Some("mmis".into()),
         // Boss fight mode on (C-100).
         boss_mode: true,
+        // The items it collects (C-102).
+        collect_items: vec![("darkwood ring".into(), 4), ("black diamond".into(), 10)],
     };
     store.save_bot("aldric", &paused, T0).unwrap();
     assert_eq!(store.bot("aldric").unwrap().as_ref(), Some(&paused));

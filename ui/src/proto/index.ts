@@ -19,6 +19,7 @@ export type { Chunk } from "./Chunk";
 export type { ClientKind } from "./ClientKind";
 export type { CoinCount } from "./CoinCount";
 export type { Coins } from "./Coins";
+export type { CollectItem } from "./CollectItem";
 export type { CombatStats } from "./CombatStats";
 export type { DamageRow } from "./DamageRow";
 export type { Encumbrance } from "./Encumbrance";

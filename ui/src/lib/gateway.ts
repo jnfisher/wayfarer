@@ -8,6 +8,7 @@
 
 import { PROTOCOL } from "../proto";
 import type {
+  CollectItem,
   Accounts,
   Blessings,
   BotAction,
@@ -294,6 +295,12 @@ export class GatewayClient {
    * connected. */
   setBossMode(session: string, on: boolean): boolean {
     return this.send({ type: "set_boss_mode", session, on });
+  }
+
+  /** The items the bot collects off the floor and how many of each, the whole list: C-102.
+   * False when not connected. */
+  setCollectItems(session: string, items: CollectItem[]): boolean {
+    return this.send({ type: "set_collect_items", session, items });
   }
 
   /** Ask for the spells the character lacks (a `spell_plan` answer); false when not connected. */
