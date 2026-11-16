@@ -36,6 +36,7 @@ use crate::executor::{Action, Executor, Expect, Outcome};
 use crate::journey::Journey;
 use crate::modes::{Bot, Do, Presence, View};
 use crate::party::{Health, MemberInfo, PartyRole, WalkBack};
+use crate::peek::Peek;
 use crate::policy::{COMBAT_QUIET, hp_percent};
 use crate::position::Position;
 use crate::rules::{self, RuleBook, Sightings};
@@ -372,6 +373,8 @@ pub(crate) struct Session {
     /// When the last chunk came, if it showed text ending a whole line with no prompt after
     /// it: a typed line goes once the game has been quiet [`TYPED_QUIET`] since (C-101).
     stray_line: Option<Instant>,
+    /// A look into a direction and the room it shows, which only the screen gets (C-103).
+    peek: Peek,
     /// When a line last went to the game (or the brain attached).
     last_sent: Instant,
     /// The brain's own lines and when each went, until the gateway's `sent` for each comes
@@ -587,6 +590,7 @@ impl Session {
             at_prompt: false,
             prompted: false,
             stray_line: None,
+            peek: Peek::None,
             last_sent: now,
             own: VecDeque::new(),
             resync: Resync::Off,
@@ -820,6 +824,13 @@ impl Session {
             let typed = GameEvent::from_event(ev);
             // The `help 1.20` topic is text, not game events (C-064).
             if self.detect.event(ev, &typed, self.bars(), now) {
+                continue;
+            }
+            // The room a look into a direction shows is not the character's (C-103).
+            if self.peek.event(&typed) {
+                if !silent {
+                    out.push(event_message(&self.id, ev));
+                }
                 continue;
             }
             let level = self.character.state().level;
@@ -1896,6 +1907,7 @@ impl Session {
             return;
         }
         self.parser.sent(text);
+        self.peek.sent(text);
         self.ledger.combat(now).sent(text);
         if let Some(atlas) = &self.atlas {
             self.position.sent(atlas, text);
@@ -2097,6 +2109,7 @@ impl Session {
             self.hand_moving = false;
         }
         self.parser.sent(cmd);
+        self.peek.sent(cmd);
         self.ledger.combat(now).sent(cmd);
         if let Some(atlas) = &self.atlas {
             self.position.sent(atlas, cmd);

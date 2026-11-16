@@ -267,6 +267,23 @@ fn answer(expect: Expect, ev: &GameEvent) -> Option<Outcome> {
     }
 }
 
+/// An attack the game took for speech (`You say "bash wizard"`): the monster it names is not
+/// where the character can see it. Refused at once, as `You do not see wizard here!` is, not
+/// after [`ACTION_TIMEOUT`] (C-103).
+fn said(action: &Action, ev: &GameEvent) -> Option<Outcome> {
+    match ev {
+        GameEvent::Other(e)
+            if action.expect == Expect::Engaged
+                && e.name == "you_say"
+                && e.text("msg")
+                    .is_some_and(|m| m.trim().eq_ignore_ascii_case(action.command.trim())) =>
+        {
+            Some(Outcome::Refused(Refused::Target))
+        }
+        _ => None,
+    }
+}
+
 impl Executor {
     /// Queue an action to go at the next prompt boundary. A guard refuses it; so does a busy
     /// executor (one action at a time), which is a caller's bug.
@@ -355,7 +372,7 @@ impl Executor {
     /// answer counts; once it has one, the next is the answer of the move ahead.
     pub fn event(&mut self, ev: &GameEvent) {
         if let Some(f) = self.answering() {
-            f.answer = answer(f.action.expect, ev);
+            f.answer = answer(f.action.expect, ev).or_else(|| said(&f.action, ev));
         }
     }
 

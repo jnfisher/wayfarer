@@ -565,6 +565,32 @@ fn every_attack_refusal_line_refuses_the_attack() {
     }
 }
 
+#[test]
+fn an_attack_the_game_took_for_speech_is_refused_at_once() {
+    // C-103, Riley on 2026-11-16: `bash wizard` came back as `You say "bash wizard"`, and the
+    // attack waited out its 5 s with the player's typed lines held behind it.
+    let registry = world().registry;
+    let answer = |command: &str, said: &str| {
+        let mut parser = Parser::new(registry.clone());
+        let mut events = parser.feed(&format!("You say \"{said}\"\n"));
+        events.extend(parser.finish());
+        let mut ex = Executor::default();
+        let now = tokio::time::Instant::now();
+        ex.submit(Action::new(command, Expect::Engaged)).unwrap();
+        ex.take_ready(now);
+        for ev in &events {
+            ex.event(&GameEvent::from_event(ev));
+        }
+        ex.finished(true, now).map(|(_, o)| o)
+    };
+    assert_eq!(
+        answer("bash wizard", "bash wizard"),
+        Some(Outcome::Refused(Refused::Target))
+    );
+    // Someone else's words, or the player's: not the attack's answer.
+    assert_eq!(answer("bash wizard", "hello"), None);
+}
+
 #[tokio::test(start_paused = true)]
 async fn a_go_to_keeps_the_bot_on_and_it_plays_where_it_arrives() {
     let (mut g, run) = in_arena(&[]).await;
