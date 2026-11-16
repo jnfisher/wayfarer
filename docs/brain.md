@@ -942,7 +942,7 @@ against silvermere's oracle, `tests/fixtures/command-words/`) and sends it as it
 |---|---|---|
 | Talk and look | `gossip`, `broadcast` (`br`, `'`, `-`), `auction`, `whisper` (`/`), `>`, `broadgang`; `look` (not at a direction), `st`, `exp`, `i`, `health`, `who`/`scan`, `help`/`?`, `wealth`, `spells`, `exits`, `keys`, `topten`, `version`; `set`; an empty line | Goes at the next prompt with nothing in flight, between the bot's actions: the bot's next action waits for the prompt after it. The bot keeps going, unpaused. Its output is parsed like any (a `st` refreshes HP), and confirms none of the bot's actions, which only go once it is answered |
 | Moves | a direction (`n`, `u`, `nw`), an exit's word or a Text exit's phrase the position may take | Goes the same way. A running bot drops its loop or journey ("You moved: stopped loop Newhaven; playing where you go"), a walk of the bot's stops after its move in flight, and the bot plays on where the character goes: the room it is in becomes its home once the move's room shows. A paused bot keeps its route |
-| Acts | `cast`, `rest`, `get`, `drop`, `buy`, `sell`, `wear`, `wield`, `open`, `search`, `look <dir>` (it shows the next room), `bash <dir>`, `x`, ... | Goes the same way, between the bot's actions; the bot keeps going, unpaused (John, 2026-10-23: only a move changes what the bot does) |
+| Acts | `cast`, `rest`, `get`, `drop`, `buy`, `sell`, `wear`, `wield`, `open`, `search`, `look <dir>` (it shows the next room), `bash <dir>`, `x`, ... | Goes the same way, between the bot's actions; the bot keeps going, unpaused (John, 2026-10-23: only a move changes what the bot does). The room a `look <dir>` shows goes to the screen only: the position, the fight and the rest of the brain never see it, so the bot neither believes it moved nor attacks a monster there (C-103) |
 | Attacks | `a`/`attack`/`au`, `bash` (`aa`, `allout`, `force`), `backstab` (`bs`), `killblow` (`kil`), `punch` (`pu`, `purg`) | As an act: the line goes, and the bot keeps going |
 | No command | `borrow skiff`, `hello there`, `say hi`, `heya` (MajorMUD has no SAY: talking is a line the parser does not take) | A text exit's phrase moves the character, so it is a move if it may be one: if the position is in doubt, or the line is a Text exit's phrase of a room the character may be in. Otherwise (the position is sure and no exit of the room takes the line) it is talk |
 
@@ -955,7 +955,9 @@ against silvermere's oracle, `tests/fixtures/command-words/`) and sends it as it
   sent with a prompt and then shows whole lines with no prompt after them (a party member's
   `frontrank`, someone arriving), a typed line goes once it has been quiet 300 ms (C-101).
   Otherwise one that has waited 5 s for a prompt goes anyway (the game showed text, perhaps
-  half a line, and no prompt after it).
+  half a line, and no prompt after it). An attack of the bot's that the game takes for speech
+  (`You say "bash wizard"`: the monster is not where the character can see it) is refused at
+  once, like `You do not see wizard here!`, so the typed lines behind it are not held (C-103).
 - **Stopped**, the brain arbitrates nothing (`arbitrate` off): the gateway sends lines straight
   to the game, and a typed line pauses nothing (it still stops a walk from the map). A line
   that reaches the brain after its bot stopped, or out of the realm, goes at once. While the

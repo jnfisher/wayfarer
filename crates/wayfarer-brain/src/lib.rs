@@ -41,6 +41,7 @@ mod loot;
 mod modes;
 mod party;
 mod party_game;
+mod peek;
 pub mod policy;
 mod position;
 mod recover;
