@@ -7,6 +7,7 @@
   import { RECOVER_TITLE, TOWNS, bossTitle, botButtons, errandItems, linkButton, narrationLine, sysGotoTitle } from "./lib/bot";
   import { keyBytes, type GatewayClient } from "./lib/gateway";
   import { HEADER_CELL_PX, bar, barSize, expText, fitHeader, levelClass, roomText } from "./lib/header";
+  import { badgeText, classBadge } from "./lib/classes";
   import { InputHistory } from "./lib/input";
   import { HELP_KEY } from "./lib/keys";
   import { TERM_COLS, TERM_ROWS, fitFontSize } from "./lib/layout";
@@ -68,6 +69,7 @@
 
   let headerWidth = $state(0);
   const c = $derived(character);
+  const classTag = $derived(classBadge(c?.class));
   const headerText = $derived({ number, name: info.name, server: info.server, state: info.state, character: c });
   const headerCols = $derived(Math.floor(headerWidth / HEADER_CELL_PX));
   /** The bars shrink before the header drops anything (`fitHeader`). */
@@ -239,6 +241,14 @@
   <header bind:clientWidth={headerWidth}>
     <span class="frame">{"╔═ "}</span>
     <span class="num">{number}</span>
+    {#if classTag}
+      <span class="frame">{" "}</span><span
+        class="classbadge"
+        style:background={classTag.bg}
+        style:color={classTag.fg}
+        title={c?.class ?? ""}>{" " + badgeText(classTag) + " "}</span
+      >
+    {/if}
     <span class="name">{" " + info.name}</span>
     {#if c}
       {#if shown.has("level")}
@@ -622,6 +632,10 @@
   }
   .num {
     color: var(--dim);
+  }
+  /* The class badge (C-106): its colours come from lib/classes.ts. */
+  .classbadge {
+    flex: none;
   }
   .name {
     color: var(--vga-yellow);
