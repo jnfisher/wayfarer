@@ -111,6 +111,9 @@ pub enum SpellKind {
     Heal,
     /// A heal on the caster's whole party (type 3, target 10 or 13: healing rain, divine mercy).
     PartyHeal,
+    /// Instant damage to every monster in the room (type 0, target 12, Full Attack Area:
+    /// fireball, swarm; `kb/aoe-grinding.md` §1), C-105.
+    Area,
 }
 
 /// A spell a player can learn, with what the choice between spells needs.
@@ -130,6 +133,10 @@ pub struct SpellDef {
     min: (i64, i64, i64),
     max: (i64, i64, i64),
     level_cap: i64,
+    /// How the line the caster sees for each cast starts, the spell's message up to its first
+    /// `%` ("The fireball explodes, "), when that is long enough to know it by: an area spell's
+    /// casts are counted by it (C-105).
+    pub cast_line: Option<String>,
 }
 
 impl SpellDef {
@@ -148,11 +155,26 @@ impl SpellDef {
                 SpellKind::Attack => 0,
                 SpellKind::Heal => 2,
                 SpellKind::PartyHeal => 13,
+                SpellKind::Area => 12,
             },
             min: (lo, 0, 0),
             max: (hi, 0, 0),
             level_cap: 0,
+            cast_line: None,
         }
+    }
+
+    /// The same, with the start of the caster's line for each cast.
+    pub fn with_cast_line(mut self, line: &str) -> SpellDef {
+        self.cast_line = Some(line.to_owned());
+        self
+    }
+
+    /// Whether `line` is the caster's line for a cast of this spell.
+    pub fn is_cast_line(&self, line: &str) -> bool {
+        self.cast_line
+            .as_deref()
+            .is_some_and(|start| line.trim_start().starts_with(start))
     }
 
     /// The middle of the spell's range for a caster of `level`: the range is uniform from
@@ -175,6 +197,17 @@ impl SpellDef {
         let lo = at(self.min).min(hi);
         (lo + hi) as f64 / 2.0
     }
+}
+
+/// The start of a caster's message that knows the cast: up to the first `%`, past a leading
+/// "You cast %s" with the spell's name put in.
+fn cast_line_of(msg: &str, name: &str) -> String {
+    let msg = msg.trim();
+    let msg = match msg.strip_prefix("You cast %s") {
+        Some(rest) => format!("You cast {name}{rest}"),
+        None => msg.to_owned(),
+    };
+    msg.split('%').next().unwrap_or("").trim().to_owned()
 }
 
 /// The player spells of the pack, and each class's magery.
@@ -291,7 +324,18 @@ impl Spells {
                 // Found by what it does, never by its word: `rain` is also the Druid's acid
                 // rain, a room attack (`docs/plan/10-party-play.md` §8).
                 (3, 10 | 13) if first == Some(ABILITY_HEAL) && instant => SpellKind::PartyHeal,
+                (0, 12) if first == Some(ABILITY_DAMAGE) && instant => SpellKind::Area,
                 _ => continue,
+            };
+            // The caster's line, up to the first `%`: "The fireball explodes, %scausing %d
+            // damage!" is known by "The fireball explodes,"; "You cast %s on %sthe room" by
+            // "You cast swarm on", the name put in.
+            let cast_line = match (kind, v.get("msgnum").and_then(Value::as_i64)) {
+                (SpellKind::Area, Some(n)) if n > 0 => pack
+                    .message(n)?
+                    .map(|m| cast_line_of(&m[0], &s.name))
+                    .filter(|l| l.len() >= 8),
+                _ => None,
             };
             spells.push(SpellDef {
                 name: s.name,
@@ -305,6 +349,7 @@ impl Spells {
                 min: (int("minval"), int("mininc"), int("minlvls")),
                 max: (int("maxval"), int("maxinc"), int("maxlvls")),
                 level_cap: int("levelcap"),
+                cast_line,
             });
         }
         let classes = pack

@@ -25,6 +25,12 @@
     attackSpell?: string;
     /** Fight with this attack spell, or auto (`null`). */
     onattackspell?: (session: string, spell: string | null) => void;
+    /** The area spells the character knows (`bot.area_spells`), and the one chosen
+     * (`bot.area_spell`, undefined for auto): C-105. */
+    areaSpells?: AttackSpellOption[];
+    areaSpell?: string;
+    /** Open on a room with this area spell, or auto (`null`). */
+    onareaspell?: (session: string, spell: string | null) => void;
     /** The items the bot collects and how many of each (`bot.collect_items`): C-102. */
     collectItems?: CollectItem[];
     /** Collect these items, the whole list. */
@@ -42,6 +48,9 @@
     attackSpells = [],
     attackSpell,
     onattackspell = () => {},
+    areaSpells = [],
+    areaSpell,
+    onareaspell = () => {},
     collectItems = [],
     oncollect = () => {},
   }: Props = $props();
@@ -71,6 +80,8 @@
     );
   }
 
+  const AREA_SPELL_HELP =
+    "The area spell this character opens on a room of enough monsters with: auto casts the strongest it can pay for. Kept with the bot, not in a settings file.";
   const ATTACK_SPELL_HELP =
     "The attack spell this character fights with, in every mode: auto casts the strongest it can pay for. Pick one a monster does not resist (no fire at a greater hellion), and back to auto after. Kept with the bot, not in a settings file.";
 
@@ -210,6 +221,26 @@
                 </span>
                 <span class="source" title="Kept with the bot, for this character">this character</span>
                 <div class="help">{ATTACK_SPELL_HELP}</div>
+              </div>
+            {/if}
+            {#if row.key === "spells.area" && session && areaSpells.length > 0}
+              {@const id = session.id}
+              <div class="row" data-key="area_spell" class:own={areaSpell !== undefined}>
+                <label class="name" for="s-area-spell" title={AREA_SPELL_HELP}>Area spell</label>
+                <span class="control">
+                  <select
+                    id="s-area-spell"
+                    value={areaSpell ?? ""}
+                    onchange={(e) => onareaspell(id, e.currentTarget.value || null)}
+                  >
+                    <option value="">auto (the strongest it can pay for)</option>
+                    {#each areaSpells as sp (sp.short)}
+                      <option value={sp.short}>{sp.name} ({sp.short}, {sp.mana} mana)</option>
+                    {/each}
+                  </select>
+                </span>
+                <span class="source" title="Kept with the bot, for this character">this character</span>
+                <div class="help">{AREA_SPELL_HELP}</div>
               </div>
             {/if}
             {#if row.key === "cash.max_encumbrance" && session}

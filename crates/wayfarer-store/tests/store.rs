@@ -60,6 +60,8 @@ fn the_bot_state_round_trips_and_is_replaced() {
         boss_mode: true,
         // The items it collects (C-102).
         collect_items: vec![("darkwood ring".into(), 4), ("black diamond".into(), 10)],
+        // The area spell it opens with (C-105).
+        area_spell: Some("fbal".into()),
     };
     store.save_bot("aldric", &paused, T0).unwrap();
     assert_eq!(store.bot("aldric").unwrap().as_ref(), Some(&paused));

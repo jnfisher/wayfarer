@@ -152,6 +152,28 @@ describe("the settings tab", () => {
     expect(onattackspell).toHaveBeenLastCalledWith("a", null);
   });
 
+  it("shows the area spell to choose under 'Area spells', and sends the choice", async () => {
+    const area: SettingRow = { ...heal, key: "spells.area", label: "Area spells" };
+    const onareaspell = vi.fn();
+    const { container } = render_({
+      settings: { ...settings, rows: [flee, area, heal] },
+      areaSpells: [
+        { short: "blad", name: "dancing blades", mana: 26 },
+        { short: "fbal", name: "fireball", mana: 34 },
+      ],
+      areaSpell: "blad",
+      onareaspell,
+    });
+    const row = container.querySelector('[data-key="area_spell"]')!;
+    expect(row.previousElementSibling!.getAttribute("data-key")).toBe("spells.area");
+    const select = row.querySelector("select") as HTMLSelectElement;
+    expect(select.value).toBe("blad");
+    await fireEvent.change(select, { target: { value: "fbal" } });
+    expect(onareaspell).toHaveBeenLastCalledWith("a", "fbal");
+    await fireEvent.change(select, { target: { value: "" } });
+    expect(onareaspell).toHaveBeenLastCalledWith("a", null);
+  });
+
   it("lists the items to collect under 'Carry coins up to', and sends the whole list", async () => {
     const carry: SettingRow = { ...heal, key: "cash.max_encumbrance", label: "Carry coins up to" };
     const oncollect = vi.fn();

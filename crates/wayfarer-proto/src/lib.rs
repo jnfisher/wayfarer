@@ -506,6 +506,16 @@ pub struct Bot {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<CollectItem>>", optional)]
     pub collect_items: Vec<CollectItem>,
+    /// The area attack spells the character knows (fireball, swarm), for the player to
+    /// choose from (C-105). Left out when it knows none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<AttackSpellOption>>", optional)]
+    pub area_spells: Vec<AttackSpellOption>,
+    /// The area spell the player chose (`set_area_spell`), by short name. Left out for auto,
+    /// the strongest it can pay for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub area_spell: Option<String>,
 }
 
 /// An item the bot picks up off the floor until it carries `count` of it (C-102).
@@ -1868,6 +1878,10 @@ pub enum ToClient {
         session: SessionId,
         spell: Option<String>,
     },
+    SetAreaSpell {
+        session: SessionId,
+        spell: Option<String>,
+    },
     SetBossMode {
         session: SessionId,
         on: bool,
@@ -2194,6 +2208,13 @@ pub enum ToGateway {
         session: SessionId,
         spell: Option<String>,
     },
+    /// UI → brain: open on a room with this area spell (a short name from the bot's
+    /// `area_spells`), or the strongest it can pay for (`spell` null), C-105. Stored with the
+    /// bot's record; the bot's `area_spell` shows the result.
+    SetAreaSpell {
+        session: SessionId,
+        spell: Option<String>,
+    },
     /// UI → brain: boss fight mode on or off (C-100). On ends a loop or walk under way and
     /// starts a stopped bot where it stands; off plays on there. Stored with the bot's record;
     /// the bot's `boss_mode` shows it.
@@ -2482,6 +2503,7 @@ impl ToClient {
         "find",
         "set_monster_rule",
         "set_attack_spell",
+        "set_area_spell",
         "set_boss_mode",
         "set_collect_items",
         "parties_request",
@@ -2553,6 +2575,7 @@ impl ToClient {
             Self::Find { .. } => "find",
             Self::SetMonsterRule { .. } => "set_monster_rule",
             Self::SetAttackSpell { .. } => "set_attack_spell",
+            Self::SetAreaSpell { .. } => "set_area_spell",
             Self::SetBossMode { .. } => "set_boss_mode",
             Self::SetCollectItems { .. } => "set_collect_items",
             Self::PartiesRequest => "parties_request",
@@ -2593,6 +2616,7 @@ impl ToClient {
             | Self::Find { session, .. }
             | Self::SetMonsterRule { session, .. }
             | Self::SetAttackSpell { session, .. }
+            | Self::SetAreaSpell { session, .. }
             | Self::SetBossMode { session, .. }
             | Self::SetCollectItems { session, .. }
             | Self::PartyLeave { session }
@@ -2690,6 +2714,7 @@ impl ToGateway {
         "find",
         "set_monster_rule",
         "set_attack_spell",
+        "set_area_spell",
         "set_boss_mode",
         "set_collect_items",
         "parties_request",
@@ -2756,6 +2781,7 @@ impl ToGateway {
             Self::Find { .. } => "find",
             Self::SetMonsterRule { .. } => "set_monster_rule",
             Self::SetAttackSpell { .. } => "set_attack_spell",
+            Self::SetAreaSpell { .. } => "set_area_spell",
             Self::SetBossMode { .. } => "set_boss_mode",
             Self::SetCollectItems { .. } => "set_collect_items",
             Self::PartiesRequest => "parties_request",
@@ -2823,6 +2849,7 @@ impl ToGateway {
             | Self::Find { .. }
             | Self::SetMonsterRule { .. }
             | Self::SetAttackSpell { .. }
+            | Self::SetAreaSpell { .. }
             | Self::SetBossMode { .. }
             | Self::SetCollectItems { .. }
             | Self::PartiesRequest
@@ -2938,6 +2965,7 @@ impl ToGateway {
                 rule,
             },
             Self::SetAttackSpell { session, spell } => ToClient::SetAttackSpell { session, spell },
+            Self::SetAreaSpell { session, spell } => ToClient::SetAreaSpell { session, spell },
             Self::SetBossMode { session, on } => ToClient::SetBossMode { session, on },
             Self::SetCollectItems { session, items } => {
                 ToClient::SetCollectItems { session, items }

@@ -823,3 +823,116 @@ async fn with_the_setting_off_no_regen_tier_is_kept() {
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "spells"]);
 }
+
+/// Area spells (C-105): a mage with magic missile, dancing blades and fireball (the rows'
+/// mana is the game's, as the `spells` screen lists it, so 20 pays for each).
+const AREA_SPELLS: [(i32, i32, &str, &str); 3] = [
+    (1, 1, "mmis", "magic missile"),
+    (11, 3, "blad", "dancing blades"),
+    (15, 4, "fbal", "fireball"),
+];
+const RATS: [&str; 3] = ["large giant rat", "thin giant rat", "fat giant rat"];
+const FIREBALL: &str = "The fireball explodes, causing 40 damage!";
+
+#[tokio::test(start_paused = true)]
+async fn a_room_of_enough_monsters_is_opened_on_with_the_strongest_area_spell() {
+    let (mut g, run) = in_arena(&RATS).await;
+    start_caster(&mut g, "Mage", &AREA_SPELLS, &RATS, 35, 20).await;
+    g.expect("fbal", line(ENGAGED, 35));
+    g.narrated("Fight: 3 monsters, casting fireball").await;
+    // The game casts it every round: nothing more is sent.
+    for _ in 0..3 {
+        g.round(FIREBALL, 35).await;
+    }
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "spells", "fbal"]);
+    let known: Vec<_> = bot(&seen)
+        .area_spells
+        .iter()
+        .map(|s| s.short.clone())
+        .collect();
+    assert_eq!(known, ["blad", "fbal"]);
+    // Kept apart from the attack spells.
+    assert_eq!(bot(&seen).attack_spells.len(), 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn fewer_monsters_than_the_least_are_fought_one_at_a_time() {
+    let (mut g, run) = in_arena(&RATS[..2]).await;
+    start_caster(&mut g, "Mage", &AREA_SPELLS, &RATS[..2], 35, 20).await;
+    g.expect("mmis rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat with magic missile")
+        .await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "spells", "mmis rat"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn no_area_spell_while_a_monster_it_would_not_fight_is_in_the_room() {
+    // A kobold slave is neutral: the bot does not hunt it, and a fireball would hit it too.
+    let room = [RATS[0], RATS[1], RATS[2], "kobold slave"];
+    let (mut g, run) = in_arena(&room).await;
+    start_caster(&mut g, "Mage", &AREA_SPELLS, &room, 35, 20).await;
+    g.expect("mmis rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat with magic missile")
+        .await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "spells", "mmis rat"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn after_the_most_area_casts_the_fight_goes_on_one_monster_at_a_time() {
+    let (mut g, run) = in_arena_with(&RATS, "[spells]\narea_max_casts = 2\n").await;
+    start_caster(&mut g, "Mage", &AREA_SPELLS, &RATS, 35, 20).await;
+    g.expect("fbal", line(ENGAGED, 35));
+    g.narrated("Fight: 3 monsters, casting fireball").await;
+    g.expect("mmis rat", format!("{}{}", line(ENGAGED, 35), kill(35)));
+    g.expect("look", arena(&[], 35));
+    g.round(FIREBALL, 35).await;
+    g.round(FIREBALL, 35).await;
+    g.idle(Duration::from_secs(1)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "spells", "fbal", "mmis rat", "look"]);
+    let said = notices(&seen);
+    assert!(
+        said.iter()
+            .any(|n| n == "Fight: 2 casts of fireball, now large giant rat with magic missile"),
+        "{said:?}"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_area_spell_the_player_chose_is_cast_in_place_of_the_strongest() {
+    let (mut g, run) = in_arena(&[]).await;
+    start_caster(&mut g, "Mage", &AREA_SPELLS, &[], 35, 20).await;
+    g.narrated("re-synced").await;
+    let choose = |spell: Option<&str>| ToClient::SetAreaSpell {
+        session: ID.into(),
+        spell: spell.map(str::to_owned),
+    };
+    // An attack spell is no area spell: refused.
+    g.send(choose(Some("mmis"))).await;
+    g.narrated("set_area_spell: mmis is not an area spell this character knows")
+        .await;
+    g.send(choose(Some("blad"))).await;
+    g.narrated("Area spell: dancing blades (blad)").await;
+    g.expect("blad", line(ENGAGED, 35));
+    g.output(&arena(&RATS, 35)).await;
+    g.narrated("Fight: 3 monsters, casting dancing blades")
+        .await;
+    g.idle(Duration::from_secs(1)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "spells", "blad"]);
+    assert_eq!(bot(&seen).area_spell.as_deref(), Some("blad"));
+}
+
+#[tokio::test(start_paused = true)]
+async fn area_spells_off_fights_one_monster_at_a_time() {
+    let (mut g, run) = in_arena_with(&RATS, "[spells]\narea = \"off\"\n").await;
+    start_caster(&mut g, "Mage", &AREA_SPELLS, &RATS, 35, 20).await;
+    g.expect("mmis rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat with magic missile")
+        .await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "spells", "mmis rat"]);
+}

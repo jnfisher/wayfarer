@@ -748,6 +748,8 @@ migration 13), so it stays on across a restart until turned off.
   `spells.boss_max_casts_per_monster` (10; 0 is no limit) at one monster in place of
   `spells.max_casts_per_monster`, and with no mana floor: `spells.attack_mana_above` does not
   hold, so a caster casts while the mana lasts.
+- **Area spells** (C-105): up to `spells.boss_area_max_casts` (10) in a fight, with no mana
+  floor either.
 - **Heals** as always, its own and the party's, in a fight and out of one.
 - **No blessing**, in a fight or out of one.
 - **Hang-up**: below `health.boss_hangup_below_hp` (10%) in place of `health.hangup_below_hp`,
@@ -1532,8 +1534,10 @@ A character whose class has magery (the pack's class record: Paladin, Cleric, Pr
 Bard, Gypsy, Warlock, Mage, Druid, Ranger, Mystic) gets one more re-sync command, `spells`, after
 `look`. Its rows (level, mana, short name, name) are matched to the pack's spells for the class
 (same magery, magery level at or below the class's): single-target attacks (type 0, target 0, 4
-or 8, ability 17) and self-castable heals (type 3, target 1, 2 or 6, ability 18) are the
-spellbook; buffs, light and area spells are left out, and a Warrior's re-sync is unchanged. The
+or 8, ability 17), area attacks (type 0, target 12, ability 17: fireball, swarm) and
+self-castable heals (type 3, target 1, 2 or 6, ability 18) are the spellbook; buffs, light and
+the area spells that hurt over time (ice storm, acid rain) are left out, and a Warrior's
+re-sync is unchanged. The
 mana cost is the game's own, from the screen. The list is read again at every re-sync, so a
 scroll read since is found the next time.
 
@@ -1571,6 +1575,25 @@ screen usually comes first). The data is `crates/wayfarer-world/data/quicksilver
   fight, whatever the mana. A heal in the middle does not start the count again; a new
   monster does. A cast line counts as the character's own combat, so a
   fight fought with a spell does not lapse after 12 s of "no blows" and start over.
+- **Area spells** (C-105). With `spells.area` `auto`, a fight opens with the area spell
+  (`fbal`, no target word) when the room holds at least `spells.area_min_monsters` (3) monsters
+  and every monster there is one the bot would fight: hostile, not ignored by a monster rule,
+  not skipped. A good or neutral monster, an NPC or an ignored one holds it back, since the
+  spell hits everything in the room (and a neutral one hit joins the fight,
+  `kb/aoe-grinding.md` §5). The spell is the player's choice (`set_area_spell`, kept with the
+  bot as the attack spell is) or the strongest it can pay for, and only while the mana is
+  above `spells.area_mana_above` (30%). Cast out of combat it engages the whole room and
+  auto-combat casts it every round. Its casts are counted from the spell's own line for the
+  caster (the pack's message up to its first `%`: "The fireball explodes,"; "You cast swarm
+  on"), a failed cast too, over the whole fight (a kill does not start the count again). The
+  fight changes to one monster at a time (the attack spell or the weapon, sent at the monster
+  Fight would pick: "Fight: 2 casts of fireball, now large giant rat with magic missile")
+  after `spells.area_max_casts` casts (0 is no limit; for the rest of the fight), when the mana
+  comes down to the area line, or when the room has fewer monsters than the least or one it
+  would not fight. A fight of one monster at a time whose room fills up changes to the area
+  spell. In boss fight mode `spells.boss_area_max_casts` (10) holds in place of
+  `spells.area_max_casts`, with no mana floor; a monster to attack first does not take the
+  fight off the area spell, which hits it too.
 - **Heals while recovering.** Recover casts the cheapest heal that covers the HP that are
   missing (else the strongest it can pay for) while HP is below `spells.heal_resting_below_hp`
   (60%; 0 turns it off), one per round (5 s), before it walks to a quiet room, and again while

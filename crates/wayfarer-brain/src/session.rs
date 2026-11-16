@@ -347,6 +347,8 @@ pub(crate) struct Session {
     spellbook: Spellbook,
     /// The attack spell the player chose (C-099), by short name; None is auto.
     attack_choice: Option<String>,
+    /// The area spell the player chose (C-105), by short name; None is auto.
+    area_choice: Option<String>,
     /// The items the player listed for it to collect (C-102): the game's name and how many
     /// to keep carried.
     collect: Vec<(String, u32)>,
@@ -510,6 +512,7 @@ impl Session {
             .cloned();
         let mut rules = RuleBook::new(ledger.stored().map_or(&[], |b| &b.monster_rules));
         let attack_choice = ledger.stored().and_then(|b| b.attack_spell.clone());
+        let area_choice = ledger.stored().and_then(|b| b.area_spell.clone());
         let collect = ledger
             .stored()
             .map(|b| b.collect_items.clone())
@@ -549,6 +552,7 @@ impl Session {
             spells_seen: false,
             spellbook: Spellbook::default(),
             attack_choice,
+            area_choice,
             collect,
             map_radius: MAP_RADIUS,
             map_center: None,
@@ -947,6 +951,7 @@ impl Session {
                         .filter_map(|k| atlas.item_numbers.get(&k.to_lowercase()).copied())
                         .collect();
                 }
+                self.bot.line(&ev.line);
                 let says = self.bot.event(&typed, now);
                 self.say(says, out);
                 self.learn(now, out);
@@ -1168,6 +1173,41 @@ impl Session {
         self.flush_views(out);
     }
 
+    /// `set_area_spell` (C-105): open on a room with the area spell `short` (one the character
+    /// knows), or the strongest it can pay for (None). A spell it does not know is refused.
+    pub fn set_area_spell(&mut self, short: Option<&str>, now: Instant, out: &mut Vec<ToGateway>) {
+        let chosen = match short.map(str::trim).filter(|s| !s.is_empty()) {
+            None => None,
+            Some(short) => match self
+                .spellbook
+                .areas()
+                .iter()
+                .find(|s| s.short.eq_ignore_ascii_case(short))
+            {
+                Some(def) => Some(def),
+                None => {
+                    out.push(self.warning(&format!(
+                        "set_area_spell: {short} is not an area spell this character knows"
+                    )));
+                    return;
+                }
+            },
+        };
+        let short = chosen.map(|d| d.short.clone());
+        if short == self.area_choice {
+            return;
+        }
+        let text = match chosen {
+            Some(d) => format!("Area spell: {} ({})", d.name, d.short),
+            None => "Area spell: auto, the strongest it can pay for".to_owned(),
+        };
+        self.area_choice = short;
+        out.push(self.notice(&text));
+        self.persist(out);
+        self.drive(now, out);
+        self.flush_views(out);
+    }
+
     /// `set_collect_items` (C-102): the items it picks up off the floor and how many of each
     /// it keeps carried, the whole list. A name that is no item a character can pick up is
     /// refused with a warning (with the nearest names, if any); the rest are kept, by the
@@ -1379,6 +1419,7 @@ impl Session {
         let mut record = self.bot.record();
         record.monster_rules = self.rules.stored();
         record.attack_spell = self.attack_choice.clone();
+        record.area_spell = self.area_choice.clone();
         record.collect_items = self.collect.clone();
         if self.ledger.stopping(&record) {
             let why = self.bot.snapshot().narration;
@@ -3567,6 +3608,7 @@ impl Session {
             level: c.level.map_or(1, i64::from),
             book: &self.spellbook,
             attack_choice: self.attack_choice.as_deref(),
+            area_choice: self.area_choice.as_deref(),
             boss: self.bot.boss(),
             load: c
                 .encumbrance
@@ -4429,17 +4471,10 @@ impl Session {
         if self.atlas.is_some() {
             let mut bot = self.bot.snapshot();
             bot.monster_rules = self.rules.wire();
-            bot.attack_spells = self
-                .spellbook
-                .attacks()
-                .iter()
-                .map(|s| wayfarer_proto::AttackSpellOption {
-                    short: s.short.clone(),
-                    name: s.name.clone(),
-                    mana: u32::try_from(s.mana).unwrap_or(0),
-                })
-                .collect();
+            bot.attack_spells = self.spellbook.attacks().iter().map(spell_option).collect();
             bot.attack_spell = self.attack_choice.clone();
+            bot.area_spells = self.spellbook.areas().iter().map(spell_option).collect();
+            bot.area_spell = self.area_choice.clone();
             bot.collect_items = self
                 .collect
                 .iter()
@@ -4666,6 +4701,15 @@ fn coin_currency(coin: &str) -> i64 {
         "platinum" => 3,
         "runic" => 4,
         _ => 0,
+    }
+}
+
+/// A spell the player can choose, as the UI lists it (C-099, C-105).
+fn spell_option(s: &wayfarer_world::SpellDef) -> wayfarer_proto::AttackSpellOption {
+    wayfarer_proto::AttackSpellOption {
+        short: s.short.clone(),
+        name: s.name.clone(),
+        mana: u32::try_from(s.mana).unwrap_or(0),
     }
 }
 
