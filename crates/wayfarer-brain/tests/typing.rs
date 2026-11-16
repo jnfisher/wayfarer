@@ -356,3 +356,77 @@ async fn a_line_typed_after_half_a_line_waits_for_the_prompt() {
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look"]);
 }
+
+/// `text` (a room from `game::room`) with `monsters` listed in it.
+fn with_monsters(text: &str, monsters: &[&str]) -> String {
+    let at = text.find("Obvious exits:").unwrap();
+    let at = text[..at].rfind("\r\n").map_or(0, |i| i + 2);
+    format!(
+        "{}\x1b[0;35mAlso here: \x1b[1;35m{}\x1b[0m\x1b[0;35m.\r\n{}",
+        &text[..at],
+        monsters.join(", "),
+        &text[at..]
+    )
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_look_into_the_next_room_is_not_a_move_and_its_monsters_are_not_fought() {
+    // C-103, Riley on 2026-11-16: `l s` showed the room south with a mad wizard in it; the
+    // brain took it for a move, attacked the wizard (`bash wizard`, said aloud) and held the
+    // player's lines for 5 s. The looked-at room goes to the screen only.
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 35).await;
+    g.narrated("Waiting here").await;
+    let north = with_monsters(&room(NARROW_ROAD), &["fat giant rat"]);
+    g.expect("l u", at_hp(&north, 35));
+    g.user_input("l u").await;
+    g.idle(Duration::from_secs(30)).await;
+    // Still in the Arena: a rat that comes in there is fought.
+    g.expect("a rat", line(ENGAGED, 35));
+    g.output(&line(
+        "A thin giant rat creeps into the room from nowhere.",
+        35,
+    ))
+    .await;
+    g.narrated("Fight: thin giant rat").await;
+    let (seen, played) = g.close(run).await;
+    let said = notices(&seen);
+    assert_eq!(played, ["st", "look", "l u", "a rat"], "{said:?}");
+    assert!(
+        !said
+            .iter()
+            .any(|n| n.contains("Narrow Road") || n.contains("fat giant rat")),
+        "{said:?}"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_line_typed_after_an_attack_said_aloud_goes_at_once() {
+    // C-103: the game took the bot's attack for speech; the player's line goes at the prompt
+    // after it, not 5 s later.
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    g.expect("a rat", line("You say \"a rat\"", 35));
+    g.after_cmd = Some(("a rat".into(), user_input("gossip hi")));
+    g.expect("gossip hi", line("You gossip: hi", 35));
+    g.expect("look", arena(&[], 35));
+    g.until(|m| match m {
+        ToGateway::InputLine { text, .. } if text == "a rat" => Some(()),
+        _ => None,
+    })
+    .await;
+    let sent_at = tokio::time::Instant::now();
+    g.until(|m| match m {
+        ToGateway::InputLine { text, .. } if text == "gossip hi" => Some(()),
+        _ => None,
+    })
+    .await;
+    assert!(
+        sent_at.elapsed() < Duration::from_secs(1),
+        "{:?}",
+        sent_at.elapsed()
+    );
+    g.idle(Duration::from_secs(5)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(&played[..4], ["st", "look", "a rat", "gossip hi"]);
+}
