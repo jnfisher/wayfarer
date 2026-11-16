@@ -58,6 +58,9 @@ struct World {
     purse: BTreeMap<String, BTreeMap<&'static str, u64>>,
     /// The Arena's `look` shows the other one there, in its `Also here:`.
     together: bool,
+    /// The game takes a following follower along when its leader moves from their room, as
+    /// the real one does: `-- Following your Party leader <dir> --` and the room.
+    drag: bool,
 }
 
 /// The game's name for a coin, by `hide`'s word.
@@ -304,7 +307,35 @@ impl Gateway {
                     Some(e) => {
                         let to = e.to;
                         self.world.rooms.insert(session.to_owned(), to);
-                        me(shown(to))
+                        let mut out = me(shown(to));
+                        if self.world.drag
+                            && self.world.following
+                            && session == LEADER
+                            && self.world.rooms[other] == here
+                        {
+                            self.world.rooms.insert(other.to_owned(), to);
+                            let dir = match t {
+                                "n" => "north",
+                                "s" => "south",
+                                "e" => "east",
+                                "w" => "west",
+                                "ne" => "northeast",
+                                "nw" => "northwest",
+                                "se" => "southeast",
+                                "sw" => "southwest",
+                                "u" => "upwards",
+                                "d" => "downwards",
+                                t => t,
+                            };
+                            out.push((
+                                other.to_owned(),
+                                format!(
+                                    " -- Following your Party leader {dir} -- \r\n{}",
+                                    shown(to)
+                                ),
+                            ));
+                        }
+                        out
                     }
                     None => me(said("There is no exit in that direction!")),
                 }
@@ -1360,4 +1391,63 @@ async fn a_follower_that_does_not_see_its_leader_hides_nothing() {
     .await;
     assert_eq!(hides(&g, LEADER), ["hide 7 gold"], "{:?}", g.lines);
     assert!(hides(&g, FOLLOWER).is_empty(), "{:?}", g.lines);
+}
+
+/// C-104, Riley and Asa on 2026-11-16: a one-stop loop's cleared stop is stepped out of and
+/// back into. When the step out did not go (a fight stopped it, or the party's hold for a
+/// member's stash), the leader, still in the stop, took itself for arriving there again: a new
+/// stash round, the stop "cleared" again and a hold again, many times a second. A round is one
+/// per arrival from elsewhere.
+#[tokio::test(start_paused = true)]
+async fn a_step_out_that_does_not_go_starts_no_new_stash_round() {
+    let store = Store::in_memory().unwrap();
+    let (mut g, _run) = Gateway::start(brain(Some(store))).await;
+    g.world.together = true;
+    g.world.drag = true;
+    formed(&mut g).await;
+    g.send(ToClient::SaveLoop {
+        session: LEADER.into(),
+        name: "Road".into(),
+        base: None,
+        stops: vec![wayfarer_proto::RoomKey {
+            map: NARROW_ROAD.0,
+            room: NARROW_ROAD.1,
+        }],
+    })
+    .await;
+    g.send(ToClient::RunLoop {
+        session: LEADER.into(),
+        id: "custom:road".into(),
+        skip: None,
+    })
+    .await;
+    g.until(|m| match m {
+        ToGateway::Notice {
+            session: Some(s),
+            text,
+        } if s == LEADER && text == "Arrived: Newhaven, Narrow Road" => Some(()),
+        _ => None,
+    })
+    .await;
+    // Held there: its step out does not go.
+    g.world.held.insert(LEADER.to_owned());
+    let mut notices = 0;
+    let mut rounds = 0;
+    g.until(|m| match m {
+        ToGateway::Notice {
+            session: Some(s),
+            text,
+        } if s == LEADER => {
+            notices += 1;
+            if text.starts_with("Stash:") {
+                rounds += 1;
+            }
+            (notices > 60).then_some(())
+        }
+        _ => None,
+    })
+    .await;
+    let said = notices_of(&g, LEADER);
+    // The arrival's round, and no other.
+    assert_eq!(rounds, 1, "{said:#?}");
 }
