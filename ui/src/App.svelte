@@ -658,6 +658,9 @@
             attackSpells={focusedId ? (brain.characters[focusedId]?.bot?.attack_spells ?? []) : []}
             attackSpell={focusedId ? (brain.characters[focusedId]?.bot?.attack_spell ?? undefined) : undefined}
             onattackspell={(id, spell) => client.setAttackSpell(id, spell)}
+            areaSpells={focusedId ? (brain.characters[focusedId]?.bot?.area_spells ?? []) : []}
+            areaSpell={focusedId ? (brain.characters[focusedId]?.bot?.area_spell ?? undefined) : undefined}
+            onareaspell={(id, spell) => client.setAreaSpell(id, spell)}
             collectItems={focusedId ? (brain.characters[focusedId]?.bot?.collect_items ?? []) : []}
             oncollect={(id, items) => client.setCollectItems(id, items)}
           />

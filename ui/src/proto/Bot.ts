@@ -56,4 +56,14 @@ boss_mode?: boolean,
  * The items it picks up and how many of each it keeps carried (`set_collect_items`,
  * C-102). Left out when none.
  */
-collect_items?: Array<CollectItem>, };
+collect_items?: Array<CollectItem>, 
+/**
+ * The area attack spells the character knows (fireball, swarm), for the player to
+ * choose from (C-105). Left out when it knows none.
+ */
+area_spells?: Array<AttackSpellOption>, 
+/**
+ * The area spell the player chose (`set_area_spell`), by short name. Left out for auto,
+ * the strongest it can pay for.
+ */
+area_spell?: string, };

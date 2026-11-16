@@ -12,6 +12,8 @@ pub struct Spellbook {
     attacks: Vec<SpellDef>,
     heals: Vec<SpellDef>,
     party_heals: Vec<SpellDef>,
+    /// Area attacks (C-105).
+    areas: Vec<SpellDef>,
 }
 
 /// A member of the caster's party with it, for the choice of a heal (the caster itself has
@@ -37,7 +39,7 @@ pub enum PartyCast<'a> {
 
 impl Spellbook {
     /// The rows of the `spells` screen matched to the pack; a spell the pack does not know as
-    /// an attack or a heal of the class (buffs, light, area spells) is left out.
+    /// an attack, an area attack or a heal of the class (buffs, light) is left out.
     pub fn learn(spells: &Spells, class: &str, rows: &[SpellRow]) -> Spellbook {
         let mut book = Spellbook::default();
         for (_, mana, short, name) in rows {
@@ -50,6 +52,7 @@ impl Spellbook {
                 SpellKind::Attack => book.attacks.push(def),
                 SpellKind::Heal => book.heals.push(def),
                 SpellKind::PartyHeal => book.party_heals.push(def),
+                SpellKind::Area => book.areas.push(def),
             }
         }
         book
@@ -63,6 +66,7 @@ impl Spellbook {
                 SpellKind::Attack => book.attacks.push(d),
                 SpellKind::Heal => book.heals.push(d),
                 SpellKind::PartyHeal => book.party_heals.push(d),
+                SpellKind::Area => book.areas.push(d),
             }
         }
         book
@@ -101,14 +105,39 @@ impl Spellbook {
     /// The attack to cast with `mana` at `level`: the one that does the most damage of those
     /// that can be paid for, the cheaper of two that do the same.
     pub fn attack(&self, level: i64, mana: i64) -> Option<&SpellDef> {
-        self.attacks
+        Self::strongest(&self.attacks, level, mana)
+    }
+
+    pub fn has_area(&self) -> bool {
+        !self.areas.is_empty()
+    }
+
+    /// The area attacks it knows, in the order of the `spells` screen (C-105).
+    pub fn areas(&self) -> &[SpellDef] {
+        &self.areas
+    }
+
+    /// The area attack the player chose, as [`Spellbook::chosen_attack`].
+    pub fn chosen_area(&self, short: &str, mana: i64) -> Result<Option<&SpellDef>, ()> {
+        let def = self
+            .areas
             .iter()
-            .filter(|s| s.mana <= mana)
-            .max_by(|a, b| {
-                a.average(level)
-                    .total_cmp(&b.average(level))
-                    .then(b.mana.cmp(&a.mana))
-            })
+            .find(|s| s.short.eq_ignore_ascii_case(short))
+            .ok_or(())?;
+        Ok((def.mana <= mana).then_some(def))
+    }
+
+    /// The area attack to cast with `mana` at `level`, chosen as [`Spellbook::attack`] is.
+    pub fn area(&self, level: i64, mana: i64) -> Option<&SpellDef> {
+        Self::strongest(&self.areas, level, mana)
+    }
+
+    fn strongest(spells: &[SpellDef], level: i64, mana: i64) -> Option<&SpellDef> {
+        spells.iter().filter(|s| s.mana <= mana).max_by(|a, b| {
+            a.average(level)
+                .total_cmp(&b.average(level))
+                .then(b.mana.cmp(&a.mana))
+        })
     }
 
     /// The heal to cast with `mana` at `level` when `missing` hit points are gone: the
@@ -222,6 +251,23 @@ mod tests {
         // Not known (and a heal is no attack): auto chooses.
         assert!(b.chosen_attack("fbal", 99).is_err());
         assert!(b.chosen_attack("mend", 99).is_err());
+    }
+
+    #[test]
+    fn area_spells_are_kept_apart_from_the_attacks() {
+        let b = Spellbook::from_defs(vec![
+            SpellDef::flat("mmis", "magic missile", SpellKind::Attack, 1, 4, 12),
+            SpellDef::flat("blad", "dancing blades", SpellKind::Area, 26, 21, 38),
+            SpellDef::flat("fbal", "fireball", SpellKind::Area, 34, 33, 45),
+        ]);
+        assert!(b.has_area());
+        assert_eq!(b.attacks().len(), 1);
+        assert_eq!(b.area(15, 40).unwrap().short, "fbal");
+        assert_eq!(b.area(15, 30).unwrap().short, "blad");
+        assert!(b.area(15, 20).is_none());
+        assert_eq!(b.chosen_area("BLAD", 99).unwrap().unwrap().short, "blad");
+        assert_eq!(b.chosen_area("fbal", 30), Ok(None));
+        assert!(b.chosen_area("mmis", 99).is_err());
     }
 
     #[test]

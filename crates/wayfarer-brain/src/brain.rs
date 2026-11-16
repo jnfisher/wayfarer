@@ -739,6 +739,10 @@ impl Brain {
                 Some(s) => s.set_collect_items(&items, now, out),
                 None => out.push(no_session("set_collect_items", &session)),
             },
+            ToClient::SetAreaSpell { session, spell } => match self.sessions.get_mut(&session) {
+                Some(s) => s.set_area_spell(spell.as_deref(), now, out),
+                None => out.push(no_session("set_area_spell", &session)),
+            },
             ToClient::SpellPlanRequest { session } => match self.sessions.get_mut(&session) {
                 Some(s) => s.spell_plan(out),
                 None => out.push(no_session("spell_plan_request", &session)),

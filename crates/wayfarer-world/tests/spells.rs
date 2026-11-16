@@ -102,3 +102,21 @@ fn lasting_spells_carry_their_duration_and_wear_off_line() {
     // An attack is no lasting spell.
     assert!(spells.buff("Mage", "mmis", "magic missile").is_none());
 }
+
+#[test]
+fn fireball_and_swarm_are_area_spells_known_by_the_casters_line() {
+    let pack = WorldPack::open(common::pack_path()).unwrap();
+    let spells = Spells::load(&pack).unwrap();
+    // Full Attack Area (target 12), instant damage (C-105).
+    let fbal = spells.find("Mage", "fbal", "fireball").unwrap();
+    assert_eq!((fbal.kind, fbal.target), (SpellKind::Area, 12));
+    assert!(fbal.is_cast_line("The fireball explodes, causing 45 damage!"));
+    assert!(!fbal.is_cast_line("You cast magic missile at rat for 4 damage!"));
+    // "You cast %s on %sthe room": known by the name too, not by "You cast" alone.
+    let swar = spells.find("Druid", "swar", "swarm").unwrap();
+    assert_eq!(swar.kind, SpellKind::Area);
+    assert!(swar.is_cast_line("You cast swarm on the room for 30 damage!"));
+    assert!(!swar.is_cast_line("You cast minor healing on Riley, healing 8 damage!"));
+    // Ice storm hurts over time: no area spell to open a fight with.
+    assert!(spells.find("Mage", "isto", "ice storm").is_none());
+}

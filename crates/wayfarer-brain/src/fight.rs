@@ -19,7 +19,7 @@ use crate::executor::{Action, Expect, Outcome, Refused};
 use crate::modes::{Mode, Presence, Step, View};
 use crate::policy::{attack_word, hostile, is_first, target};
 use crate::spellcraft::PartyCast;
-use wayfarer_world::MonsterRules;
+use wayfarer_world::{MonsterRules, SpellDef};
 
 /// How many attacks on one monster may go unanswered (no `*Combat Engaged*`, no refusal)
 /// before it is left alone for the session: a missed line is tried again, a refusal the
@@ -117,6 +117,12 @@ pub(crate) struct Fight {
     bs_struck: bool,
     /// On a passive Go to: nothing is fought, not even what attacks the character.
     passive: bool,
+    /// The area spell auto-combat is casting at the room (C-105).
+    area: Option<SpellDef>,
+    /// The area casts in this fight, hit or failed: they count until the fight ends.
+    area_casts: u32,
+    /// This fight has had its area casts: one monster at a time until it ends.
+    area_spent: bool,
 }
 
 /// A name as the game shows it (`lauren` is Lauren).
@@ -173,6 +179,9 @@ impl Mode for Fight {
             if let Some(step) = self.after_backstab(v) {
                 return step;
             }
+            if let Some(step) = self.area_now(v) {
+                return step;
+            }
             if let Some(step) = self.weapon_now(v) {
                 return step;
             }
@@ -210,6 +219,9 @@ impl Mode for Fight {
                 self.stall = Stall::default();
                 if std::mem::take(&mut self.spell_refused) {
                     self.spell_hold = Some(v.now + SPELL_HOLD);
+                }
+                if let Some((s, n)) = self.area_open(v) {
+                    return self.open_area(&s, n, "Fight");
                 }
                 let spell = if (self.backstab && self.sneaking)
                     || self.weapon_only
@@ -270,7 +282,17 @@ impl Mode for Fight {
                 self.target = None;
                 self.stall = Stall::default();
             }
+            // A kill in an area fight: auto-combat goes on casting at the rest.
+            GameEvent::ExpGain { .. } if self.area.is_some() => {
+                self.target = None;
+                self.stall = Stall::default();
+            }
             GameEvent::CombatOff | GameEvent::ExpGain { .. } => {
+                if matches!(ev, GameEvent::CombatOff) {
+                    self.area = None;
+                    self.area_casts = 0;
+                    self.area_spent = false;
+                }
                 self.opened_bs = false;
                 self.bs_struck = false;
                 self.healed = false;
@@ -303,7 +325,12 @@ impl Mode for Fight {
             GameEvent::SpellCast { .. } | GameEvent::CastFailed { .. } if self.spell_fight => {
                 self.casts += 1;
             }
+            // An area cast that failed; one that went is counted by its line ([`Fight::line`]).
+            GameEvent::CastFailed { .. } if self.area.is_some() => self.area_casts += 1,
             GameEvent::YouKilled => {
+                self.area = None;
+                self.area_casts = 0;
+                self.area_spent = false;
                 self.opened_bs = false;
                 self.bs_struck = false;
                 self.weapon_only = false;
@@ -380,7 +407,10 @@ impl Mode for Fight {
                 self.switched = false;
             }
             (Expect::Engaged, Outcome::Refused(Refused::Target)) => self.refused(),
-            (Expect::Engaged, Outcome::Refused(Refused::Spell)) => self.spell_refused = true,
+            (Expect::Engaged, Outcome::Refused(Refused::Spell)) => {
+                self.spell_refused = true;
+                self.area = None;
+            }
             // Blind: the attack went nowhere because it cannot see; that says nothing about
             // the monster.
             (Expect::Engaged, Outcome::TimedOut) if self.blind => {
@@ -455,6 +485,10 @@ impl Fight {
     /// another: attack it at once, once for each time it comes (C-075). Thrag's wolves came
     /// first on the Thrag run, attacking, and the party fought them with Thrag in the room.
     fn switch_to_first(&mut self, v: &View) -> Option<Step> {
+        // An area spell hits it too.
+        if self.area.is_some() {
+            return None;
+        }
         if self
             .target
             .as_deref()
@@ -541,6 +575,107 @@ impl Fight {
             Action::new(attack, Expect::Engaged),
             format!("Fight: {why}, now the weapon"),
         ))
+    }
+
+    /// The monsters in the room the area spell would hit, when every one of them is one the
+    /// bot would fight (C-105): hostile, not ignored, not skipped. None when the room holds
+    /// one it would not (good, neutral, an NPC, ignored), since the spell hits it too.
+    fn area_count(&self, v: &View) -> Option<usize> {
+        let p = v.presence;
+        let fightable = |n: &String| {
+            !self.skip.contains(n)
+                && hostile(&v.atlas.monsters, n)
+                && v.rules.rule_for(n) != Some(wayfarer_world::MonsterRule::Ignore)
+        };
+        let others = p.attackers.iter().chain(&p.ignored);
+        if !p.here.iter().chain(others).all(fightable) {
+            return None;
+        }
+        Some(p.here.len())
+    }
+
+    /// The area spell to cast now and the monsters it would hit: area spells on and paid for,
+    /// at least `spells.area_min_monsters` to fight and nothing else in the room, the fight's
+    /// area casts not spent, no backstab opening and no hold after a refused spell.
+    fn area_open(&self, v: &View) -> Option<(SpellDef, usize)> {
+        if self.area_spent
+            || (self.backstab && self.sneaking)
+            || self.spell_hold.is_some_and(|t| v.now < t)
+        {
+            return None;
+        }
+        let n = self.area_count(v).filter(|&n| n >= v.area_min())?;
+        Some((v.area_spell()?.clone(), n))
+    }
+
+    /// Cast `spell` at the room: out of combat it engages everything there and auto-combat
+    /// casts it every round (`kb/aoe-grinding.md` §2).
+    fn open_area(&mut self, spell: &SpellDef, n: usize, mode: &str) -> Step {
+        self.area = Some(spell.clone());
+        self.spell_fight = false;
+        Step::send(
+            Action::new(spell.short.clone(), Expect::Engaged),
+            format!("{mode}: {n} monsters, casting {}", spell.name),
+        )
+    }
+
+    /// In a fight: an area fight that has had its casts (`spells.area_max_casts`), whose mana
+    /// came down to `spells.area_mana_above`, or whose room has fewer monsters than the
+    /// least or one it would not fight, changes to one monster at a time; a fight of one
+    /// monster at a time whose room fills up changes to the area spell.
+    fn area_now(&mut self, v: &View) -> Option<Step> {
+        if self.switched || self.healed {
+            return None;
+        }
+        let Some(area) = self.area.as_ref().map(|a| a.name.clone()) else {
+            let (s, n) = self.area_open(v)?;
+            self.switched = true;
+            return Some(self.open_area(&s, n, "Fight"));
+        };
+        let max = v.max_area_casts();
+        let why = if max > 0 && self.area_casts >= max {
+            self.area_spent = true;
+            format!("{} casts of {area}", self.area_casts)
+        } else if v.area_mana_short() {
+            format!("mana {}%", v.mana_percent().unwrap_or(0))
+        } else if self.area_count(v).is_none_or(|n| n < v.area_min()) {
+            "too few to cast at".to_owned()
+        } else {
+            return None;
+        };
+        self.area = None;
+        let t = self.choose(v)?.to_owned();
+        self.target = Some(t.clone());
+        self.stall = Stall::default();
+        self.switched = true;
+        let spell = if self.weapon_only || self.spell_hold.is_some_and(|h| v.now < h) {
+            None
+        } else {
+            v.attack_spell()
+        };
+        if self.cast_target.as_deref() != Some(t.as_str()) {
+            self.casts = 0;
+            self.cast_target = Some(t.clone());
+        }
+        self.spell_fight = spell.is_some();
+        let (line, how) = match spell {
+            Some(s) => (format!("{} {}", s.short, attack_word(&t)), s.name.clone()),
+            None => (
+                format!("{} {}", v.attack_command(), attack_word(&t)),
+                v.attack_command().to_owned(),
+            ),
+        };
+        Some(Step::send(
+            Action::new(line, Expect::Engaged),
+            format!("Fight: {why}, now {t} with {how}"),
+        ))
+    }
+
+    /// A line from the game: a cast of the area spell auto-combat is casting.
+    pub fn line(&mut self, line: &str) {
+        if self.area.as_ref().is_some_and(|a| a.is_cast_line(line)) {
+            self.area_casts += 1;
+        }
     }
 
     /// The monster to go for: one to attack first, if one is here; else the party leader's, when

@@ -297,6 +297,8 @@ pub(crate) struct View<'a> {
     pub book: &'a Spellbook,
     /// The attack spell the player chose (C-099), by short name; None is auto.
     pub attack_choice: Option<&'a str>,
+    /// The area spell the player chose (C-105), by short name; None is auto.
+    pub area_choice: Option<&'a str>,
     /// Boss fight mode (C-100): no flee, no walk, no blessing; its own casts limit, no mana
     /// floor for attack spells.
     pub boss: bool,
@@ -408,6 +410,50 @@ impl View<'_> {
             return chosen;
         }
         self.book.attack(self.level, mana)
+    }
+
+    /// The area spell to open a fight with now, if one is on (`spells.area`), the mana is
+    /// above `spells.area_mana_above` (not in boss fight mode) and pays for it: the player's
+    /// choice while the character knows it, else the strongest (C-105).
+    pub fn area_spell(&self) -> Option<&SpellDef> {
+        let (mana, _) = self.mana?;
+        self.mana_percent()?;
+        if !self.book.has_area()
+            || self.settings.choice("spells.area") != "auto"
+            || self.area_mana_short()
+        {
+            return None;
+        }
+        if let Some(short) = self.area_choice
+            && let Ok(chosen) = self.book.chosen_area(short, mana)
+        {
+            return chosen;
+        }
+        self.book.area(self.level, mana)
+    }
+
+    /// Mana at or below `spells.area_mana_above` per cent; never in boss fight mode.
+    pub fn area_mana_short(&self) -> bool {
+        !self.boss
+            && self
+                .mana_percent()
+                .is_some_and(|m| m <= self.setting("spells.area_mana_above", 30))
+    }
+
+    /// The fewest monsters to fight in the room for an area spell (`spells.area_min_monsters`).
+    pub fn area_min(&self) -> usize {
+        usize::try_from(self.setting("spells.area_min_monsters", 3)).unwrap_or(3)
+    }
+
+    /// The most area casts in one fight (0: no limit); in boss fight mode
+    /// `spells.boss_area_max_casts`.
+    pub fn max_area_casts(&self) -> u32 {
+        let key = if self.boss {
+            "spells.boss_area_max_casts"
+        } else {
+            "spells.area_max_casts"
+        };
+        u32::try_from(self.settings.int(key)).unwrap_or(0)
     }
 
     /// Mana at or below `spells.attack_mana_above` per cent: no attack spell, the weapon
@@ -893,6 +939,8 @@ impl Bot {
             monster_rules: Vec::new(),
             attack_spells: Vec::new(),
             attack_spell: None,
+            area_spells: Vec::new(),
+            area_spell: None,
             boss_mode: self.boss,
             collect_items: Vec::new(),
         }
@@ -1346,6 +1394,7 @@ impl Bot {
             // The session's: it keeps the rules and the attack spell.
             monster_rules: Vec::new(),
             attack_spell: None,
+            area_spell: None,
             boss_mode: self.boss,
             collect_items: Vec::new(),
         }
@@ -1486,6 +1535,11 @@ impl Bot {
             says.extend(self.stop("the character was killed", true));
         }
         says
+    }
+
+    /// A line from the game as it came: Fight counts an area spell's casts by its line (C-105).
+    pub fn line(&mut self, line: &str) {
+        self.fight.line(line);
     }
 
     /// A monster died (`name`, as the room showed it): Task counts it for the stop it is at.

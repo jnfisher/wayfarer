@@ -303,6 +303,12 @@ export class GatewayClient {
     return this.send({ type: "set_collect_items", session, items });
   }
 
+  /** Open on a room with this area spell (a short name from the bot's `area_spells`), or auto
+   * (`null`): C-105. False when not connected. */
+  setAreaSpell(session: string, spell: string | null): boolean {
+    return this.send({ type: "set_area_spell", session, spell });
+  }
+
   /** Ask for the spells the character lacks (a `spell_plan` answer); false when not connected. */
   requestSpellPlan(session: string): boolean {
     return this.send({ type: "spell_plan_request", session });
