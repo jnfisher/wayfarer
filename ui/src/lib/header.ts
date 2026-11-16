@@ -4,6 +4,7 @@
 
 import type { CharacterState } from "../proto";
 import { botWidth, linkWidth, menuWidth } from "./bot";
+import { badgeCells } from "./classes";
 
 /** Width of one header character cell in CSS px. */
 export const HEADER_CELL_PX = 8;
@@ -112,9 +113,10 @@ export function barSize(h: HeaderText, cols: number): number {
   return cols <= 0 || firstRow(h, BAR_CELLS) <= cols ? BAR_CELLS : SHORT_BAR_CELLS;
 }
 
-/** Cells the first row always takes: the corners, number, name and fill. */
+/** Cells the first row always takes: the corners, number, class badge (C-106), name and fill.
+ * The badge is never dropped: it is how the tiles are told apart. */
 export function fixedWidth(h: HeaderText): number {
-  const start = 3 + String(h.number).length + 1 + h.name.length; // "╔═ 1 Name"
+  const start = 3 + String(h.number).length + badgeCells(h.character?.class) + 1 + h.name.length; // "╔═ 1 ♠ WAR Name"
   const fill = 3; // " ═ " at its narrowest
   const end = 2; // "═╗"
   return start + fill + end;

@@ -15,11 +15,12 @@ side or stacked, whichever makes the terminals larger on your screen. Each tile 
 ## The header
 
 ```
-╔═ 1 Waydeva  L3 Warrior ═ HP ███████░░░ 28/40  MA ░░░░░░░░░░ 0/0 ═ 1,230 (45%) ═════════════╗
+╔═ 1  ♠ WAR  Waydeva  L3 Warrior ═ HP ███████░░░ 28/40  MA ░░░░░░░░░░ 0/0 ═ 1,230 (45%) ═════╗
 ║ Town Square                     Following Penny │ [║][■] │ 127.0.0.1:2323 │ realm [▬] [▼] ║
 ```
 
-Two rows. The first, the frame's top: the tile's number (for `Alt+n`), the character's name,
+Two rows. The first, the frame's top: the tile's number (for `Alt+n`), the class badge, the
+character's name,
 then what the brain knows of them: level and class, HP and mana as bars with their numbers,
 and exp with how far through the level it is. The second: the room's title on the left, and
 on the right the party chip (see "The parties"), the bot's buttons, the server, the session's
@@ -30,6 +31,23 @@ tile's own buttons.
   mana maxima come from the status screen, which the brain asks for when it re-syncs (the
   game's prompt has none), so until then a bar is empty and its maximum shows `--`. A character
   with no mana (a Warrior, a Witchunter: its prompt is `[HP=..]:` alone) has no mana bar.
+- **The class badge** (C-106) tells the tiles apart at a glance whatever the characters are
+  called: a block with a CP437 glyph and a three-letter tag in the class's own colour, one of
+  the 15 VGA colours (all but black) for each of the 15 classes, black text on the bright ones
+  and white on the dark (`ui/src/lib/classes.ts`):
+
+  | Badge | Class | Colour | | Badge | Class | Colour |
+  |---|---|---|---|---|---|---|
+  | `♠ WAR` | Warrior | light red | | `♫ BRD` | Bard | brown |
+  | `¥ WIT` | Witchunter | yellow | | `○ GYP` | Gypsy | magenta |
+  | `± PAL` | Paladin | light cyan | | `Φ WLK` | Warlock | red |
+  | `+ CLR` | Cleric | light blue | | `☼ MAG` | Mage | light magenta |
+  | `Ω PRI` | Priest | white | | `♣ DRU` | Druid | light green |
+  | `♥ MIS` | Missionary | light grey | | `↑ RNG` | Ranger | green |
+  | `• NIN` | Ninja | dark grey | | `∞ MYS` | Mystic | cyan |
+  | `$ THF` | Thief | blue | | | | |
+
+  It shows once the class is known (the status screen) and is never dropped on a narrow tile.
 - **The rule set** follows the class once the brain knows the server plays Quicksilver 1.20:
   `L3 Warrior 1.20`. Nothing shows on a stock 1.11p server or while the brain is still finding
   out (it plays as 1.11p meanwhile; the dev panel's **rules** line says which) (docs/brain.md

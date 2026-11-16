@@ -180,7 +180,8 @@ describe("fitHeader", () => {
 
   it("counts the cells of the first row's design line", () => {
     // From ╔ to ╗ with the fill at its narrowest.
-    const line = "╔═ 1 Waydeva  L3 Warrior ═ HP ███████░░░ 28/40  MA ░░░░░░░░░░ 0/0 ═ 1,230 (45%) ═ ═╗";
+    // The class badge (C-106) after the number: " ♠ WAR " with a space before it.
+    const line = "╔═ 1  ♠ WAR  Waydeva  L3 Warrior ═ HP ███████░░░ 28/40  MA ░░░░░░░░░░ 0/0 ═ 1,230 (45%) ═ ═╗";
     expect(first()).toBe([...line].length);
   });
 });
@@ -240,6 +241,19 @@ describe("the tile header", () => {
       expect(text("nobrain")).toEqual([" no brain"]);
       cleanup();
     }
+  });
+
+  it("shows the class badge after the number, in the class's colours (C-106)", () => {
+    const { el, text } = header(FULL);
+    expect(text("classbadge")).toEqual([" ♠ WAR "]);
+    const badge = el.querySelector(".classbadge") as HTMLElement;
+    expect(badge.style.background).toBe("var(--vga-lightred)");
+    expect(badge.style.color).toBe("var(--vga-black)");
+    expect(badge.title).toBe("Warrior");
+    expect(badge.previousElementSibling!.previousElementSibling!.classList.contains("num")).toBe(true);
+    cleanup();
+    // No class read yet: no badge, and no cells kept for one.
+    expect(header({}).text("classbadge")).toEqual([]);
   });
 
   it("starts with ╔ and ends with ╗", () => {

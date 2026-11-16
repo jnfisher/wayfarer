@@ -288,6 +288,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-103](C-103-look-into-a-direction.md) | A look into the next room is not a move; an attack said aloud is refused at once | B | S | | |
 | [C-104](C-104-one-stop-loop-stash-spin.md) | A one-stop loop held in its stop does not arrive again: no stash round, no clear, many times a second | B | S | | |
 | [C-105](C-105-area-spells.md) | Area spells: open on a room of enough monsters with fireball or swarm, with their own mana line, cast limits and choice | B | M | C-099, C-100 | |
+| [C-106](C-106-class-badges.md) | A class badge on each tile: whose tile is whose at a glance | B | S | | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or
