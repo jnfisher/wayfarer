@@ -869,6 +869,10 @@ stop it is at or walking to, and the stops it passes by.
   an instant-spawn lair (the cave worm in the sewers, the slime beast in the goblin caves)
   spawns when a player enters, so a one-room loop is a walk out to a plain exit beside it (no
   door, not a boss lair, a room that is no Lair first) and back. With no such exit it waits.
+  Until it has been out, it has not arrived: a step out held back (a fight, the party's hold
+  for a member's stash) is not a new arrival, so the stop is not cleared again and no new stash
+  round begins (C-104: a one-stop loop held for Asa's stash cleared its stop and began a round
+  many times a second).
 - **On the way**: a monster Fight would attack in a room on the way, or one attacking, stops the
   leg after the moves in flight; Fight takes the character, and then Task walks on to the same
   stop from wherever it is. `*Combat Engaged*` stops it the same way. Flee and Recover work as in

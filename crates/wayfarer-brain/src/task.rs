@@ -222,6 +222,9 @@ pub(crate) struct Task {
     /// It arrived at the loop's first stop since last asked (C-092: the coins are hidden
     /// there).
     at_first: bool,
+    /// Stepping out of the stop it stands in and back in: on its way there, but not arrived
+    /// until it has been out (C-104).
+    stepping_out: bool,
     /// Steps from the stop when the last leg began: a leg that ends closer is progress, not a
     /// try (C-091).
     leg_from: Option<usize>,
@@ -281,6 +284,7 @@ impl Task {
             phase: Phase::Going,
             tries: 0,
             at_first: false,
+            stepping_out: false,
             leg_from: None,
             failed_at: None,
             notes: Vec::new(),
@@ -356,7 +360,16 @@ impl Task {
     /// The bot's tick, whichever mode has control: arriving at the stop it walks to starts the
     /// hunt there, so what Fight kills on arrival counts for the stop.
     pub fn observe(&mut self, v: &View) {
-        if self.phase == Phase::Going && !self.stops.is_empty() && v.room == Some(self.home()) {
+        if self.stops.is_empty() {
+            return;
+        }
+        // Out of the stop it steps out of: the way back in is an arrival again.
+        if self.stepping_out && v.room.is_some_and(|r| r != self.home()) {
+            self.stepping_out = false;
+        }
+        // Still in the stop it is to step out of (the step held back, or stopped by a fight):
+        // not an arrival, so no new stash round and no second clear (C-104).
+        if self.phase == Phase::Going && !self.stepping_out && v.room == Some(self.home()) {
             self.tries = 0;
             self.give_ups = 0;
             self.passed[self.index] = None;
@@ -632,6 +645,7 @@ impl Task {
             .min_by_key(|&(_, lair)| lair)?
             .0;
         self.phase = Phase::Going;
+        self.stepping_out = true;
         self.tries = 0;
         Some(Step::walk(
             out,
