@@ -936,3 +936,261 @@ async fn area_spells_off_fights_one_monster_at_a_time() {
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["st", "look", "spells", "mmis rat"]);
 }
+
+// ---------------------------------------------------------------------------------------
+// Buff items (C-109)
+
+/// A Paladin of level 12 with `mana` of 20 on the status screen.
+fn paladin_status(hp: i32, mana: i32) -> String {
+    let screen = caster_status("Paladin", hp, mana);
+    let level = "Level: \x1b[36m1             ";
+    assert!(screen.contains(level));
+    screen.replacen(level, "Level: \x1b[36m12            ", 1)
+}
+
+/// The inventory screen carrying `items`, with a light load.
+fn carrying(items: &str, hp: i32) -> String {
+    format!(
+        "You are carrying {items}\r\nWealth: 0 copper farthings\r\n\
+         Encumbrance: 100/1000 - None [10%]\r\n{}",
+        prompt(hp)
+    )
+}
+
+const SWORD: &str = "shimmering greatsword";
+const BUFF: &str = "sword major bless (shimmering greatsword)";
+
+/// A Paladin carrying the greatsword with `held` in hand (the `i` of the re-sync), the sword's
+/// blessing ticked when `tick`.
+async fn paladin_with_the_sword(inventory: &str, tick: bool) -> (Game, Run) {
+    let (mut g, run) = in_arena(&[]).await;
+    if tick {
+        g.send(ToClient::BlessingsSave {
+            session: ID.into(),
+            spells: vec![SWORD.into()],
+        })
+        .await;
+    }
+    g.expect("st", paladin_status(35, 20));
+    g.expect("look", arena(&[], 35));
+    g.expect("spells", spells_screen(&[], 35));
+    g.bot(BotAction::Start).await;
+    g.narrated("Starting in Newhaven, Arena: re-syncing").await;
+    // The inventory, as a re-sync or the player's `i` brings it.
+    g.output(&carrying(inventory, 35)).await;
+    g.idle(Duration::from_millis(100)).await;
+    (g, run)
+}
+
+const HEADCUTTER: &str =
+    "golden breastplate (Torso), bone-handled headcutter (Two handed), shimmering greatsword";
+const SWORD_IN_HAND: &str =
+    "golden breastplate (Torso), shimmering greatsword (Two handed), bone-handled headcutter";
+
+/// The `use` of the greatsword as the game answers it (Riley, 2026-11-17).
+fn sword_used(hp: i32) -> String {
+    format!(
+        "You raise the blade in the air, summoning its power!\r\n{}You feel lucky!\r\n{}",
+        prompt(hp),
+        prompt(hp)
+    )
+}
+
+/// The greatsword is offered as a blessing to the Paladin carrying it, not ticked: nothing
+/// happens.
+#[tokio::test(start_paused = true)]
+async fn a_carried_buff_item_is_offered_as_a_blessing() {
+    let (mut g, run) = paladin_with_the_sword(HEADCUTTER, false).await;
+    g.send(ToClient::BlessingsRequest).await;
+    g.idle(Duration::from_secs(30)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "spells"]);
+    let offered = seen.iter().any(|m| {
+        matches!(m, ToGateway::Blessings { characters }
+            if characters.iter().any(|c| c.spells.iter().any(|s| s.short == SWORD && s.name == BUFF && s.mana == 8 && !s.chosen)))
+    });
+    assert!(offered, "the sword offered as a blessing");
+}
+
+/// Ticked, the sword is wielded, used and the headcutter wielded again; then left alone while
+/// its blessing is on.
+#[tokio::test(start_paused = true)]
+async fn a_ticked_buff_weapon_is_wielded_used_and_put_back() {
+    let (mut g, run) = paladin_with_the_sword(HEADCUTTER, true).await;
+    g.expect("i", carrying(HEADCUTTER, 35));
+    g.expect(
+        "wield shimmering greatsword",
+        line("You are now holding shimmering greatsword.", 35),
+    );
+    g.expect("use shimmering greatsword", sword_used(35));
+    g.expect(
+        "wield bone-handled headcutter",
+        line("You are now holding bone-handled headcutter.", 35),
+    );
+    g.expect("i", carrying(HEADCUTTER, 35));
+    g.narrated("Blessing: using the shimmering greatsword")
+        .await;
+    g.narrated("Blessing: used the shimmering greatsword; looking at the inventory")
+        .await;
+    // On for 60 rounds: nothing more for four minutes.
+    g.idle(Duration::from_secs(240)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(
+        played,
+        [
+            "st",
+            "look",
+            "spells",
+            "i",
+            "wield shimmering greatsword",
+            "use shimmering greatsword",
+            "wield bone-handled headcutter",
+            "i"
+        ]
+    );
+    let on = seen.iter().any(|m| {
+        matches!(m, ToGateway::Blessings { characters }
+            if characters.iter().any(|c| c.spells.iter().any(|s| s.short == SWORD && s.chosen && s.on)))
+    });
+    assert!(on, "a blessings message with the sword's blessing on");
+}
+
+/// Wielded already, it is only used.
+#[tokio::test(start_paused = true)]
+async fn a_buff_weapon_in_hand_is_only_used() {
+    let (mut g, run) = paladin_with_the_sword(SWORD_IN_HAND, true).await;
+    g.expect("i", carrying(SWORD_IN_HAND, 35));
+    g.expect("use shimmering greatsword", sword_used(35));
+    g.narrated("Blessing: using the shimmering greatsword")
+        .await;
+    g.idle(Duration::from_secs(60)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(
+        played,
+        ["st", "look", "spells", "i", "use shimmering greatsword"]
+    );
+}
+
+/// A two-handed buff weapon with something worn in the off hand is not tried.
+#[tokio::test(start_paused = true)]
+async fn a_two_handed_buff_weapon_with_an_off_hand_item_is_not_tried() {
+    let held = "copper cross (Off-Hand), mace (Weapon Hand), shimmering greatsword";
+    let (mut g, run) = paladin_with_the_sword(held, true).await;
+    g.expect("i", carrying(held, 35));
+    g.narrated(
+        "Blessing: can't use the shimmering greatsword with the copper cross worn in the off \
+         hand; trying again in 5 minutes",
+    )
+    .await;
+    g.idle(Duration::from_secs(60)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "spells", "i"]);
+}
+
+/// A use the game refuses puts the weapon back and is tried again after a round.
+#[tokio::test(start_paused = true)]
+async fn a_refused_use_puts_the_weapon_back_and_tries_again() {
+    let (mut g, run) = paladin_with_the_sword(HEADCUTTER, true).await;
+    g.expect("i", carrying(HEADCUTTER, 35));
+    g.expect(
+        "wield shimmering greatsword",
+        line("You are now holding shimmering greatsword.", 35),
+    );
+    g.expect(
+        "use shimmering greatsword",
+        line("You do not have enough mana.", 35),
+    );
+    g.expect(
+        "wield bone-handled headcutter",
+        line("You are now holding bone-handled headcutter.", 35),
+    );
+    g.expect("i", carrying(HEADCUTTER, 35));
+    g.narrated("Blessing: used the shimmering greatsword; looking at the inventory")
+        .await;
+    // Again after a round.
+    g.expect("i", carrying(HEADCUTTER, 35));
+    g.expect(
+        "wield shimmering greatsword",
+        line("You are now holding shimmering greatsword.", 35),
+    );
+    g.expect("use shimmering greatsword", sword_used(35));
+    g.expect(
+        "wield bone-handled headcutter",
+        line("You are now holding bone-handled headcutter.", 35),
+    );
+    g.expect("i", carrying(HEADCUTTER, 35));
+    g.idle(Duration::from_secs(30)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(
+        played
+            .iter()
+            .filter(|c| *c == "use shimmering greatsword")
+            .count(),
+        2,
+        "{played:?}"
+    );
+    assert_eq!(played.last().map(String::as_str), Some("i"));
+}
+
+/// A worn buff item: the wear takes off what was in its place, which goes back on after the
+/// use (a Missionary of level 25 with the large silvery cross).
+#[tokio::test(start_paused = true)]
+async fn a_worn_buff_item_puts_back_what_it_took_off() {
+    let (mut g, run) = in_arena(&[]).await;
+    g.send(ToClient::BlessingsSave {
+        session: ID.into(),
+        spells: vec!["large silvery cross".into()],
+    })
+    .await;
+    let status = caster_status("Missionary", 35, 20).replacen(
+        "Level: \x1b[36m1             ",
+        "Level: \x1b[36m25            ",
+        1,
+    );
+    let worn = "copper cross (Off-Hand), mace (Weapon Hand), large silvery cross";
+    g.expect("st", status);
+    g.expect("look", arena(&[], 35));
+    g.expect("spells", spells_screen(&[], 35));
+    g.bot(BotAction::Start).await;
+    g.narrated("Starting in Newhaven, Arena: re-syncing").await;
+    g.output(&carrying(worn, 35)).await;
+    g.expect("i", carrying(worn, 35));
+    g.expect(
+        "wear large silvery cross",
+        format!(
+            "{}{}",
+            line("You have removed copper cross.", 35),
+            line("You are now wearing large silvery cross.", 35)
+        ),
+    );
+    g.expect(
+        "use large silvery cross",
+        line("You are surrounded by a holy light!", 35),
+    );
+    g.expect(
+        "wear copper cross",
+        format!(
+            "{}{}",
+            line("You have removed large silvery cross.", 35),
+            line("You are now wearing copper cross.", 35)
+        ),
+    );
+    g.expect("i", carrying(worn, 35));
+    g.narrated("Blessing: used the large silvery cross; looking at the inventory")
+        .await;
+    g.idle(Duration::from_secs(60)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(
+        played,
+        [
+            "st",
+            "look",
+            "spells",
+            "i",
+            "wear large silvery cross",
+            "use large silvery cross",
+            "wear copper cross",
+            "i"
+        ]
+    );
+}

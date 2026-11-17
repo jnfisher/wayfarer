@@ -120,3 +120,79 @@ fn fireball_and_swarm_are_area_spells_known_by_the_casters_line() {
     // Ice storm hurts over time: no area spell to open a fight with.
     assert!(spells.find("Mage", "isto", "ice storm").is_none());
 }
+
+#[test]
+fn the_buff_items_are_the_unlimited_items_whose_use_casts_a_lasting_spell() {
+    use wayfarer_world::ItemPlace;
+    let pack = WorldPack::open(common::pack_path()).unwrap();
+    let spells = Spells::load(&pack).unwrap();
+    let mut names: Vec<&str> = spells
+        .buff_items()
+        .iter()
+        .map(|d| d.short.as_str())
+        .collect();
+    names.sort_unstable();
+    assert_eq!(
+        names,
+        [
+            "cosmic staff",
+            "emerald-tipped crozier",
+            "large silvery cross",
+            "shimmering greatsword"
+        ]
+    );
+
+    // The greatsword's use is sword major bless on the party, not its on-hit silvery mace
+    // (after the Auto Use slot).
+    let sword = spells
+        .item_buff("Paladin", 10, "shimmering greatsword")
+        .unwrap();
+    assert_eq!(sword.name, "sword major bless (shimmering greatsword)");
+    assert_eq!(sword.mana, 8);
+    assert_eq!(sword.rounds(10), 60);
+    assert!(sword.on_party());
+    let item = sword.item.as_ref().unwrap();
+    assert_eq!(item.place, ItemPlace::Weapon { two_handed: true });
+    assert!(item.place.is("Two handed") && item.place.is("Weapon Hand"));
+    // Paladins only, and from level 10.
+    assert!(
+        spells
+            .item_buff("Warrior", 10, "shimmering greatsword")
+            .is_none()
+    );
+    assert!(
+        spells
+            .item_buff("Paladin", 9, "shimmering greatsword")
+            .is_none()
+    );
+
+    // The cross is worn in the off hand; its spell needs magery level 2, which a Missionary has
+    // and a Paladin (priest magery 1) does not, though the item names both.
+    let cross = spells
+        .item_buff("Missionary", 25, "large silvery cross")
+        .unwrap();
+    assert_eq!(
+        cross.item.as_ref().unwrap().place,
+        ItemPlace::Worn {
+            location: "Off-Hand".to_owned(),
+            off_hand: true
+        }
+    );
+    assert_eq!(cross.rounds(25), 600);
+    assert!(
+        spells
+            .item_buff("Missionary", 24, "large silvery cross")
+            .is_none()
+    );
+    assert!(
+        spells
+            .item_buff("Paladin", 30, "large silvery cross")
+            .is_none()
+    );
+    // Not an item at all, or one with no buff.
+    assert!(
+        spells
+            .item_buff("Paladin", 30, "bone-handled headcutter")
+            .is_none()
+    );
+}

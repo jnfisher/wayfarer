@@ -17,6 +17,21 @@ const ABILITY_HEAL: i64 = 18;
 const ABILITY_DESCRIPTIVE: i64 = 115;
 /// Remove Spell: its value is a spell the cast removes (a regen tier removes the others).
 const ABILITY_REMOVE_SPELL: i64 = 122;
+/// Item abilities: One Time Cast (its value the spell `use` casts), Auto Use (used by hand, the
+/// first one ends the list: what follows is the weapon's on-hit cast), Minimum Level.
+const ABILITY_ONE_TIME_CAST: i64 = 43;
+const ABILITY_AUTO_USE: i64 = 114;
+const ABILITY_MIN_LEVEL: i64 = 135;
+/// Item types (`kb/game-data.md`): armour (worn) and weapon.
+const ITEM_ARMOUR: i64 = 0;
+const ITEM_WEAPON: i64 = 1;
+/// The game's worn locations, by `worn` (LJNTABLE.C:273): what `i` shows after a worn item.
+const WORN_LOCATIONS: [&str; 20] = [
+    "Nowhere", "Worn", "Head", "Hands", "Finger", "Feet", "Arms", "Back", "Neck", "Legs", "Waist",
+    "Torso", "Off-Hand", "Finger", "Wrist", "Ears", "Worn", "Wrist", "Eyes", "Face",
+];
+/// The off-hand location: never worn with a two-handed weapon in hand.
+const WORN_OFFHAND: i64 = 12;
 
 /// A lasting spell a character can keep on itself or its party (C-047): a general spell (type
 /// 3) with a duration, cast on the caster (target 1, 2, 6) or its party (10, 13).
@@ -45,7 +60,49 @@ pub struct BuffDef {
     /// On a Quicksilver 1.20 server, a spell of the regen line: its family and what it adds to
     /// mana regeneration.
     pub regen: Option<RegenTier>,
+    /// A buff item's (C-109): the item whose `use` casts it, in place of a cast.
+    pub item: Option<BuffItem>,
 }
+
+/// An item of unlimited uses whose `use` casts a lasting spell (C-109): wielded (a weapon) or
+/// worn (anything else) to be used (LJNCMDB.C:191-214).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BuffItem {
+    pub number: i64,
+    pub name: String,
+    pub place: ItemPlace,
+    /// The classes that may use it, by number; empty: any.
+    pub classes: Vec<i64>,
+    /// Its Minimum Level, 0 for none.
+    pub min_level: i64,
+}
+
+/// Where a buff item has to be to be used.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ItemPlace {
+    /// Wielded: `i` shows it `(Weapon Hand)`, or `(Two handed)` for a two-handed one.
+    Weapon { two_handed: bool },
+    /// Worn at this location, as `i` shows it (`Off-Hand`, `Neck` ...).
+    Worn { location: String, off_hand: bool },
+}
+
+impl ItemPlace {
+    /// Whether `slot`, the place `i` shows after a carried item, is this one.
+    pub fn is(&self, slot: &str) -> bool {
+        match self {
+            ItemPlace::Weapon { .. } => is_weapon_slot(slot),
+            ItemPlace::Worn { location, .. } => slot == location,
+        }
+    }
+}
+
+/// Whether `slot`, as `i` shows it, is the weapon hand.
+pub fn is_weapon_slot(slot: &str) -> bool {
+    slot == "Weapon Hand" || slot == "Two handed"
+}
+
+/// The off-hand location as `i` shows it.
+pub const OFF_HAND: &str = "Off-Hand";
 
 /// A regen-line spell's place in its family (`docs/kb/quicksilver-1.20.md` "Spells").
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -92,6 +149,7 @@ impl BuffDef {
             number: 0,
             removes: Vec::new(),
             regen: None,
+            item: None,
         }
     }
 
@@ -210,6 +268,159 @@ fn cast_line_of(msg: &str, name: &str) -> String {
     msg.split('%').next().unwrap_or("").trim().to_owned()
 }
 
+/// A lasting spell a character can keep on itself or its party (C-047): a general spell with a
+/// duration, on the caster (target 1, 2, 6) or its party (10, 13).
+fn is_lasting(s: &Spell, v: &Value) -> bool {
+    s.spell_type == 3
+        && v.get("duration").and_then(Value::as_i64).unwrap_or(0) > 0
+        && matches!(s.target, 1 | 2 | 6 | 10 | 13)
+}
+
+/// The record's list `k` (`abilities`, `abilvals`, `classes`).
+fn ints(v: &Value, k: &str) -> Vec<i64> {
+    v.get(k)
+        .and_then(Value::as_array)
+        .map(|l| l.iter().filter_map(Value::as_i64).collect())
+        .unwrap_or_default()
+}
+
+/// The lasting spell `s` (record `v`) as a blessing; `regen`, its place in 1.20's regen line.
+fn buff_def(
+    pack: &WorldPack,
+    s: &Spell,
+    v: &Value,
+    regen: Option<&qs120::RegenSpell>,
+) -> Result<BuffDef, Error> {
+    let int = |k: &str| v.get(k).and_then(Value::as_i64).unwrap_or(0);
+    let (abilities, abilvals) = (ints(v, "abilities"), ints(v, "abilvals"));
+    let message = abilities
+        .iter()
+        .position(|&a| a == ABILITY_DESCRIPTIVE)
+        .and_then(|i| abilvals.get(i).copied())
+        .map(|n| pack.message(n))
+        .transpose()?
+        .flatten();
+    let plain = |t: &str| {
+        let t = t.trim();
+        (!t.is_empty() && !t.contains('%')).then(|| t.to_owned())
+    };
+    let removes: Vec<i64> = abilities
+        .iter()
+        .zip(&abilvals)
+        .filter(|(a, _)| **a == ABILITY_REMOVE_SPELL)
+        .map(|(_, &v)| v)
+        .filter(|&v| v > 0)
+        .collect();
+    // The new tiers have their family's texts; mana flux, nature tap, serenity and profane
+    // link keep their stock ones.
+    let texts = regen
+        .filter(|r| r.number >= 6000)
+        .and_then(|r| qs120::texts_of(r.family));
+    Ok(BuffDef {
+        name: s.name.clone(),
+        short: s.short_name.clone(),
+        level: s.level,
+        mana: s.mana,
+        magery: int("magery"),
+        magery_level: int("magelvl"),
+        target: s.target,
+        duration: (
+            int("duration"),
+            int("durinc"),
+            int("durlvls"),
+            int("durlvl"),
+        ),
+        level_cap: int("levelcap"),
+        wear_off: texts
+            .map(|t| t.ends.clone())
+            .or_else(|| message.as_ref().and_then(|m| plain(&m[0]))),
+        // What the status screen shows while it is on (bless.rs reads it there).
+        felt: texts
+            .map(|t| t.status.clone())
+            .or_else(|| message.as_ref().and_then(|m| plain(&m[2]))),
+        number: s.number,
+        removes,
+        regen: regen.map(|r| RegenTier {
+            family: r.family,
+            regen_pct: r.regen_pct,
+        }),
+        item: None,
+    })
+}
+
+/// The pack's buff items (C-109): weapons and worn items of unlimited charges whose `use`
+/// casts a lasting spell, each as the blessing it gives, keyed by the item's name.
+fn buff_items(pack: &WorldPack) -> Result<Vec<BuffDef>, Error> {
+    let mut out = Vec::new();
+    for item in pack
+        .items_of_type(ITEM_ARMOUR)?
+        .into_iter()
+        .chain(pack.items_of_type(ITEM_WEAPON)?)
+    {
+        let Ok(v) = serde_json::from_str::<Value>(&item.raw) else {
+            continue;
+        };
+        let int = |k: &str| v.get(k).and_then(Value::as_i64).unwrap_or(0);
+        let worn = int("worn");
+        if int("charges") >= 0 || (item.item_type == ITEM_ARMOUR && worn <= 0) {
+            continue;
+        }
+        let (abilities, abilvals) = (ints(&v, "abilities"), ints(&v, "abilvals"));
+        let pairs: Vec<(i64, i64)> = abilities.into_iter().zip(abilvals).collect();
+        // Used by hand, the first Auto Use ends the list.
+        let by_hand = pairs.iter().take_while(|(a, _)| *a != ABILITY_AUTO_USE);
+        let Some(spell) = by_hand
+            .clone()
+            .find(|(a, _)| *a == ABILITY_ONE_TIME_CAST)
+            .map(|&(_, n)| pack.spell(n))
+            .transpose()?
+            .flatten()
+        else {
+            continue;
+        };
+        let Ok(sv) = serde_json::from_str::<Value>(&spell.raw) else {
+            continue;
+        };
+        if !is_lasting(&spell, &sv) {
+            continue;
+        }
+        let place = if item.item_type == ITEM_WEAPON {
+            ItemPlace::Weapon {
+                two_handed: matches!(int("wpntype"), 1 | 3),
+            }
+        } else {
+            let Some(location) = usize::try_from(worn)
+                .ok()
+                .and_then(|w| WORN_LOCATIONS.get(w))
+            else {
+                continue;
+            };
+            ItemPlace::Worn {
+                location: (*location).to_owned(),
+                off_hand: worn == WORN_OFFHAND,
+            }
+        };
+        let mut def = buff_def(pack, &spell, &sv, None)?;
+        def.name = format!("{} ({})", spell.name, item.name);
+        def.short = item.name.clone();
+        // On only from its own use: its lines may be another spell's (sword major bless has
+        // bless's "You feel lucky!", which chant and bless from the party bring too).
+        def.felt = None;
+        def.item = Some(BuffItem {
+            number: item.number,
+            name: item.name.clone(),
+            place,
+            classes: ints(&v, "classes").into_iter().filter(|&c| c > 0).collect(),
+            min_level: pairs
+                .iter()
+                .find(|(a, _)| *a == ABILITY_MIN_LEVEL)
+                .map_or(0, |&(_, l)| l),
+        });
+        out.push(def);
+    }
+    Ok(out)
+}
+
 /// The player spells of the pack, and each class's magery.
 #[derive(Clone, Debug, Default)]
 pub struct Spells {
@@ -218,6 +429,10 @@ pub struct Spells {
     buffs: Vec<BuffDef>,
     /// Class name → (magery, magery level); 0 for a class that does not cast.
     classes: HashMap<String, (i64, i64)>,
+    /// The buff items (C-109), keyed by the item's name.
+    items: Vec<BuffDef>,
+    /// Class name → number, for an item's class list.
+    class_numbers: HashMap<String, i64>,
 }
 
 impl Spells {
@@ -255,67 +470,10 @@ impl Spells {
                 .and_then(|l| l.first())
                 .and_then(Value::as_i64);
             let instant = int("duration") == 0 && int("minval") > 0;
-            if s.spell_type == 3 && int("duration") > 0 && matches!(s.target, 1 | 2 | 6 | 10 | 13) {
-                let ints = |k: &str| -> Vec<i64> {
-                    v.get(k)
-                        .and_then(Value::as_array)
-                        .map(|l| l.iter().filter_map(Value::as_i64).collect())
-                        .unwrap_or_default()
-                };
-                let message = ints("abilities")
-                    .iter()
-                    .position(|&a| a == ABILITY_DESCRIPTIVE)
-                    .and_then(|i| ints("abilvals").get(i).copied())
-                    .map(|n| pack.message(n))
-                    .transpose()?
-                    .flatten();
-                let plain = |t: &str| {
-                    let t = t.trim();
-                    (!t.is_empty() && !t.contains('%')).then(|| t.to_owned())
-                };
-                let removes: Vec<i64> = ints("abilities")
-                    .iter()
-                    .zip(ints("abilvals"))
-                    .filter(|(a, _)| **a == ABILITY_REMOVE_SPELL)
-                    .map(|(_, v)| v)
-                    .filter(|&v| v > 0)
-                    .collect();
+            if is_lasting(&s, &v) {
                 // A regen-line spell (1.20 only): its lines are 1.20's own, not the pack's.
                 let regen = qs120.then(|| qs120::regen_spell(s.number)).flatten();
-                // The new tiers have their family's texts; mana flux, nature tap, serenity and
-                // profane link keep their stock ones.
-                let texts = regen
-                    .filter(|r| r.number >= 6000)
-                    .and_then(|r| qs120::texts_of(r.family));
-                buffs.push(BuffDef {
-                    name: s.name.clone(),
-                    short: s.short_name.clone(),
-                    level: s.level,
-                    mana: s.mana,
-                    magery,
-                    magery_level: int("magelvl"),
-                    target: s.target,
-                    duration: (
-                        int("duration"),
-                        int("durinc"),
-                        int("durlvls"),
-                        int("durlvl"),
-                    ),
-                    level_cap: int("levelcap"),
-                    wear_off: texts
-                        .map(|t| t.ends.clone())
-                        .or_else(|| message.as_ref().and_then(|m| plain(&m[0]))),
-                    // What the status screen shows while it is on (bless.rs reads it there).
-                    felt: texts
-                        .map(|t| t.status.clone())
-                        .or_else(|| message.as_ref().and_then(|m| plain(&m[2]))),
-                    number: s.number,
-                    removes,
-                    regen: regen.map(|r| RegenTier {
-                        family: r.family,
-                        regen_pct: r.regen_pct,
-                    }),
-                });
+                buffs.push(buff_def(pack, &s, &v, regen)?);
                 continue;
             }
             let kind = match (s.spell_type, s.target) {
@@ -357,10 +515,17 @@ impl Spells {
             .into_iter()
             .map(|(n, m, l)| (n, (m, l)))
             .collect();
+        let class_numbers = pack
+            .classes()?
+            .into_iter()
+            .map(|(n, name)| (name, n))
+            .collect();
         Ok(Spells {
             spells,
             buffs,
             classes,
+            items: buff_items(pack)?,
+            class_numbers,
         })
     }
 
@@ -379,6 +544,40 @@ impl Spells {
                 && s.magery == magery
                 && s.magery_level <= magery_level
         })
+    }
+
+    /// The blessing the carried item `name` gives (C-109), if it is a buff item a character of
+    /// `class` at `level` may use: its class list has the class, its Minimum Level is reached,
+    /// and its spell's magery, if any, is the class's at a high enough magery level.
+    pub fn item_buff(&self, class: &str, level: i64, name: &str) -> Option<&BuffDef> {
+        let def = self
+            .items
+            .iter()
+            .find(|d| d.short.eq_ignore_ascii_case(name))?;
+        let item = def.item.as_ref()?;
+        if !item.classes.is_empty()
+            && !self
+                .class_numbers
+                .get(class)
+                .is_some_and(|n| item.classes.contains(n))
+        {
+            return None;
+        }
+        if level < item.min_level {
+            return None;
+        }
+        if def.magery != 0 {
+            let &(magery, magery_level) = self.classes.get(class)?;
+            if magery != def.magery || magery_level < def.magery_level {
+                return None;
+            }
+        }
+        Some(def)
+    }
+
+    /// Every buff item of the pack (C-109).
+    pub fn buff_items(&self) -> &[BuffDef] {
+        &self.items
     }
 
     /// The spell the `spells` screen listed by this short name and name, if it is an attack or
