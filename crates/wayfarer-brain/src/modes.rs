@@ -65,6 +65,16 @@ impl Presence {
         })
     }
 
+    /// A move went to a room it could not see (dark, blind): what was in the room it left is
+    /// not here (C-108). Who attacks may have followed; they say so with their next blow.
+    pub fn moved_unseen(&mut self) {
+        self.shown = None;
+        self.here.clear();
+        self.players.clear();
+        self.floor.clear();
+        self.floor_items.clear();
+    }
+
     /// Out of the realm (the line dropped, or logged off): nothing is attacking any more.
     pub fn left_the_realm(&mut self) {
         self.attackers.clear();
@@ -118,14 +128,6 @@ impl Presence {
                         self.players = players;
                     }
                 }
-            }
-            // Nothing seen (dark, blind) with no title before it: whatever was here before is
-            // not known to be here now, a move's new room above all (C-108).
-            GameEvent::RoomDark | GameEvent::Blind if self.shown.is_none() => {
-                self.here.clear();
-                self.players.clear();
-                self.floor.clear();
-                self.floor_items.clear();
             }
             GameEvent::RoomExits { .. } | GameEvent::RoomDark | GameEvent::Prompt { .. } => {
                 if let Some((here, players)) = self.shown.take() {

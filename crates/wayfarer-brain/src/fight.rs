@@ -196,9 +196,12 @@ impl Mode for Fight {
             return Some("in combat".to_owned());
         }
         if self.blind {
-            // Nothing to aim at: the loop goes on blind (a move that goes shows where it is,
-            // C-108); with nothing else to do it looks now and then ([`Fight::blind_look`]).
-            return None;
+            // Nothing to aim at. A fight going on in the room (something attacks it, or a blow
+            // heard put a monster here): it stays with it, looking now and then, ready when it
+            // sees again. Quiet: the loop goes on blind (a move that goes shows where it is),
+            // and with nothing else to do it looks now and then ([`Fight::blind_look`]) (C-108).
+            let fight_here = !v.presence.attackers.is_empty() || !v.presence.here.is_empty();
+            return fight_here.then(|| "blind, a fight here".to_owned());
         }
         if self.look {
             return Some("looking for the next".to_owned());

@@ -901,10 +901,18 @@ impl Session {
             {
                 *answered = true;
             }
+            let was_at = self.position.best();
             let seen = match &self.atlas {
                 Some(atlas) => self.position.event(atlas, &typed, now),
                 None => None,
             };
+            // Moved into a room it cannot see: nothing of the old room is here (C-108).
+            if seen.as_ref().is_some_and(|s| s.dark)
+                && was_at.is_some()
+                && self.position.best() != was_at
+            {
+                self.presence.moved_unseen();
+            }
             self.flush_traces(out);
             if let Some(seen) = seen {
                 self.executor

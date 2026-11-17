@@ -45,9 +45,14 @@ to know the room we're in".
   something attacks, but no walk goes before it is over, whoever attacks.
 - KB: `combat.md` "Afraid".
 
-- Blind or in the dark, out of combat, Fight wants nothing: a loop or a Go to walks on. A move
+- Blind or in the dark, out of combat, with a fight going on in the room (something attacks it,
+  or a blow it hears puts a monster here): it stays with it, waiting and looking, ready when it
+  sees (John chose this over walking away, 2026-11-16: a nanati's "bubble of pure darkness"
+  blinds the whole party mid-fight for about 100 s). With the room quiet, Fight wants
+  nothing: a loop or a Go to walks on. A move
   answered "You are blind." counts as arriving, as the darkness line already did, and the map
-  says where; nothing seen there clears who and what was "here", so the stop is passed as
+  says where; a move into a room it cannot see clears who and what was "here" (a look in
+  the same room does not), so the stop is passed as
   cleared. With nothing else to do it waits and looks every 10 s, every 3 s while something
   attacks it; a room shown ends the blindness. The bot now wakes for that look, and for the
   end of the fear hold.
@@ -56,6 +61,7 @@ to know the room we're in".
 
 - An attack answered "You are too afraid!" is not tried again for a round, then goes.
 - Blind, a loop walks on, stop after stop.
+- Blind with a fight heard in the room, it stays.
 - Blind and attacked, it looks again within a few seconds.
 - Held on a Go to that fights nothing, with a monster attacking: the move is not tried again
   for the wait, then goes.

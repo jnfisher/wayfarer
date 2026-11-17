@@ -140,6 +140,32 @@ async fn a_blind_character_walks_its_loop_on() {
     assert_eq!(bot(&seen).state, BotState::Running);
 }
 
+/// C-108: blind with a fight going on in the room (a party mate's blow heard), the loop does not
+/// walk away from it: the bot stays, looking now and then, until the room is quiet or it sees
+/// (John, 2026-11-16, Penny and Lexi blinded together by a nanati's bubble of darkness).
+#[tokio::test(start_paused = true)]
+async fn blind_with_a_fight_in_the_room_it_stays() {
+    // In the Arena, its first stop, blind from the start; a party mate's blow is heard there.
+    let (mut g, run) = ready_with(arena(&[], 35)).await;
+    g.expect("look", says("You are blind."));
+    g.output(&line("Rocco smashes large giant rat for 6 damage!", 35))
+        .await;
+    g.run_loop(&[SMALL_CAVERN]).await;
+    g.narrated("Running loop Newhaven: re-syncing").await;
+    g.idle(Duration::from_secs(30)).await;
+    g.freeze();
+    let (seen, played) = g.close(run).await;
+    // No `n` on to the next stop while the fight goes on.
+    assert_eq!(played, ["st", "look"]);
+    assert!(
+        notices(&seen)
+            .iter()
+            .any(|s| s == "Fight: blind, waiting to see again"),
+        "{:?}",
+        notices(&seen)
+    );
+}
+
 #[tokio::test(start_paused = true)]
 async fn the_maps_stop_while_the_bot_walks_a_loop_drops_the_loop() {
     // The map's stop sends `walk_stop`: as ■, the loop is dropped and the bot plays where the
