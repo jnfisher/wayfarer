@@ -364,6 +364,9 @@ pub(crate) struct Session {
     silent_until: u64,
     /// A `history_request` is out; live output waits here meanwhile.
     fetching: bool,
+    /// The character entered the realm during a catch-up: the bot goes back on (or starts)
+    /// when the catch-up ends, not on the old output it reads (C-112).
+    entered_catching_up: bool,
     /// The catch-up since the last attach is done: the whole snapshot then goes out (and, the
     /// first time, the bot a brain before this one left is resumed).
     caught_up: bool,
@@ -597,6 +600,7 @@ impl Session {
             fed: 0,
             silent_until: info.last_seq,
             fetching: false,
+            entered_catching_up: false,
             caught_up: false,
             buffer: Vec::new(),
             at_prompt: false,
@@ -734,11 +738,23 @@ impl Session {
         // Into the realm: the bot starts where the character stands, so it defends itself at
         // once (C-054). A bot a brain before this one left is resumed instead (`resume`), and
         // one the realm took off goes back on as it was, its loop at the stop it had (C-107).
-        let back = if was != SessionState::Realm && state == SessionState::Realm {
-            self.come_back.take()
-        } else {
-            None
-        };
+        let entered = was != SessionState::Realm && state == SessionState::Realm;
+        // Still reading the old output (a new brain's catch-up): the bot would run on it, its
+        // fights and HP long gone. It goes back on, or starts, when the catch-up ends (C-112).
+        if entered && self.fetching {
+            if let Some(back) = self.come_back.take()
+                && self.restore.is_none()
+            {
+                self.restore = Some(BotRecord {
+                    state: back.on_entry.unwrap_or(BotState::Running),
+                    on_entry: None,
+                    ..back
+                });
+            }
+            self.entered_catching_up = true;
+            return;
+        }
+        let back = if entered { self.come_back.take() } else { None };
         if let Some(back) = back
             && self.settings.bool("bot.start_on_logon")
             && self.atlas.is_some()
@@ -848,7 +864,8 @@ impl Session {
         // The first catch-up since the attach, whether or not a UI's `state_request`
         // published the session while it went on: that once kept the stored bot from ever
         // being resumed, and the session from saving anything after.
-        was_fetching && !std::mem::replace(&mut self.caught_up, true)
+        let first = !std::mem::replace(&mut self.caught_up, true);
+        was_fetching && (first || self.entered_catching_up)
     }
 
     fn feed(&mut self, chunk: Chunk, out: &mut Vec<ToGateway>) {
@@ -1357,7 +1374,32 @@ impl Session {
     /// done: back in that state with its home and loop, narrated; the re-sync the attach
     /// started goes first. Outside the realm it stays stopped.
     pub fn resume(&mut self, out: &mut Vec<ToGateway>) {
+        let entered = std::mem::take(&mut self.entered_catching_up);
+        if entered {
+            // The fights in the old output were the old connection's: a new login has none.
+            self.presence.left_the_realm();
+            self.character.combat_lapsed();
+        }
+        if self.restore.is_none() && entered && self.state == SessionState::Realm {
+            // Entered during the catch-up with nothing to put back: started as at an entry.
+            if self.settings.bool("bot.start_on_logon")
+                && self.atlas.is_some()
+                && self.errand.is_none()
+                && !self.bot.running()
+            {
+                out.push(self.notice("Entered the realm: starting the bot"));
+                let now = self.clock.instant();
+                self.bot_control(BotAction::Start, now, out);
+            }
+            return;
+        }
         if self.restore.is_none() || self.atlas.is_none() {
+            return;
+        }
+        if entered && self.state == SessionState::Realm {
+            out.push(self.notice("Entered the realm: putting the bot back as it was"));
+            self.put_back("back in the realm", out);
+            self.publish_patch(out);
             return;
         }
         if self.state != SessionState::Realm {
@@ -3310,7 +3352,12 @@ impl Session {
             self.hung_up = false;
             return;
         }
-        if self.hung_up || self.bot.stopped() || !self.settings.bool("health.hangup") {
+        // Never on the old output a catch-up reads (C-112).
+        if self.hung_up
+            || self.fetching
+            || self.bot.stopped()
+            || !self.settings.bool("health.hangup")
+        {
             return;
         }
         let c = self.character.state();

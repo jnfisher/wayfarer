@@ -559,7 +559,10 @@ doesn't make sense"):
   the bot back as it was", then "Resumed: running loop Orc Barracks at stop 53/104 (back in
   the realm)"), the re-sync first, in place of a fresh start; with `bot.start_on_logon` off
   it stays off. One stopped before it left (by hand, a death, a hang-up) stays stopped, and
-  ■ while out of the realm forgets it.
+  ■ while out of the realm forgets it. An entry while a new brain still reads the session's
+  old output (its catch-up) puts the bot back, or starts it, when the catch-up ends, the old
+  output's fights forgotten; the hang-up line is never checked on that old output (C-112:
+  after the 2026-11-17 update a fight in it hung Penny up at "2%" with 311/357 HP).
 - **A Go to or a loop** (`walk_to`, `walk_loop`, `run_loop`) gives the bot that route and turns
   it on, from any state.
 - **A Go to arriving** ends the journey: the bot stays on and plays there, that room its home.

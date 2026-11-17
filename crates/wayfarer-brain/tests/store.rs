@@ -11,7 +11,9 @@ use std::time::UNIX_EPOCH;
 use game::arena::*;
 use game::*;
 use wayfarer_brain::{Brain, InstantClock, SAMPLE_EVERY, Store};
-use wayfarer_proto::{BotAction, BotState, CombatStats, RunSummary, StatsPart, TimeSpent};
+use wayfarer_proto::{
+    BotAction, BotState, CombatStats, RunSummary, StatsPart, TimeSpent, ToClient,
+};
 use wayfarer_store::{BotRecord, EventKind};
 
 fn brain_on(path: &Path) -> Brain {
@@ -771,4 +773,51 @@ async fn a_bot_stopped_by_hand_does_not_come_back_on_entry() {
     let saved = store_at(&path).bot(ID).unwrap().unwrap();
     assert_eq!(saved.on_entry, None);
     assert_eq!(saved.loop_id, None);
+}
+
+/// Seen live (2026-11-17, the v0.1.28 update): the character entered the realm while the new
+/// brain was still reading the session's old output. The bot went back on at the entry, so
+/// the catch-up ran it on the history: a low-HP fight in it hung Penny up at 2% with 311/357
+/// HP. A bot that goes back on at an entry during the catch-up waits for it to end.
+#[tokio::test(start_paused = true)]
+async fn an_entry_during_the_catch_up_puts_the_bot_back_after_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let mut away = loop_at_stop_2();
+    away.state = wayfarer_store::BotState::Stopped;
+    away.on_entry = Some(wayfarer_store::BotState::Running);
+    store_at(&path).save_bot(ID, &away, T0 as i64).unwrap();
+    // The old output: a fight down to 2 of 35 HP.
+    let history = format!(
+        "{}{}{}",
+        status(35),
+        arena(&["large giant rat"], 35),
+        line(
+            "*Combat Engaged*\r\nThe large giant rat bites you for 33 damage!",
+            2
+        )
+    );
+    let (mut g, run) = Game::start_brain_with(
+        SessionState::Menu,
+        history,
+        brain_on(&path),
+        Some(ToClient::SessionState {
+            session: ID.into(),
+            state: SessionState::Realm,
+        }),
+    )
+    .await;
+    g.freeze();
+    g.idle(Duration::from_secs(1)).await;
+    let (seen, _) = g.close(run).await;
+    let said = notices(&seen);
+    assert!(
+        !said.iter().any(|n| n.starts_with("Hanging up")),
+        "{said:?}"
+    );
+    assert!(
+        said.iter()
+            .any(|n| n.starts_with("Resumed: running loop 1:2140:8:doors:0 at stop 2/2")),
+        "{said:?}"
+    );
 }

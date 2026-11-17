@@ -294,6 +294,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-109](C-109-buff-items.md) | Buff items: a carried item's lasting spell is a blessing, swapped in to use | A | M | C-047 | |
 | [C-110](C-110-collect-keys.md) | Collect counts the keys on the key ring | A | S | C-102 | |
 | [C-111](C-111-party-after-restart.md) | After a restart the party forms up again before the leader goes on | A | S | C-107 | |
+| [C-112](C-112-entry-during-catch-up.md) | An entry during the catch-up puts the bot back after it | A | S | C-107 | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or
