@@ -587,8 +587,17 @@ fn first(name: &str) -> &str {
 }
 
 impl Parties {
+    /// The parties kept in the store, at a start. Each follower counts as one that was in its
+    /// party (C-111): the parties were formed before the restart, so a follower the game no
+    /// longer has following (a relog drops it from the party) walks back and the leader waits,
+    /// as for one dropped at an exit, instead of the leader going on alone.
     pub fn from_records(records: Vec<PartyRecord>) -> Parties {
+        let was_joined = records
+            .iter()
+            .flat_map(|r| r.followers.iter().cloned())
+            .collect();
         Parties {
+            was_joined,
             defs: records
                 .into_iter()
                 .map(|r| PartyDef {
@@ -1709,6 +1718,38 @@ mod tests {
         let plan = p.plan(&m, t);
         assert_eq!(state(&plan, 1).0, MemberState::Joined);
         assert_eq!(plan.roles["penny"].hold(), None);
+    }
+
+    /// After a restart (C-111, Lexi and Penny 2026-11-17): the relog dropped Penny from the
+    /// party, her `follow` was refused, and Lexi went on with her loop alone. A party loaded
+    /// from the store holds its leader for a follower out of the party, invites it while it is
+    /// in the room, and walks it back when the leader is elsewhere.
+    #[tokio::test]
+    async fn after_a_restart_a_follower_out_of_the_party_is_waited_for() {
+        let now = Instant::now();
+        let mut p = Parties::from_records(vec![PartyRecord {
+            id: "party-1".into(),
+            leader: "penny".into(),
+            followers: vec!["lauren".into()],
+            guards: Vec::new(),
+        }]);
+        // In the same room; Penny's `par` shows her alone, and Lauren was refused her `follow`.
+        let mut m = two(now, &[]);
+        m.get_mut("lauren").unwrap().game.must_invite = Some(now);
+        let plan = p.plan(&m, now);
+        assert_eq!(
+            plan.roles["penny"].hold(),
+            Some("Waiting for Lauren to catch up")
+        );
+        assert_eq!(lines(&plan), [("penny", "invite lauren")]);
+        // Penny has gone on a room: Lauren walks to her, and Penny still waits.
+        let t = now + Duration::from_secs(5);
+        let penny = m.get_mut("penny").unwrap();
+        penny.room = Some((1, 2));
+        penny.game.as_of = Some(t);
+        let plan = p.plan(&m, t);
+        assert_eq!(plan.roles["lauren"].rejoin(), Some((1, 2)));
+        assert!(plan.roles["penny"].hold().is_some());
     }
 
     #[tokio::test]
