@@ -826,6 +826,18 @@ fn the_keys_carried() {
         }
     );
     assert_eq!(example("inv_no_keys"), GameEvent::Keys { keys: vec![] });
+    // Copies of a key are counted, the name made plural (Rocco, 2026-11-17).
+    assert_eq!(
+        line("You have the following keys:  glowing red amulet, 3 black star keys.")[0],
+        GameEvent::Keys {
+            keys: vec![
+                "glowing red amulet".into(),
+                "black star key".into(),
+                "black star key".into(),
+                "black star key".into(),
+            ],
+        }
+    );
 }
 
 /// The typed party events of one session in the `party` fixture (silvermere, 2026-10-22).

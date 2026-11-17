@@ -15,6 +15,9 @@ pub struct Character {
     /// The last line counted in `parse.lines`.
     last_line: Option<u64>,
     pub items: Vec<Carried>,
+    /// The keys on its key ring, one entry a copy (`i`'s `You have the following keys:`): a key
+    /// taken goes there, not among the items.
+    pub keys: Vec<String>,
 }
 
 fn u32_of(n: Option<i64>) -> Option<u32> {
@@ -251,6 +254,7 @@ impl Character {
                 s.carrying = Some(items.iter().map(|i| i.name.clone()).collect());
                 self.items = items.clone();
             }
+            GameEvent::Keys { keys } => self.keys = keys.clone(),
             // An item taken: carried, until the next `i` says it exactly (C-102).
             GameEvent::ItemTaken { item } => {
                 match self

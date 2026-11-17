@@ -3701,6 +3701,7 @@ impl Session {
                 .and_then(|e| Some((u64::from(e.current?), u64::from(e.max?)))),
             coins: c.coins.as_ref().map_or(&[], |c| c.carried.as_slice()),
             items: &self.character.items,
+            keys: &self.character.keys,
             collect: &self.collect,
             regen,
             qs120: self.detect.rules().qs120(),
