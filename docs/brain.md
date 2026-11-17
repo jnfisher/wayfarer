@@ -1780,7 +1780,12 @@ own, one at a time:
   walks it to the leader's believed room, the one walk a follower makes, fighting what attacks
   it on the way (`walking`, with the rooms left), and re-targets when the leader moves; there
   it forms up again. A follower added with `party_join` walks in the same way; one saved with
-  the party but never in it does not. Meanwhile the leader **holds**: its loop's next leg (and
+  the party but never in it does not. After a restart of wayfarer every follower of a stored
+  party counts as one that was in it (C-111): a relog drops a character from its party in the
+  game ("Last time you were on, you disconnected while playing"), and its `follow` is refused
+  until the leader invites it ("You must be invited first!"), so the leader holds, invites it
+  while they share a room, and the follower walks back if the leader has gone on (Lexi went on
+  alone after the 2026-11-17 update and was nearly killed by bugbears). Meanwhile the leader **holds**: its loop's next leg (and
   a leg already walking) waits, narrated "Waiting for Lauren to catch up" (all who are out, by
   name); it still fights and flees, and moves the player types are not held. A Go to is held
   the same way and walks on when they are back. A leg held back, like one a sneak goes before,
