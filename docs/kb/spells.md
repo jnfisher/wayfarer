@@ -35,6 +35,18 @@
   the percent chance, rolled `genrdn(0,100) < value` (0 means always); a failed roll skips the
   light, heal and cast abilities that come after it. Used by hand (`use`), the first Auto Use
   slot ends the ability list. [C] `LJNUSE.C:355-364, :497-506`, `LJNCOMBT.C:2120-2130, :3030-3042`
+- **Buff items** [C data]: the stock items of unlimited charges whose `use` casts a lasting
+  spell are the shimmering greatsword (347: sword major bless, +10 AV on the whole party
+  (target 13) for 60 rounds, 8 mana, Paladin, level 10; its other One Time Cast, 170 silvery
+  mace, comes after its Auto Use slot and is the on-hit spell), the large silvery cross (831,
+  off hand: cross of vengeance on the wearer, +5 AV, +2 damage, room light 200, −15 stealth for
+  600 rounds, 15 mana, Paladin/Cleric/Priest/Missionary from level 25, its spell priest magery
+  level 2, which a Paladin lacks), the emerald-tipped crozier (203: divine intervention,
+  Priest) and the cosmic staff (1244: cosmos spell, +20 Str/Agi/Int/Wis for 10 rounds, 25
+  mana, level 30). Sword major bless has bless's Descriptive Message (8539): "You feel
+  lucky!" and bless's wear-off line. Live, `use shim` wielded answers "You raise the blade in
+  the air, summoning its power!" then "You feel lucky!", and takes 8 mana [C live,
+  2026-11-17].
 - **Heal** (18) and **Heal Mana** on an item: `You receive %d hit points.` / `You receive %d
   mana.` with the item's **listed** value, not the amount actually gained; HP is held to max
   HP, mana to 0..max mana (a negative value drains). Used on another player, that player gets

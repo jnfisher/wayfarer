@@ -51,7 +51,9 @@ pub use route::{
     pocket_exits, route, route_buying, route_or_search, route_within, route_within_or_search,
 };
 pub use rule_set::RuleSet;
-pub use spells::{BuffDef, RegenTier, SpellDef, SpellKind, Spells};
+pub use spells::{
+    BuffDef, BuffItem, ItemPlace, OFF_HAND, RegenTier, SpellDef, SpellKind, Spells, is_weapon_slot,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

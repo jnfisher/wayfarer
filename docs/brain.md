@@ -1665,6 +1665,24 @@ screen usually comes first). The data is `crates/wayfarer-world/data/quicksilver
   the status screen; casting it"). A spell with no such line, or a sysop's debug list in place
   of the lines, is left as believed. `st` ends no rest (`kb/recovery.md`). The panel shows which
   are on (`blessings`).
+- **Buff items** (C-109). An item of unlimited charges, weapon or worn, whose `use` casts a
+  lasting spell on its user or its party (its first One Time Cast, 43, before any Auto Use,
+  114: shimmering greatsword, large silvery cross, emerald-tipped crozier, cosmic staff) is
+  offered in the Blessings panel while the character carries it and may use it (its class
+  list, its Minimum Level, and the spell's magery at the class's magery level): "sword major
+  bless (shimmering greatsword)", keyed by the item's name. Ticked, Bless keeps it on between
+  fights only. The game uses a weapon only wielded and a worn item only worn (LJNCMDB.C:191-214),
+  so the bot looks at its inventory (`i`), wields or wears the item if it is not in place,
+  `use`s it, puts back what it replaced (the weapon that was in hand; what the wear took off,
+  "You have removed copper cross."), and looks again; narrated "Blessing: using the
+  shimmering greatsword". A two-handed buff weapon with an off-hand item worn, or an off-hand
+  buff item with a two-handed weapon in hand, is held five minutes, saying why. A refused
+  wield, wear or use (`use_forbidden`, no mana) is a failed cast, and the put-back still
+  goes. It is on from its use for the spell's rounds, off at its wear-off line or a death,
+  never from the line its target sees nor checked on the status screen: sword major bless
+  shows bless's lines, which chant and bless from the party bring too. A fight during the
+  swap goes first; the swap goes on after. The put-back is held in memory: a brain restart in
+  the middle of it leaves the item in hand.
 - **Not done.** Buffs on other members, light, area spells, cures, spells
   that need a target the bot does not pick (a Thief's backstab is not a spell), and the
   Witchunter's no-cast rule are later slices. The average damage is the KB's formula; whether

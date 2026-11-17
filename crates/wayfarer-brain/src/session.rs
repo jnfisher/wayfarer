@@ -984,6 +984,8 @@ impl Session {
                         .iter()
                         .filter_map(|i| atlas.item_numbers.get(&i.name.to_lowercase()).copied())
                         .collect();
+                    // A buff item taken or given away is a blessing offered or not (C-109).
+                    self.refresh_blessings();
                 }
                 // The keys carried: the Key exits they turn may be routed through.
                 if let GameEvent::Keys { keys } = &typed {
@@ -4107,15 +4109,23 @@ impl Session {
         let (Some(atlas), Some(class)) = (&self.atlas, &self.character.state().class) else {
             return Vec::new();
         };
-        self.spell_rows
+        let spells = atlas.spells_for(self.detect.rules());
+        let mut buffs: Vec<wayfarer_world::BuffDef> = self
+            .spell_rows
             .iter()
-            .filter_map(|(_, _, short, name)| {
-                atlas
-                    .spells_for(self.detect.rules())
-                    .buff(class, short, name)
-            })
+            .filter_map(|(_, _, short, name)| spells.buff(class, short, name))
             .cloned()
-            .collect()
+            .collect();
+        // The buff items it carries (C-109), once each.
+        let level = i64::from(self.character.state().level.unwrap_or(0));
+        for item in &self.character.items {
+            if let Some(def) = spells.item_buff(class, level, &item.name)
+                && !buffs.iter().any(|b| b.short == def.short)
+            {
+                buffs.push(def.clone());
+            }
+        }
+        buffs
     }
 
     /// The bot keeps on the ticked spells the character knows; on 1.20 also the best regen

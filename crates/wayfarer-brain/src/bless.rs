@@ -10,12 +10,17 @@
 //! round after still counts. Between fights, while one is believed on, the status screen is
 //! looked at every `spells.bless_check_seconds`: it lists the line of every spell on the
 //! character after its last row, and one believed on that it does not show is off.
+//!
+//! A buff item (C-109) is kept on the same way, between fights only, by its `use`: the bot
+//! looks at its inventory, wields or wears the item if it is not in place (the game uses a
+//! weapon only wielded and a worn item only worn), uses it, puts back what it took the place
+//! of, and looks again.
 
 use std::time::Duration;
 
 use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
-use wayfarer_world::BuffDef;
+use wayfarer_world::{BuffDef, BuffItem, ItemPlace};
 
 use crate::executor::{Action, Expect, Outcome};
 use crate::modes::{Mode, Step, View};
@@ -37,6 +42,41 @@ struct Kept {
     /// Not cast again before this (a failure, or held).
     retry_at: Option<Instant>,
     fails: u32,
+}
+
+/// Where a buff item's swap is (C-109).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Stage {
+    /// `i`: what is carried, and where.
+    Look,
+    /// The inventory is in: wield or wear the item, or use it if it is in place.
+    Decide,
+    /// The wield or wear went.
+    Equip,
+    /// The use went.
+    Use,
+    /// What the item took the place of goes back.
+    PutBack,
+    /// `i` again: the inventory as it is now.
+    LookAgain,
+}
+
+#[derive(Debug, Clone)]
+struct Swap {
+    /// The blessing's key: the item's name.
+    short: String,
+    item: BuffItem,
+    stage: Stage,
+    /// The command that puts back what the item took the place of.
+    put_back: Option<String>,
+    /// The item was wielded or worn for the use: the inventory is looked at again after.
+    moved: bool,
+    /// The game refused the step in flight (a wield, wear or use).
+    refused: bool,
+    /// What the wear in flight took off ("You have removed copper cross.").
+    took_off: Option<String>,
+    /// When the step in flight went.
+    sent_at: Instant,
 }
 
 #[derive(Debug, Default)]
@@ -62,6 +102,13 @@ pub(crate) struct Bless {
     /// end line came during it: the tiers share their lines, `docs/kb/quicksilver-1.20.md`):
     /// it is cast again, and not taken as on.
     cleared: bool,
+    /// A buff item being used (C-109).
+    swap: Option<Swap>,
+}
+
+/// In a fight, or not known to be out of one.
+fn fighting(v: &View) -> bool {
+    v.engaged || !v.presence.attackers.is_empty()
 }
 
 impl Bless {
@@ -108,8 +155,10 @@ impl Bless {
     fn due<'a>(&'a self, v: &View) -> Option<&'a Kept> {
         let (mana, max) = v.mana?;
         let line = max * i64::from(v.bless_mana_above()) / 100;
+        let fighting = fighting(v);
         self.kept.iter().find(|k| {
-            k.on_until.is_none_or(|t| v.now >= t)
+            (k.def.item.is_none() || !fighting)
+                && k.on_until.is_none_or(|t| v.now >= t)
                 && k.retry_at.is_none_or(|t| v.now >= t)
                 && mana >= k.def.mana
                 && mana - k.def.mana >= line
@@ -192,11 +241,178 @@ impl Bless {
     }
 }
 
+impl Bless {
+    /// Leaves the item `short` alone for [`HOLD`]: it cannot be put in place now.
+    fn hold(&mut self, short: &str, now: Instant) {
+        if let Some(k) = self.kept.iter_mut().find(|k| k.def.short == short) {
+            k.fails = 0;
+            k.on_until = None;
+            k.retry_at = Some(now + HOLD);
+        }
+    }
+
+    /// The next step of the swap (C-109); None when it is over.
+    fn swap_step(&mut self, v: &View) -> Option<Step> {
+        let swap = self.swap.as_mut()?;
+        swap.sent_at = v.now;
+        let name = swap.item.name.clone();
+        match swap.stage {
+            Stage::Look => Some(
+                Step::send(
+                    Action::new("i", Expect::Prompt),
+                    format!("Blessing: looking at the inventory to use the {name}"),
+                )
+                .doing(format!("using the {name}")),
+            ),
+            Stage::Decide => {
+                let carried = |n: &str| v.items.iter().find(|c| c.name.eq_ignore_ascii_case(n));
+                let Some(it) = carried(&name) else {
+                    let short = swap.short.clone();
+                    self.swap = None;
+                    self.failed(&short, v.now);
+                    return Some(Step::wait(format!(
+                        "Blessing: the {name} is not carried; trying again later"
+                    )));
+                };
+                let slot =
+                    |c: &wayfarer_parse::helpers::Carried| c.slot.clone().unwrap_or_default();
+                if swap.item.place.is(&slot(it)) {
+                    swap.stage = Stage::Use;
+                    return self.swap_step(v);
+                }
+                // What stands in the way: the two hands and the off hand exclude each other.
+                let blocker = match &swap.item.place {
+                    ItemPlace::Weapon { two_handed: true } => v
+                        .items
+                        .iter()
+                        .find(|c| slot(c) == wayfarer_world::OFF_HAND)
+                        .map(|c| format!("with the {} worn in the off hand", c.name)),
+                    ItemPlace::Worn { off_hand: true, .. } => v
+                        .items
+                        .iter()
+                        .find(|c| slot(c) == "Two handed")
+                        .map(|c| format!("with the two-handed {} in hand", c.name)),
+                    _ => None,
+                };
+                if let Some(why) = blocker {
+                    let short = swap.short.clone();
+                    self.swap = None;
+                    self.hold(&short, v.now);
+                    return Some(Step::wait(format!(
+                        "Blessing: can't use the {name} {why}; trying again in 5 minutes"
+                    )));
+                }
+                let (verb, put_back) = match &swap.item.place {
+                    ItemPlace::Weapon { .. } => (
+                        "wield",
+                        v.items
+                            .iter()
+                            .find(|c| wayfarer_world::is_weapon_slot(&slot(c)))
+                            .map(|c| format!("wield {}", c.name)),
+                    ),
+                    // What the wear takes off is put back (`took_off`).
+                    ItemPlace::Worn { .. } => ("wear", None),
+                };
+                swap.put_back = put_back;
+                swap.moved = true;
+                swap.refused = false;
+                swap.took_off = None;
+                swap.stage = Stage::Equip;
+                Some(
+                    Step::send(
+                        Action::new(format!("{verb} {name}"), Expect::Prompt),
+                        format!("Blessing: {verb}ing the {name} to use it"),
+                    )
+                    .doing(format!("using the {name}")),
+                )
+            }
+            Stage::Use => {
+                swap.refused = false;
+                self.level = v.level;
+                Some(
+                    Step::send(
+                        Action::new(format!("use {name}"), Expect::Prompt),
+                        format!("Blessing: using the {name}"),
+                    )
+                    .doing(format!("using the {name}")),
+                )
+            }
+            Stage::PutBack => {
+                let Some(cmd) = swap.put_back.clone() else {
+                    swap.stage = Stage::LookAgain;
+                    return self.swap_step(v);
+                };
+                swap.refused = false;
+                Some(
+                    Step::send(
+                        Action::new(cmd.clone(), Expect::Prompt),
+                        format!("Blessing: putting back what the {name} replaced ({cmd})"),
+                    )
+                    .doing(format!("using the {name}")),
+                )
+            }
+            Stage::LookAgain => Some(Step::send(
+                Action::new("i", Expect::Prompt),
+                format!("Blessing: used the {name}; looking at the inventory"),
+            )),
+            Stage::Equip => {
+                // The wield or wear is in flight: nothing new until it answers.
+                Some(Step::wait("Blessing: waiting for the item"))
+            }
+        }
+    }
+
+    /// The step of the swap in flight answered (C-109).
+    fn swap_outcome(&mut self, outcome: &Outcome) {
+        let Some(swap) = self.swap.as_mut() else {
+            return;
+        };
+        let refused = swap.refused || matches!(outcome, Outcome::TimedOut);
+        let (short, sent) = (swap.short.clone(), swap.sent_at);
+        match swap.stage {
+            Stage::Look => swap.stage = Stage::Decide,
+            Stage::Decide => {}
+            Stage::Equip => {
+                if let Some(off) = swap.took_off.take() {
+                    swap.put_back = Some(format!("wear {off}"));
+                }
+                if refused {
+                    // Nothing used: what was taken off, if anything, goes back.
+                    swap.stage = Stage::PutBack;
+                    self.failed(&short, sent);
+                } else {
+                    swap.stage = Stage::Use;
+                }
+            }
+            Stage::Use => {
+                if swap.moved {
+                    swap.stage = Stage::PutBack;
+                } else {
+                    self.swap = None;
+                }
+                if refused {
+                    self.failed(&short, sent);
+                } else {
+                    self.turn_on(&short, sent);
+                }
+            }
+            Stage::PutBack => swap.stage = Stage::LookAgain,
+            Stage::LookAgain => self.swap = None,
+        }
+    }
+}
+
 impl Mode for Bless {
     fn wants(&self, v: &View) -> Option<String> {
         // In a fight only with `spells.bless_in_combat` (C-056, after a heal: `Fight::may_bless`);
         // a rest, the party's too, gives way to it (`Recover::yields_to_bless`).
-        let fighting = v.engaged || !v.presence.attackers.is_empty();
+        let fighting = fighting(v);
+        // A buff item's swap goes on between fights (C-109).
+        if let Some(swap) = &self.swap
+            && !fighting
+        {
+            return Some(format!("using the {}", swap.item.name));
+        }
         if fighting && !v.settings.bool("spells.bless_in_combat") {
             return None;
         }
@@ -209,6 +425,30 @@ impl Mode for Bless {
     }
 
     fn step(&mut self, v: &View) -> Step {
+        if !fighting(v)
+            && let Some(step) = self.swap_step(v)
+        {
+            return step;
+        }
+        if let Some((short, item)) = self
+            .due(v)
+            .and_then(|k| Some((k.def.short.clone(), k.def.item.clone()?)))
+        {
+            self.unseen.clear();
+            self.swap = Some(Swap {
+                short,
+                item,
+                stage: Stage::Look,
+                put_back: None,
+                moved: false,
+                refused: false,
+                took_off: None,
+                sent_at: v.now,
+            });
+            if let Some(step) = self.swap_step(v) {
+                return step;
+            }
+        }
         let Some(k) = self.due(v) else {
             if self.check_at(v.now).is_some_and(|t| v.now >= t) {
                 self.checked_at = Some(v.now);
@@ -235,6 +475,27 @@ impl Mode for Bless {
     }
 
     fn on_event(&mut self, ev: &GameEvent, now: Instant) {
+        if let Some(swap) = &mut self.swap {
+            match ev {
+                GameEvent::WearFailed
+                | GameEvent::NotWielded
+                | GameEvent::NoMana
+                | GameEvent::LearnRefused => swap.refused = true,
+                GameEvent::Other(e)
+                    if matches!(e.name.as_str(), "use_forbidden" | "offhand_2h") =>
+                {
+                    swap.refused = true;
+                }
+                // What a wear took off, to put back.
+                GameEvent::Other(e) if e.name == "removed" => {
+                    if let Some(item) = e.text("item") {
+                        swap.took_off = Some(item.to_owned());
+                    }
+                }
+                GameEvent::YouKilled => self.swap = None,
+                _ => {}
+            }
+        }
         match ev {
             GameEvent::CastFailed { spell } if self.casting.is_none() => {
                 // The cast taken as on, failed after all: by name, so another spell's failure
@@ -337,6 +598,10 @@ impl Mode for Bless {
     }
 
     fn outcome(&mut self, _action: &Action, outcome: Outcome) {
+        if self.swap.is_some() && self.casting.is_none() {
+            self.swap_outcome(&outcome);
+            return;
+        }
         let Some((short, at, failed)) = self.casting.take() else {
             return;
         };
