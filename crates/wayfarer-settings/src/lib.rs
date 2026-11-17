@@ -256,7 +256,7 @@ pub const CATALOGUE: &[Setting] = &[
     Setting {
         key: "bot.start_on_logon",
         label: "Start the bot on entering the realm",
-        help: "When the character enters the realm (logged on, or back after a dropped connection), its bot starts where it stands: it fights back, heals, rests and flees at once instead of standing there. A brain restart puts each bot back as it was, so one you stopped stays stopped.",
+        help: "When the character enters the realm (logged on, or back after a dropped connection), its bot starts where it stands: it fights back, heals, rests and flees at once instead of standing there. A bot that was on when the character left the realm or was logged off (a server restart, an update) goes back on as it was, its loop at the stop it had. A brain restart puts each bot back as it was, so one you stopped stays stopped.",
         kind: Kind::Bool,
         default: Value::Bool(true),
         unit: "",

@@ -1395,6 +1395,7 @@ impl Bot {
             monster_rules: Vec::new(),
             attack_spell: None,
             area_spell: None,
+            on_entry: None,
             boss_mode: self.boss,
             collect_items: Vec::new(),
         }

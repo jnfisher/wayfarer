@@ -289,6 +289,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-104](C-104-one-stop-loop-stash-spin.md) | A one-stop loop held in its stop does not arrive again: no stash round, no clear, many times a second | B | S | | |
 | [C-105](C-105-area-spells.md) | Area spells: open on a room of enough monsters with fireball or swarm, with their own mana line, cast limits and choice | B | M | C-099, C-100 | |
 | [C-106](C-106-class-badges.md) | A class badge on each tile: whose tile is whose at a glance | B | S | | |
+| [C-107](C-107-back-on-at-entry.md) | Back in the realm, the bot goes back on as it was: a server restart or an update no longer leaves it standing | A | S | | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or

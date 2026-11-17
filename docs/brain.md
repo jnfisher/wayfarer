@@ -542,6 +542,14 @@ doesn't make sense"):
   the realm: starting the bot", so it fights back, heals, rests and flees at once. A bot a
   brain before this one left is resumed instead, as it was: one stopped by hand stays stopped
   across a brain restart.
+- **Back in the realm, the bot goes back on as it was** (C-107): a bot running or paused when
+  the session left the realm (a dropped connection, the server restarting) or the gateway
+  logged it off (an update) is kept, its home, loop and stop with it, in the store too
+  (`on_entry`). At the next entry it is put back in that state ("Entered the realm: putting
+  the bot back as it was", then "Resumed: running loop Orc Barracks at stop 53/104 (back in
+  the realm)"), the re-sync first, in place of a fresh start; with `bot.start_on_logon` off
+  it stays off. One stopped before it left (by hand, a death, a hang-up) stays stopped, and
+  ■ while out of the realm forgets it.
 - **A Go to or a loop** (`walk_to`, `walk_loop`, `run_loop`) gives the bot that route and turns
   it on, from any state.
 - **A Go to arriving** ends the journey: the bot stays on and plays there, that room its home.
@@ -552,7 +560,8 @@ doesn't make sense"):
   room shows, not when the move is typed: a typed move waits behind the bot's action in flight,
   and until it goes the character is still in the old room. A refused move leaves home where it
   was; a follower taken along by its leader is not moved by hand.
-- **A death, a hang-up, the realm left, logging off** turn it off and drop the route, as before.
+- **A death, a hang-up, the realm left, logging off** turn it off and drop the route, as
+  before; the realm left and logging off keep it for the next entry (above).
 - A journey is not stored: a brain restarted on one puts the bot back on (or paused) with no
   route.
 
@@ -1090,7 +1099,7 @@ nothing after a restart).
 
 | Table | What |
 |---|---|
-| `bot_state` | Per session: the bot's state (`stopped`, `running`, `paused`), its home room, the loop it runs (`loop_id`, the stops as they were when it started, the stop it is at, the stops to skip; Task mode fills these), why it is paused, when it was saved |
+| `bot_state` | Per session: the bot's state (`stopped`, `running`, `paused`), its home room, the loop it runs (`loop_id`, the stops as they were when it started, the stop it is at, the stops to skip; Task mode fills these), why it is paused, when it was saved, and the state it goes back to at the next entry into the realm (`on_entry`, schema version 16, C-107) |
 | `monster_rules` | Per session: the monster rules the session learned and the player set, each with its pattern, rule, source and when it was made (schema version 2) |
 | `boss_kills` | Per session and boss: when the character last killed it (schema version 3), for "should be up" |
 | `custom_loops` | The loops the player made: id, name, the stops in order, the loop it was made from (schema version 4) |
@@ -1112,7 +1121,8 @@ each session as it first sees it and, once that session's catch-up is done:
   wall time includes the restart).
 - **stopped**: nothing; the bot stays stopped.
 - A session **not in the realm**: not resumed ("Not resuming the bot: the character is not in
-  the realm"); the bot is saved stopped and its run ends.
+  the realm; it goes back on at the next entry"); the bot is saved stopped and its run ends,
+  and it goes back on at the next entry as one the realm took off does (C-107).
 
 A generated loop's id resolves against the character's level, so after a level-up it may make
 another loop or none. The stored stops win: the narration then names the loop by its id, with a
