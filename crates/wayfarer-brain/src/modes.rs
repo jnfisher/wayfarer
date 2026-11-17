@@ -1595,7 +1595,7 @@ impl Bot {
             .wake(now)
             .into_iter()
             .chain(self.flee.wake())
-            .chain(self.fight.wake())
+            .chain(self.fight.wake(now))
             .chain(self.bless.wake(now))
             .chain(self.sneak.wake(now))
             .chain(self.task.as_ref().and_then(|t| t.wake(now)))

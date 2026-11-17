@@ -475,6 +475,38 @@ async fn a_blind_character_skips_nothing_and_looks_until_it_sees() {
     assert_eq!(played, ["st", "look", "a rat", "look", "look", "a rat"]);
 }
 
+/// C-108: in the dark with something attacking (a nanati shadow's darkbolt: "The room is pitch
+/// black - you can't see anything", only for her), it looks every few seconds, not every ten,
+/// so it is back in the fight soon after the darkness lifts.
+#[tokio::test(start_paused = true)]
+async fn blind_and_attacked_it_looks_again_within_a_few_seconds() {
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    let dark = "The room is pitch black - you can't see anything";
+    g.expect("a rat", line("You say \"a rat\"", 35));
+    g.expect("look", line(dark, 35));
+    g.expect("look", line(dark, 35));
+    g.narrated("Fight: blind, waiting to see again").await;
+    g.output(&line("The large giant rat lunges at you!", 33))
+        .await;
+    let looks = |g: &Game| {
+        g.seen
+            .iter()
+            .filter(|m| matches!(m, ToGateway::InputLine { text, .. } if text == "look"))
+            .count()
+    };
+    let before = looks(&g);
+    g.idle(Duration::from_secs(4)).await;
+    assert_eq!(
+        looks(&g),
+        before + 1,
+        "looked again within 4 s while attacked: {:?}",
+        game::arena::notices(&g.seen)
+    );
+    g.freeze();
+    g.close(run).await;
+}
+
 #[tokio::test(start_paused = true)]
 async fn a_refusal_that_turns_out_to_be_blindness_skips_nothing() {
     // C-094, Lexi on 2026-11-11: "You do not see shaman here!", and only her `look` after says
