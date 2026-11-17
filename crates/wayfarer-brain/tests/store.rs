@@ -303,14 +303,15 @@ async fn outside_the_realm_the_bot_is_not_resumed_and_its_run_ends() {
         Game::start_brain(SessionState::Menu, "Main menu: ".into(), brain_on(&path)).await;
     assert_said(
         &g,
-        "Not resuming the bot: the character is not in the realm",
+        "Not resuming the bot: the character is not in the realm; it goes back on at the next \
+         entry",
     );
     g.close(run).await;
     let store = store_at(&path);
-    assert_eq!(
-        store.bot(ID).unwrap().unwrap().state,
-        wayfarer_store::BotState::Stopped
-    );
+    let saved = store.bot(ID).unwrap().unwrap();
+    assert_eq!(saved.state, wayfarer_store::BotState::Stopped);
+    // Back on at the next entry (C-107).
+    assert_eq!(saved.on_entry, Some(wayfarer_store::BotState::Running));
     assert_eq!(store.open_run(ID).unwrap(), None);
 }
 
@@ -671,4 +672,103 @@ async fn a_flee_before_a_log_off_is_counted_before_the_run_ends() {
     );
     let rat = Some("large giant rat".to_owned());
     assert_eq!(flees(&path), [(57, rat, Some(ARENA))]);
+}
+
+/// A loop at its second stop, as the store keeps it.
+fn loop_at_stop_2() -> BotRecord {
+    BotRecord {
+        home: Some(ARENA),
+        loop_id: Some("1:2140:8:doors:0".into()),
+        loop_stops: vec![ARENA, BEYOND_ARENA],
+        stop_index: 1,
+        ..BotRecord::new(wayfarer_store::BotState::Running)
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_dropped_connection_puts_the_loop_back_at_its_stop_on_entry() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    store_at(&path)
+        .save_bot(ID, &loop_at_stop_2(), T0 as i64)
+        .unwrap();
+    let (mut g, run) =
+        Game::start_brain(SessionState::Realm, arena(&[], 35), brain_on(&path)).await;
+    g.freeze();
+    // The server restarts: the connection drops, and the gateway connects again.
+    g.set_state(SessionState::Menu).await;
+    g.narrated("Stopped: the session left the realm").await;
+    let saved = store_at(&path).bot(ID).unwrap().unwrap();
+    assert_eq!(saved.state, wayfarer_store::BotState::Stopped);
+    assert_eq!(saved.on_entry, Some(wayfarer_store::BotState::Running));
+    assert_eq!(saved.loop_id.as_deref(), Some("1:2140:8:doors:0"));
+    g.set_state(SessionState::Realm).await;
+    g.narrated("Entered the realm: putting the bot back as it was")
+        .await;
+    g.narrated("Resumed: running loop 1:2140:8:doors:0 at stop 2/2 (back in the realm)")
+        .await;
+    g.idle(Duration::from_secs(1)).await;
+    let bot = as_ui_sees(&g.seen).bot.unwrap();
+    assert_eq!(bot.state, BotState::Running);
+    assert_eq!(bot.task.map(|t| t.stop), Some(1));
+    g.close(run).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_loop_logged_off_goes_back_on_in_the_next_brain_at_the_next_entry() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let mut paused = loop_at_stop_2();
+    paused.state = wayfarer_store::BotState::Paused;
+    paused.paused_reason = Some("asked to pause".into());
+    store_at(&path).save_bot(ID, &paused, T0 as i64).unwrap();
+    let (mut g, run) =
+        Game::start_brain(SessionState::Realm, arena(&[], 35), brain_on(&path)).await;
+    assert_said(
+        &g,
+        "Resumed paused (asked to pause): running loop 1:2140:8:doors:0 at stop 2/2 (brain \
+         restarted)",
+    );
+    // An update: the gateway logs the character off, and a new wayfarer starts.
+    g.send(ToClient::LoggingOff { session: ID.into() }).await;
+    g.narrated("Stopped: the gateway is logging off").await;
+    g.close(run).await;
+    let saved = store_at(&path).bot(ID).unwrap().unwrap();
+    assert_eq!(saved.state, wayfarer_store::BotState::Stopped);
+    assert_eq!(saved.on_entry, Some(wayfarer_store::BotState::Paused));
+
+    let (mut g, run) =
+        Game::start_brain(SessionState::Menu, "Main menu: ".into(), brain_on(&path)).await;
+    g.set_state(SessionState::Realm).await;
+    g.narrated(
+        "Resumed paused (asked to pause): running loop 1:2140:8:doors:0 at stop 2/2 (back in \
+         the realm)",
+    )
+    .await;
+    g.idle(Duration::from_secs(1)).await;
+    let bot = as_ui_sees(&g.seen).bot.unwrap();
+    assert_eq!(bot.state, BotState::Paused);
+    assert_eq!(bot.task.map(|t| t.stop), Some(1));
+    g.close(run).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_bot_stopped_by_hand_does_not_come_back_on_entry() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    store_at(&path)
+        .save_bot(ID, &loop_at_stop_2(), T0 as i64)
+        .unwrap();
+    let (mut g, run) =
+        Game::start_brain(SessionState::Realm, arena(&[], 35), brain_on(&path)).await;
+    g.freeze();
+    g.set_state(SessionState::Menu).await;
+    g.narrated("Stopped: the session left the realm").await;
+    // Stopped by hand while out: it stays off.
+    g.bot(BotAction::Stop).await;
+    g.idle(Duration::from_secs(1)).await;
+    g.close(run).await;
+    let saved = store_at(&path).bot(ID).unwrap().unwrap();
+    assert_eq!(saved.on_entry, None);
+    assert_eq!(saved.loop_id, None);
 }

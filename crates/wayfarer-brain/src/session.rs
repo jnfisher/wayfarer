@@ -456,6 +456,9 @@ pub(crate) struct Session {
     /// The bot as a brain before this one left it, running or paused: put back once the
     /// catch-up is done.
     restore: Option<BotRecord>,
+    /// The bot the session leaving the realm or logging off stopped while it was on: put
+    /// back in that state, with its home and loop, at the next entry (C-107).
+    come_back: Option<BotRecord>,
     /// The monster rules: the defaults, the session's and the player's (kept with the bot).
     rules: RuleBook,
     /// Where the monsters to avoid were last seen: the router keeps out of those rooms.
@@ -510,6 +513,10 @@ impl Session {
             .stored()
             .filter(|b| b.state != BotState::Stopped)
             .cloned();
+        let come_back = ledger
+            .stored()
+            .filter(|b| b.state == BotState::Stopped && b.on_entry.is_some())
+            .cloned();
         let mut rules = RuleBook::new(ledger.stored().map_or(&[], |b| &b.monster_rules));
         let attack_choice = ledger.stored().and_then(|b| b.attack_spell.clone());
         let area_choice = ledger.stored().and_then(|b| b.area_spell.clone());
@@ -534,6 +541,7 @@ impl Session {
             ledger,
             clock,
             restore,
+            come_back,
             atlas,
             position: Position::default(),
             executor: Executor::default(),
@@ -679,6 +687,7 @@ impl Session {
             }
             // Nothing in flight will be answered now.
             self.cancel(out);
+            self.keep_for_entry();
             let says = self.bot.stop("the session left the realm", true);
             if !says.is_empty() {
                 self.say(says, out);
@@ -709,6 +718,7 @@ impl Session {
             && state == SessionState::Realm
             && let Some(town) = self.recovering.take()
         {
+            self.come_back = None;
             self.goto = Some(Goto {
                 town,
                 sent: false,
@@ -722,7 +732,30 @@ impl Session {
             return;
         }
         // Into the realm: the bot starts where the character stands, so it defends itself at
-        // once (C-054). A bot a brain before this one left is resumed instead (`resume`).
+        // once (C-054). A bot a brain before this one left is resumed instead (`resume`), and
+        // one the realm took off goes back on as it was, its loop at the stop it had (C-107).
+        let back = if was != SessionState::Realm && state == SessionState::Realm {
+            self.come_back.take()
+        } else {
+            None
+        };
+        if let Some(back) = back
+            && self.settings.bool("bot.start_on_logon")
+            && self.atlas.is_some()
+            && self.restore.is_none()
+            && self.errand.is_none()
+            && !self.bot.running()
+        {
+            out.push(self.notice("Entered the realm: putting the bot back as it was"));
+            self.restore = Some(BotRecord {
+                state: back.on_entry.unwrap_or(BotState::Running),
+                on_entry: None,
+                ..back
+            });
+            self.put_back("back in the realm", out);
+            self.publish_patch(out);
+            return;
+        }
         if was != SessionState::Realm
             && state == SessionState::Realm
             && self.settings.bool("bot.start_on_logon")
@@ -1314,16 +1347,34 @@ impl Session {
     /// done: back in that state with its home and loop, narrated; the re-sync the attach
     /// started goes first. Outside the realm it stays stopped.
     pub fn resume(&mut self, out: &mut Vec<ToGateway>) {
+        if self.restore.is_none() || self.atlas.is_none() {
+            return;
+        }
+        if self.state != SessionState::Realm {
+            // Back on at the next entry, as one the realm took off is (C-107).
+            if let Some(rec) = self.restore.take() {
+                self.come_back = Some(BotRecord {
+                    on_entry: Some(rec.state),
+                    ..rec
+                });
+            }
+            out.push(self.notice(
+                "Not resuming the bot: the character is not in the realm; it goes back on at \
+                 the next entry",
+            ));
+            return;
+        }
+        self.put_back("brain restarted", out);
+    }
+
+    /// Put the bot back as `restore` has it, narrating `why` ("brain restarted").
+    fn put_back(&mut self, why: &str, out: &mut Vec<ToGateway>) {
         let Some(rec) = self.restore.take() else {
             return;
         };
         let Some(atlas) = self.atlas.clone() else {
             return;
         };
-        if self.state != SessionState::Realm {
-            out.push(self.notice("Not resuming the bot: the character is not in the realm"));
-            return;
-        }
         let name = |k: Option<Key>| {
             k.and_then(|k| atlas.graph.room(k))
                 .map_or_else(|| "an unknown room".to_owned(), |r| r.name.clone())
@@ -1351,13 +1402,13 @@ impl Session {
             None => format!("fighting in {}", name(rec.home)),
         };
         let narration = match &rec.paused_reason {
-            Some(why) if rec.state == BotState::Paused => {
-                format!("Resumed paused ({why}): {doing} (brain restarted)")
+            Some(reason) if rec.state == BotState::Paused => {
+                format!("Resumed paused ({reason}): {doing} ({why})")
             }
             _ if rec.state == BotState::Paused => {
-                format!("Resumed paused: {doing} (brain restarted)")
+                format!("Resumed paused: {doing} ({why})")
             }
-            _ => format!("Resumed: {doing} (brain restarted)"),
+            _ => format!("Resumed: {doing} ({why})"),
         };
         let says = self.bot.restore(&rec, task, narration);
         self.say(says, out);
@@ -1417,6 +1468,14 @@ impl Session {
             return;
         }
         let mut record = self.bot.record();
+        // Stopped by the realm: kept to go back on at the next entry (C-107).
+        if let Some(back) = self.come_back.as_ref().filter(|_| self.bot.stopped()) {
+            record = BotRecord {
+                state: BotState::Stopped,
+                boss_mode: record.boss_mode,
+                ..back.clone()
+            };
+        }
         record.monster_rules = self.rules.stored();
         record.attack_spell = self.attack_choice.clone();
         record.area_spell = self.area_choice.clone();
@@ -1847,6 +1906,7 @@ impl Session {
     pub fn logging_off(&mut self, now: Instant, out: &mut Vec<ToGateway>) -> bool {
         // A typed line still waiting would go mid-flee or into the log-off menus.
         self.drop_typed(out);
+        self.keep_for_entry();
         if self.clean_log_off() && self.attacked(now) {
             if self.walker.walking() {
                 self.stop_walk("the gateway is logging off", out);
@@ -1873,6 +1933,19 @@ impl Session {
         }
         self.leave_now(out);
         true
+    }
+
+    /// The bot as it is, running or paused, to put back at the next entry into the realm
+    /// (C-107): the session is leaving the realm or logging off. One already stopped (by
+    /// hand, a death, a hang-up) stays stopped.
+    fn keep_for_entry(&mut self) {
+        if self.come_back.is_none() && !self.bot.stopped() && !self.bot.leaving() {
+            let rec = self.bot.record();
+            self.come_back = Some(BotRecord {
+                on_entry: Some(rec.state),
+                ..rec
+            });
+        }
     }
 
     /// Whether the gateway should exit with the logoff script rather than hang up
@@ -3187,6 +3260,8 @@ impl Session {
             }
             // ■: the loop or journey is dropped; a running bot plays on where it is.
             BotAction::Stop => {
+                // Not back on at the next entry either.
+                self.come_back = None;
                 if self.bot_walk && self.walker.walking() {
                     self.stop_walk("asked to stop", out);
                 }

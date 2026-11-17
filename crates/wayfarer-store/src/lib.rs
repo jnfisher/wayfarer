@@ -144,6 +144,8 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE bot_state ADD COLUMN collect_items TEXT NOT NULL DEFAULT '';",
     // 15: the area spell the player chose for the bot (C-105), by short name; null is auto.
     "ALTER TABLE bot_state ADD COLUMN area_spell TEXT;",
+    // 16: a bot the realm took off, to put back in that state at the next entry (C-107).
+    "ALTER TABLE bot_state ADD COLUMN on_entry TEXT;",
 ];
 
 /// The items a bot collects as stored: a `count name` pair a line (C-102).
@@ -318,6 +320,9 @@ pub struct BotRecord {
     pub collect_items: Vec<(String, u32)>,
     /// The area spell the player chose (C-105), by short name; None is auto.
     pub area_spell: Option<String>,
+    /// A bot stopped by the session leaving the realm or logging off while it was on: the
+    /// state it goes back to, with its home and loop above, at the next entry (C-107).
+    pub on_entry: Option<BotState>,
 }
 
 impl BotRecord {
@@ -335,6 +340,7 @@ impl BotRecord {
             boss_mode: false,
             collect_items: Vec::new(),
             area_spell: None,
+            on_entry: None,
         }
     }
 }
@@ -612,7 +618,8 @@ impl Store {
             .conn
             .query_row(
                 "SELECT state, home_map, home_room, loop_id, loop_stops, stop_index, skip,
-                        paused_reason, attack_spell, boss_mode, collect_items, area_spell
+                        paused_reason, attack_spell, boss_mode, collect_items, area_spell,
+                        on_entry
                  FROM bot_state WHERE session = ?1",
                 [session],
                 |r| {
@@ -629,6 +636,7 @@ impl Store {
                         r.get::<_, bool>(9)?,
                         r.get::<_, String>(10)?,
                         r.get::<_, Option<String>>(11)?,
+                        r.get::<_, Option<String>>(12)?,
                     ))
                 },
             )
@@ -646,6 +654,7 @@ impl Store {
             boss_mode,
             collect_items,
             area_spell,
+            on_entry,
         )) = row
         else {
             return Ok(None);
@@ -670,6 +679,7 @@ impl Store {
             boss_mode,
             collect_items: collect_from_text(&collect_items),
             area_spell,
+            on_entry: on_entry.as_deref().map(BotState::parse).transpose()?,
         }))
     }
 
@@ -974,8 +984,8 @@ impl Store {
             "INSERT OR REPLACE INTO bot_state
                  (session, state, home_map, home_room, loop_id, loop_stops, stop_index, skip,
                   paused_reason, attack_spell, boss_mode, collect_items, area_spell,
-                  updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                  on_entry, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 session,
                 bot.state.as_str(),
@@ -990,6 +1000,7 @@ impl Store {
                 bot.boss_mode,
                 collect_to_text(&bot.collect_items),
                 bot.area_spell,
+                bot.on_entry.map(BotState::as_str),
                 at,
             ],
         )?;
