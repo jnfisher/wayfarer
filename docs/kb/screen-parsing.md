@@ -79,6 +79,11 @@ You gain 13 experience.
   source held ready. Other versions may print
   "Two-handed", so normalise. **Parse by splitting the list on commas**: a regex over the whole
   line can swallow "You are carrying" into the first item's name (pitfall 30). [C]
+- Keys are not among the carried items: a key taken ("You took black star key.") goes on the
+  key ring, and `i` lists the ring on its own line, `You have the following keys:  bone key,
+  3 black star keys.` Copies of a key are counted together, the count first and an "s" added
+  to the name whatever it ends in; the first name has two blanks before it. [C]
+  `LJNDISP.C` `display_users_keys`; live on Rocco 2026-11-17
 
 ## Shops
 - `list`: a table of `Item  Quantity  Price` (Price can be `Free`). [C]

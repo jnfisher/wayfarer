@@ -253,3 +253,41 @@ async fn a_name_that_is_no_item_is_refused_and_the_rest_kept() {
     // The second list had nothing valid in it: it replaced the first with none.
     assert!(said.contains(&"Collect: no items".to_owned()), "{said:?}");
 }
+
+/// A listed key already on the key ring counts: `i` lists keys apart from the items, and
+/// copies together as "2 black star keys" (Rocco, 2026-11-17: collecting one black star key,
+/// he took every one he saw).
+#[tokio::test(start_paused = true)]
+async fn a_listed_key_on_the_key_ring_counts() {
+    let (mut g, run) = in_arena_with(&["large giant rat"], "").await;
+    g.collect(&[("black star key", 2)]).await;
+    g.narrated("Collect: black star key (up to 2)").await;
+    let inventory = format!(
+        "You are carrying 5 copper farthings\r\nYou have the following keys:  bone key, 2 black \
+         star keys.\r\nWealth: 5 copper farthings\r\nEncumbrance: 100/1000 - None [10%]\r\n{}",
+        prompt(35)
+    );
+    g.expect("st", status(35));
+    g.expect("i", inventory);
+    g.expect("look", arena(&["large giant rat"], 35));
+    g.bot(BotAction::Start).await;
+    g.narrated("Starting in Newhaven, Arena: re-syncing").await;
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    g.expect(
+        "look",
+        floor_room(&[], 35, "5 platinum pieces, black star key"),
+    );
+    g.output(&kill(35)).await;
+    g.expect(
+        "get 5 platinum",
+        format!("You picked up 5 platinum pieces\r\n{}", prompt(35)),
+    );
+    g.narrated("Loot: picking up 5 platinum").await;
+    g.narrated("Waiting here").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(
+        played,
+        ["st", "i", "look", "a rat", "look", "get 5 platinum"]
+    );
+}

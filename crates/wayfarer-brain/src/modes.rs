@@ -318,6 +318,8 @@ pub(crate) struct View<'a> {
     pub coins: &'a [wayfarer_proto::CoinCount],
     /// What the last `i` showed it carrying and wearing, with what it took since.
     pub items: &'a [wayfarer_parse::helpers::Carried],
+    /// The keys on its key ring, one entry a copy.
+    pub keys: &'a [String],
     /// The items the player listed for it to collect (C-102): the game's name and how many
     /// to keep carried.
     pub collect: &'a [(String, u32)],
@@ -357,11 +359,19 @@ impl View<'_> {
     /// How many of the item `name` the character carries, not counting the ones it wears or
     /// holds (C-102).
     pub fn items_carried(&self, name: &str) -> u32 {
-        self.items
+        let items: u32 = self
+            .items
             .iter()
             .filter(|c| c.slot.is_none() && c.name.eq_ignore_ascii_case(name))
             .map(|c| c.count)
-            .sum()
+            .sum();
+        // A key is on the key ring, not among the items `i` lists.
+        let keys = self
+            .keys
+            .iter()
+            .filter(|k| k.eq_ignore_ascii_case(name))
+            .count();
+        items + u32::try_from(keys).unwrap_or(u32::MAX)
     }
 
     /// The command word that starts a fight (`combat.attack_command`).

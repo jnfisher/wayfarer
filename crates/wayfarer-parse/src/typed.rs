@@ -394,8 +394,8 @@ pub enum GameEvent {
     TrainRefused {
         why: &'static str,
     },
-    /// `inv_keys` / `inv_no_keys`: the keys carried, by name (`You have the following keys:
-    /// brass key, bone key.`).
+    /// `inv_keys` / `inv_no_keys`: the keys carried, by name, one entry a copy (`You have the
+    /// following keys: brass key, 3 bone keys.` is a brass key and three bone keys).
     Keys {
         keys: Vec<String>,
     },
@@ -607,6 +607,24 @@ pub enum GameEvent {
 }
 
 /// A number from a field: an integer, or text such as `"48"` or `"1,304"`.
+/// One entry of the key list as the keys it stands for: the game counts copies of a key
+/// together and writes " 3 Iron Keys", the count first and an "s" added to the name whatever it
+/// ends in (LJNDISP.C `display_users_keys`).
+fn key_copies(entry: &str) -> Vec<String> {
+    let entry = entry.trim();
+    if entry.is_empty() {
+        return Vec::new();
+    }
+    if let Some((n, name)) = entry.split_once(' ')
+        && let Ok(n) = n.parse::<usize>()
+        && n >= 2
+    {
+        let name = name.strip_suffix('s').unwrap_or(name);
+        return vec![name.to_owned(); n];
+    }
+    vec![entry.to_owned()]
+}
+
 fn int(ev: &Event, name: &str) -> Option<i64> {
     match ev.field(name)? {
         Value::Int(n) => Some(*n),
@@ -1046,8 +1064,7 @@ impl GameEvent {
                     .text("keys")
                     .unwrap_or_default()
                     .split(", ")
-                    .map(|k| k.trim().to_owned())
-                    .filter(|k| !k.is_empty())
+                    .flat_map(key_copies)
                     .collect(),
             },
             "inv_no_keys" => G::Keys { keys: Vec::new() },
