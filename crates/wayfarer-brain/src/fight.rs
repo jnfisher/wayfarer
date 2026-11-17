@@ -41,6 +41,8 @@ pub const HEAL_GAP: Duration = Duration::from_secs(5);
 /// After the game refuses an attack spell (no mana, a spell already cast this round) the
 /// fights are fought with weapons for this long.
 pub const SPELL_HOLD: Duration = Duration::from_secs(12);
+/// Afraid ("You are too afraid!"): no attack or cast is tried again for a round (C-108).
+pub const AFRAID_WAIT: Duration = Duration::from_secs(5);
 
 /// The character's swings at the target in the round going on.
 #[derive(Debug, Clone, Copy)]
@@ -123,6 +125,8 @@ pub(crate) struct Fight {
     area_casts: u32,
     /// This fight has had its area casts: one monster at a time until it ends.
     area_spent: bool,
+    /// Afraid ("You are too afraid!"): no attack or cast before then (C-108).
+    afraid_until: Option<Instant>,
 }
 
 /// A name as the game shows it (`lauren` is Lauren).
@@ -169,6 +173,10 @@ impl Mode for Fight {
     }
 
     fn step(&mut self, v: &View) -> Step {
+        // Afraid: the game refuses every attack and cast until the fear wears off.
+        if self.afraid_until.is_some_and(|t| v.now < t) {
+            return Step::wait("Fight: too afraid to attack, waiting for the fear to pass");
+        }
         if v.engaged {
             if let Some(step) = self.heal(v) {
                 return step;
@@ -271,6 +279,9 @@ impl Mode for Fight {
 
     fn on_event(&mut self, ev: &GameEvent, now: Instant) {
         match ev {
+            GameEvent::Other(e) if e.name == "too_afraid" => {
+                self.afraid_until = Some(now + AFRAID_WAIT);
+            }
             // The end of the fight our own heal caused: the monster is still there, so no
             // `look`; the next step attacks it again, before the next round's swings.
             GameEvent::CombatOff if std::mem::take(&mut self.healed) => {

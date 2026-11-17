@@ -346,7 +346,12 @@ impl Mode for Bless {
                 k.on_until = None;
                 k.retry_at = None;
             }
-        } else if failed || outcome == Outcome::TimedOut {
+        } else if failed
+            || matches!(
+                outcome,
+                Outcome::TimedOut | Outcome::Refused(crate::executor::Refused::Afraid)
+            )
+        {
             self.failed(&short, at);
         } else {
             self.turn_on(&short, at);

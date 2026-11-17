@@ -524,3 +524,31 @@ async fn a_boss_switched_off_is_not_attacked_first() {
         rules_of(&seen)
     );
 }
+
+/// C-108: held ("You can't seem to move anywhere!", engulfed) on a Go to that fights nothing,
+/// with a monster attacking, the walk still waits a moment before it tries again: the attacker
+/// no longer cuts the wait short (Lexi sent `nw` hundreds of times engulfed by a big shambling
+/// mound on her way to a boss).
+#[tokio::test(start_paused = true)]
+async fn held_on_a_go_to_while_attacked_the_walk_still_waits() {
+    let brain = Brain::new(world(), clock(), None);
+    let (mut g, run) = arena_with(brain, &[RAT]).await;
+    start(&mut g, &[], 35).await;
+    g.narrated("Waiting here").await;
+    g.expect("u", line("You can't seem to move anywhere!", 33));
+    g.expect("u", room(NARROW_ROAD));
+    g.walk_to_with(NARROW_ROAD, None, Some(false)).await;
+    g.narrated("Can't move for now: waiting a moment").await;
+    g.output(&line("The large giant rat lunges at you!", 31))
+        .await;
+    g.idle(Duration::from_secs(3)).await;
+    let moves = g
+        .seen
+        .iter()
+        .filter(|m| matches!(m, ToGateway::InputLine { text, .. } if text == "u"))
+        .count();
+    assert_eq!(moves, 1, "moved again while held");
+    g.narrated("Arrived: Newhaven, Narrow Road").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "u", "u"]);
+}

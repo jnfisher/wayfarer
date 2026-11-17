@@ -315,13 +315,23 @@ The brain sends `position_trace` entries, and the gateway writes them to the cha
   `count` and `cands` after it, `guessed`, `unsure`, and how it `counted` (`unsure` or
   `drift`).
 
+## Afraid
+
+"You are too afraid!" (the Flee ability, `kb/combat.md` "Afraid") answers every attack and cast
+until the fear wears off. It is not a line lost to confusion: the command does not go again,
+and Fight holds attacks and casts for `AFRAID_WAIT` (5 s, a round), "Fight: too afraid to
+attack, waiting for the fear to pass", then tries once more (C-108). A blessing refused for it
+counts as failed. Moving is not blocked, so Flee and the walk go on.
+
 ## Knocked down, held or stunned
 
 A move refused with "You can't seem to move anywhere!" (knocked flat by an ankheg's charge or a
 dark monk's sweep, held, entangled) or "You are too stunned to move anywhere!" stops the walk
 without marking the exit refused (C-082). With the bot running, the bot then waits
-`HELD_PAUSE` (4 s, about a round) before it walks again, unless something attacks, and the
-refused leg does not count as one of a Go to's or a loop's tries (C-083). These wear off, so a
+`HELD_PAUSE` (4 s, about a round) before it walks again, and the refused leg does not count
+as one of a Go to's or a loop's tries (C-083). Something attacking lets a fight go on in the
+meantime, but no walk goes before the wait is over, a Go to that fights nothing included
+(C-108). These wear off, so a
 character down for several rounds keeps trying every few seconds and never gives the walk up for
 it. The same goes for every walk of the bot's, a follower's walk back to its leader too: a
 follower knocked down as the leader moves on is left behind by the game, and its walk back waits

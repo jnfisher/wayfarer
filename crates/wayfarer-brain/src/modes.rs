@@ -1656,13 +1656,14 @@ impl Bot {
             return (None, says);
         }
         // Down or held after a refused move (C-083): a moment before the next decision, unless
-        // there is a fight to take part in.
+        // there is a fight to take part in; no walk goes before then either way (C-108).
         if let Some(t) = self.held_until {
-            if v.now < t && !v.engaged && v.presence.attackers.is_empty() {
+            if v.now >= t {
+                self.held_until = None;
+            } else if !v.engaged && v.presence.attackers.is_empty() {
                 self.narrate("Can't move for now: waiting a moment".to_owned(), &mut says);
                 return (None, says);
             }
-            self.held_until = None;
         }
         // An ignored monster attacking: not fought back, said once while it attacks.
         self.ignoring.retain(|n| v.presence.ignored.contains(n));
@@ -1863,7 +1864,16 @@ impl Bot {
             let rejoining = v.party.rejoin().is_some() && mode == BotMode::Task;
             // A leg held back is not a leg walked: the Go to or loop that asked for it does
             // not count it among the walks that ended elsewhere (C-089).
+            let held = self.held_until.is_some_and(|t| v.now < t);
             let step = match (&step.act, v.party.following(), v.party.hold()) {
+                // Held after a refused move (C-108): a fight may go on, a walk may not; Flee's
+                // too would only be refused again.
+                (Some(Do::Walk(..)), _, _) if held => {
+                    if mode == BotMode::Task {
+                        self.walk_deferred();
+                    }
+                    Step::wait("Can't move for now: waiting a moment")
+                }
                 (Some(Do::Walk(..)), Some(leader), _) if mode != BotMode::Flee && !rejoining => {
                     if mode == BotMode::Task {
                         self.walk_deferred();

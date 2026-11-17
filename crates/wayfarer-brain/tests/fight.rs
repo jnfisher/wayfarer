@@ -1273,6 +1273,29 @@ async fn an_attack_lost_to_confusion_goes_again() {
     assert_eq!(played, ["st", "look", "a rat", "a rat"]);
 }
 
+/// C-108: afraid ("You are too afraid!", the Flee ability: no attack, no cast until it wears
+/// off), the bot waits a round before it tries again, not at once over and over (Penny sent
+/// 7,800 attacks in the 27 seconds a terror beast's shriek lasted).
+#[tokio::test(start_paused = true)]
+async fn afraid_the_bot_waits_a_round_before_it_attacks_again() {
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    g.expect("a rat", line("You are too afraid!", 35));
+    g.narrated("Fight: too afraid to attack, waiting for the fear to pass")
+        .await;
+    g.idle(Duration::from_secs(4)).await;
+    let attacks = g
+        .seen
+        .iter()
+        .filter(|m| matches!(m, ToGateway::InputLine { text, .. } if text == "a rat"))
+        .count();
+    assert_eq!(attacks, 1, "attacked again while afraid");
+    g.expect("a rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "a rat"]);
+}
+
 /// C-095: a move lost to confusion goes again, and the walk arrives.
 #[tokio::test(start_paused = true)]
 async fn a_move_lost_to_confusion_goes_again() {
