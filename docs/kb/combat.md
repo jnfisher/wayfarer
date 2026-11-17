@@ -326,6 +326,21 @@ LJNSPELL.C:48). Every timer runs 11 rounds.
 ## Fleeing
 - Below 30% HP in combat: leave by the first normal exit and rest. [C]
 
+## Afraid (the Flee ability)
+
+- A spell or monster attack with the **Flee** ability makes the character afraid
+  (`ST2_AFRAID`) until it wears off. [C] `LJNABIL.C:1120-1122, 1199-1201`
+- While afraid, every attack command (`a`, `bash`, `bs`, ...) is refused with "You are too
+  afraid!" (it also ends a rest), and so is every cast; auto-combat does not swing, and a
+  combat spell does nothing. Moving is not blocked. [C] `LJNCMDA.C:242-248`,
+  `LJNCMDB.C:411-414`, `LJNCOMBT.C:1683, 2389`, `LJNSPELL.C:1940, 4992`
+- The start and end are the spell's own texts. A small terror beast in Quicksilver 1.20's
+  Black Wasteland: "The small terror beast's unearthly shriek strikes terror into your heart!"
+  then "You are afraid!", combat off; 27 seconds later "The effects of fear wear off!". [F]
+  (wayfarer logs, 2026-11-16)
+- Not the confusion texts: "You are too afraid to do that!" is one of those, a single lost
+  action (`spells.md` "Confusion").
+
 ## A fight that cannot be won: the gigantic black ooze
 - **The glance line**, first person, each swing whose damage the target's armour took
   entirely: `Your swing at gigantic black ooze hits, but glances off its armour.` (the miss

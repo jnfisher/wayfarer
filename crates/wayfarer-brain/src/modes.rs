@@ -65,6 +65,16 @@ impl Presence {
         })
     }
 
+    /// A move went to a room it could not see (dark, blind): what was in the room it left is
+    /// not here (C-108). Who attacks may have followed; they say so with their next blow.
+    pub fn moved_unseen(&mut self) {
+        self.shown = None;
+        self.here.clear();
+        self.players.clear();
+        self.floor.clear();
+        self.floor_items.clear();
+    }
+
     /// Out of the realm (the line dropped, or logged off): nothing is attacking any more.
     pub fn left_the_realm(&mut self) {
         self.attackers.clear();
@@ -1595,7 +1605,7 @@ impl Bot {
             .wake(now)
             .into_iter()
             .chain(self.flee.wake())
-            .chain(self.fight.wake())
+            .chain(self.fight.wake(now))
             .chain(self.bless.wake(now))
             .chain(self.sneak.wake(now))
             .chain(self.task.as_ref().and_then(|t| t.wake(now)))
@@ -1656,13 +1666,14 @@ impl Bot {
             return (None, says);
         }
         // Down or held after a refused move (C-083): a moment before the next decision, unless
-        // there is a fight to take part in.
+        // there is a fight to take part in; no walk goes before then either way (C-108).
         if let Some(t) = self.held_until {
-            if v.now < t && !v.engaged && v.presence.attackers.is_empty() {
+            if v.now >= t {
+                self.held_until = None;
+            } else if !v.engaged && v.presence.attackers.is_empty() {
                 self.narrate("Can't move for now: waiting a moment".to_owned(), &mut says);
                 return (None, says);
             }
-            self.held_until = None;
         }
         // An ignored monster attacking: not fought back, said once while it attacks.
         self.ignoring.retain(|n| v.presence.ignored.contains(n));
@@ -1847,6 +1858,11 @@ impl Bot {
                     step
                 }
                 BotMode::Idle if let Some(step) = self.bash_help.step(v) => step,
+                // Blind with nothing else to do: a look now and then to see whether it can.
+                BotMode::Idle if let Some(step) = self.fight.blind_look(v) => step,
+                BotMode::Idle if self.fight.blind() => {
+                    Step::wait("Fight: blind, waiting to see again")
+                }
                 BotMode::Idle if self.recover.stranded(v) => {
                     Step::wait("Rested; could not walk home, waiting here")
                 }
@@ -1863,7 +1879,16 @@ impl Bot {
             let rejoining = v.party.rejoin().is_some() && mode == BotMode::Task;
             // A leg held back is not a leg walked: the Go to or loop that asked for it does
             // not count it among the walks that ended elsewhere (C-089).
+            let held = self.held_until.is_some_and(|t| v.now < t);
             let step = match (&step.act, v.party.following(), v.party.hold()) {
+                // Held after a refused move (C-108): a fight may go on, a walk may not; Flee's
+                // too would only be refused again.
+                (Some(Do::Walk(..)), _, _) if held => {
+                    if mode == BotMode::Task {
+                        self.walk_deferred();
+                    }
+                    Step::wait("Can't move for now: waiting a moment")
+                }
                 (Some(Do::Walk(..)), Some(leader), _) if mode != BotMode::Flee && !rejoining => {
                     if mode == BotMode::Task {
                         self.walk_deferred();

@@ -28,6 +28,9 @@ pub const ATTACK_TRIES: u32 = 2;
 
 /// While blind and out of combat, how often it looks to see whether it can see again.
 pub const BLIND_LOOK: std::time::Duration = std::time::Duration::from_secs(10);
+/// The same while something attacks it: back in the fight soon after it sees (C-108; Penny,
+/// in a darkbolt's darkness, came back up to 10 s after it lifted).
+pub const BLIND_LOOK_ATTACKED: std::time::Duration = std::time::Duration::from_secs(3);
 /// Rounds of the character's own swings in a row that did no damage, one of them a glance at
 /// least, with nobody else damaging the target meanwhile, before the fight is a stalemate:
 /// 50 seconds (C-091; four rounds gave up high-AC monsters on a run of bad luck).
@@ -41,6 +44,8 @@ pub const HEAL_GAP: Duration = Duration::from_secs(5);
 /// After the game refuses an attack spell (no mana, a spell already cast this round) the
 /// fights are fought with weapons for this long.
 pub const SPELL_HOLD: Duration = Duration::from_secs(12);
+/// Afraid ("You are too afraid!"): no attack or cast is tried again for a round (C-108).
+pub const AFRAID_WAIT: Duration = Duration::from_secs(5);
 
 /// The character's swings at the target in the round going on.
 #[derive(Debug, Clone, Copy)]
@@ -75,7 +80,7 @@ pub(crate) struct Fight {
     /// the game answers an attack with "You do not see …" or takes it for speech. Nothing is
     /// skipped for that; a room shown again means it sees (C-094).
     blind: bool,
-    /// While blind and out of combat, when it looks again to see whether it can.
+    /// While blind and out of combat, when it last looked to see whether it can.
     blind_look: Option<Instant>,
     /// The attacks on each monster that timed out.
     timeouts: BTreeMap<String, u32>,
@@ -123,6 +128,8 @@ pub(crate) struct Fight {
     area_casts: u32,
     /// This fight has had its area casts: one monster at a time until it ends.
     area_spent: bool,
+    /// Afraid ("You are too afraid!"): no attack or cast before then (C-108).
+    afraid_until: Option<Instant>,
 }
 
 /// A name as the game shows it (`lauren` is Lauren).
@@ -149,6 +156,37 @@ pub(crate) fn cast_step(cast: &PartyCast, mode: &str) -> Step {
     }
 }
 
+impl Fight {
+    /// Whether it believes the character blind (or in the dark): nothing to aim at.
+    pub fn blind(&self) -> bool {
+        self.blind
+    }
+
+    /// Blind and out of combat with nothing else to do: a look, when one is due, to see whether
+    /// it can see again.
+    pub fn blind_look(&mut self, v: &View) -> Option<Step> {
+        if !self.blind || v.engaged || !self.blind_look_due(v) {
+            return None;
+        }
+        self.blind_look = Some(v.now);
+        Some(Step::send(
+            Action::new("look", Expect::RoomSeen),
+            "Fight: blind, looking whether it can see",
+        ))
+    }
+
+    /// Blind and out of combat: whether to look again now ([`BLIND_LOOK`], or
+    /// [`BLIND_LOOK_ATTACKED`] while something attacks it).
+    fn blind_look_due(&self, v: &View) -> bool {
+        let gap = if v.presence.attackers.is_empty() {
+            BLIND_LOOK
+        } else {
+            BLIND_LOOK_ATTACKED
+        };
+        self.blind_look.is_none_or(|t| v.now >= t + gap)
+    }
+}
+
 impl Mode for Fight {
     fn wants(&self, v: &View) -> Option<String> {
         if self.passive {
@@ -158,9 +196,12 @@ impl Mode for Fight {
             return Some("in combat".to_owned());
         }
         if self.blind {
-            // Nothing to aim at: it waits to see again, looking now and then.
-            return (!v.presence.here.is_empty() || self.blind_look.is_none_or(|t| v.now >= t))
-                .then(|| "blind".to_owned());
+            // Nothing to aim at. A fight going on in the room (something attacks it, or a blow
+            // heard put a monster here): it stays with it, looking now and then, ready when it
+            // sees again. Quiet: the loop goes on blind (a move that goes shows where it is),
+            // and with nothing else to do it looks now and then ([`Fight::blind_look`]) (C-108).
+            let fight_here = !v.presence.attackers.is_empty() || !v.presence.here.is_empty();
+            return fight_here.then(|| "blind, a fight here".to_owned());
         }
         if self.look {
             return Some("looking for the next".to_owned());
@@ -169,6 +210,10 @@ impl Mode for Fight {
     }
 
     fn step(&mut self, v: &View) -> Step {
+        // Afraid: the game refuses every attack and cast until the fear wears off.
+        if self.afraid_until.is_some_and(|t| v.now < t) {
+            return Step::wait("Fight: too afraid to attack, waiting for the fear to pass");
+        }
         if v.engaged {
             if let Some(step) = self.heal(v) {
                 return step;
@@ -195,8 +240,8 @@ impl Mode for Fight {
             return Step::wait(format!("Fight: {t}"));
         }
         if self.blind {
-            if self.blind_look.is_none_or(|t| v.now >= t) {
-                self.blind_look = Some(v.now + BLIND_LOOK);
+            if self.blind_look_due(v) {
+                self.blind_look = Some(v.now);
                 return Step::send(
                     Action::new("look", Expect::RoomSeen),
                     "Fight: blind, looking whether it can see",
@@ -271,6 +316,9 @@ impl Mode for Fight {
 
     fn on_event(&mut self, ev: &GameEvent, now: Instant) {
         match ev {
+            GameEvent::Other(e) if e.name == "too_afraid" => {
+                self.afraid_until = Some(now + AFRAID_WAIT);
+            }
             // The end of the fight our own heal caused: the monster is still there, so no
             // `look`; the next step attacks it again, before the next round's swings.
             GameEvent::CombatOff if std::mem::take(&mut self.healed) => {
@@ -829,9 +877,21 @@ impl Fight {
         }
     }
 
-    /// When the round going on is over, for the clock to wake the bot.
-    pub fn wake(&self) -> Option<Instant> {
-        self.stall.round.map(|r| r.started + ROUND_GAP)
+    /// When the round going on is over, the next look while blind (soonest: an attack may
+    /// come meanwhile) or the end of the fear hold, for the clock to wake the bot.
+    pub fn wake(&self, now: Instant) -> Option<Instant> {
+        let blind = self
+            .blind_look
+            .filter(|_| self.blind)
+            .map(|t| t + BLIND_LOOK_ATTACKED)
+            .filter(|&t| t > now);
+        self.stall
+            .round
+            .map(|r| r.started + ROUND_GAP)
+            .into_iter()
+            .chain(blind)
+            .chain(self.afraid_until.filter(|&t| t > now))
+            .min()
     }
 
     /// The monster a stalemate gave up, once.

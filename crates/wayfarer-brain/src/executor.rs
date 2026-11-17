@@ -108,10 +108,13 @@ pub enum Refused {
     Spell,
     /// Not now: just attacked, or a command delay running.
     NotNow,
-    /// The game lost the line to confusion, fear, a stun, sleep and the like ("You fumble in
+    /// The game lost the line to confusion, a stun, sleep and the like ("You fumble in
     /// confusion!", "You look around stupidly and do nothing!"; `check_confusion`, C-095): it
     /// did nothing, and the same command may go again.
     Lost,
+    /// Afraid ("You are too afraid!", the Flee ability): no attack and no cast goes until it
+    /// wears off, so the command does not go again at once (C-108).
+    Afraid,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -224,9 +227,11 @@ impl Default for Executor {
 /// The answer `ev` gives an action expecting `expect`, if it is one.
 fn answer(expect: Expect, ev: &GameEvent) -> Option<Outcome> {
     match (expect, ev) {
-        // Lost to confusion (or fear, for an attack): whatever it was, it did nothing (C-095).
-        (_, GameEvent::Other(e)) if matches!(e.name.as_str(), "confused" | "too_afraid") => {
-            Some(Outcome::Refused(Refused::Lost))
+        // Lost to confusion: whatever it was, it did nothing (C-095).
+        (_, GameEvent::Other(e)) if e.name == "confused" => Some(Outcome::Refused(Refused::Lost)),
+        // Afraid: no attack or cast goes until the fear wears off (C-108).
+        (_, GameEvent::Other(e)) if e.name == "too_afraid" => {
+            Some(Outcome::Refused(Refused::Afraid))
         }
         (Expect::RoomSeen, GameEvent::MoveRefused { reason }) => {
             Some(Outcome::Refused(Refused::Move(*reason)))
