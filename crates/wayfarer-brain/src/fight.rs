@@ -157,6 +157,24 @@ pub(crate) fn cast_step(cast: &PartyCast, mode: &str) -> Step {
 }
 
 impl Fight {
+    /// Whether it believes the character blind (or in the dark): nothing to aim at.
+    pub fn blind(&self) -> bool {
+        self.blind
+    }
+
+    /// Blind and out of combat with nothing else to do: a look, when one is due, to see whether
+    /// it can see again.
+    pub fn blind_look(&mut self, v: &View) -> Option<Step> {
+        if !self.blind || v.engaged || !self.blind_look_due(v) {
+            return None;
+        }
+        self.blind_look = Some(v.now);
+        Some(Step::send(
+            Action::new("look", Expect::RoomSeen),
+            "Fight: blind, looking whether it can see",
+        ))
+    }
+
     /// Blind and out of combat: whether to look again now ([`BLIND_LOOK`], or
     /// [`BLIND_LOOK_ATTACKED`] while something attacks it).
     fn blind_look_due(&self, v: &View) -> bool {
@@ -178,9 +196,9 @@ impl Mode for Fight {
             return Some("in combat".to_owned());
         }
         if self.blind {
-            // Nothing to aim at: it waits to see again, looking now and then.
-            return (!v.presence.here.is_empty() || self.blind_look_due(v))
-                .then(|| "blind".to_owned());
+            // Nothing to aim at: the loop goes on blind (a move that goes shows where it is,
+            // C-108); with nothing else to do it looks now and then ([`Fight::blind_look`]).
+            return None;
         }
         if self.look {
             return Some("looking for the next".to_owned());

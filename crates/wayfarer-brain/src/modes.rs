@@ -119,6 +119,14 @@ impl Presence {
                     }
                 }
             }
+            // Nothing seen (dark, blind) with no title before it: whatever was here before is
+            // not known to be here now, a move's new room above all (C-108).
+            GameEvent::RoomDark | GameEvent::Blind if self.shown.is_none() => {
+                self.here.clear();
+                self.players.clear();
+                self.floor.clear();
+                self.floor_items.clear();
+            }
             GameEvent::RoomExits { .. } | GameEvent::RoomDark | GameEvent::Prompt { .. } => {
                 if let Some((here, players)) = self.shown.take() {
                     self.here = here;
@@ -1848,6 +1856,11 @@ impl Bot {
                     step
                 }
                 BotMode::Idle if let Some(step) = self.bash_help.step(v) => step,
+                // Blind with nothing else to do: a look now and then to see whether it can.
+                BotMode::Idle if let Some(step) = self.fight.blind_look(v) => step,
+                BotMode::Idle if self.fight.blind() => {
+                    Step::wait("Fight: blind, waiting to see again")
+                }
                 BotMode::Idle if self.recover.stranded(v) => {
                     Step::wait("Rested; could not walk home, waiting here")
                 }

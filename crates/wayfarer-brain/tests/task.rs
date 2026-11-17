@@ -119,6 +119,27 @@ async fn round_the_loop() -> (Vec<ToGateway>, Vec<String>, Vec<String>) {
     (seen, played, said)
 }
 
+/// C-108: blind ("You are blind." in place of each room), the loop goes on: a move that the game
+/// did not refuse went, and the map says where; nothing is seen there, so the stop is passed
+/// as cleared (John, 2026-11-16: "continue on the loop its on even if blind").
+#[tokio::test(start_paused = true)]
+async fn a_blind_character_walks_its_loop_on() {
+    let (mut g, run) = ready_at(VILLAGE_ENTRANCE).await;
+    for dir in ["w", "w", "d"] {
+        g.expect(dir, says("You are blind."));
+    }
+    g.run_loop(&[SMALL_CAVERN]).await;
+    g.narrated("Loop Newhaven: to stop 1/3 Newhaven, Arena (3 steps)")
+        .await;
+    g.narrated("Stop 1/3 cleared: nothing there").await;
+    g.narrated("Loop Newhaven: to stop 2/3 Dungeon, Entrance (one step, one door)")
+        .await;
+    g.freeze();
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "w", "w", "d"]);
+    assert_eq!(bot(&seen).state, BotState::Running);
+}
+
 #[tokio::test(start_paused = true)]
 async fn the_maps_stop_while_the_bot_walks_a_loop_drops_the_loop() {
     // The map's stop sends `walk_stop`: as ■, the loop is dropped and the bot plays where the

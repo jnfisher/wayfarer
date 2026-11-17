@@ -171,7 +171,9 @@ impl Position {
                 exits: Some(dir_set(exits)),
                 dark: false,
             },
-            GameEvent::RoomDark => RoomSeen {
+            // Too dark to see, or blind ("You are blind." in place of the room, C-108): the
+            // move went, and the map says where.
+            GameEvent::RoomDark | GameEvent::Blind => RoomSeen {
                 title: self.title_pending.take(),
                 exits: None,
                 dark: true,
