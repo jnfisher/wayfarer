@@ -1140,8 +1140,10 @@ async fn a_follower_in_the_party_never_flees_on_its_own() {
     let (mut g, _run) = Gateway::start(brain(None)).await;
     formed(&mut g).await;
     // The leader's belief moves up the stairs; the follower's stays in the Arena, which
-    // spawns, so its Flee would have something to run from.
+    // spawns, so its Flee would have something to run from. The game moved her too (a `look`
+    // shows it): only her belief lags, and a follower left behind is another case (C-116).
     g.output(LEADER, shown(NARROW_ROAD)).await;
+    g.world.rooms.insert(FOLLOWER.to_owned(), NARROW_ROAD);
     g.world.hp.insert(FOLLOWER.to_owned(), 6);
     let lines_before = g.lines.len();
     // Its maximum HP, as the rest test gives it; then a blow at 6 of 35.

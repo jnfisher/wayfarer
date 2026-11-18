@@ -1795,7 +1795,15 @@ own, one at a time:
   game ("Last time you were on, you disconnected while playing"), and its `follow` is refused
   until the leader invites it ("You must be invited first!"), so the leader holds, invites it
   while they share a room, and the follower walks back if the leader has gone on (Lexi went on
-  alone after the 2026-11-17 update and was nearly killed by bugbears). Meanwhile the leader **holds**: its loop's next leg (and
+  alone after the 2026-11-17 update and was nearly killed by bugbears). A follower the game
+  did not move stays on the leader's list without a word (`kb/grouping.md` §2a), so the `par`
+  is no test of it (C-116): one the `par` lists that is out of the leader's room for 10 s
+  (`LEFT_BEHIND`), and has seen a room since they parted, is separated too; with no room seen
+  since, its belief may only lag, so it sends `look` (every 10 s at most). One fighting or
+  resting is left where it is until it is done. Back in the leader's room it sends `follow`
+  again. (Lexi and Sasha, after a relog put the party in the Steel Chamber, followed Riley,
+  who went on by the hidden exit without them; the healers stood rooms away while Riley fell
+  to 18%.) Meanwhile the leader **holds**: its loop's next leg (and
   a leg already walking) waits, narrated "Waiting for Lauren to catch up" (all who are out, by
   name); it still fights and flees, and moves the player types are not held. A Go to is held
   the same way and walks on when they are back. A leg held back, like one a sneak goes before,

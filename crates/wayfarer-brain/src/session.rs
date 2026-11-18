@@ -411,6 +411,8 @@ pub(crate) struct Session {
     party_game: crate::party_game::GameParty,
     /// What the party coordinator makes of it.
     party_role: PartyRole,
+    /// When the character last saw a room, for the party's left-behind check.
+    room_seen_at: Option<Instant>,
     /// The leader's room it could not walk to, why, and when (tried again after
     /// [`STUCK_RETRY`] or when the leader moves).
     party_stuck: Option<(Key, String, Instant)>,
@@ -576,6 +578,7 @@ impl Session {
             presence: Presence::default(),
             party_game: Default::default(),
             party_role: PartyRole::None,
+            room_seen_at: None,
             party_stuck: None,
             bot_walk: false,
             asked_to_run: false,
@@ -934,6 +937,9 @@ impl Session {
                 self.presence.moved_unseen();
             }
             self.flush_traces(out);
+            if seen.is_some() {
+                self.room_seen_at = Some(now);
+            }
             if let Some(seen) = seen {
                 self.executor
                     .room_seen_in(Some(self.position.belief.clone()));
@@ -3846,6 +3852,7 @@ impl Session {
             rules: self.detect.rules(),
             guard: self.guard.clone(),
             passer: self.position.traveller.passer(),
+            room_seen_at: self.room_seen_at,
         }
     }
 
