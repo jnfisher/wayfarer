@@ -9,7 +9,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use wayfarer_world::loops::{Area, Loop, MmLoop, generate, hunt_rooms, megamud_through, verified};
 use wayfarer_world::pack::{MmPath, Verification};
-use wayfarer_world::{ExitType, Gate, Key, Monsters, RoomGraph, Traveller, WorldPack};
+use wayfarer_world::{ExitType, Gate, Key, Monsters, Passer, RoomGraph, Traveller, WorldPack};
 
 const VILLAGE_ENTRANCE: Key = (1, 2140);
 const ARENA: Key = (1, 2150);
@@ -116,6 +116,21 @@ fn without_doors_the_lair_behind_the_arena_is_no_stop() {
     assert_eq!(loops.len(), 1);
     assert_eq!(loops[0].rooms, [ARENA]);
     assert!(loops[0].steps.is_empty());
+}
+
+#[test]
+fn a_gated_exit_must_let_every_follower_through() {
+    let (g, _) = world();
+    // Level 2 passes the Healer's exit (1 to 3), but leading a level 5 follower it does not:
+    // the follower would be left behind.
+    let mut t = level(2);
+    t.party = vec![Passer {
+        level: Some(5),
+        ..Passer::default()
+    }];
+    assert!(!NEWHAVEN.rooms(&g, &t).contains_key(&HEALER));
+    t.party[0].level = Some(3);
+    assert!(NEWHAVEN.rooms(&g, &t).contains_key(&HEALER));
 }
 
 #[test]

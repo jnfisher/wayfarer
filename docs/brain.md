@@ -154,6 +154,12 @@ progress (after the move in flight).
   the character cannot open. Narrated: "Walking to Newhaven,
   Arena: 3 steps" (", one door" when there are doors). No route, or an unknown position: a
   warning, and nothing is sent.
+- **Leading a party** (C-113): the followers go through every exit the leader takes, so a
+  leader's routes and generated loops take a level, class, race or alignment gate only if it
+  lets each follower in the realm through too. The vortexes of the Ironwood Forest and around
+  (`go vortex`, minlevel 20) are never in a route that leads a level 12 follower: it would be
+  left behind on the near side. With no other way, the reason says so: "the exit `go vortex`
+  of Mossy Tunnel is for level 20 and up, and not everyone in the party is".
 - **Locked doors and the character**: a door or gate counts as the game last showed it this
   session, else as the pack has it. A locked one is in a route only if the character can open
   it: a bash opens it on `Str + exitpar2` out of 100, a pick on `picklocks + exitpar2` (with
@@ -415,7 +421,8 @@ A loop the character cannot
 walk to at all is left out.
 
 - **The area** of the generated loops: the rooms within `radius` steps (at most 30) of
-  `anchor`, the believed room by default, by exits the character may take: a gated exit outside its level, class or race,
+  `anchor`, the believed room by default, by exits the character may take: a gated exit outside its level, class or race (or a
+  follower's, when it leads a party),
   or a locked door it cannot open ("Walking"), leaves what is behind it out, and with
   `doors: false` so does every door.
 - **Hunt rooms**: the area's rooms whose spawn pool (`genmonster`, or the room's `mongroup`
