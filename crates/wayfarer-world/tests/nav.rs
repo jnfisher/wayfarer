@@ -12,7 +12,7 @@ use std::time::Instant;
 
 use wayfarer_world::{
     Belief, Category, DirSet, ExitType, How, Key, LockState, Monsters, RoomGraph, Traveller,
-    WorldPack, huntable, layout, route, route_or_search,
+    WorldPack, huntable, layout, route, route_or_search, route_within,
 };
 
 fn graph() -> (WorldPack, RoomGraph) {
@@ -892,4 +892,60 @@ fn an_armed_trap_is_disarmed_by_a_character_that_can() {
     // Every armed trap in the data: kind 0 or 3, a Trap or a Spell Trap.
     let armed = g.all_edges().iter().filter(|e| e.armed_trap()).count();
     assert!(armed > 200, "{armed} armed traps");
+}
+
+/// C-118: the Darkened Tunnels' hidden passage north of 15:477 has two blocks, taken off in any
+/// order by `pull lever` in 15:730 and 15:604, far off in the maze. A walk through it goes to
+/// both first, the one nearest the passage last, then through; a loop's traveller does not.
+#[test]
+fn a_hidden_exit_opened_by_levers_elsewhere_is_reached_by_pulling_them_first() {
+    let (_pack, g) = graph();
+    let (passage, beyond) = ((15, 477), (15, 478));
+    let e = g.edge(passage, 0).expect("the passage north");
+    assert!(e.sealed());
+    assert!(e.levers_any_order);
+    let mut rooms: Vec<Key> = e.levers.iter().map(|l| l.room).collect();
+    rooms.sort_unstable();
+    assert_eq!(rooms, [(15, 604), (15, 730)]);
+    assert!(e.levers.iter().all(|l| l.phrase == "pull lever"));
+
+    // There is a way round of some 115 steps, cheaper than a lever tour: the route through
+    // the passage itself is asked for.
+    let r = route_within(&g, passage, beyond, &Traveller::default(), |k| k == beyond).unwrap();
+    let pulls: Vec<Key> = r
+        .iter()
+        .filter(|s| s.exit_type == ExitType::RemoteAction)
+        .map(|s| s.from)
+        .collect();
+    assert_eq!(pulls.len(), 2, "{:?}", commands(&r));
+    // The route walks to each lever and back to the passage, then goes north.
+    let last = r.last().unwrap();
+    assert_eq!(
+        (last.from, last.to, last.command.as_str()),
+        (passage, beyond, "n")
+    );
+    assert!(last.passable);
+    let at_pull = r
+        .iter()
+        .position(|s| s.exit_type == ExitType::RemoteAction)
+        .unwrap();
+    assert_eq!(r[at_pull].command, "pull lever");
+    // Back at the passage from the second lever.
+    assert_eq!(r[r.len() - 2].to, passage);
+
+    // A loop's legs never take it.
+    let looping = Traveller {
+        no_levers: true,
+        ..Traveller::default()
+    };
+    assert!(route_within(&g, passage, beyond, &looping, |k| k == beyond).is_none());
+}
+
+/// C-119: the Black Fortress's Dark Chamber (7:1283) has a panel, `push panel`, that takes a
+/// character to the Darkened Tunnels (15:335) when no monster is in the room.
+#[test]
+fn the_dark_chambers_panel_is_a_way_into_the_darkened_tunnels() {
+    let (_pack, g) = graph();
+    let r = route(&g, (7, 1283), (15, 335), &Traveller::default()).unwrap();
+    assert_eq!(commands(&r), ["push panel"]);
 }

@@ -163,6 +163,16 @@ progress (after the move in flight).
   disarmed trap stays safe for one exit step (up to about 5 minutes), so a party led by the
   disarmer follows through unharmed. Only the walker disarms: a leader, a character playing
   alone, or a follower walking back on its own.
+- **Levers elsewhere** (C-118): a sealed Hidden exit (blocked, not searched for) whose blocks
+  the Remote Actions of other rooms take off is a way through for a walk, a Go to or a walk
+  back, costing 1000 steps so it is taken only when there is no other way (a MegaMud path window
+  through the same levers is one). The route goes from the exit's room to each lever, types its
+  phrase there ("Typing `pull lever` to open the way ahead") and comes back, then goes straight
+  through. The levers go in the order the game asks for, highest block first; in any order, the
+  one nearest the exit goes last, as the passage closes again one exit step (up to about five
+  minutes) after its last block comes off. A lever pull that leaves blocks on lasts until the
+  passage opens (`LJNSUPP.C`). Loops never take these exits. The Darkened Tunnels' passage
+  north of 15:477 opens with `pull lever` in 15:730 and 15:604.
 - **Leading a party** (C-113): the followers go through every exit the leader takes, so a
   leader's routes and generated loops take a level, class, race or alignment gate only if it
   lets each follower in the realm through too. The vortexes of the Ironwood Forest and around

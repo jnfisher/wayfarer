@@ -44,8 +44,12 @@ fn the_crypt_exit_north_is_sealed_and_never_searched_for() {
     );
     assert!(!k.all_hidden_exits().contains(&(HALLWAY, NORTH)));
     assert!(!k.hidden_exits("Cry1cry2.mp").contains(&(HALLWAY, NORTH)));
-    // Not even for a traveller who may search every hidden exit and knows it is there.
-    let mut t = Traveller::default();
+    // Not even for a traveller who may search every hidden exit and knows it is there. (A
+    // walk may go to its levers first, C-118; a loop's traveller may not.)
+    let mut t = Traveller {
+        no_levers: true,
+        ..Traveller::default()
+    };
     t.allow.insert(Category::Hidden);
     t.searchable.insert((HALLWAY, NORTH));
     assert!(!t.can_take(e));
@@ -86,9 +90,22 @@ fn the_window_pulls_both_levers_then_goes_through() {
     let last = w.steps.last().unwrap();
     assert_eq!((last.from, last.dir, last.to), (HALLWAY, NORTH, CHAMBER));
 
-    // Without it there is no way into the chamber; with it, the way is the path's.
+    // Without it there is no way into the chamber but going to the levers (C-118), which a
+    // loop's traveller does not; with it, the way is the path's.
+    let looping = Traveller {
+        no_levers: true,
+        ..Traveller::default()
+    };
+    assert!(route(&g, CRYPT_ENTRY, CHAMBER, &looping).is_none());
     let t = Traveller::default();
-    assert!(route(&g, CRYPT_ENTRY, CHAMBER, &t).is_none());
+    let toured = route(&g, CRYPT_ENTRY, CHAMBER, &t).unwrap();
+    assert_eq!(
+        toured
+            .iter()
+            .filter(|s| s.exit_type == ExitType::RemoteAction)
+            .count(),
+        2
+    );
     assert_eq!(g.learn_windows(&k), 1);
     let edge = g
         .edges(LEVER_ONE)

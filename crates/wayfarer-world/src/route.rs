@@ -124,6 +124,9 @@ pub struct Traveller {
     pub party: Vec<Passer>,
     /// Doors, gates and key doors are not taken (a loop generated without doors).
     pub no_doors: bool,
+    /// Sealed Hidden exits are not opened by going to their levers first ([`Edge::levers`],
+    /// C-118): a loop's legs, and the ways to and from the levers themselves.
+    pub no_levers: bool,
     /// Rooms to keep out of when there is another way: where a monster the bot avoids was
     /// last seen. Costly, not impassable ([`Costs::avoid`]).
     pub avoid: BTreeSet<Key>,
@@ -238,7 +241,10 @@ impl Traveller {
                 ExitType::RemoteAction => false,
                 // A sealed exit is never searched for: taken while it shows (opened from
                 // elsewhere), or by a path window.
-                ExitType::Hidden if e.sealed() => self.found.contains(&(e.from, e.dir)),
+                ExitType::Hidden if e.sealed() => {
+                    self.found.contains(&(e.from, e.dir))
+                        || (!e.levers.is_empty() && !self.no_levers)
+                }
                 ExitType::Hidden => {
                     let at = (e.from, e.dir);
                     e.passable()
@@ -279,6 +285,9 @@ pub struct Step {
     /// A Door or Gate a lever opens ([`Edge::lever`]): the steps to the lever, the phrase and
     /// the steps back, walked when the door refuses.
     pub lever: Vec<Step>,
+    /// A sealed Hidden exit opened by levers elsewhere, which the route goes to first
+    /// ([`Edge::levers`], C-118).
+    pub levered: bool,
     /// An armed trap the traveller disarms first (`disarm trap <dir>`, C-117).
     pub disarm: bool,
 }
@@ -297,6 +306,27 @@ impl Step {
             passable: e.passable() || e.sealed(),
             lever: e.lever.iter().map(|s| Step::through(s, t)).collect(),
             disarm: t.disarms(e),
+            levered: e.sealed()
+                && !e.levers.is_empty()
+                && !t.no_levers
+                && !t.found.contains(&(e.from, e.dir)),
+        }
+    }
+
+    /// A lever's phrase, typed in its room, as a Remote Action step from the room to itself.
+    fn pull(l: &crate::nav::Lever) -> Step {
+        Step {
+            command: l.phrase.clone(),
+            from: l.room,
+            to: l.room,
+            dir: crate::nav::COMMAND_DIRS,
+            exit_type: ExitType::RemoteAction,
+            door: None,
+            unblock: Vec::new(),
+            passable: false,
+            lever: Vec::new(),
+            levered: false,
+            disarm: false,
         }
     }
 }
@@ -388,6 +418,10 @@ fn route_core(
             }
             if e.kind == ExitType::Hidden && !e.passable() && !t.found.contains(&(e.from, e.dir)) {
                 c += t.costs.hidden;
+                // Opened by levers elsewhere: the way to them and back, more than any detour.
+                if e.sealed() && !e.levers.is_empty() {
+                    c += LEVER_TOUR_COST;
+                }
             }
             if e.armed_trap() {
                 c += if t.disarms(e) { 1 } else { t.costs.trap };
@@ -407,7 +441,11 @@ fn route_core(
     while at != src {
         let e = prev[&at];
         if e.kind == ExitType::PathWindow {
-            steps.extend(e.window.iter().rev().map(|s| Step::through(s, t)));
+            // The window types its own levers' phrases on the way: no tour of its own.
+            steps.extend(e.window.iter().rev().map(|s| Step {
+                levered: false,
+                ..Step::through(s, t)
+            }));
         } else {
             steps.push(Step::through(e, t));
         }
@@ -416,7 +454,52 @@ fn route_core(
             .expect("an edge leaves a room of the graph");
     }
     steps.reverse();
-    Some(steps)
+    with_lever_tours(graph, steps, t)
+}
+
+/// What a sealed Hidden exit opened by levers elsewhere costs on a route (C-118): the walk to
+/// them and back is not known when the route is planned, so it is taken only when there is no
+/// other way, a MegaMud path window through the same levers among them (the Crypt's).
+pub const LEVER_TOUR_COST: u32 = 1000;
+
+/// `steps` with the lever tour of each sealed Hidden exit it goes through put before it
+/// (C-118): from the exit's room to each lever, its phrase there, and back. The levers go in
+/// the order the game asks for; in any order, the one nearest the exit goes last, as the
+/// passage closes again one exit step (up to about five minutes) after the last block comes off.
+/// `None` when a lever cannot be reached.
+fn with_lever_tours(graph: &RoomGraph, steps: Vec<Step>, t: &Traveller) -> Option<Route> {
+    if !steps.iter().any(|s| s.levered) {
+        return Some(steps);
+    }
+    let plain = Traveller {
+        no_levers: true,
+        ..t.clone()
+    };
+    let way = |a: Key, b: Key| route_core(graph, a, b, &plain, &|_| true);
+    let mut out = Vec::new();
+    for s in steps {
+        if s.levered
+            && let Some(e) = graph.edge(s.from, s.dir)
+        {
+            let exit = s.from;
+            let mut levers = e.levers.clone();
+            if e.levers_any_order {
+                // The nearest to the exit last; the others nearest first from the exit.
+                let back =
+                    |l: &crate::nav::Lever| way(l.room, exit).map_or(usize::MAX, |r| r.len());
+                levers.sort_by_key(|l| std::cmp::Reverse(back(l)));
+            }
+            let mut at = exit;
+            for l in &levers {
+                out.extend(way(at, l.room)?);
+                out.push(Step::pull(l));
+                at = l.room;
+            }
+            out.extend(way(at, exit)?);
+        }
+        out.push(s);
+    }
+    Some(out)
 }
 
 /// An item to buy on the way: `name` (item number `item`) in the shop room `shop`, before the
