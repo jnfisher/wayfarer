@@ -19,6 +19,11 @@ export const KEY_ROWS: KeyRow[] = [
     does: "Sends what you type in the terminal straight to the game, key by key; click it again to go back to the input line",
   },
   { group: "Tiles", keys: "Alt+1 to Alt+6", does: "Focus a tile (on a Mac, Option)" },
+  {
+    group: "Tiles",
+    keys: "Alt+Z",
+    does: "Zoom the focused tile to fill the window, or back; the others keep playing, and Alt+1 to Alt+6 zoom another (on a Mac, Option)",
+  },
   { group: "Display", keys: "Ctrl +, Ctrl -", does: "Make the focused tile's font larger or smaller" },
   { group: "Display", keys: "Ctrl 0", does: 'Back to "fit to tile"' },
   { group: "Layout", keys: "Drag the line between two tiles", does: "Gives one tile more room and the other less; remembered per browser" },
@@ -133,6 +138,7 @@ export const INPUT_VS_KEYS =
 export const HELP_KEY = "?";
 export const FOCUS_TILE_CODE = /^Digit[1-6]$/;
 export const RESET_LAYOUT_CODE = "Digit0";
+export const ZOOM_TILE_CODE = "KeyZ";
 export const DEV_PANEL_CODE = "KeyD";
 export const MAP_PANEL_CODE = "KeyM";
 export const PARTIES_PANEL_CODE = "KeyP";

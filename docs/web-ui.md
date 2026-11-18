@@ -123,6 +123,7 @@ but no pause sign, so pause is `[║]`.
 | `Up`, `Down` in the input line | That tile's command history |
 | `keys` button | Sends what you type in the terminal straight to the game, key by key; click it again to go back to the input line |
 | `Alt+1` to `Alt+6` | Focus a tile (on a Mac, `Option`) |
+| `Alt+Z` | Zoom the focused tile to fill the window, or back; the others keep playing, and `Alt+1` to `Alt+6` zoom another (on a Mac, `Option`) |
 | `Ctrl +`, `Ctrl -` | Make the focused tile's font larger or smaller |
 | `Ctrl 0` | Back to "fit to tile" |
 | Drag the line between two tiles | Gives one tile more room and the other less; remembered per browser |

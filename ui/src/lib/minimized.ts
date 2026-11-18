@@ -31,6 +31,19 @@ export function dockSessions(sessions: SessionInfo[], minimized: ReadonlySet<str
   return sessions.filter((s) => minimized.has(s.id));
 }
 
+/**
+ * The sessions whose tile takes no cell: the minimized ones and, while one tile is zoomed to fill
+ * the grid (Alt+Z), every other. Zooming on a minimized tile, or one gone, zooms nothing.
+ */
+export function offGrid(
+  sessions: SessionInfo[],
+  minimized: ReadonlySet<string>,
+  zoomed: string | null,
+): Set<string> {
+  const zooming = zoomed !== null && !minimized.has(zoomed) && sessions.some((s) => s.id === zoomed);
+  return new Set(sessions.filter((s) => minimized.has(s.id) || (zooming && s.id !== zoomed)).map((s) => s.id));
+}
+
 export interface Chip {
   /** `Waydeva 65/65`: the HP, `--` when not known, `offline` while not in the realm. */
   text: string;
