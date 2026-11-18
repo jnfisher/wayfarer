@@ -44,7 +44,7 @@ pub use knowledge::{PathExit, PathKnowledge, Window};
 pub use layout::{Layout, Placed, Segment, SegmentKind, layout};
 pub use loops::{Area, HuntRoom, Loop, MmLoop, generate, hunt_rooms, megamud_loops};
 pub use monsters::{DEFAULT_RULES, MonsterRule, MonsterRules, Monsters, huntable};
-pub use nav::{Category, DirSet, Edge, ExitType, Gate, Key, LockState, RoomGraph};
+pub use nav::{Category, DirSet, Edge, ExitType, Gate, Key, Lever, LockState, RoomGraph};
 pub use pack::WorldPack;
 pub use route::{
     Costs, Passer, Purchase, Route, Step, Traveller, distances, distances_any, distances_buying,

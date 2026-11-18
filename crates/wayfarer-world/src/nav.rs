@@ -267,7 +267,21 @@ pub struct Edge {
     /// door refuses, as the lever swaps the door between open and locked
     /// (`kb/navigation.md` "Remote Action"). Empty for any other exit.
     pub lever: Vec<Edge>,
+    /// A sealed Hidden exit whose blocks the Remote Actions of other rooms take off (C-118):
+    /// the lever rooms and their phrases, one per block (or one that takes every block), in
+    /// the order the game asks for, or any order when `levers_any_order`. A route through it
+    /// goes to each lever first ([`crate::route`]). Empty for any other exit.
+    pub levers: Vec<Lever>,
+    pub levers_any_order: bool,
     pub(crate) to_ix: u32,
+}
+
+/// A lever that takes a block off a sealed Hidden exit from another room ([`Edge::levers`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Lever {
+    /// The room the phrase is typed in.
+    pub room: Key,
+    pub phrase: String,
 }
 
 impl Edge {
@@ -327,15 +341,10 @@ const EXF_BLOCKED1: i64 = 0x0010;
 /// action n block n, and with `exitpar2` 0 or more only once block n+1 is off, so they are
 /// typed from n down.
 fn unblocking(params: [i64; 4], actions: &[(i64, String)]) -> Vec<String> {
-    let flags = params[0];
-    if flags & EXF_NEEDSEARCH != 0 {
+    if params[0] & EXF_NEEDSEARCH != 0 {
         return Vec::new();
     }
-    let set = (1..=10)
-        .filter(|b| flags & (EXF_BLOCKED1 << (b - 1)) != 0)
-        .max();
-    let again = Some(params[1].abs()).filter(|n| (1..=10).contains(n));
-    let Some(n) = set.max(again) else {
+    let Some(n) = blocks(params) else {
         return Vec::new();
     };
     if let Some((_, all)) = actions.iter().find(|(a, _)| *a == 0) {
@@ -351,6 +360,16 @@ fn unblocking(params: [i64; 4], actions: &[(i64, String)]) -> Vec<String> {
         })
         .collect::<Option<Vec<_>>>()
         .unwrap_or_default()
+}
+
+/// How many blocks a Hidden exit with parameters `params` has: the highest `EXF_BLOCKED` bit
+/// of `exitpar1`, or `exitpar2`'s count (negative for any order), whichever is more.
+fn blocks(params: [i64; 4]) -> Option<i64> {
+    let set = (1..=10)
+        .filter(|b| params[0] & (EXF_BLOCKED1 << (b - 1)) != 0)
+        .max();
+    let again = Some(params[1].abs()).filter(|n| (1..=10).contains(n));
+    set.max(again)
 }
 
 /// The clauses a room command line may have and still be a way through: what they do can be
@@ -656,6 +675,8 @@ impl RoomGraph {
                     params: p,
                     window: Vec::new(),
                     lever: Vec::new(),
+                    levers: Vec::new(),
+                    levers_any_order: false,
                     to_ix,
                 });
             }
@@ -684,6 +705,8 @@ impl RoomGraph {
                     params: [0; 4],
                     window: Vec::new(),
                     lever: Vec::new(),
+                    levers: Vec::new(),
+                    levers_any_order: false,
                     to_ix,
                 });
             }
@@ -754,6 +777,7 @@ impl RoomGraph {
             into_unnamed,
         };
         graph.find_levers();
+        graph.find_far_levers();
         Ok(graph)
     }
 
@@ -800,6 +824,8 @@ impl RoomGraph {
                 params: r.params,
                 window: Vec::new(),
                 lever: Vec::new(),
+                levers: Vec::new(),
+                levers_any_order: false,
                 to_ix: lever_ix,
             };
             let lever: Vec<Edge> = there
@@ -821,6 +847,62 @@ impl RoomGraph {
             {
                 e.lever = lever;
             }
+        }
+    }
+
+    /// Give each sealed Hidden exit the levers of other rooms that open it its [`Edge::levers`]
+    /// (C-118): Remote Actions on it (`exitpar2` units its direction, tens the block they take
+    /// off, 0 every block) that need no item, one for each of its blocks (`exitpar1`'s
+    /// `EXF_BLOCKED` bits, or `exitpar2`'s count). In order from the highest block down, or any
+    /// order when `exitpar2` is negative (`kb/navigation.md` "Remote Action"). A block no lever
+    /// takes off leaves the exit without levers.
+    fn find_far_levers(&mut self) {
+        // The Remote Actions of other rooms by the exit they act on: (room, direction).
+        let mut by_exit: HashMap<(Key, u8), Vec<(i64, Lever)>> = HashMap::new();
+        for r in self.edges.iter().filter(|r| {
+            r.kind == ExitType::RemoteAction
+                && r.to != r.from
+                && r.params[1] >= 0
+                && r.params[3] == 0
+        }) {
+            if let Some(phrase) = r.phrases.first() {
+                by_exit
+                    .entry((r.to, (r.params[1] % 10) as u8))
+                    .or_default()
+                    .push((
+                        r.params[1] / 10,
+                        Lever {
+                            room: r.from,
+                            phrase: phrase.clone(),
+                        },
+                    ));
+            }
+        }
+        let mut found: Vec<(usize, Vec<Lever>, bool)> = Vec::new();
+        for (i, e) in self.edges.iter().enumerate() {
+            if !e.sealed() {
+                continue;
+            }
+            let Some(pulls) = by_exit.get(&(e.from, e.dir)) else {
+                continue;
+            };
+            let Some(blocks) = blocks(e.params) else {
+                continue;
+            };
+            let levers: Option<Vec<Lever>> = match pulls.iter().find(|(a, _)| *a == 0) {
+                Some((_, all)) => Some(vec![all.clone()]),
+                None => (1..=blocks)
+                    .rev()
+                    .map(|b| pulls.iter().find(|(a, _)| *a == b).map(|(_, l)| l.clone()))
+                    .collect(),
+            };
+            if let Some(levers) = levers {
+                found.push((i, levers, e.params[1] < 0));
+            }
+        }
+        for (i, levers, any) in found {
+            self.edges[i].levers = levers;
+            self.edges[i].levers_any_order = any;
         }
     }
 
@@ -993,6 +1075,8 @@ impl RoomGraph {
                 params: [0; 4],
                 window: Vec::new(),
                 lever: Vec::new(),
+                levers: Vec::new(),
+                levers_any_order: false,
                 to_ix,
             });
         }
@@ -1035,6 +1119,8 @@ impl RoomGraph {
                 params: [0; 4],
                 window: w.steps.clone(),
                 lever: Vec::new(),
+                levers: Vec::new(),
+                levers_any_order: false,
                 to_ix,
             });
         }

@@ -2635,6 +2635,7 @@ impl Session {
     fn loop_traveller(&self, doors: bool) -> Traveller {
         Traveller {
             no_doors: !doors,
+            no_levers: true,
             ..self.position.traveller.clone()
         }
     }

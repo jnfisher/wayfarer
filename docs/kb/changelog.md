@@ -224,3 +224,4 @@
 - **2026-11-11**: `economy.md`: a coin hide confirms with its count, "You hid 76 gold crowns.", and a count above what is carried is refused and hides nothing [C live] (wayfarer C-097).
 - **2026-11-17**: `spells.md`: the buff items, the stock items of unlimited charges whose `use` casts a lasting spell (shimmering greatsword, large silvery cross, emerald-tipped crozier, cosmic staff), what each casts, and that sword major bless shares bless's lines [C data; C live 2026-11-17] (wayfarer C-109).
 - **2026-11-17**: `screen-parsing.md` "Loot and money": keys go on the key ring, listed apart from the carried items, copies counted as "3 black star keys" with an "s" added [C source; C live 2026-11-17] (wayfarer C-110).
+- **2026-11-17**: `navigation.md` "Remote Action": a pull that leaves blocks on a Hidden exit is not queued, so its blocks stay off until the passage opens; only the open passage closes again after one exit step [C] (C-118).
