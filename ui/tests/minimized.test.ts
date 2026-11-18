@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chip, dockSessions, loadMinimized, MINIMIZED_KEY, saveMinimized } from "../src/lib/minimized";
+import { chip, dockSessions, loadMinimized, MINIMIZED_KEY, offGrid, saveMinimized } from "../src/lib/minimized";
 import type { SessionInfo } from "../src/proto";
 
 const info = (id: string, state: SessionInfo["state"] = "realm"): SessionInfo => ({
@@ -35,6 +35,16 @@ describe("minimized tiles", () => {
     };
     expect(loadMinimized(broken)).toEqual([]);
     expect(() => saveMinimized(broken, ["a"])).not.toThrow();
+  });
+
+  it("zooms one tile to fill the grid, the minimized ones docked still", () => {
+    const sessions = [info("a"), info("b"), info("c")];
+    const ids = (s: Set<string>) => [...s].sort();
+    expect(ids(offGrid(sessions, new Set(["c"]), null))).toEqual(["c"]);
+    expect(ids(offGrid(sessions, new Set(["c"]), "a"))).toEqual(["b", "c"]);
+    // Zooming on a minimized tile, or one gone, zooms nothing.
+    expect(ids(offGrid(sessions, new Set(["c"]), "c"))).toEqual(["c"]);
+    expect(ids(offGrid(sessions, new Set(), "z"))).toEqual([]);
   });
 
   it("docks the minimized sessions in the sessions' own order", () => {

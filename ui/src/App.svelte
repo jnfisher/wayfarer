@@ -29,11 +29,12 @@
     SETTINGS_PANEL_CODE,
     STATS_PANEL_CODE,
     ZOOM_IN_KEYS,
+    ZOOM_TILE_CODE,
     ZOOM_OUT_KEYS,
     ZOOM_RESET_KEYS,
   } from "./lib/keys";
   import { LOOP_RADIUS, MAP_RADIUS, type Loops, type MapView } from "./lib/map";
-  import { chip, dockSessions, loadMinimized, saveMinimized } from "./lib/minimized";
+  import { chip, dockSessions, loadMinimized, offGrid, saveMinimized } from "./lib/minimized";
   import type { FoundMessage } from "./lib/goto";
   import { followingName, namesOf } from "./lib/parties";
   import {
@@ -205,6 +206,7 @@
     if (!id) return;
     setMinimized(id, true);
     if (i === focused) {
+      zoomedIn = false;
       const next = sessions.findIndex((s) => !minimized.has(s.id));
       if (next >= 0) focused = next;
     }
@@ -217,7 +219,11 @@
     focused = i;
   }
   const docked = $derived(dockSessions(sessions, minimized));
-  const shown = $derived(sessions.length - docked.length);
+  // Alt+Z: the focused tile fills the grid; the others stay mounted and keep playing. Alt+n
+  // moves the zoom to that tile, as it moves the focus.
+  let zoomedIn = $state(false);
+  const off = $derived(offGrid(sessions, minimized, zoomedIn ? (sessions[focused]?.id ?? null) : null));
+  const shown = $derived(sessions.length - off.size);
   const grid = $derived(tileGrid(shown, gridWidth, gridHeight));
 
   // Column and row weights per grid shape, kept in the browser until settings exist (C-013).
@@ -424,7 +430,7 @@
   }
 
   // Alt+E opens or closes the gear planner, and Esc closes it; Alt+M, Alt+S and Alt+D open the
-  // drawer on the map, stats or dev panel; Alt+G on the map's go box; Alt+1..Alt+6 focus a tile; Ctrl +/-/0
+  // drawer on the map, stats or dev panel; Alt+G on the map's go box; Alt+1..Alt+6 focus a tile, Alt+Z zooms it; Ctrl +/-/0
   // zoom the focused one; F9 and F10 pause or resume, start or stop its bot. Captured before
   // xterm sees them.
   function onkeydown(e: KeyboardEvent) {
@@ -477,6 +483,11 @@
     if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === RESET_LAYOUT_CODE) {
       e.preventDefault();
       resetAxes(["cols", "rows"]);
+      return;
+    }
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === ZOOM_TILE_CODE) {
+      e.preventDefault();
+      zoomedIn = !zoomedIn;
       return;
     }
     if (e.altKey && !e.ctrlKey && !e.metaKey && FOCUS_TILE_CODE.test(e.code)) {
@@ -560,7 +571,7 @@
           character={brain.attached ? (brain.characters[info.id] ?? {}) : null}
           plan={plansBySession[info.id]}
           planRefusal={planRefusals[info.id]}
-          hidden={minimized.has(info.id)}
+          hidden={off.has(info.id)}
           onminimize={() => minimize(i)}
           parties={brain.attached ? (parties ?? []) : []}
           {names}
