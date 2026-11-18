@@ -49,6 +49,9 @@ pub(crate) enum PartyRole {
         rest: Option<String>,
         /// The members with it, for its heals.
         mates: Vec<Mate>,
+        /// What the gated exits check of each follower in the realm: its routes take only the
+        /// exits every one of them may take.
+        gates: Vec<wayfarer_world::Passer>,
     },
     Follower {
         party: String,
@@ -168,6 +171,14 @@ impl PartyRole {
         )
     }
 
+    /// What the gated exits check of the followers in the realm, when this is a leader.
+    pub fn gates(&self) -> &[wayfarer_world::Passer] {
+        match self {
+            PartyRole::Leader { gates, .. } => gates,
+            _ => &[],
+        }
+    }
+
     /// The other members with it, for its heals.
     pub fn mates(&self) -> &[Mate] {
         match self {
@@ -283,6 +294,8 @@ pub(crate) struct MemberInfo {
     pub busy: bool,
     /// The rules its server plays: `guard` exists on Quicksilver 1.20 only.
     pub rules: wayfarer_world::RuleSet,
+    /// Its level, class, race and alignment, for the gated exits on its leader's routes.
+    pub passer: wayfarer_world::Passer,
     /// What it knows of its guarding, from the game's lines (1.20, C-068).
     pub guard: crate::guard::Guard,
 }
@@ -955,6 +968,13 @@ impl Parties {
                     hold: None,
                     rest: None,
                     mates: Vec::new(),
+                    gates: def
+                        .followers
+                        .iter()
+                        .filter_map(|f| m.get(f))
+                        .filter(|i| i.realm)
+                        .map(|i| i.passer)
+                        .collect(),
                 },
             );
             // The followers walking back, by name, for the leader's hold.
@@ -1435,6 +1455,7 @@ mod tests {
             busy: false,
             rules: wayfarer_world::RuleSet::Unknown,
             guard: crate::guard::Guard::default(),
+            passer: wayfarer_world::Passer::default(),
         }
     }
 
@@ -1482,6 +1503,44 @@ mod tests {
         assert_eq!(p.defs()[0].id, "party-1");
         let six = def("penny", &["a", "b", "c", "d", "e", "f"]);
         assert!(p.save(six, &k).unwrap_err().contains("at most 5"));
+    }
+
+    #[test]
+    fn a_leader_routes_by_the_gates_of_its_followers_in_the_realm() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        p.save(def("penny", &["lauren", "faye"]), &known()).unwrap();
+        let at = |n: i64| wayfarer_world::Passer {
+            level: Some(n),
+            ..Default::default()
+        };
+        let mut m = BTreeMap::new();
+        m.insert(
+            "penny".to_owned(),
+            MemberInfo {
+                passer: at(30),
+                ..member("Penny Pax", (1, 1))
+            },
+        );
+        m.insert(
+            "lauren".to_owned(),
+            MemberInfo {
+                passer: at(12),
+                ..member("Lauren", (1, 1))
+            },
+        );
+        // Faye is out of the realm: she is not walked anywhere, and gates nothing.
+        m.insert(
+            "faye".to_owned(),
+            MemberInfo {
+                realm: false,
+                passer: at(5),
+                ..member("Faye", (1, 1))
+            },
+        );
+        let plan = p.plan(&m, now);
+        assert_eq!(plan.roles["penny"].gates(), [at(12)]);
+        assert!(plan.roles["lauren"].gates().is_empty());
     }
 
     #[test]

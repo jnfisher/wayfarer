@@ -47,7 +47,7 @@ pub use monsters::{DEFAULT_RULES, MonsterRule, MonsterRules, Monsters, huntable}
 pub use nav::{Category, DirSet, Edge, ExitType, Gate, Key, LockState, RoomGraph};
 pub use pack::WorldPack;
 pub use route::{
-    Costs, Purchase, Route, Step, Traveller, distances, distances_any, distances_buying,
+    Costs, Passer, Purchase, Route, Step, Traveller, distances, distances_any, distances_buying,
     pocket_exits, route, route_buying, route_or_search, route_within, route_within_or_search,
 };
 pub use rule_set::RuleSet;

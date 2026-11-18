@@ -82,6 +82,7 @@ pub(crate) fn why_unreachable(
         strength: None,
         picklocks: None,
         blocked: BTreeSet::new(),
+        party: Vec::new(),
         ..t.clone()
     };
     open.allow.extend(Traveller::anyone().allow);
@@ -123,7 +124,13 @@ pub(crate) fn why_unreachable(
     } else if e.hidden() {
         format!("the hidden exit {dir} of {at} is not known")
     } else if let Some(need) = gate_need(&e, keys) {
-        format!("the exit {dir} of {at} {need}")
+        // The traveller would pass; a member of the party it leads would not.
+        let party = if t.passer().passes(e.gate) {
+            ", and not everyone in the party is"
+        } else {
+            ""
+        };
+        format!("the exit {dir} of {at} {need}{party}")
     } else {
         "no route known".to_owned()
     }
@@ -137,6 +144,8 @@ fn gate_need(
     use wayfarer_world::{ExitType, Gate};
     Some(match e.gate {
         Gate::Level { min, max } if min == max => format!("is for level {min} only"),
+        Gate::Level { min, max: 0 } => format!("is for level {min} and up"),
+        Gate::Level { min: 0, max } => format!("is for level {max} and below"),
         Gate::Level { min, max } => format!("is for levels {min} to {max}"),
         Gate::Class { .. } => "is for another class".to_owned(),
         Gate::Race { .. } => "is for another race".to_owned(),

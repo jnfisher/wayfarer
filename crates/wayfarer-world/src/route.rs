@@ -50,6 +50,36 @@ impl Costs {
     }
 }
 
+/// What a gated exit checks of one character: `None` is unknown, and the gate is not checked.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Passer {
+    pub level: Option<i64>,
+    pub class: Option<i64>,
+    pub race: Option<i64>,
+    /// Evil points.
+    pub evil: Option<i64>,
+}
+
+impl Passer {
+    /// Whether the gate lets this character through: the gates on who the character is
+    /// (level, class, race, alignment); every other gate does.
+    pub fn passes(&self, gate: Gate) -> bool {
+        let in_range = |v: Option<i64>, lo: i64, hi: i64| {
+            v.is_none_or(|v| (lo == 0 || v >= lo) && (hi == 0 || v <= hi))
+        };
+        let one_of = |v: Option<i64>, only: i64, barred: i64| {
+            v.is_none_or(|v| if only != 0 { v == only } else { v != barred })
+        };
+        match gate {
+            Gate::Level { min, max } => in_range(self.level, min, max),
+            Gate::Class { only, barred } => one_of(self.class, only, barred),
+            Gate::Race { only, barred } => one_of(self.race, only, barred),
+            Gate::Alignment { min, max } => self.evil.is_none_or(|v| v >= min && v <= max),
+            _ => true,
+        }
+    }
+}
+
 /// Who is walking: what the gated exits check, and what this session has learned.
 #[derive(Clone, Debug, Default)]
 pub struct Traveller {
@@ -80,6 +110,10 @@ pub struct Traveller {
     pub doors: BTreeMap<(Key, u8), LockState>,
     /// Exit categories allowed beyond the default.
     pub allow: BTreeSet<Category>,
+    /// The members in the realm of the party the traveller leads: they follow it through every
+    /// exit it takes, so a level, class, race or alignment gate must let each of them through
+    /// too (a level 20 vortex strands a level 12 follower).
+    pub party: Vec<Passer>,
     /// Doors, gates and key doors are not taken (a loop generated without doors).
     pub no_doors: bool,
     /// Rooms to keep out of when there is another way: where a monster the bot avoids was
@@ -110,6 +144,16 @@ impl Traveller {
                 hidden: 0,
             },
             ..Traveller::default()
+        }
+    }
+
+    /// The traveller's own level, class, race and alignment.
+    pub fn passer(&self) -> Passer {
+        Passer {
+            level: self.level,
+            class: self.class,
+            race: self.race,
+            evil: self.evil,
         }
     }
 
@@ -156,18 +200,14 @@ impl Traveller {
         {
             return false;
         }
-        let in_range = |v: Option<i64>, lo: i64, hi: i64| {
-            v.is_none_or(|v| (lo == 0 || v >= lo) && (hi == 0 || v <= hi))
-        };
-        let one_of = |v: Option<i64>, only: i64, barred: i64| {
-            v.is_none_or(|v| if only != 0 { v == only } else { v != barred })
-        };
         let gate_ok = match e.gate {
             Gate::None => true,
-            Gate::Level { min, max } => in_range(self.level, min, max),
-            Gate::Class { only, barred } => one_of(self.class, only, barred),
-            Gate::Race { only, barred } => one_of(self.race, only, barred),
-            Gate::Alignment { min, max } => self.evil.is_none_or(|v| v >= min && v <= max),
+            g @ (Gate::Level { .. }
+            | Gate::Class { .. }
+            | Gate::Race { .. }
+            | Gate::Alignment { .. }) => {
+                self.passer().passes(g) && self.party.iter().all(|p| p.passes(g))
+            }
             Gate::Item { item } => self.allows(Category::Item) || self.items.contains(&item),
             Gate::Toll { .. } => self.allows(Category::Toll),
             Gate::Spell => self.allows(Category::Spell),

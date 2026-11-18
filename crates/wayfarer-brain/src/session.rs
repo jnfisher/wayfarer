@@ -87,11 +87,13 @@ pub const MAX_LOOP_RADIUS: u32 = 30;
 /// What the generated loops of an area depend on: the anchor, the radius, the character's
 /// level (the gated exits), strength and picklocks (the locked doors it can open) and whether
 /// doors are taken.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct LoopsKey {
     anchor: Key,
     radius: u32,
     level: Option<i64>,
+    /// The followers' levels, classes, races and alignments, when it leads a party.
+    party: Vec<wayfarer_world::Passer>,
     strength: Option<i64>,
     picklocks: Option<i64>,
     doors: bool,
@@ -123,6 +125,7 @@ fn parse_loop_id(id: &str, t: &Traveller) -> Option<(LoopsKey, usize)> {
         anchor: (map, room),
         radius,
         level: t.level,
+        party: t.party.clone(),
         strength: t.strength,
         picklocks: t.picklocks,
         doors,
@@ -2479,6 +2482,7 @@ impl Session {
             anchor,
             radius,
             level: self.position.traveller.level,
+            party: self.position.traveller.party.clone(),
             strength: self.position.traveller.strength,
             picklocks: self.position.traveller.picklocks,
             doors,
@@ -2670,6 +2674,7 @@ impl Session {
         }
         let t = Traveller {
             level: key.level,
+            party: key.party.clone(),
             strength: key.strength,
             picklocks: key.picklocks,
             ..self.loop_traveller(key.doors)
@@ -3840,6 +3845,7 @@ impl Session {
                     && matches!(self.bot.mode(), BotMode::Fight | BotMode::Flee)),
             rules: self.detect.rules(),
             guard: self.guard.clone(),
+            passer: self.position.traveller.passer(),
         }
     }
 
@@ -4004,6 +4010,8 @@ impl Session {
             let why = why.to_owned();
             self.stop_walk(&why, out);
         }
+        // A leader routes by the gated exits each follower may take too.
+        self.position.traveller.party = role.gates().to_vec();
         if role == self.party_role {
             return;
         }
