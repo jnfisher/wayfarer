@@ -15,7 +15,7 @@
   import { FONT_FAMILY, FONT_NAME, VGA_THEME } from "./lib/theme";
   import type { SpellPlan } from "./lib/spells";
   import { planRow, planTotals } from "./lib/spells";
-  import { chipFor, chipMenu, followerErrands, followingName, leavesFirst, type Names } from "./lib/parties";
+  import { chipFor, chipMenu, followerErrands, followingName, leavesFirst, partySessions, type Names } from "./lib/parties";
   import type { CharacterState, PartyStatus, SessionInfo } from "./proto";
 
   interface Props {
@@ -360,10 +360,11 @@
         class:on={boss}
         aria-label="Boss fight mode"
         aria-pressed={boss}
-        title={bossTitle(boss)}
+        title={bossTitle(boss, inParty)}
         onclick={(e) => {
           e.stopPropagation();
-          client.setBossMode(info.id, !boss);
+          // The whole party goes into a boss fight together; Shift+click is this one only.
+          for (const id of e.shiftKey ? [info.id] : partySessions(parties, info.id)) client.setBossMode(id, !boss);
         }}>{boss ? "[☠]" : "[-]"}</button
       >
     {/if}

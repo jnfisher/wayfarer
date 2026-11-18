@@ -140,10 +140,14 @@ export function menuWidth(state: string, hasBrain: boolean, hasBot = hasBrain): 
 }
 
 /** The boss fight toggle's title: what it does now (C-100). */
-export function bossTitle(on: boolean): string {
-  return on
-    ? "Boss fight mode is on: fighting where it stands, no fleeing, no walking, no blessings; hangs up at its own line. Click to turn it off."
-    : "Boss fight mode: fight where it stands, never flee or walk, no blessings, its own casts limit and hang-up line. Turning it on stops a loop or Go to and starts a stopped bot.";
+export function bossTitle(on: boolean, party = false): string {
+  const who = party ? " For the whole party (Alt+K); Shift+click for this character only." : "";
+  return (
+    (on
+      ? "Boss fight mode is on: fighting where it stands, no fleeing, no walking, no blessings; hangs up at its own line. Click to turn it off."
+      : "Boss fight mode: fight where it stands, never flee or walk, no blessings, its own casts limit and hang-up line. Turning it on stops a loop or Go to and starts a stopped bot.") +
+    who
+  );
 }
 
 /**

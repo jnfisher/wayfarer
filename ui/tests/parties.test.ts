@@ -9,6 +9,7 @@ import {
   memberLine,
   activityLine,
   newDraft,
+  partySessions,
   guardsOff,
   setGuard,
   setLeader,
@@ -37,6 +38,15 @@ function party(state: PartyStatus["members"][number]["state"] = "joined", detail
     },
   ];
 }
+
+describe("the party's members", () => {
+  it("are everyone in the party, leader first, from any member; alone out of one", () => {
+    const all = ["penny", "lauren", "faye", "manuel"];
+    expect(partySessions(party(), "faye")).toEqual(all);
+    expect(partySessions(party(), "penny")).toEqual(all);
+    expect(partySessions(party(), "zed")).toEqual(["zed"]);
+  });
+});
 
 describe("the party chip", () => {
   it("says who leads and who follows, and nothing outside a party", () => {

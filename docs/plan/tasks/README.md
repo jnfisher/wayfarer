@@ -297,6 +297,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-112](C-112-entry-during-catch-up.md) | An entry during the catch-up puts the bot back after it | A | S | C-107 | |
 | [C-113](C-113-party-level-gates.md) | A leader's routes take only the gated exits every follower may take | A | S | C-111 | |
 | [C-114](C-114-zoom-a-tile.md) | Alt+Z zooms the focused tile to fill the window | A | S | | |
+| [C-115](C-115-party-boss-mode.md) | Boss fight mode on or off for the whole party at once | A | S | C-100 | |
 | [C-116](C-116-left-behind.md) | A follower the game left behind, still on the leader's list, walks back | A | S | C-111 | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:

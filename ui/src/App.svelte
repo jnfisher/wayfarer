@@ -29,6 +29,7 @@
     SETTINGS_PANEL_CODE,
     STATS_PANEL_CODE,
     ZOOM_IN_KEYS,
+    BOSS_MODE_CODE,
     ZOOM_TILE_CODE,
     ZOOM_OUT_KEYS,
     ZOOM_RESET_KEYS,
@@ -36,7 +37,7 @@
   import { LOOP_RADIUS, MAP_RADIUS, type Loops, type MapView } from "./lib/map";
   import { chip, dockSessions, loadMinimized, offGrid, saveMinimized } from "./lib/minimized";
   import type { FoundMessage } from "./lib/goto";
-  import { followingName, namesOf } from "./lib/parties";
+  import { followingName, namesOf, partySessions } from "./lib/parties";
   import {
     drag,
     equalWeights,
@@ -483,6 +484,16 @@
     if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === RESET_LAYOUT_CODE) {
       e.preventDefault();
       resetAxes(["cols", "rows"]);
+      return;
+    }
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === BOSS_MODE_CODE) {
+      e.preventDefault();
+      const id = sessions[focused]?.id;
+      const bot = id && brain.attached ? brain.characters[id]?.bot : undefined;
+      if (id && bot) {
+        const on = !(bot.boss_mode ?? false);
+        for (const s of partySessions(parties ?? [], id)) client.setBossMode(s, on);
+      }
       return;
     }
     if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === ZOOM_TILE_CODE) {
