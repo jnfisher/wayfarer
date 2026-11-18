@@ -235,6 +235,14 @@ impl Position {
                 if let Some((_, n)) = stats.iter().find(|(label, _)| label == "Picklocks") {
                     self.traveller.picklocks = Some(*n);
                 }
+                // The disarm-traps skill: an armed trap on the route is disarmed (C-117).
+                if let Some((_, n)) = stats.iter().find(|(label, _)| label == "Traps") {
+                    self.traveller.disarm = Some(*n);
+                }
+                return None;
+            }
+            GameEvent::StatusMana { traps: Some(n), .. } => {
+                self.traveller.disarm = Some(*n);
                 return None;
             }
             _ => return None,

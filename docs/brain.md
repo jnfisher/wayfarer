@@ -154,6 +154,15 @@ progress (after the move in flight).
   the character cannot open. Narrated: "Walking to Newhaven,
   Arena: 3 steps" (", one door" when there are doors). No route, or an unknown position: a
   warning, and nothing is sent.
+- **Traps** (C-117): an armed Trap or Spell Trap (`exitpar2` kind 0 or 3: it goes off on
+  every crossing) costs 10 steps to a character without the disarm-traps skill, so a trap-free
+  way round of a few more steps wins. A character with the skill (the status screen's `Traps`
+  above 0) disarms it first, `disarm trap <dir>`, which costs a step: "Disarming the trap west",
+  then the move. A failure (`You failed to disarm any trap to the west.`) is tried again, three
+  tries in all, then the walk goes through ("Could not disarm the trap west: going through"). A
+  disarmed trap stays safe for one exit step (up to about 5 minutes), so a party led by the
+  disarmer follows through unharmed. Only the walker disarms: a leader, a character playing
+  alone, or a follower walking back on its own.
 - **Leading a party** (C-113): the followers go through every exit the leader takes, so a
   leader's routes and generated loops take a level, class, race or alignment gate only if it
   lets each follower in the realm through too. The vortexes of the Ironwood Forest and around
