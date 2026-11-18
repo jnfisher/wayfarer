@@ -28,6 +28,12 @@ export function partyOf(
   return null;
 }
 
+/** Everyone in the party `session` is in, the leader first; just `session` out of a party. */
+export function partySessions(parties: PartyStatus[], session: string): string[] {
+  const p = partyOf(parties, session);
+  return p ? [p.party.party.leader, ...p.party.party.followers] : [session];
+}
+
 /** States a follower is out of the leader's party in. */
 const APART = new Set<MemberStatus["state"]>(["separated", "walking", "unreachable"]);
 

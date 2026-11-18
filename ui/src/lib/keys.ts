@@ -95,6 +95,11 @@ export const KEY_ROWS: KeyRow[] = [
   },
   {
     group: "Bot",
+    keys: "Alt+K, or [-] / [☠] in the tile's header",
+    does: "Boss fight mode on or off for the focused character's whole party (or the character, out of one); Shift+click the button for that character only (on a Mac, Option)",
+  },
+  {
+    group: "Bot",
     keys: "Alt+S, or the stats button",
     does: "Open the drawer on the stats of the focused character's runs: exp per hour, kills, deaths and flees, now and for the last runs; or close it (on a Mac, Option)",
   },
@@ -148,6 +153,7 @@ export const STATS_PANEL_CODE = "KeyS";
 export const SETTINGS_PANEL_CODE = "KeyT";
 export const ACCOUNTS_PANEL_CODE = "KeyA";
 export const GEAR_CODE = "KeyE";
+export const BOSS_MODE_CODE = "KeyK";
 export const ZOOM_IN_KEYS = ["+", "="];
 export const ZOOM_OUT_KEYS = ["-"];
 export const ZOOM_RESET_KEYS = ["0"];

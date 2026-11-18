@@ -145,6 +145,7 @@ but no pause sign, so pause is `[║]`.
 | Click a column's heading, or a row, in the gear planner | Sort by that column (again: the other way round); a row opens its detail under it: each monster's numbers for each move |
 | `F10`, or `[■]` in the tile's header | Drop the focused character's loop or Go to: it plays on where it is (paused, it stays off); with neither, turn the bot off, or on |
 | `F9`, or `[║]` and `[►]` in the tile's header | Pause the focused character's loop or Go to and go on with it; with neither, turn the bot off and on where it stands (fight what comes, rest when low) |
+| `Alt+K`, or `[-]` / `[☠]` in the tile's header | Boss fight mode on or off for the focused character's whole party (or the character, out of one); `Shift`+click the button for that character only (on a Mac, `Option`) |
 | `Alt+S`, or the `stats` button | Open the drawer on the stats of the focused character's runs: exp per hour, kills, deaths and flees, now and for the last runs; or close it (on a Mac, `Option`) |
 | `Alt+T`, or the `settings` button | Open the drawer on the focused character's settings (the form, "The settings" below), or close it (on a Mac, `Option`) |
 | `Alt+A`, or the `accounts` button | Open the drawer on the accounts: servers, characters, BBS users and passwords. Save writes wayfarer.toml and credentials.toml: a new character connects (its BBS account is made if the BBS doesn't know it, and it stops at the MajorMUD menu for you to make the character), a changed one logs on again, the rest keep playing (on a Mac, `Option`) |
@@ -281,7 +282,9 @@ and works nothing out itself.
   it for boss fight mode, and it shows a skull, `[☠]`, on red (C-100, [brain.md](brain.md) "Boss
   fight mode"): the bot fights where it stands, never flees or walks, casts no blessings, and
   hangs up at its own line. Turning it on stops a loop or Go to and starts a stopped bot; click
-  the skull to turn it off.
+  the skull to turn it off. In a party the button, or `Alt+K` for the focused tile, turns it on or
+  off for every member together, as the clicked tile's state goes (C-115); `Shift`+click sets
+  that character alone.
 - **Errands**: the `[▼]` button in a tile's header (in the realm, with a brain attached) opens
   a menu: **Pick up all** (the coins and the items on the floor, copper included) and **Equip all**
   (wear and wield what is carried, into empty slots only; nothing worn is replaced), and
