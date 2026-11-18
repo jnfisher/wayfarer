@@ -859,6 +859,41 @@ fn a_locked_gate_a_lever_opens_is_routed_through() {
     assert!(!weak.can_take(&no_lever));
 }
 
+/// C-117: the Ancient Ruin's Demolished Doors (3:557) west into the Inside Arch is an armed
+/// trap. A character with the disarm-traps skill disarms it first; one without walks into it,
+/// and its route counts the trap as costly, so a trap-free way round of a few more steps wins.
+#[test]
+fn an_armed_trap_is_disarmed_by_a_character_that_can() {
+    let (_pack, g) = graph();
+    let (doors, arch) = ((3, 557), (3, 559));
+    let trap = g.edge(doors, 3).expect("the Demolished Doors' west exit");
+    assert!(trap.armed_trap(), "{trap:?}");
+    assert_eq!(trap.to, arch);
+
+    let plain = Traveller::default();
+    let r = route(&g, doors, arch, &plain).unwrap();
+    assert_eq!(commands(&r), ["w"]);
+    assert!(!r[0].disarm);
+
+    let sasha = Traveller {
+        disarm: Some(119),
+        ..Traveller::default()
+    };
+    let r = route(&g, doors, arch, &sasha).unwrap();
+    assert_eq!(commands(&r), ["w"]);
+    assert!(r[0].disarm);
+    // No skill, no disarm.
+    let none = Traveller {
+        disarm: Some(0),
+        ..Traveller::default()
+    };
+    assert!(!route(&g, doors, arch, &none).unwrap()[0].disarm);
+
+    // Every armed trap in the data: kind 0 or 3, a Trap or a Spell Trap.
+    let armed = g.all_edges().iter().filter(|e| e.armed_trap()).count();
+    assert!(armed > 200, "{armed} armed traps");
+}
+
 /// C-118: the Darkened Tunnels' hidden passage north of 15:477 has two blocks, taken off in any
 /// order by `pull lever` in 15:730 and 15:604, far off in the maze. A walk through it goes to
 /// both first, the one nearest the passage last, then through; a loop's traveller does not.

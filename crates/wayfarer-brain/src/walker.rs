@@ -139,7 +139,13 @@ enum Doing {
     Arrive,
     /// `buy <item>` in the shop the route passes, for an exit ahead that needs it.
     Buy,
+    /// `disarm trap <dir>` at an armed trap the character can disarm (`Step::disarm`, C-117).
+    Disarm,
 }
+
+/// `disarm trap` tries at one trap before the walk goes through it anyway (MegaMud's Max.
+/// Disarm Attempts).
+const DISARM_TRIES: u32 = 3;
 
 #[derive(Debug)]
 struct Walk {
@@ -161,6 +167,10 @@ struct Walk {
     searched: bool,
     /// The phrases of the step in progress's blocked hidden exit typed so far.
     typed: usize,
+    /// `disarm trap` commands at the step in progress, and whether its trap is done with:
+    /// disarmed, or given up on after [`DISARM_TRIES`] (C-117).
+    disarm_tries: u32,
+    disarmed: bool,
     relocations: u32,
     replans: u32,
     /// Rooms that were not the one the route expected.
@@ -551,6 +561,8 @@ impl Walker {
             key_tries: 0,
             key: None,
             searches: 0,
+            disarm_tries: 0,
+            disarmed: false,
             searched: false,
             typed: 0,
             relocations: 0,
@@ -864,6 +876,24 @@ impl Walker {
                     w.replan(pos, atlas, &mut next, "the door would not bash open")
                 }
             }
+            (Doing::Disarm, Outcome::Confirmed(Confirmed::Disarm { ok: true })) => {
+                w.disarmed = true;
+                Ok(Doing::Move)
+            }
+            // A failure by less than 10 does nothing; a worse one sets the trap off, as walking
+            // into it would. Tried again, then walked through (C-117).
+            (Doing::Disarm, Outcome::Confirmed(Confirmed::Disarm { ok: false })) => {
+                if w.disarm_tries < DISARM_TRIES {
+                    Ok(Doing::Disarm)
+                } else {
+                    w.disarmed = true;
+                    next.notice(format!(
+                        "Could not disarm the trap {}: going through",
+                        dir_name(step.dir)
+                    ));
+                    Ok(Doing::Move)
+                }
+            }
             (Doing::Search, Outcome::Confirmed(Confirmed::Search { found: true })) => {
                 w.searched = true;
                 Ok(Doing::Move)
@@ -1003,6 +1033,8 @@ impl Walk {
         self.searches = 0;
         self.searched = false;
         self.typed = 0;
+        self.disarm_tries = 0;
+        self.disarmed = false;
     }
 
     /// What the walk says when it ends in its destination.
@@ -1023,6 +1055,13 @@ impl Walk {
         if s.exit_type == ExitType::RemoteAction {
             next.notice(format!("Typing `{}` to open the way ahead", s.command));
             return Doing::Move;
+        }
+        // An armed trap: disarmed first, and the party follows through while it is (C-117).
+        if s.disarm && !self.disarmed {
+            if self.disarm_tries == 0 {
+                next.notice(format!("Disarming the trap {}", dir_name(s.dir)));
+            }
+            return Doing::Disarm;
         }
         if s.exit_type != ExitType::Hidden
             || s.passable
@@ -1055,6 +1094,7 @@ impl Walk {
         let plain = |i: usize| {
             self.route.get(i).filter(|s| {
                 s.door.is_none()
+                    && !s.disarm
                     && s.exit_type != ExitType::Hidden
                     && mm::direction(&s.command).is_some()
             })
@@ -1113,6 +1153,10 @@ impl Walk {
                 Action::new(format!("bash {dir}"), Expect::BashResult)
             }
             Doing::Search => Action::new(format!("search {dir}"), Expect::SearchResult),
+            Doing::Disarm => {
+                self.disarm_tries += 1;
+                Action::new(format!("disarm trap {dir}"), Expect::DisarmResult)
+            }
             Doing::Unblock => unreachable!("sent above"),
             Doing::Buy => {
                 self.heard_buy = None;

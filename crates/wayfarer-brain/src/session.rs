@@ -96,6 +96,8 @@ struct LoopsKey {
     party: Vec<wayfarer_world::Passer>,
     strength: Option<i64>,
     picklocks: Option<i64>,
+    /// The disarm-traps skill: armed traps cost less to a character that disarms them.
+    disarm: Option<i64>,
     doors: bool,
 }
 
@@ -128,6 +130,7 @@ fn parse_loop_id(id: &str, t: &Traveller) -> Option<(LoopsKey, usize)> {
         party: t.party.clone(),
         strength: t.strength,
         picklocks: t.picklocks,
+        disarm: t.disarm,
         doors,
     };
     Some((key, index))
@@ -2491,6 +2494,7 @@ impl Session {
             party: self.position.traveller.party.clone(),
             strength: self.position.traveller.strength,
             picklocks: self.position.traveller.picklocks,
+            disarm: self.position.traveller.disarm,
             doors,
         };
         let generated = self.generated(&atlas, key);
@@ -2684,6 +2688,7 @@ impl Session {
             party: key.party.clone(),
             strength: key.strength,
             picklocks: key.picklocks,
+            disarm: key.disarm,
             ..self.loop_traveller(key.doors)
         };
         let area = Area {

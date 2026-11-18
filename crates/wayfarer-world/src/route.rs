@@ -25,6 +25,10 @@ pub struct Costs {
     pub avoid: u32,
     /// Going through a Hidden exit not showing now (not in [`Traveller::found`]): the `search`.
     pub hidden: u32,
+    /// Going through an armed trap the traveller cannot disarm ([`Edge::armed_trap`]): it
+    /// goes off on every crossing, so a trap-free way round of a few more steps wins (C-117).
+    /// One the traveller disarms costs one step, the `disarm trap`.
+    pub trap: u32,
 }
 
 impl Default for Costs {
@@ -34,6 +38,7 @@ impl Default for Costs {
             door: 1,
             avoid: AVOID_COST,
             hidden: 2,
+            trap: 10,
         }
     }
 }
@@ -93,6 +98,9 @@ pub struct Traveller {
     /// ([`Traveller::door_odds`]). `None` is unknown, and every locked door may be bashed.
     pub strength: Option<i64>,
     pub picklocks: Option<i64>,
+    /// The character's disarm-traps skill (the status screen's `Traps`): an armed trap on the
+    /// route is disarmed first when it is above 0 ([`Traveller::disarms`], C-117).
+    pub disarm: Option<i64>,
     /// Exits the game refused this session: (room, direction).
     pub blocked: BTreeSet<(Key, u8)>,
     /// Hidden exits showing now: found by a `search`, they hide again after about five
@@ -145,6 +153,7 @@ impl Traveller {
                 door: 0,
                 avoid: 0,
                 hidden: 0,
+                trap: 0,
             },
             ..Traveller::default()
         }
@@ -158,6 +167,14 @@ impl Traveller {
             race: self.race,
             evil: self.evil,
         }
+    }
+
+    /// Whether the traveller disarms the trap `e` before going through: an armed trap and a
+    /// disarm skill above 0. `disarm trap` succeeds when the skill beats a roll of 0 to 100,
+    /// and a failure sets the trap off only as walking into it would, so any skill is worth
+    /// the try (`kb/navigation.md` "Trap / Spell Trap").
+    pub fn disarms(&self, e: &Edge) -> bool {
+        e.armed_trap() && self.disarm.is_some_and(|d| d > 0)
     }
 
     fn allows(&self, c: Category) -> bool {
@@ -271,6 +288,8 @@ pub struct Step {
     /// A sealed Hidden exit opened by levers elsewhere, which the route goes to first
     /// ([`Edge::levers`], C-118).
     pub levered: bool,
+    /// An armed trap the traveller disarms first (`disarm trap <dir>`, C-117).
+    pub disarm: bool,
 }
 
 impl Step {
@@ -286,6 +305,7 @@ impl Step {
             unblock: e.unblock.clone(),
             passable: e.passable() || e.sealed(),
             lever: e.lever.iter().map(|s| Step::through(s, t)).collect(),
+            disarm: t.disarms(e),
             levered: e.sealed()
                 && !e.levers.is_empty()
                 && !t.no_levers
@@ -306,6 +326,7 @@ impl Step {
             passable: false,
             lever: Vec::new(),
             levered: false,
+            disarm: false,
         }
     }
 }
@@ -401,6 +422,9 @@ fn route_core(
                 if e.sealed() && !e.levers.is_empty() {
                     c += LEVER_TOUR_COST;
                 }
+            }
+            if e.armed_trap() {
+                c += if t.disarms(e) { 1 } else { t.costs.trap };
             }
             if best.get(&e.to_ix).is_none_or(|&b| c < b) {
                 best.insert(e.to_ix, c);

@@ -299,6 +299,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-114](C-114-zoom-a-tile.md) | Alt+Z zooms the focused tile to fill the window | A | S | | |
 | [C-115](C-115-party-boss-mode.md) | Boss fight mode on or off for the whole party at once | A | S | C-100 | |
 | [C-116](C-116-left-behind.md) | A follower the game left behind, still on the leader's list, walks back | A | S | C-111 | |
+| [C-117](C-117-disarm-traps.md) | A character with the traps skill disarms the traps on its route | A | S | | |
 | [C-118](C-118-far-levers.md) | A sealed hidden exit is opened by going to its levers elsewhere first | A | M | C-077 | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
