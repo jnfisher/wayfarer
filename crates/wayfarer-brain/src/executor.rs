@@ -28,6 +28,8 @@ pub enum Expect {
     BashResult,
     /// `search <dir>`: an exit found there, or nothing.
     SearchResult,
+    /// `disarm trap <dir>`: disarmed, or failed (C-117).
+    DisarmResult,
     /// Anything: the next prompt.
     Prompt,
     /// An attack: `*Combat Engaged*`. `You do not see <x> here!`, `Your weapon has no
@@ -80,6 +82,9 @@ pub enum Confirmed {
     },
     Search {
         found: bool,
+    },
+    Disarm {
+        ok: bool,
     },
     Prompt,
     Engaged,
@@ -253,6 +258,12 @@ fn answer(expect: Expect, ev: &GameEvent) -> Option<Outcome> {
             Some(Outcome::Confirmed(Confirmed::Search { found: *found }))
         }
         (Expect::SearchResult, GameEvent::RoomDark) => Some(Outcome::Refused(Refused::TooDark)),
+        (Expect::DisarmResult, GameEvent::Other(e)) if e.name == "trap_disarmed" => {
+            Some(Outcome::Confirmed(Confirmed::Disarm { ok: true }))
+        }
+        (Expect::DisarmResult, GameEvent::Other(e)) if e.name == "trap_disarm_fail" => {
+            Some(Outcome::Confirmed(Confirmed::Disarm { ok: false }))
+        }
         (Expect::Prompt, GameEvent::Prompt { .. }) => Some(Outcome::Confirmed(Confirmed::Prompt)),
         (Expect::Engaged, GameEvent::CombatEngaged) => Some(Outcome::Confirmed(Confirmed::Engaged)),
         (Expect::Engaged, GameEvent::YouDoNotSee { .. } | GameEvent::NoEffect) => {

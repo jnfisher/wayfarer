@@ -275,6 +275,13 @@ impl Edge {
         self.kind == ExitType::Hidden
     }
 
+    /// A Trap or Spell Trap that goes off on every crossing: `exitpar2` kind 0 or 3. Kind 2
+    /// goes off only when walked into on purpose, 1 and 4 are disarmed (`kb/navigation.md`
+    /// "Trap / Spell Trap").
+    pub fn armed_trap(&self) -> bool {
+        matches!(self.kind, ExitType::Trap | ExitType::SpellTrap) && matches!(self.params[1], 0 | 3)
+    }
+
     /// A Hidden exit marked `EXF_PASSABLE`: never listed, but walked without a search
     /// (`kb/navigation.md` "Hidden"); most of the wilderness's unlisted ways are.
     pub fn passable(&self) -> bool {

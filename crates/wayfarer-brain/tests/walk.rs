@@ -1185,3 +1185,67 @@ async fn a_wait_for_what_never_comes_fails_instead_of_running_on() {
     g.walk_to((7, 142)).await;
     g.walk_narrated("this line never comes").await;
 }
+
+/// The Ancient Ruin's Demolished Doors, and the Inside Arch west of it through an armed trap
+/// (C-117).
+const DEMOLISHED_DOORS: Key = (3, 557);
+const INSIDE_ARCH: Key = (3, 559);
+
+/// The status screen's line with the disarm-traps skill, as a character without mana shows it.
+fn traps(n: u32) -> String {
+    format!("\r\n                                       Traps:           {n}\r\n{PROMPT}")
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_character_with_the_traps_skill_disarms_a_trap_then_walks_through() {
+    let (mut g, run) = Game::start(SessionState::Realm, DEMOLISHED_DOORS).await;
+    g.output(&traps(119)).await;
+    g.expect(
+        "disarm trap w",
+        says("You successfully disarmed the trap to the west."),
+    );
+    g.expect("w", room(INSIDE_ARCH));
+    g.walk_to(INSIDE_ARCH).await;
+    let said = g.walk_narrated("Arrived: Ancient Ruin, Inside Arch").await;
+    assert!(
+        said.contains(&"Disarming the trap west".to_owned()),
+        "{said:?}"
+    );
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["disarm trap w", "w"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_failed_disarm_is_tried_again_and_then_walked_through() {
+    let (mut g, run) = Game::start(SessionState::Realm, DEMOLISHED_DOORS).await;
+    g.output(&traps(30)).await;
+    for _ in 0..3 {
+        g.expect(
+            "disarm trap w",
+            says("You failed to disarm any trap to the west."),
+        );
+    }
+    g.expect("w", room(INSIDE_ARCH));
+    g.walk_to(INSIDE_ARCH).await;
+    let said = g.walk_narrated("Arrived: Ancient Ruin, Inside Arch").await;
+    assert!(
+        said.contains(&"Could not disarm the trap west: going through".to_owned()),
+        "{said:?}"
+    );
+    let (_, played) = g.close(run).await;
+    assert_eq!(
+        played,
+        ["disarm trap w", "disarm trap w", "disarm trap w", "w"]
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_character_without_the_skill_walks_into_the_trap() {
+    let (mut g, run) = Game::start(SessionState::Realm, DEMOLISHED_DOORS).await;
+    g.output(&traps(0)).await;
+    g.expect("w", room(INSIDE_ARCH));
+    g.walk_to(INSIDE_ARCH).await;
+    g.walk_narrated("Arrived: Ancient Ruin, Inside Arch").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["w"]);
+}
