@@ -288,6 +288,8 @@ pub struct Step {
     /// A sealed Hidden exit opened by levers elsewhere, which the route goes to first
     /// ([`Edge::levers`], C-118).
     pub levered: bool,
+    /// A room command the game takes only with no monster in the room (`nomonsters`, C-119).
+    pub needs_empty: bool,
     /// An armed trap the traveller disarms first (`disarm trap <dir>`, C-117).
     pub disarm: bool,
 }
@@ -306,6 +308,7 @@ impl Step {
             passable: e.passable() || e.sealed(),
             lever: e.lever.iter().map(|s| Step::through(s, t)).collect(),
             disarm: t.disarms(e),
+            needs_empty: e.needs_empty,
             levered: e.sealed()
                 && !e.levers.is_empty()
                 && !t.no_levers
@@ -327,6 +330,7 @@ impl Step {
             lever: Vec::new(),
             levered: false,
             disarm: false,
+            needs_empty: false,
         }
     }
 }

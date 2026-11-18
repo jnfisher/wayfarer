@@ -1249,3 +1249,39 @@ async fn a_character_without_the_skill_walks_into_the_trap() {
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["w"]);
 }
+
+/// The Black Fortress's Dark Chamber: `push panel` takes a character to the Darkened Tunnels
+/// when no monster is in the room (C-119).
+const DARK_CHAMBER: Key = (7, 1283);
+const TUNNELS: Key = (15, 335);
+
+#[tokio::test(start_paused = true)]
+async fn the_panel_is_pushed_into_the_tunnels() {
+    let (mut g, run) = Game::start(SessionState::Realm, DARK_CHAMBER).await;
+    g.expect(
+        "push panel",
+        says("You press the panel and are sucked through an opening in the wall!"),
+    );
+    g.expect("look", room(TUNNELS));
+    g.walk_to(TUNNELS).await;
+    g.walk_narrated("Arrived: Darkened Tunnels").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["push panel", "look"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_panel_refused_while_a_monster_is_here_stops_the_walk_saying_why() {
+    let (mut g, run) = Game::start(SessionState::Realm, DARK_CHAMBER).await;
+    g.expect("push panel", says("You cannot do that right now!"));
+    g.expect("look", room(DARK_CHAMBER));
+    g.walk_to(TUNNELS).await;
+    let stop = g.walk_narration().await;
+    assert_eq!(stop, "Walking to Darkened Tunnels: one step");
+    let stop = g.walk_narration().await;
+    assert_eq!(
+        stop,
+        "Stopped walking: `push panel` works only with no monster in Dark Chamber"
+    );
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["push panel", "look"]);
+}

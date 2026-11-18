@@ -710,6 +710,16 @@ impl Walker {
                         return self.then_start(pos, atlas, next);
                     }
                     Ok(Doing::Move)
+                } else if doing == Doing::Arrive
+                    && step.needs_empty
+                    && seen.unwrap_or(&pos.belief).contains(step.from)
+                {
+                    // The game would not take the phrase while a monster is here (C-119).
+                    Err(format!(
+                        "`{}` works only with no monster in {}",
+                        step.command,
+                        room_name(atlas, step.from)
+                    ))
                 } else {
                     let belief = seen.unwrap_or(&pos.belief);
                     let unsure = !belief.certain();
