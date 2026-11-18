@@ -30,6 +30,10 @@ const PAR_GAP: Duration = Duration::from_secs(5);
 /// `par`: the game moves followers in its fast cycle, well within this, and a follower an exit
 /// refused drops without a word (`kb/grouping.md` §2a).
 const APART: Duration = Duration::from_secs(3);
+/// How long a follower the game still lists may be out of the leader's room before it counts
+/// as left behind: the game moves a follower within a fast cycle, and one it did not move stays
+/// on the leader's list without a word (`kb/grouping.md` §2a; Lexi and Sasha, 2026-11-17).
+const LEFT_BEHIND: Duration = Duration::from_secs(10);
 /// How long a rank command waits for a `par` that shows it before another goes.
 const RANK_EVERY: Duration = Duration::from_secs(10);
 
@@ -298,6 +302,8 @@ pub(crate) struct MemberInfo {
     pub passer: wayfarer_world::Passer,
     /// What it knows of its guarding, from the game's lines (1.20, C-068).
     pub guard: crate::guard::Guard,
+    /// When it last saw a room (a move's, or a `look`'s).
+    pub room_seen_at: Option<Instant>,
 }
 
 /// One tick's plan: the lines to send, each session's role, and the parties for the UIs when
@@ -332,6 +338,11 @@ pub(crate) struct Parties {
     stash_since: HashMap<String, (u64, Instant)>,
     /// Joined followers seen out of their leader's room, since when.
     apart: HashMap<String, Instant>,
+    /// Followers the game still lists that were out of the leader's room for
+    /// [`LEFT_BEHIND`]: out of the party until a `follow` in the leader's room.
+    left_behind: BTreeSet<String>,
+    /// Followers asked to `look` to tell a lagging belief from being left behind, when.
+    looked: HashMap<String, Instant>,
     /// Sessions taken out of a party that still owe the game a `leave`.
     leaving: BTreeSet<String>,
     /// Followers that were in the party in the game since they were added.
@@ -1009,8 +1020,34 @@ impl Parties {
                     (fi.game.following.as_deref(), lfirst),
                     (Some(a), Some(b)) if a.eq_ignore_ascii_case(b)
                 );
-                let joined =
+                let listed =
                     follows && (!fresh(fi) || fi.name.as_deref().is_some_and(|n| l.game.lists(n)));
+                // Listed, but out of the leader's room too long: the game did not move it. Its
+                // belief may only lag (no room shown since), so a room seen after they parted
+                // decides; until one is, it looks.
+                if listed
+                    && fi.realm
+                    && l.realm
+                    && fi.room.is_some()
+                    && l.room.is_some()
+                    && !same_room(fi, l)
+                    && let Some(&since) = self.apart.get(f)
+                    && now >= since + LEFT_BEHIND
+                {
+                    // Fighting or resting, it stays put: walking off would be a flee.
+                    if fi.busy {
+                    } else if fi.room_seen_at.is_some_and(|t| t > since) {
+                        self.left_behind.insert(f.clone());
+                        self.apart.remove(f);
+                    } else if ago(self.looked.get(f), ASK_EVERY) {
+                        self.looked.insert(f.clone(), now);
+                        plan.lines.push((f.clone(), "look".to_owned()));
+                    }
+                }
+                if !listed {
+                    self.left_behind.remove(f);
+                }
+                let joined = listed && !self.left_behind.contains(f);
                 let mut rejoin = None;
                 let (state, detail) = if !fi.realm || !fi.running || !l.realm {
                     let why = if !fi.realm {
@@ -1071,6 +1108,7 @@ impl Parties {
                             // A follower dropped at an exit is still on the leader's list:
                             // `follow` alone re-joins it (`kb/grouping.md` §10).
                             plan.lines.push((f.clone(), format!("follow {lead}")));
+                            self.left_behind.remove(f);
                         }
                     }
                     // Dropped by the game (an exit refused it, a flee, a stun), or added with
@@ -1456,6 +1494,7 @@ mod tests {
             rules: wayfarer_world::RuleSet::Unknown,
             guard: crate::guard::Guard::default(),
             passer: wayfarer_world::Passer::default(),
+            room_seen_at: None,
         }
     }
 
@@ -1809,6 +1848,55 @@ mod tests {
         let plan = p.plan(&m, t);
         assert_eq!(plan.roles["lauren"].rejoin(), Some((1, 2)));
         assert!(plan.roles["penny"].hold().is_some());
+    }
+
+    /// Lexi and Sasha, 2026-11-17: after a relog in the Steel Chamber they followed Riley, who
+    /// went on by a hidden exit without them. The game kept them on Riley's list and said
+    /// nothing, so they counted as joined in another room: nobody walked back, Riley did not
+    /// wait, and the healers were rooms away while Riley fell to 18%.
+    #[tokio::test]
+    async fn a_follower_still_listed_but_left_behind_walks_back() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        p.save(def("penny", &["lauren"]), &known()).unwrap();
+        let mut m = two(now, &["Lauren Phillips"]);
+        m.get_mut("lauren").unwrap().game.following = Some("Penny".into());
+        assert_eq!(state(&p.plan(&m, now), 1).0, MemberState::Joined);
+        // Penny goes on; her `par` still lists Lauren.
+        let penny = m.get_mut("penny").unwrap();
+        penny.room = Some((1, 2));
+        let t = now + Duration::from_secs(1);
+        penny.game.as_of = Some(t);
+        assert!(p.plan(&m, t).roles["lauren"].joined_follower());
+        let t = t + Duration::from_secs(4);
+        m.get_mut("penny").unwrap().game.as_of = Some(t);
+        assert!(p.plan(&m, t).roles["lauren"].joined_follower());
+        // Still apart after the game's moves would long have carried her, but no room seen
+        // since: her belief may only lag, so she looks.
+        let t = t + LEFT_BEHIND;
+        m.get_mut("penny").unwrap().game.as_of = Some(t);
+        let plan = p.plan(&m, t);
+        assert!(plan.roles["lauren"].joined_follower());
+        assert!(lines(&plan).contains(&("lauren", "look")));
+        // The look shows her still elsewhere: left behind.
+        m.get_mut("lauren").unwrap().room_seen_at = Some(t);
+        let t = t + Duration::from_secs(1);
+        m.get_mut("penny").unwrap().game.as_of = Some(t);
+        let plan = p.plan(&m, t);
+        assert_eq!(state(&plan, 1).0, MemberState::Separated);
+        assert_eq!(plan.roles["lauren"].rejoin(), Some((1, 2)));
+        assert!(!plan.roles["lauren"].joined_follower());
+        assert_eq!(
+            plan.roles["penny"].hold(),
+            Some("Waiting for Lauren to catch up")
+        );
+        // Back in Penny's room she follows again, and is joined after it.
+        m.get_mut("lauren").unwrap().room = Some((1, 2));
+        let plan = p.plan(&m, t);
+        assert_eq!(lines(&plan), [("lauren", "follow penny")]);
+        let plan = p.plan(&m, t);
+        assert!(plan.roles["lauren"].joined_follower());
+        assert_eq!(plan.roles["penny"].hold(), None);
     }
 
     #[tokio::test]
