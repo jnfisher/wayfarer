@@ -173,6 +173,11 @@ progress (after the move in flight).
   minutes) after its last block comes off. A lever pull that leaves blocks on lasts until the
   passage opens (`LJNSUPP.C`). Loops never take these exits. The Darkened Tunnels' passage
   north of 15:477 opens with `pull lever` in 15:730 and 15:604.
+- **Rooms that must be empty** (C-119): a room command with `nomonsters` before its teleport
+  (the Dark Chamber's `push panel` into the Darkened Tunnels, 7:1283) goes only while no monster
+  is in the room. Walking with fighting on the way, the bot clears the room first; when the game
+  still will not take it (the look after it shows the same room), the walk stops: "Stopped
+  walking: `push panel` works only with no monster in Dark Chamber".
 - **Leading a party** (C-113): the followers go through every exit the leader takes, so a
   leader's routes and generated loops take a level, class, race or alignment gate only if it
   lets each follower in the realm through too. The vortexes of the Ironwood Forest and around

@@ -301,6 +301,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-116](C-116-left-behind.md) | A follower the game left behind, still on the leader's list, walks back | A | S | C-111 | |
 | [C-117](C-117-disarm-traps.md) | A character with the traps skill disarms the traps on its route | A | S | | |
 | [C-118](C-118-far-levers.md) | A sealed hidden exit is opened by going to its levers elsewhere first | A | M | C-077 | |
+| [C-119](C-119-empty-room-commands.md) | A room command that needs an empty room says so when refused | A | S | C-052 | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or

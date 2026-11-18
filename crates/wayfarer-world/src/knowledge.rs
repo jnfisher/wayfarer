@@ -306,6 +306,7 @@ fn step_edge(graph: &RoomGraph, at: Key, to: Key, base: &str) -> Option<Edge> {
             lever: Vec::new(),
             levers: Vec::new(),
             levers_any_order: false,
+            needs_empty: false,
             to_ix: graph.ix(at)?,
         });
     }

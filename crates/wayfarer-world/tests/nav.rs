@@ -948,4 +948,6 @@ fn the_dark_chambers_panel_is_a_way_into_the_darkened_tunnels() {
     let (_pack, g) = graph();
     let r = route(&g, (7, 1283), (15, 335), &Traveller::default()).unwrap();
     assert_eq!(commands(&r), ["push panel"]);
+    // Only with no monster in the room: the walker says so when the game will not.
+    assert!(r[0].needs_empty);
 }

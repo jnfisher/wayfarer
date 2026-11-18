@@ -273,6 +273,9 @@ pub struct Edge {
     /// goes to each lever first ([`crate::route`]). Empty for any other exit.
     pub levers: Vec<Lever>,
     pub levers_any_order: bool,
+    /// A room command that needs the room clear of monsters (`nomonsters`, C-119): the
+    /// Dark Chamber's `push panel`.
+    pub needs_empty: bool,
     pub(crate) to_ix: u32,
 }
 
@@ -421,7 +424,8 @@ pub fn spell_teleport(own_map: i64, raw: &str) -> Option<Key> {
 /// The ways through a room's command text gives (C-052): for each line that is the first with
 /// its pattern, a plain pattern (no wildcard) and only [`PLAIN_CLAUSES`] with one `teleport
 /// <room> <map>`, the room it puts the character in (on `map`, its own map when 0 or left
-/// out), gated by `minlevel` / `maxlevel`. Lines to the same room with the same gate are one
+/// out), gated by `minlevel` / `maxlevel`, and whether it needs the room clear of monsters
+/// (`nomonsters`, C-119). Lines to the same room with the same gate are one
 /// way with every pattern as a phrase, in text order. `spell_to`: where a spell puts its
 /// caster when all it does is teleport ([`spell_teleport`]); a `cast` of one is the line's
 /// teleport (C-086).
@@ -429,9 +433,9 @@ pub fn room_commands(
     map: i64,
     text: &str,
     spell_to: &dyn Fn(i64) -> Option<Key>,
-) -> Vec<(Key, Gate, Vec<String>)> {
+) -> Vec<(Key, Gate, Vec<String>, bool)> {
     let mut seen: Vec<String> = Vec::new();
-    let mut out: Vec<(Key, Gate, Vec<String>)> = Vec::new();
+    let mut out: Vec<(Key, Gate, Vec<String>, bool)> = Vec::new();
     for line in text.lines() {
         let mut clauses = line.split(':');
         let pattern = clauses.next().unwrap_or("").trim().to_lowercase();
@@ -443,7 +447,12 @@ pub fn room_commands(
             continue;
         }
         let (mut to, mut min, mut max, mut plain) = (None, 0, 0, true);
-        for c in clauses {
+        // `nomonsters` before another clause: the line stops while a monster is in the room
+        // (as the last clause it never looks, `kb/navigation.md` "Text blocks").
+        let mut empty = false;
+        let clauses: Vec<&str> = clauses.collect();
+        let last = clauses.len().saturating_sub(1);
+        for (i, c) in clauses.iter().enumerate() {
             let mut words = c.split_whitespace();
             let Some(kw) = words.next().map(str::to_lowercase) else {
                 continue;
@@ -460,6 +469,7 @@ pub fn room_commands(
                 },
                 "minlevel" => min = num(words.next()).unwrap_or(0),
                 "maxlevel" => max = num(words.next()).unwrap_or(0),
+                "nomonsters" => empty |= i < last,
                 k if PLAIN_CLAUSES.contains(&k) && k != "teleport" => {}
                 _ => plain = false,
             }
@@ -472,9 +482,12 @@ pub fn room_commands(
         } else {
             Gate::Level { min, max }
         };
-        match out.iter_mut().find(|(t, g, _)| *t == to && *g == gate) {
-            Some((_, _, phrases)) => phrases.push(pattern),
-            None => out.push((to, gate, vec![pattern])),
+        match out.iter_mut().find(|(t, g, _, _)| *t == to && *g == gate) {
+            Some((_, _, phrases, e)) => {
+                phrases.push(pattern);
+                *e |= empty;
+            }
+            None => out.push((to, gate, vec![pattern], empty)),
         }
     }
     out
@@ -684,6 +697,7 @@ impl RoomGraph {
                     lever: Vec::new(),
                     levers: Vec::new(),
                     levers_any_order: false,
+                    needs_empty: false,
                     to_ix,
                 });
             }
@@ -693,7 +707,7 @@ impl RoomGraph {
                     spells.get(&n).and_then(|raw| spell_teleport(key.0, raw))
                 })
             });
-            for (dir, (to, gate, phrases)) in (COMMAND_DIRS..).zip(ways) {
+            for (dir, (to, gate, phrases, empty)) in (COMMAND_DIRS..).zip(ways) {
                 let Some(&to_ix) = index.get(&to) else {
                     dangling += 1;
                     continue;
@@ -714,6 +728,7 @@ impl RoomGraph {
                     lever: Vec::new(),
                     levers: Vec::new(),
                     levers_any_order: false,
+                    needs_empty: empty,
                     to_ix,
                 });
             }
@@ -833,6 +848,7 @@ impl RoomGraph {
                 lever: Vec::new(),
                 levers: Vec::new(),
                 levers_any_order: false,
+                needs_empty: false,
                 to_ix: lever_ix,
             };
             let lever: Vec<Edge> = there
@@ -1084,6 +1100,7 @@ impl RoomGraph {
                 lever: Vec::new(),
                 levers: Vec::new(),
                 levers_any_order: false,
+                needs_empty: false,
                 to_ix,
             });
         }
@@ -1128,6 +1145,7 @@ impl RoomGraph {
                 lever: Vec::new(),
                 levers: Vec::new(),
                 levers_any_order: false,
+                needs_empty: false,
                 to_ix,
             });
         }
@@ -1223,7 +1241,8 @@ mod tests {
             [(
                 (1, 65),
                 Gate::None,
-                vec!["use chime".into(), "ring chime".into()]
+                vec!["use chime".into(), "ring chime".into()],
+                false
             )]
         );
         // The vortex at 3:25: gated by level; the map left out is the room's own.
@@ -1234,7 +1253,8 @@ mod tests {
             [(
                 (3, 681),
                 Gate::Level { min: 20, max: 0 },
-                vec!["go vortex".into(), "enter vortex".into()]
+                vec!["go vortex".into(), "enter vortex".into()],
+                false
             )]
         );
     }
@@ -1268,7 +1288,8 @@ mod tests {
             [(
                 (2, 1306),
                 Gate::None,
-                vec!["go hole".into(), "enter hole".into(), "crawl hole".into()]
+                vec!["go hole".into(), "enter hole".into(), "crawl hole".into()],
+                false
             )]
         );
         // A spell that also hurts is not only a teleport.
