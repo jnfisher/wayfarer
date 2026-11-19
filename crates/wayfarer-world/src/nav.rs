@@ -262,10 +262,12 @@ pub struct Edge {
     /// any other way through.
     pub window: Vec<Edge>,
     /// A Door or Gate a lever opens (a Remote Action on it, C-077): the way to the lever's room
-    /// over Normal exits, the phrase as a Remote Action edge from that room to itself, and the
-    /// way back; just the phrase when the lever is in the door's own room. Walked only when the
-    /// door refuses, as the lever swaps the door between open and locked
-    /// (`kb/navigation.md` "Remote Action"). Empty for any other exit.
+    /// over Normal exits and Hidden exits a search finds or anyone walks (C-120: the Grand
+    /// Stair's gate, 7/150, is opened from a Guard Room behind a hidden exit), the phrase as a
+    /// Remote Action edge from that room to itself, and the way back; just the phrase when the
+    /// lever is in the door's own room. Walked only when the door refuses, as the lever swaps
+    /// the door between open and locked (`kb/navigation.md` "Remote Action"). Empty for any
+    /// other exit.
     pub lever: Vec<Edge>,
     /// A sealed Hidden exit whose blocks the Remote Actions of other rooms take off (C-118):
     /// the lever rooms and their phrases, one per block (or one that takes every block), in
@@ -297,6 +299,13 @@ impl Edge {
     /// "Trap / Spell Trap").
     pub fn armed_trap(&self) -> bool {
         matches!(self.kind, ExitType::Trap | ExitType::SpellTrap) && matches!(self.params[1], 0 | 3)
+    }
+
+    /// A Hidden exit a `search` finds (`EXF_NEEDSEARCH`): the dice roll is `max(3, perception -
+    /// 15)` percent a try (`kb/navigation.md` "Hidden"), so a route prices it by the expected
+    /// searches ([`crate::route::Costs::search_cost`]).
+    pub fn needs_search(&self) -> bool {
+        self.hidden() && self.params[0] & EXF_NEEDSEARCH != 0
     }
 
     /// A Hidden exit marked `EXF_PASSABLE`: never listed, but walked without a search
@@ -333,8 +342,10 @@ impl Edge {
 /// The first `dir` of the ways through that are not exits ([`ExitType::is_command`]).
 pub const COMMAND_DIRS: u8 = 10;
 
-/// The most Normal exits between a door and the room of the lever that opens it, each way
-/// ([`Edge::lever`]). The stock data's farthest such lever is one step away.
+/// The most exits between a door and the room of the lever that opens it, each way
+/// ([`Edge::lever`]): Normal ones, and Hidden ones a search finds or anyone walks. The stock
+/// data's farthest such lever is three steps away, through a hidden exit (the Grand Stair's
+/// Guard Room, 7/152).
 pub const LEVER_STEPS: usize = 3;
 
 /// A Hidden exit's flags (`exitpar1`, `EXF_`): walked without being found.
@@ -805,7 +816,7 @@ impl RoomGraph {
 
     /// Give each Door and Gate a lever opens its [`Edge::lever`] (C-077): a Remote Action on
     /// it (`exitpar2` units its direction) that needs no item, in its own room or one at most
-    /// [`LEVER_STEPS`] Normal exits away and back. The shortest wins.
+    /// [`LEVER_STEPS`] exits away and back ([`RoomGraph::lever_way`]). The shortest wins.
     fn find_levers(&mut self) {
         let mut found: HashMap<(Key, u8), Vec<Edge>> = HashMap::new();
         for r in self
@@ -824,8 +835,8 @@ impl RoomGraph {
                 continue;
             };
             let (Some(there), Some(back)) = (
-                self.normal_way(door.from, r.from),
-                self.normal_way(r.from, door.from),
+                self.lever_way(door.from, r.from),
+                self.lever_way(r.from, door.from),
             ) else {
                 continue;
             };
@@ -929,9 +940,11 @@ impl RoomGraph {
         }
     }
 
-    /// The fewest Normal exits from `from` to `to`, at most [`LEVER_STEPS`] (empty when they
-    /// are the same room).
-    fn normal_way(&self, from: Key, to: Key) -> Option<Vec<Edge>> {
+    /// The fewest exits from `from` to `to` by which anyone reaches a lever, at most
+    /// [`LEVER_STEPS`] (empty when they are the same room): Normal exits, and ungated Hidden
+    /// exits a search finds or that are passable (C-120). A door, a key or a sealed exit on
+    /// the way is not a way to a lever.
+    fn lever_way(&self, from: Key, to: Key) -> Option<Vec<Edge>> {
         let mut paths: Vec<(Key, Vec<Edge>)> = vec![(from, Vec::new())];
         let mut seen = vec![from];
         for _ in 0..=LEVER_STEPS {
@@ -941,7 +954,8 @@ impl RoomGraph {
             let mut next = Vec::new();
             for (k, p) in &paths {
                 for e in self.edges(*k) {
-                    if e.kind == ExitType::Normal && e.gate == Gate::None && !seen.contains(&e.to) {
+                    let open = e.kind == ExitType::Normal || e.passable() || e.needs_search();
+                    if open && e.gate == Gate::None && !seen.contains(&e.to) {
                         seen.push(e.to);
                         let mut q = p.clone();
                         q.push(e.clone());

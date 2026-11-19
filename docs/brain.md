@@ -192,7 +192,11 @@ progress (after the move in flight).
   from the status screen (`st`); unknown, a locked door is not checked. A shut door that is not
   locked opens with `open` and is always passable. A locked door costs one extra step per
   expected try, `ceil(100 / odds)`: two at 90 %, five at 20 %, so a sure way round of a few
-  more steps wins. Another character with more strength may get through the same door.
+  more steps wins. Another character with more strength may get through the same door. A door
+  or gate a lever in another room opens is taken whatever the odds, and the walker goes to the
+  lever when the door refuses; the way to the lever may run through a hidden exit, searched for
+  on the way (C-120: the Grand Stair's gate, 7/150, is opened from the Guard Room 7/152, three
+  steps off behind a hidden exit; the Black Fortress gatehouse's gate the same).
 - **One step at a time**: each move goes at a prompt, in the realm, and only once the room the
   last one led to has been seen and is the one the route expected. One line is in flight at a
   time: a re-sync waits for the walk's action and the walk for a re-sync command. A room that is
@@ -223,12 +227,20 @@ progress (after the move in flight).
   "Item"), so the walker stops counting it as carried and the next walk up buys another. One
   item is bought per plan; a second is found when the walk plans again. Moves don't go ahead of
   the buy. The pack's items, shops and charges are read once (`wayfarer_world::exit_items`).
-- **Hidden exits as a last resort**: when no route takes only the exits known, a walk the player
-  asked for (`walk_to`, the go box, an errand) may use the pack's Hidden exits (`route_or_search`),
-  each costing a search, and `find` counts a room only hidden exits lead to as reachable
-  (`distances_any`) instead of "no route". A route through known exits is never given up for one
-  through an unknown hidden exit, and a loop's legs and the loop list keep to the exits its path
-  knows.
+- **Hidden exits are searched for when that is the short way** (C-120): a walk the player
+  asked for (`walk_to`, the go box, an errand) plans over the pack's Hidden exits too
+  (`route_or_search`), each priced by the searches it is expected to take: `search` finds an
+  exit on `max(3, perception - 15)` percent of tries, so the route charges `2 * ceil(100 /
+  that)` steps for one not found yet (four for a character who finds it one try in two, 68 at
+  the 3 % floor; two while the perception has not been seen on the status screen). A way
+  through a hidden exit the character has not found is taken when it is shorter, searches
+  included, than any way round, as a player who knows the map would take it: the dark bishop's
+  Black Fortress is some 240 steps from the Temple under the Black House and up the Grand Stair,
+  whose gate a lever behind one hidden exit opens, against some 290 by the Western Road and the
+  Dragon's Teeth tunnels, and a Go to now takes the Black House. `find` counts a room only
+  hidden exits lead to as reachable (`distances_any`). A loop's legs and the loop list keep to
+  the exits its path knows. (Until C-120 the hidden exits were a last resort, used only when
+  no route by known exits existed, which sent Riley the long way west.)
 - **Passable hidden exits**: most Hidden exits (993 of 1,383, nearly all in the wilderness
   of maps 17 and 7) are marked passable: the game never lists them but lets anyone walk
   through without a search. A route takes them as it takes any exit, at no extra cost, and the

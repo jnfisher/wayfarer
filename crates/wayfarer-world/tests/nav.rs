@@ -798,7 +798,17 @@ fn a_locked_door_a_lever_opens_carries_the_lever() {
         .filter(|e| !e.lever.is_empty())
         .collect();
     let own = levers.iter().filter(|e| e.lever.len() == 1).count();
-    assert_eq!((levers.len(), own), (19, 17));
+    for e in levers.iter().filter(|e| e.lever.len() > 1) {
+        let way: Vec<(&str, ExitType)> = e
+            .lever
+            .iter()
+            .map(|s| (s.command.as_str(), s.kind))
+            .collect();
+        eprintln!("lever elsewhere: {:?} {} {:?}", e.from, e.dir, way);
+    }
+    // 17 levers in the door's own room; four in another, two of them (C-120) reached through
+    // a hidden exit: the Grand Stair's gate (7:150) from its Guard Room, and one more.
+    assert_eq!((levers.len(), own), (21, 17));
     assert!(
         levers
             .iter()
@@ -824,10 +834,31 @@ fn a_locked_door_a_lever_opens_carries_the_lever() {
     );
     let back = g.edge(COURTYARD, 1).unwrap();
     assert_eq!(commands_of(&back.lever), ["pull lever"]);
-    // Gates whose lever is reached only by a Hidden exit have none (7/150 southeast, 7/1173
-    // east).
-    assert!(g.edge((7, 150), 6).unwrap().lever.is_empty());
-    assert!(g.edge((7, 1173), 2).unwrap().lever.is_empty());
+    // Gates whose lever is reached only by a Hidden exit carry it too (C-120): the Grand
+    // Stair's southeast (7/150, the Guard Room 7/152 three steps off) and the Black Fortress
+    // gatehouse's east (7/1173, from 7/1175 next door).
+    let grand_stair: Vec<(&str, ExitType)> = g
+        .edge((7, 150), 6)
+        .unwrap()
+        .lever
+        .iter()
+        .map(|e| (e.command.as_str(), e.kind))
+        .collect();
+    assert_eq!(
+        grand_stair,
+        [
+            ("sw", ExitType::Normal),
+            ("se", ExitType::Normal),
+            ("s", ExitType::Hidden),
+            ("pull lever", ExitType::RemoteAction),
+            ("n", ExitType::Hidden),
+            ("nw", ExitType::Normal),
+            ("ne", ExitType::Normal),
+        ]
+    );
+    let gatehouse = &g.edge((7, 1173), 2).unwrap().lever;
+    assert_eq!(commands_of(gatehouse), ["s", "pull lever", "n"]);
+    assert_eq!(gatehouse[0].kind, ExitType::Hidden);
 }
 
 fn commands_of(edges: &[wayfarer_world::Edge]) -> Vec<&str> {
@@ -950,4 +981,91 @@ fn the_dark_chambers_panel_is_a_way_into_the_darkened_tunnels() {
     assert_eq!(commands(&r), ["push panel"]);
     // Only with no monster in the room: the walker says so when the game will not.
     assert!(r[0].needs_empty);
+}
+
+/// C-120: the dark bishop's Elaborate Chamber (7:1227, the Black Fortress) is some 240 steps
+/// from Silvermere's Temple through the Black House and the Grand Stair, whose gate (7:150) a
+/// lever in a Guard Room (7:152) behind one hidden exit opens; the way round by the Western
+/// Road and the Dragon's Teeth tunnels is some 290. A Go to prices the hidden exit by the
+/// searches it is expected to take and goes under the Black House; a loop's traveller, which
+/// keeps to known exits, goes round.
+#[test]
+fn a_go_to_searches_for_a_hidden_exit_when_that_is_the_short_way() {
+    let (_pack, g) = graph();
+    let (temple, chamber) = ((1, 2189), (7, 1227));
+    let (black_house_foyer, western_road) = ((1, 1313), (2, 41));
+    let (grand_stair_gate, guard_room) = ((7, 150), (7, 152));
+    // Riley: level 16, strength 90, the Black House key (172) and the slums' western door key
+    // (569) held, a perception that finds a hidden exit one try in four.
+    let riley = Traveller {
+        level: Some(16),
+        class: Some(3),
+        strength: Some(90),
+        perception: Some(40),
+        keys: BTreeSet::from([172, 569, 593, 746]),
+        ..Traveller::default()
+    };
+    assert_eq!(riley.search_odds(), Some(25));
+
+    // The gate past the Grand Stair: no strength bashes it, its lever is in the Guard Room,
+    // three steps away through a hidden exit the lever path searches for.
+    let gate = g.edge(grand_stair_gate, 6).expect("the Grand Stair's gate");
+    assert_eq!((gate.kind, gate.params[1]), (ExitType::Gate, -250));
+    assert_eq!(riley.door_odds(gate), Some(0));
+    let lever_cmds: Vec<&str> = gate.lever.iter().map(|e| e.command.as_str()).collect();
+    assert_eq!(gate.lever.len(), 7, "{lever_cmds:?}");
+    let hidden = gate
+        .lever
+        .iter()
+        .find(|s| s.kind == ExitType::Hidden)
+        .expect("a hidden exit on the way to the lever");
+    assert_eq!((hidden.from, hidden.to), ((7, 148), guard_room));
+    assert!(hidden.needs_search());
+    assert_eq!(gate.lever[3].from, guard_room);
+    assert_eq!(gate.lever[3].kind, ExitType::RemoteAction);
+    assert!(riley.can_take(gate));
+
+    let passes = |r: &[wayfarer_world::Step], k: Key| r.iter().any(|s| s.to == k);
+    // A Go to: under the Black House and up the Grand Stair.
+    let go = route_or_search(&g, temple, chamber, &riley).unwrap();
+    assert!(passes(&go, black_house_foyer), "{:?}", commands(&go));
+    assert!(passes(&go, grand_stair_gate));
+    assert!(!passes(&go, western_road));
+    let through_gate = go.iter().find(|s| s.from == grand_stair_gate).unwrap();
+    assert_eq!(commands(&through_gate.lever).len(), 7);
+    assert!(go.len() < 260, "{} steps", go.len());
+    // A loop's legs keep to known exits: the long way round, west out of the slums.
+    let round = route(&g, temple, chamber, &riley).unwrap();
+    assert!(passes(&round, western_road), "{:?}", commands(&round));
+    assert!(!passes(&round, black_house_foyer));
+    assert!(
+        round.len() > go.len() + 30,
+        "{} vs {}",
+        round.len(),
+        go.len()
+    );
+    // Once the hidden exit is found the lever path is plain walking and the route the same.
+    let mut found = riley.clone();
+    found.found.insert(((7, 148), 1));
+    let again = route_or_search(&g, temple, chamber, &found).unwrap();
+    assert_eq!(commands(&again), commands(&go));
+    // A character at the 3 % floor expects 34 searches (68 steps' worth): still less than the
+    // way round costs over the Black House way here, so it too goes under the Black House.
+    let clumsy = Traveller {
+        perception: Some(10),
+        ..riley.clone()
+    };
+    assert_eq!(clumsy.search_odds(), Some(3));
+    let r = route_or_search(&g, temple, chamber, &clumsy).unwrap();
+    assert!(passes(&r, black_house_foyer), "{} steps", r.len());
+    // With the perception not seen yet, one search is assumed.
+    let unseen = Traveller {
+        perception: None,
+        ..riley.clone()
+    };
+    assert_eq!(unseen.search_odds(), None);
+    assert_eq!(
+        commands(&route_or_search(&g, temple, chamber, &unseen).unwrap()),
+        commands(&go)
+    );
 }

@@ -13,7 +13,7 @@ pub const AVOID_COST: u32 = 1000;
 
 /// Extra costs on top of 1 per step. The default is the shortest route (John, 2026-10-19):
 /// no penalty for rooms that spawn monsters; a door costs one extra step, the `open`, and a
-/// hidden exit two, its `search`.
+/// hidden exit two per expected `search` ([`Costs::search_cost`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Costs {
     /// Entering a room that spawns monsters (not the destination).
@@ -23,7 +23,8 @@ pub struct Costs {
     pub door: u32,
     /// Entering a room in [`Traveller::avoid`] (not the destination).
     pub avoid: u32,
-    /// Going through a Hidden exit not showing now (not in [`Traveller::found`]): the `search`.
+    /// Going through a Hidden exit not showing now (not in [`Traveller::found`]): one
+    /// `search`; one a search finds costs this per expected search ([`Costs::search_cost`]).
     pub hidden: u32,
     /// Going through an armed trap the traveller cannot disarm ([`Edge::armed_trap`]): it
     /// goes off on every crossing, so a trap-free way round of a few more steps wins (C-117).
@@ -51,6 +52,19 @@ impl Costs {
         match odds {
             Some(p) => self.door * 100u32.div_ceil(p.clamp(1, 100)),
             None => self.door,
+        }
+    }
+
+    /// What searching for a hidden exit costs at `odds` percent a try of finding it
+    /// ([`Traveller::search_odds`], C-120): `hidden` per expected search, `hidden * ceil(100 /
+    /// odds)`, so a character who finds one in two tries pays four steps and one at the 3 %
+    /// floor 68: a known way round of fewer steps wins, and a shorter way through a hidden
+    /// exit is taken and searched for, as any player would. `None` (the perception not seen
+    /// yet) is one search.
+    pub fn search_cost(&self, odds: Option<u32>) -> u32 {
+        match odds {
+            Some(p) => self.hidden * 100u32.div_ceil(p.clamp(1, 100)),
+            None => self.hidden,
         }
     }
 }
@@ -101,6 +115,9 @@ pub struct Traveller {
     /// The character's disarm-traps skill (the status screen's `Traps`): an armed trap on the
     /// route is disarmed first when it is above 0 ([`Traveller::disarms`], C-117).
     pub disarm: Option<i64>,
+    /// The character's perception (the status screen's `Perception`): how likely a `search`
+    /// finds a hidden exit ([`Traveller::search_odds`], C-120). `None` is unknown.
+    pub perception: Option<i64>,
     /// Exits the game refused this session: (room, direction).
     pub blocked: BTreeSet<(Key, u8)>,
     /// Hidden exits showing now: found by a `search`, they hide again after about five
@@ -179,6 +196,35 @@ impl Traveller {
 
     fn allows(&self, c: Category) -> bool {
         self.allow.contains(&c)
+    }
+
+    /// The odds, in percent a try, that a `search` finds a hidden exit: `max(3, perception -
+    /// 15)` (`kb/navigation.md` "Hidden"), from 3 to 100. `None` with the perception unknown.
+    pub fn search_odds(&self) -> Option<u32> {
+        let p = self.perception?;
+        Some(u32::try_from((p - 15).clamp(3, 100)).expect("3 to 100"))
+    }
+
+    /// What going through the Hidden exit `e` costs this traveller beyond the step: nothing
+    /// while it shows or needs no search, the expected searches when a search finds it
+    /// ([`Costs::search_cost`]), one search's worth otherwise (its room's phrases).
+    fn hidden_cost(&self, e: &Edge) -> u32 {
+        if !e.hidden() || e.passable() || self.found.contains(&(e.from, e.dir)) {
+            0
+        } else if e.needs_search() {
+            self.costs.search_cost(self.search_odds())
+        } else {
+            self.costs.hidden
+        }
+    }
+
+    /// What walking a door's lever path costs ([`Edge::lever`]): a step each, and the searches
+    /// of any hidden exit on the way (C-120).
+    fn lever_cost(&self, e: &Edge) -> u32 {
+        e.lever
+            .iter()
+            .map(|s| 1 + self.hidden_cost(s))
+            .fold(0u32, u32::saturating_add)
     }
 
     /// A door's lock state: as the game last showed it, else the pack's.
@@ -358,10 +404,14 @@ pub fn route_within(
     route_core(graph, from, to, t, &within)
 }
 
-/// [`route`], and when no route takes only the exits the traveller knows, the Hidden exits of the
-/// pack count as a last resort (each costs a search): a room whose way in or out is a hidden exit
-/// no verified path takes can be reached by searching for it, and is not "no route". For a
-/// walk the player asked for; a loop's legs stay with the exits its path knows.
+/// [`route`] with the pack's Hidden exits counted too, each priced by the searches it is
+/// expected to take ([`Costs::search_cost`], C-120): a way through a hidden exit the character
+/// has not found is taken when it is shorter, searches included, than any way round, as a
+/// player who knows the map would take it, and a room whose only way in is such an exit is
+/// not "no route". For a walk the player asked for (a Go to, an errand); a loop's legs stay
+/// with the exits its path knows ([`route`]). Before C-120 the hidden exits were a last
+/// resort, used only when no route by known exits existed, which sent a Go to the long way
+/// round whenever one did.
 pub fn route_or_search(graph: &RoomGraph, from: Key, to: Key, t: &Traveller) -> Option<Route> {
     route_within_or_search(graph, from, to, t, |_| true)
 }
@@ -374,14 +424,12 @@ pub fn route_within_or_search(
     t: &Traveller,
     within: impl Fn(Key) -> bool,
 ) -> Option<Route> {
-    route_core(graph, from, to, t, &within).or_else(|| {
-        if t.allows(Category::Hidden) {
-            return None;
-        }
-        let mut any = t.clone();
-        any.allow.insert(Category::Hidden);
-        route_core(graph, from, to, &any, &within)
-    })
+    if t.allows(Category::Hidden) {
+        return route_core(graph, from, to, t, &within);
+    }
+    let mut any = t.clone();
+    any.allow.insert(Category::Hidden);
+    route_core(graph, from, to, &any, &within)
 }
 
 fn route_core(
@@ -416,14 +464,14 @@ fn route_core(
             if e.door.is_some() {
                 c += match t.door_odds(e) {
                     // Opened by its lever: the door, and the way to the lever and back.
-                    Some(0) => t.costs.door + u32::try_from(e.lever.len()).unwrap_or(u32::MAX),
+                    Some(0) => t.costs.door.saturating_add(t.lever_cost(e)),
                     odds => t.costs.door_cost(odds),
                 };
             }
-            if e.kind == ExitType::Hidden && !e.passable() && !t.found.contains(&(e.from, e.dir)) {
-                c += t.costs.hidden;
+            if e.kind == ExitType::Hidden {
+                c = c.saturating_add(t.hidden_cost(e));
                 // Opened by levers elsewhere: the way to them and back, more than any detour.
-                if e.sealed() && !e.levers.is_empty() {
+                if e.sealed() && !e.levers.is_empty() && !t.found.contains(&(e.from, e.dir)) {
                     c += LEVER_TOUR_COST;
                 }
             }
@@ -618,7 +666,7 @@ pub fn distances_buying(
 }
 
 /// [`distances`], and beyond them the rooms only the pack's Hidden exits lead to, as far as a
-/// route would take them ([`route_within`]'s last resort): what is reachable at all.
+/// route would take them ([`route_or_search`]): what is reachable at all.
 pub fn distances_any(
     graph: &RoomGraph,
     from: Key,
@@ -718,5 +766,31 @@ mod tests {
         let free = Traveller::anyone().costs;
         assert_eq!(free.door_cost(Some(20)), 0);
         assert_eq!((free.hidden, Costs::default().hidden), (0, 2));
+    }
+
+    /// C-120: a hidden exit a search finds costs the expected searches, from the perception.
+    #[test]
+    fn a_hidden_exit_costs_a_search_per_expected_try() {
+        let c = Costs::default();
+        assert_eq!(c.search_cost(None), 2);
+        assert_eq!(c.search_cost(Some(100)), 2);
+        assert_eq!(c.search_cost(Some(50)), 4);
+        assert_eq!(c.search_cost(Some(25)), 8);
+        assert_eq!(c.search_cost(Some(3)), 68);
+        assert_eq!(Traveller::anyone().costs.search_cost(Some(3)), 0);
+        let odds = |p| {
+            Traveller {
+                perception: p,
+                ..Traveller::default()
+            }
+            .search_odds()
+        };
+        assert_eq!(odds(None), None);
+        // max(3, perception - 15)
+        assert_eq!(odds(Some(10)), Some(3));
+        assert_eq!(odds(Some(18)), Some(3));
+        assert_eq!(odds(Some(40)), Some(25));
+        assert_eq!(odds(Some(65)), Some(50));
+        assert_eq!(odds(Some(200)), Some(100));
     }
 }

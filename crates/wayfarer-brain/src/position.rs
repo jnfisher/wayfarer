@@ -245,6 +245,15 @@ impl Position {
                 self.traveller.disarm = Some(*n);
                 return None;
             }
+            // The status screen's perception: how many searches a hidden exit is expected to
+            // take, so a route can price one (C-120).
+            GameEvent::StatusRace {
+                perception: Some(n),
+                ..
+            } => {
+                self.traveller.perception = Some(*n);
+                return None;
+            }
             _ => return None,
         };
         let moved = self.moving.pop_front();
