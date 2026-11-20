@@ -419,6 +419,12 @@ pub(crate) struct Session {
     /// The leader's room it could not walk to, why, and when (tried again after
     /// [`STUCK_RETRY`] or when the leader moves).
     party_stuck: Option<(Key, String, Instant)>,
+    /// The phrase of a Text exit or a room command this character typed as a party's leader
+    /// (`go vortex`), the room it was typed in and its number: the game's follow moves nobody
+    /// through such an exit, so the coordinator has the followers in that room type it too
+    /// (C-121).
+    party_command: Option<(Key, String, u64)>,
+    party_commands: u64,
     /// The walk in progress is the bot's.
     bot_walk: bool,
     /// A follower in a party under its flee line has said it asks the leader to run (C-074).
@@ -583,6 +589,8 @@ impl Session {
             party_role: PartyRole::None,
             room_seen_at: None,
             party_stuck: None,
+            party_command: None,
+            party_commands: 0,
             bot_walk: false,
             asked_to_run: false,
             hand_moving: false,
@@ -2090,6 +2098,7 @@ impl Session {
         if let Some(atlas) = &self.atlas {
             self.position.sent(atlas, text);
         }
+        self.note_party_command(text);
         self.last_sent = now;
         match &mut self.resync {
             Resync::Waiting { typed, .. } => *typed = true,
@@ -3819,6 +3828,30 @@ impl Session {
         }
     }
 
+    /// A phrase that takes a Text exit or a room command out of the believed room, typed by
+    /// this character as a party's leader (its walk's, or the player's): noted for the
+    /// coordinator, which has the followers in the room type it too (C-121).
+    fn note_party_command(&mut self, text: &str) {
+        let PartyRole::Leader { followers, .. } = &self.party_role else {
+            return;
+        };
+        let (Some(atlas), Some(room)) = (&self.atlas, self.position.best()) else {
+            return;
+        };
+        let text = text.trim();
+        if followers.is_empty()
+            || !atlas
+                .graph
+                .edges(room)
+                .iter()
+                .any(|e| e.kind.is_phrase() && e.taken_by(text))
+        {
+            return;
+        }
+        self.party_commands += 1;
+        self.party_command = Some((room, text.to_owned(), self.party_commands));
+    }
+
     /// What the party coordinator reads of this session.
     pub(crate) fn party_info(&self) -> MemberInfo {
         let minutes = |key: &str| {
@@ -3859,6 +3892,7 @@ impl Session {
             guard: self.guard.clone(),
             passer: self.position.traveller.passer(),
             room_seen_at: self.room_seen_at,
+            command: self.party_command.clone(),
         }
     }
 
@@ -3948,6 +3982,11 @@ impl Session {
     /// A word from the party coordinator for this character's tile (a rank it cannot have).
     pub(crate) fn party_note(&self, note: &str) -> ToGateway {
         self.warning(note)
+    }
+
+    /// A notice of the coordinator's for this session's tile (C-121).
+    pub(crate) fn party_notice(&self, text: &str) -> ToGateway {
+        self.notice(text)
     }
 
     /// The party's leader runs now, for a member under its flee line.
@@ -4095,8 +4134,12 @@ impl Session {
         self.map_dirty |= next.route_changed;
         let ahead = next.ahead;
         if let Some(action) = next.action {
+            let command = action.command.clone();
             match self.executor.submit(action) {
-                Ok(()) => self.owner = Some(Owner::Walker),
+                Ok(()) => {
+                    self.owner = Some(Owner::Walker);
+                    self.note_party_command(&command);
+                }
                 Err(guard) => {
                     out.push(self.warning(&format!("refused: {}", guard.describe())));
                     let next = self.walker.abandon(guard.describe());

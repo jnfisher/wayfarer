@@ -958,6 +958,12 @@ impl Brain {
                 out.push(s.party_note(&note));
             }
         }
+        for (id, text) in plan.notices {
+            if let Some(s) = self.sessions.get(&id) {
+                tracing::info!(session = %id, %text, "party command");
+                out.push(s.party_notice(&text));
+            }
+        }
         for (id, why) in plan.give_up {
             if let Some(s) = self.sessions.get_mut(&id) {
                 tracing::warn!(session = %id, %why, "party");

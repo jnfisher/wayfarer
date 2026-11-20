@@ -7,7 +7,7 @@
 //! [`PartyRole`], which its modes read. It sends nothing itself: the brain puts each line
 //! through that session's executor and says which went.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::time::Duration;
 
 use tokio::time::Instant;
@@ -36,6 +36,13 @@ const APART: Duration = Duration::from_secs(3);
 const LEFT_BEHIND: Duration = Duration::from_secs(10);
 /// How long a rank command waits for a `par` that shows it before another goes.
 const RANK_EVERY: Duration = Duration::from_secs(10);
+/// How long a follower's queued line (the leader's phrase, its `look` after) waits for the
+/// follower to be free before it is dropped as stale (C-121).
+const COMMAND_PATIENCE: Duration = Duration::from_secs(20);
+/// How long after the leader typed a room command its followers may still be sent after it: a
+/// follower's belief lags the game's drag by a tick or so, so it is not in the room yet when
+/// the leader types (C-121). One still elsewhere after this is separated as ever.
+const COMMAND_WINDOW: Duration = Duration::from_secs(10);
 
 /// What a session is in a party, for its modes.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -304,6 +311,9 @@ pub(crate) struct MemberInfo {
     pub guard: crate::guard::Guard,
     /// When it last saw a room (a move's, or a `look`'s).
     pub room_seen_at: Option<Instant>,
+    /// As a leader: the phrase of a Text exit or a room command it typed (`go vortex`), the
+    /// room it typed it in and its number, each new one numbered above the last (C-121).
+    pub command: Option<(Key, String, u64)>,
 }
 
 /// One tick's plan: the lines to send, each session's role, and the parties for the UIs when
@@ -319,6 +329,8 @@ pub(crate) struct Plan {
     pub flee: Vec<(String, String)>,
     /// A word for a member's tile: a rank it cannot have.
     pub notes: Vec<(String, String)>,
+    /// A notice for a member's tile: who typed the leader's room command with it (C-121).
+    pub notices: Vec<(String, String)>,
 }
 
 /// How long a leader holds at its loop's first stop for its members to hide their coins
@@ -372,6 +384,12 @@ pub(crate) struct Parties {
     unguard: BTreeSet<String>,
     /// Guards held for their refusals whose tile has been told.
     guard_noted: BTreeSet<String>,
+    /// Each leader's last room command (its number and when it was first seen) and the
+    /// followers sent after it so far (C-121).
+    commanded: HashMap<String, (u64, Instant, BTreeSet<String>)>,
+    /// Followers' lines still to go, one at a time, with when they were queued: the leader's
+    /// phrase, then a `look` where it took them (C-121).
+    pending: HashMap<String, VecDeque<(String, Instant)>>,
 }
 
 /// The rank commands sent and the ranks refused (`party.rank`).
@@ -920,6 +938,11 @@ impl Parties {
 
     /// A planned line went out through the session's executor.
     pub fn sent(&mut self, session: &str, line: &str, now: Instant) {
+        if let Some(q) = self.pending.get_mut(session)
+            && q.front().is_some_and(|(l, _)| l == line)
+        {
+            q.pop_front();
+        }
         match line.split_whitespace().next() {
             Some("follow") => {
                 self.followed.insert(session.to_owned(), now);
@@ -963,6 +986,21 @@ impl Parties {
         }
         self.leaving
             .retain(|s| m.get(s).is_some_and(|i| i.game.following.is_some()));
+        // Followers' queued lines (C-121): the front one each, dropped when stale.
+        for (f, q) in &mut self.pending {
+            while q
+                .front()
+                .is_some_and(|(_, at)| now >= *at + COMMAND_PATIENCE)
+            {
+                q.pop_front();
+            }
+            if let Some((line, _)) = q.front()
+                && m.get(f).is_some_and(|i| i.realm)
+            {
+                plan.lines.push((f.clone(), line.clone()));
+            }
+        }
+        self.pending.retain(|_, q| !q.is_empty());
         for s in m.keys() {
             plan.roles.insert(s.clone(), PartyRole::None);
         }
@@ -988,6 +1026,47 @@ impl Parties {
                         .collect(),
                 },
             );
+            // A Text exit or a room command the leader typed (`go vortex`, C-121): the
+            // game's follow moves nobody through it, so every follower in the leader's party
+            // in the game and in that room types the same phrase, and looks where it took it.
+            // A follower's belief may lag the drag by a tick, so the room is checked for
+            // [`COMMAND_WINDOW`]; one still elsewhere after that is separated as ever.
+            if let Some((room, phrase, seq)) = &l.command {
+                let entry = self
+                    .commanded
+                    .entry(def.leader.clone())
+                    .or_insert_with(|| (*seq, now, BTreeSet::new()));
+                if entry.0 < *seq {
+                    *entry = (*seq, now, BTreeSet::new());
+                }
+                if entry.0 == *seq && now < entry.1 + COMMAND_WINDOW {
+                    let mut who = Vec::new();
+                    for f in &def.followers {
+                        let Some(fi) = m.get(f) else {
+                            continue;
+                        };
+                        let follows = matches!(
+                            (fi.game.following.as_deref(), lfirst),
+                            (Some(a), Some(b)) if a.eq_ignore_ascii_case(b)
+                        );
+                        let there = fi.room == Some(*room) || fi.rooms.contains(room);
+                        if fi.realm && fi.running && follows && there && !entry.2.contains(f) {
+                            entry.2.insert(f.clone());
+                            let q = self.pending.entry(f.clone()).or_default();
+                            q.push_back((phrase.clone(), now));
+                            q.push_back(("look".to_owned(), now));
+                            plan.lines.push((f.clone(), phrase.clone()));
+                            who.push(fi.name.as_deref().map_or(f.as_str(), first).to_owned());
+                        }
+                    }
+                    if !who.is_empty() {
+                        plan.notices.push((
+                            def.leader.clone(),
+                            format!("`{phrase}` with the party: {}", who.join(", ")),
+                        ));
+                    }
+                }
+            }
             // The followers walking back, by name, for the leader's hold.
             let mut waiting: Vec<String> = Vec::new();
             // The followers still hiding their coins for the leader's stash round (C-093).
@@ -1495,6 +1574,7 @@ mod tests {
             guard: crate::guard::Guard::default(),
             passer: wayfarer_world::Passer::default(),
             room_seen_at: None,
+            command: None,
         }
     }
 
