@@ -459,6 +459,54 @@ pub struct FoeRow {
     pub hits: u64,
 }
 
+/// The time a `combat_detail` covers (C-125).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum CombatWindow {
+    /// Since the player last reset the combat numbers.
+    #[default]
+    Reset,
+    /// The last hour.
+    Hour,
+    /// The last 24 hours.
+    Day,
+}
+
+/// UI → brain: a character's combat numbers over a window, with their histograms (answered
+/// with a `combat_detail`, C-125).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct CombatDetailRequest {
+    pub session: SessionId,
+    #[serde(default)]
+    pub window: CombatWindow,
+}
+
+/// How often each amount of damage came (C-125): `[damage, count]` pairs, smallest first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct HistRow {
+    /// `round`, `all`, `taken`, or an attack's kind (`swing`, `backstab`, `cast`).
+    pub kind: String,
+    /// The spell's name, for a cast.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub name: Option<String>,
+    pub values: Vec<(i64, u64)>,
+}
+
+/// Brain → UIs: the answer to a `combat_detail_request` (C-125).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct CombatDetail {
+    pub session: SessionId,
+    pub window: CombatWindow,
+    /// The numbers over the window, `since` its true start (later than asked when the numbers
+    /// were reset in it, or kept for less time); absent when nothing was counted in it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub stats: Option<CombatStats>,
+    /// Over the same window.
+    pub hists: Vec<HistRow>,
+}
+
 /// One attack's tries and how they came out (C-123), in [`CombatStats`]. The rates are left to
 /// the page: `tries` is `hits + misses + glances + resisted`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -1803,6 +1851,9 @@ pub enum ToClient {
     GearPlan(GearPlan),
     /// Brain → UIs: the answer to a `gear_detail_request`: one weapon against each monster.
     GearDetail(GearDetail),
+    /// Brain → UIs: the answer to a `combat_detail_request`: the combat numbers over a window,
+    /// with their histograms (C-125).
+    CombatDetail(CombatDetail),
     /// Brain → UIs: the character's settings, answering `settings_request` and `settings_save`
     /// (and sent again when the files change): every setting with its effective value, where
     /// the value comes from, and the value the `layer` file itself holds.
@@ -1911,6 +1962,9 @@ pub enum ToClient {
     GearPlanRequest(GearPlanRequest),
     /// UI → brain: one weapon against each monster of the set (a `gear_detail`).
     GearDetailRequest(GearDetailRequest),
+    /// UI → brain: the combat numbers over a window, with their histograms (a `combat_detail`,
+    /// C-125).
+    CombatDetailRequest(CombatDetailRequest),
     StatsReset {
         session: SessionId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2217,6 +2271,9 @@ pub enum ToGateway {
     GearPlanRequest(GearPlanRequest),
     /// UI → brain: one weapon against each monster of the set (a `gear_detail`).
     GearDetailRequest(GearDetailRequest),
+    /// UI → brain: the combat numbers over a window, with their histograms (a `combat_detail`,
+    /// C-125).
+    CombatDetailRequest(CombatDetailRequest),
     /// UI → brain: zero the character's numbers. `only: "run"` ends the current run and starts
     /// a new one now, with its numbers at zero (exp/hr, kills, deaths, flees, rests); the ended
     /// run stays in the history. `only: "combat"` zeroes the combat numbers. Left out, both. A
@@ -2458,6 +2515,9 @@ pub enum ToGateway {
     GearPlan(GearPlan),
     /// Brain → UIs: the answer to a `gear_detail_request`: one weapon against each monster.
     GearDetail(GearDetail),
+    /// Brain → UIs: the answer to a `combat_detail_request`: the combat numbers over a window,
+    /// with their histograms (C-125).
+    CombatDetail(CombatDetail),
     /// Brain → UIs: the character's settings, answering `settings_request` and `settings_save`
     /// (and sent again when the files change): every setting with its effective value, where
     /// the value comes from, and the value the `layer` file itself holds.
@@ -2553,6 +2613,7 @@ impl ToClient {
         "spell_plan",
         "gear_plan",
         "gear_detail",
+        "combat_detail",
         "settings",
         "found",
         "parties",
@@ -2573,6 +2634,7 @@ impl ToClient {
         "spell_plan_request",
         "gear_plan_request",
         "gear_detail_request",
+        "combat_detail_request",
         "stats_reset",
         "settings_request",
         "settings_save",
@@ -2625,6 +2687,7 @@ impl ToClient {
             Self::SpellPlan { .. } => "spell_plan",
             Self::GearPlan(_) => "gear_plan",
             Self::GearDetail(_) => "gear_detail",
+            Self::CombatDetail(_) => "combat_detail",
             Self::Settings { .. } => "settings",
             Self::Found { .. } => "found",
             Self::Parties { .. } => "parties",
@@ -2645,6 +2708,7 @@ impl ToClient {
             Self::SpellPlanRequest { .. } => "spell_plan_request",
             Self::GearPlanRequest(_) => "gear_plan_request",
             Self::GearDetailRequest(_) => "gear_detail_request",
+            Self::CombatDetailRequest(_) => "combat_detail_request",
             Self::StatsReset { .. } => "stats_reset",
             Self::SettingsRequest { .. } => "settings_request",
             Self::SettingsSave { .. } => "settings_save",
@@ -2725,7 +2789,9 @@ impl ToClient {
             Self::GearPlan(GearPlan { session, .. })
             | Self::GearDetail(GearDetail { session, .. })
             | Self::GearPlanRequest(GearPlanRequest { session, .. })
-            | Self::GearDetailRequest(GearDetailRequest { session, .. }) => Some(session),
+            | Self::GearDetailRequest(GearDetailRequest { session, .. })
+            | Self::CombatDetail(CombatDetail { session, .. })
+            | Self::CombatDetailRequest(CombatDetailRequest { session, .. }) => Some(session),
             Self::Notice { session, .. }
             | Self::Warning { session, .. }
             | Self::StateRequest { session } => session.as_deref(),
@@ -2784,6 +2850,7 @@ impl ToGateway {
         "spell_plan_request",
         "gear_plan_request",
         "gear_detail_request",
+        "combat_detail_request",
         "stats_reset",
         "settings_request",
         "settings_save",
@@ -2815,6 +2882,7 @@ impl ToGateway {
         "spell_plan",
         "gear_plan",
         "gear_detail",
+        "combat_detail",
         "settings",
         "found",
         "parties",
@@ -2851,6 +2919,7 @@ impl ToGateway {
             Self::SpellPlanRequest { .. } => "spell_plan_request",
             Self::GearPlanRequest(_) => "gear_plan_request",
             Self::GearDetailRequest(_) => "gear_detail_request",
+            Self::CombatDetailRequest(_) => "combat_detail_request",
             Self::StatsReset { .. } => "stats_reset",
             Self::SettingsRequest { .. } => "settings_request",
             Self::SettingsSave { .. } => "settings_save",
@@ -2882,6 +2951,7 @@ impl ToGateway {
             Self::SpellPlan { .. } => "spell_plan",
             Self::GearPlan(_) => "gear_plan",
             Self::GearDetail(_) => "gear_detail",
+            Self::CombatDetail(_) => "combat_detail",
             Self::Settings { .. } => "settings",
             Self::Found { .. } => "found",
             Self::Parties { .. } => "parties",
@@ -2919,6 +2989,7 @@ impl ToGateway {
             | Self::SpellPlanRequest { .. }
             | Self::GearPlanRequest(_)
             | Self::GearDetailRequest(_)
+            | Self::CombatDetailRequest(_)
             | Self::StatsReset { .. }
             | Self::SettingsRequest { .. }
             | Self::SettingsSave { .. }
@@ -2950,6 +3021,7 @@ impl ToGateway {
             | Self::SpellPlan { .. }
             | Self::GearPlan(_)
             | Self::GearDetail(_)
+            | Self::CombatDetail(_)
             | Self::Settings { .. }
             | Self::Found { .. }
             | Self::Parties { .. }
@@ -3007,6 +3079,7 @@ impl ToGateway {
             Self::SpellPlanRequest { session } => ToClient::SpellPlanRequest { session },
             Self::GearPlanRequest(r) => ToClient::GearPlanRequest(r),
             Self::GearDetailRequest(r) => ToClient::GearDetailRequest(r),
+            Self::CombatDetailRequest(r) => ToClient::CombatDetailRequest(r),
             Self::StatsReset { session, only } => ToClient::StatsReset { session, only },
             Self::SettingsRequest { session, layer } => {
                 ToClient::SettingsRequest { session, layer }
@@ -3146,6 +3219,7 @@ impl ToGateway {
             },
             Self::GearPlan(p) => ToClient::GearPlan(p),
             Self::GearDetail(d) => ToClient::GearDetail(d),
+            Self::CombatDetail(d) => ToClient::CombatDetail(d),
             Self::Settings {
                 session,
                 layer,

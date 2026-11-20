@@ -755,6 +755,10 @@ impl Brain {
                 Some(s) => s.gear_detail(&req, self.world.gear.as_deref(), out),
                 None => out.push(no_session("gear_detail_request", &req.session)),
             },
+            ToClient::CombatDetailRequest(req) => match self.sessions.get_mut(&req.session) {
+                Some(s) => s.combat_detail(req.window, out),
+                None => out.push(no_session("combat_detail_request", &req.session)),
+            },
             ToClient::StatsRequest { session } => match self.sessions.get_mut(&session) {
                 Some(s) => s.stats_request(out),
                 None => out.push(no_session("stats_request", &session)),

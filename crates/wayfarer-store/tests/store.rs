@@ -544,3 +544,32 @@ fn rule_sets_round_trip_per_server() {
     );
     assert_eq!(store.rule_set("<server-host>:2323").unwrap(), None);
 }
+
+#[test]
+fn combat_snapshots_answer_a_window_and_age_out() {
+    let dir = tempfile::tempdir().unwrap();
+    let (store, _) = Store::open(&dir.path().join("store.sqlite")).unwrap();
+    assert_eq!(store.combat_snapshot("penny", T0).unwrap(), None);
+    for (at, tally) in [(T0, "a"), (T0 + 600, "b"), (T0 + 1200, "c")] {
+        store.save_combat_snapshot("penny", at, tally, 0).unwrap();
+    }
+    store.save_combat_snapshot("faye", T0, "f", 0).unwrap();
+    // The newest at or before the window's start.
+    let at = |from| store.combat_snapshot("penny", from).unwrap();
+    assert_eq!(at(T0 + 700), Some((T0 + 600, "b".to_owned())));
+    assert_eq!(at(T0 + 1200), Some((T0 + 1200, "c".to_owned())));
+    // None that old: the oldest there is.
+    assert_eq!(at(T0 - 50), Some((T0, "a".to_owned())));
+    // Those before `keep_from` go.
+    store
+        .save_combat_snapshot("penny", T0 + 1800, "d", T0 + 1000)
+        .unwrap();
+    assert_eq!(at(T0 + 700), Some((T0 + 1200, "c".to_owned())));
+    store.clear_combat_snapshots("penny").unwrap();
+    assert_eq!(at(T0 + 5000), None);
+    assert_eq!(
+        store.combat_snapshot("faye", T0).unwrap(),
+        Some((T0, "f".to_owned())),
+        "another session's are kept"
+    );
+}

@@ -202,6 +202,20 @@ describe("the combat numbers", () => {
     expect(rows[1].textContent).toContain("bs");
   });
 
+  it("opens the combat zoom from its button (C-125)", async () => {
+    const onzoom = vi.fn();
+    const { container } = render(StatsPanel, {
+      session,
+      character,
+      stats: { ...stats, combat },
+      attached: true,
+      onrefresh: () => {},
+      onzoom,
+    });
+    await fireEvent.click(container.querySelector("[data-zoom]")!);
+    expect(onzoom).toHaveBeenCalledExactlyOnceWith("a");
+  });
+
   it("says how the blows taken came out (C-124)", () => {
     const taken = { blows: 200, hits: 90, misses: 60, dodged: 30, deflected: 20, min: 4, max: 61, avg_tenths: 183 };
     expect(takenLine(taken)).toBe(

@@ -1924,6 +1924,22 @@ impl Session {
         });
     }
 
+    /// `combat_detail_request` (C-125): the combat numbers over a window, with their histograms.
+    pub fn combat_detail(
+        &mut self,
+        window: wayfarer_proto::CombatWindow,
+        out: &mut Vec<ToGateway>,
+    ) {
+        let now = self.clock.instant();
+        let (stats, hists) = self.ledger.combat_detail(window, now);
+        out.push(ToGateway::CombatDetail(wayfarer_proto::CombatDetail {
+            session: self.id.clone(),
+            window,
+            stats,
+            hists,
+        }));
+    }
+
     /// `stats_reset`: the combat numbers at zero, and a new run from now with its numbers at
     /// zero if one is going; `only` one of the two.
     pub fn stats_reset(&mut self, only: Option<StatsPart>, now: Instant, out: &mut Vec<ToGateway>) {

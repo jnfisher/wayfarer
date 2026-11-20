@@ -1292,6 +1292,16 @@ a change and when the session goes, so a brain restart loses a few seconds at mo
 round still going). Stop, Start, a death, a level-up and restarts leave them; only
 `stats_reset` zeroes them (not with `only: "run"`). `stats` carries them as `combat`.
 
+**Windows** (C-125): before the numbers change, when the last were kept ten minutes ago or more,
+the brain keeps them as they stand (`combat_snapshots` in the store, for 25 hours), at the time
+they last changed: they stood so since then, so a quiet hour before a fight leaves the hour's
+start findable. `combat_detail_request` with `window` `hour` or `day` answers the numbers now
+less those kept at or before the window's start (or the oldest kept after it, the window then
+shorter); counts and sums are exact, the smallest and largest damage exact where there is a
+histogram. A reset forgets the kept numbers, and a window reaching back past it is the numbers
+since the reset. With the answer go the histograms of the round, every hit, the blows taken and
+each attack.
+
 ## Errands
 
 An errand is a one-shot job the player starts from the `[▼]` menu on a tile

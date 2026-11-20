@@ -14,6 +14,7 @@ import type {
   BotAction,
   CharacterState,
   Chunk,
+  CombatWindow,
   GearDetailRequest,
   GearPlanRequest,
   MonsterRuleKind,
@@ -32,6 +33,7 @@ import { clampRadius, LOOP_RADIUS, type Loops, type MapView } from "./map";
 import { MIN_QUERY, type FoundMessage } from "./goto";
 import type { SettingsMessage } from "./settings";
 import type { SpellPlan } from "./spells";
+import type { CombatDetailMessage } from "./combat-zoom";
 import type { GearDetailMessage, GearPlanMessage } from "./gear";
 import type { Stats } from "./stats";
 
@@ -103,6 +105,8 @@ export interface GatewayEvents {
   gearPlan?(plan: GearPlanMessage): void;
   /** One weapon against each monster of the set, for the gear planner's open row. */
   gearDetail?(detail: GearDetailMessage): void;
+  /** A character's combat numbers over a window, with their histograms, for the combat zoom. */
+  combatDetail?(detail: CombatDetailMessage): void;
   /** A character's settings, for the settings tab. */
   settings?(settings: SettingsMessage): void;
   /** What a `find` found, for the map panel's go box. */
@@ -322,6 +326,12 @@ export class GatewayClient {
   /** Ask for one weapon's numbers per monster (a `gear_detail` answer); false when not connected. */
   requestGearDetail(req: GearDetailRequest): boolean {
     return this.send({ type: "gear_detail_request", ...req });
+  }
+
+  /** Ask for a character's combat numbers over `window`, with their histograms (a
+   * `combat_detail` answer, C-125); false when not connected. */
+  requestCombatDetail(session: string, window: CombatWindow): boolean {
+    return this.send({ type: "combat_detail_request", session, window });
   }
 
   /** Ask for the character's last runs (a `stats` answer); false when not connected. */
@@ -560,6 +570,9 @@ export class GatewayClient {
         break;
       case "gear_detail":
         this.opts.events.gearDetail?.(message);
+        break;
+      case "combat_detail":
+        this.opts.events.combatDetail?.(message);
         break;
       case "settings":
         this.opts.events.settings?.(message);
