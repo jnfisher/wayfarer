@@ -7,7 +7,7 @@ mod common;
 use std::sync::{Arc, OnceLock};
 
 use wayfarer_parse::helpers::{Carried, Exit};
-use wayfarer_parse::typed::{GameEvent, ManaKind, PromptForm, Rank, Refusal, Rest};
+use wayfarer_parse::typed::{Blow, GameEvent, ManaKind, PromptForm, Rank, Refusal, Rest};
 use wayfarer_parse::{Event, Parser, PromptMode, PromptParser, Registry};
 
 fn reg() -> &'static Arc<Registry> {
@@ -499,16 +499,49 @@ fn who_is_here_and_who_attacks() {
     assert_eq!(
         first(f, "mon_miss_you", "fat"),
         GameEvent::AttackedBy {
-            name: "fat giant rat".into()
+            name: "fat giant rat".into(),
+            blow: Some(Blow::Miss),
+        }
+    );
+    // How the blow came out (C-124).
+    assert_eq!(
+        first(f, "mon_hits_you", "pseudopod"),
+        GameEvent::AttackedBy {
+            name: "acid slime".into(),
+            blow: Some(Blow::Hit(2)),
+        }
+    );
+    assert_eq!(
+        first(f, "mon_dodge_you", "thin"),
+        GameEvent::AttackedBy {
+            name: "thin giant rat".into(),
+            blow: Some(Blow::Dodged),
+        }
+    );
+    assert_eq!(
+        first(
+            "transcript-kasimir-monk-death",
+            "mon_deflect_you",
+            "dark monk"
+        ),
+        GameEvent::AttackedBy {
+            name: "dark monk".into(),
+            blow: Some(Blow::Deflected),
         }
     );
     assert_eq!(
         example("mon_hits_you_generic"),
-        GameEvent::AttackedBy { name: "orc".into() }
+        GameEvent::AttackedBy {
+            name: "orc".into(),
+            blow: Some(Blow::Hit(7)),
+        }
     );
     assert_eq!(
         example("attacks_you"),
-        GameEvent::AttackedBy { name: "Bob".into() }
+        GameEvent::AttackedBy {
+            name: "Bob".into(),
+            blow: None,
+        }
     );
     assert_eq!(
         example("target_missing"),

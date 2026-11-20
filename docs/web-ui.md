@@ -457,7 +457,9 @@ damage; on a Quicksilver 1.20 server also `opening` and `weave` (their share is 
 out. Then **by attack** (C-123): the swing, `bs` and each attack spell by name, with its tries,
 hit, crit and miss rates of the tries (a cast's miss is a resist or a failure), min-max and
 average damage, and a note with the dodges, the share glanced and a spell's damage per mana. A
-row with fewer than 30 tries is dim: too few to go by. Last, killed (and how many by a spell), fled, the blows taken for a guarded ward, the
+row with fewer than 30 tries is dim: too few to go by. Then the **blows taken** (C-124): how
+many, the share that hit, missed, were dodged and were deflected by the armour, and the hits'
+damage. Last, killed (and how many by a spell), fled, the blows taken for a guarded ward, the
 lowest HP and mana seen, and the monsters never woven into (likely immune to the character's
 spells). They are kept across runs, stops and restarts until their own **Reset**, beside "combat
 since" (`only: "combat"`; the run goes on): press it after changing weapons or settings,

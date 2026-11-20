@@ -5,6 +5,7 @@ import StatsPanel from "../src/StatsPanel.svelte";
 import {
   age,
   attackLines,
+  takenLine,
   combatLines,
   combatSummary,
   count,
@@ -170,6 +171,7 @@ describe("the combat numbers", () => {
     intercepts: 0,
     no_weave: [],
     attacks: [],
+    monsters: [],
   };
 
   const blow = { crits: 0, dodged: 0, glances: 0, resisted: 0, mana: 0, per_mana_hundredths: 0 };
@@ -198,6 +200,21 @@ describe("the combat numbers", () => {
     expect(rows).toHaveLength(3);
     expect(rows[2].classList.contains("few")).toBe(true);
     expect(rows[1].textContent).toContain("bs");
+  });
+
+  it("says how the blows taken came out (C-124)", () => {
+    const taken = { blows: 200, hits: 90, misses: 60, dodged: 30, deflected: 20, min: 4, max: 61, avg_tenths: 183 };
+    expect(takenLine(taken)).toBe(
+      "took 200 blows · 45.0% hit · 30.0% missed · 15.0% dodged · 10.0% deflected · 4-61, avg 18.3",
+    );
+    const { container } = render(StatsPanel, {
+      session,
+      character,
+      stats: { ...stats, combat: { ...combat, taken } },
+      attached: true,
+      onrefresh: () => {},
+    });
+    expect(container.querySelector("[data-taken]")!.textContent).toContain("took 200 blows");
   });
 
   it("formats rates, tenths and ages", () => {
