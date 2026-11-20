@@ -11,7 +11,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::time::Instant;
 use wayfarer_parse::typed::GameEvent;
-use wayfarer_proto::{CombatStats, DamageRow};
+use wayfarer_proto::{AttackRow, CombatStats, DamageRow};
 
 /// A round's own lines arrive together, and rounds are 5 s apart (`kb/combat.md` "The round");
 /// a line this long after the round's first starts the next.
@@ -63,6 +63,110 @@ fn per_mille(n: u64, of: u64) -> u32 {
         .map_or(0, |v| u32::try_from(v).unwrap_or(u32::MAX))
 }
 
+/// How often each amount of damage came (C-123): every value kept, so the page can bin them as
+/// it likes. Damage is a few hundred values at most.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Hist(pub BTreeMap<i64, u64>);
+
+impl Hist {
+    pub fn add(&mut self, d: i64) {
+        *self.0.entry(d).or_default() += 1;
+    }
+}
+
+/// One attack's tries and outcomes (C-123): the swing, the backstab, or an attack spell.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Attack {
+    /// Did damage; crits among them.
+    pub hits: u64,
+    pub crits: u64,
+    /// Did nothing; dodges among them.
+    pub misses: u64,
+    pub dodged: u64,
+    /// Landed on armour that took it all.
+    pub glances: u64,
+    /// A cast resisted, or failed in a fight.
+    pub resisted: u64,
+    /// The hits' damage.
+    pub damage: Damage,
+    #[serde(default)]
+    pub hist: Hist,
+    /// A cast's mana, from the `spells` screen; 0 for a blow or a spell not on it.
+    #[serde(default)]
+    pub mana: i64,
+}
+
+impl Attack {
+    fn tries(&self) -> u64 {
+        self.hits + self.misses + self.glances + self.resisted
+    }
+
+    fn hit(&mut self, damage: i64, crit: bool) {
+        self.hits += 1;
+        if crit {
+            self.crits += 1;
+        }
+        self.damage.add(damage);
+        self.hist.add(damage);
+    }
+
+    fn miss(&mut self, dodged: bool) {
+        self.misses += 1;
+        if dodged {
+            self.dodged += 1;
+        }
+    }
+
+    fn row(&self, key: &str) -> AttackRow {
+        let (kind, name) = match key.strip_prefix(CAST_KEY) {
+            Some(name) => ("cast", Some(name.to_owned())),
+            None => (key, None),
+        };
+        let d = self.damage.row(kind, 0);
+        // Casts cost mana, hits and resists alike; a failed cast costs it too.
+        let mana = u64::try_from(self.mana.max(0)).unwrap_or(0) * (self.hits + self.resisted);
+        AttackRow {
+            kind: kind.to_owned(),
+            name,
+            tries: self.tries(),
+            hits: self.hits,
+            crits: self.crits,
+            misses: self.misses,
+            dodged: self.dodged,
+            glances: self.glances,
+            resisted: self.resisted,
+            min: d.min,
+            max: d.max,
+            avg_tenths: d.avg_tenths,
+            mana,
+            per_mana_hundredths: i64::try_from(mana)
+                .ok()
+                .filter(|m| *m > 0)
+                .map_or(0, |m| self.damage.sum * 100 / m),
+        }
+    }
+}
+
+/// The key of the swing in [`Tally::attacks`]; the backstab's is [`BACKSTAB_KEY`], a spell's
+/// [`CAST_KEY`] and its name.
+pub const SWING_KEY: &str = "swing";
+pub const BACKSTAB_KEY: &str = "backstab";
+pub const CAST_KEY: &str = "cast:";
+
+/// A spell on the character's `spells` screen, for the casts it sends (C-123).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KnownSpell {
+    pub short: String,
+    pub name: String,
+    pub mana: i64,
+    /// An attack or area attack spell: only those count a failure in a fight as a miss.
+    pub attack: bool,
+}
+
+/// How long a `bs` or a `cast` waits for the line that says how it came out.
+pub const OUTCOME_WAIT: Duration = Duration::from_secs(10);
+
 /// The numbers since the last reset.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Tally {
@@ -107,6 +211,15 @@ pub struct Tally {
     /// its spells (a weave never picks a spell the target is immune to).
     #[serde(default)]
     pub weave_targets: BTreeMap<String, (u64, u64)>,
+    /// Each attack's outcomes (C-123), by [`SWING_KEY`], [`BACKSTAB_KEY`] or [`CAST_KEY`] and
+    /// the spell's name.
+    #[serde(default)]
+    pub attacks: BTreeMap<String, Attack>,
+    /// The damage of every round, and of every blow or cast that did damage (C-123).
+    #[serde(default)]
+    pub round_hist: Hist,
+    #[serde(default)]
+    pub all_hist: Hist,
     /// The character's last own line was a spell (a cast or a weave): a death now is a spell
     /// kill. Not kept.
     #[serde(skip)]
@@ -153,6 +266,12 @@ pub struct CombatTally {
     tally: Tally,
     round: Option<Round>,
     dirty: bool,
+    /// The spells the `spells` screen listed, for the casts sent.
+    spells: Vec<KnownSpell>,
+    /// A `bs` sent: its first blow is the backstab, whatever the line says.
+    backstab_sent: Option<Instant>,
+    /// The attack spell last sent, for a resist that does not name it.
+    cast_sent: Option<(String, Instant)>,
 }
 
 impl CombatTally {
@@ -166,8 +285,49 @@ impl CombatTally {
             });
         Self {
             tally,
-            round: None,
-            dirty: false,
+            ..Self::default()
+        }
+    }
+
+    /// The spells on the character's `spells` screen.
+    pub fn know_spells(&mut self, spells: Vec<KnownSpell>) {
+        self.spells = spells;
+    }
+
+    fn spell_by_name(&self, name: &str) -> Option<&KnownSpell> {
+        self.spells
+            .iter()
+            .find(|s| s.name.eq_ignore_ascii_case(name))
+    }
+
+    /// The attack a cast of `spell` counts in, with the spell's mana when it is known.
+    fn cast_attack(&mut self, spell: &str) -> &mut Attack {
+        let name = spell.trim().to_lowercase();
+        let mana = self.spell_by_name(&name).map_or(0, |s| s.mana);
+        let a = self
+            .tally
+            .attacks
+            .entry(format!("{CAST_KEY}{name}"))
+            .or_default();
+        if mana > 0 {
+            a.mana = mana;
+        }
+        a
+    }
+
+    /// The attack of the blow just seen. A blow that did damage says whether it was a backstab
+    /// (`surprise`); a miss or a glance does not, so it is the backstab's when a `bs` is waiting
+    /// for its first blow. A plain hit while one waits means the stab became a plain attack.
+    fn blow_key(&mut self, hit: Option<bool>, now: Instant) -> &'static str {
+        let waiting = self
+            .backstab_sent
+            .take()
+            .is_some_and(|at| now.duration_since(at) <= OUTCOME_WAIT);
+        match hit {
+            Some(true) => BACKSTAB_KEY,
+            Some(false) => SWING_KEY,
+            None if waiting => BACKSTAB_KEY,
+            None => SWING_KEY,
         }
     }
 
@@ -197,6 +357,8 @@ impl CombatTally {
             ..Tally::default()
         };
         self.round = None;
+        self.backstab_sent = None;
+        self.cast_sent = None;
         self.dirty = true;
     }
 
@@ -211,6 +373,7 @@ impl CombatTally {
             && now.duration_since(r.start) >= ROUND_SPAN
         {
             self.tally.round.add(r.damage);
+            self.tally.round_hist.add(r.damage);
             self.round = None;
             self.dirty = true;
         }
@@ -230,6 +393,7 @@ impl CombatTally {
 
     /// A game event the character saw.
     pub fn event(&mut self, ev: &GameEvent, in_combat: bool, now: Instant) {
+        self.attack_event(ev, in_combat, now);
         let t = &mut self.tally;
         match ev {
             GameEvent::YouHit {
@@ -239,6 +403,7 @@ impl CombatTally {
                 backstab,
             } => {
                 t.last_spell = false;
+                t.all_hist.add(*damage);
                 if !*backstab {
                     t.weave_targets.entry(target.to_lowercase()).or_default().0 += 1;
                 }
@@ -269,6 +434,7 @@ impl CombatTally {
             }
             GameEvent::SpellCast { damage, .. } => {
                 t.last_spell = true;
+                t.all_hist.add(*damage);
                 t.cast.add(*damage);
                 self.in_round(*damage, now);
             }
@@ -317,6 +483,60 @@ impl CombatTally {
         }
     }
 
+    /// The attack a blow or cast belongs to, and how it came out (C-123).
+    fn attack_event(&mut self, ev: &GameEvent, in_combat: bool, now: Instant) {
+        match ev {
+            GameEvent::YouHit {
+                damage,
+                crit,
+                backstab,
+                ..
+            } => {
+                let key = self.blow_key(Some(*backstab), now);
+                let a = self.tally.attacks.entry(key.to_owned()).or_default();
+                a.hit(*damage, *crit);
+            }
+            GameEvent::YouMiss { dodged, .. } => {
+                let key = self.blow_key(None, now);
+                self.tally
+                    .attacks
+                    .entry(key.to_owned())
+                    .or_default()
+                    .miss(*dodged);
+            }
+            GameEvent::SwingGlanced { .. } => {
+                let key = self.blow_key(None, now);
+                self.tally
+                    .attacks
+                    .entry(key.to_owned())
+                    .or_default()
+                    .glances += 1;
+            }
+            GameEvent::SpellCast { spell, damage, .. } => {
+                self.cast_sent = None;
+                self.cast_attack(spell).hit(*damage, false);
+            }
+            GameEvent::CastFailed { spell } if in_combat => {
+                self.cast_sent = None;
+                // Only an attack spell's failure is a miss: a heal's or a blessing's is not.
+                if self.spells.is_empty()
+                    || self.spell_by_name(spell.trim()).is_some_and(|s| s.attack)
+                {
+                    self.cast_attack(spell).resisted += 1;
+                }
+            }
+            GameEvent::CastResisted if in_combat => {
+                let name = self
+                    .cast_sent
+                    .take()
+                    .filter(|(_, at)| now.duration_since(*at) <= OUTCOME_WAIT)
+                    .map_or_else(|| "a spell".to_owned(), |(n, _)| n);
+                self.cast_attack(&name).resisted += 1;
+            }
+            _ => {}
+        }
+    }
+
     /// The character's HP and mana now, for the lowest seen.
     pub fn vitals(&mut self, hp: Option<i64>, mana: Option<i64>) {
         let t = &mut self.tally;
@@ -334,10 +554,25 @@ impl CombatTally {
     }
 
     /// A line went to the game, the bot's or typed: a backstab try counts.
-    pub fn sent(&mut self, line: &str) {
-        if crate::commands::classify(line).cmd == Some(crate::commands::Cmd::Backstab) {
-            self.tally.backstab_tries += 1;
-            self.dirty = true;
+    /// Its first blow is the backstab; an attack spell's cast waits for its outcome.
+    pub fn sent(&mut self, line: &str, now: Instant) {
+        match crate::commands::classify(line).cmd {
+            Some(crate::commands::Cmd::Backstab) => {
+                self.tally.backstab_tries += 1;
+                self.backstab_sent = Some(now);
+                self.dirty = true;
+            }
+            Some(crate::commands::Cmd::Cast) => {
+                let short = line.split_whitespace().nth(1).unwrap_or("");
+                if let Some(s) = self
+                    .spells
+                    .iter()
+                    .find(|s| s.attack && s.short.eq_ignore_ascii_case(short))
+                {
+                    self.cast_sent = Some((s.name.to_lowercase(), now));
+                }
+            }
+            _ => {}
         }
     }
 
@@ -416,7 +651,24 @@ impl CombatTally {
             spell_kills: t.spell_kills,
             intercepts: t.intercepts,
             no_weave: self.no_weave(),
+            attacks: self.attack_rows(),
         })
+    }
+
+    /// The attacks tried at all: the swing, the backstab, then the spells by name.
+    fn attack_rows(&self) -> Vec<AttackRow> {
+        let a = &self.tally.attacks;
+        [SWING_KEY, BACKSTAB_KEY]
+            .into_iter()
+            .filter_map(|k| a.get(k).map(|x| (k, x)))
+            .chain(
+                a.iter()
+                    .filter(|(k, _)| k.starts_with(CAST_KEY))
+                    .map(|(k, x)| (k.as_str(), x)),
+            )
+            .filter(|(_, x)| x.tries() > 0)
+            .map(|(k, x)| x.row(k))
+            .collect()
     }
 }
 
@@ -551,8 +803,8 @@ mod tests {
         let t0 = Instant::now();
         let mut c = CombatTally::load(None, 0);
         c.event(&hit(9), true, t0);
-        c.sent("bs rat");
-        c.sent("attack rat");
+        c.sent("bs rat", t0);
+        c.sent("attack rat", t0);
         c.kill();
         c.flee();
         c.vitals(Some(40), Some(10));
@@ -742,6 +994,130 @@ mod tests {
         c.event(&hit(5), true, t0);
         c.event(&weave("rat", 12, false), true, t0);
         assert_eq!(c.to_wire().unwrap().no_weave, ["ghost"]);
+    }
+
+    fn spells() -> Vec<KnownSpell> {
+        let s = |short: &str, name: &str, mana, attack| KnownSpell {
+            short: short.into(),
+            name: name.into(),
+            mana,
+            attack,
+        };
+        vec![
+            s("godw", "god's wrath", 14, true),
+            s("mihe", "minor healing", 2, false),
+        ]
+    }
+
+    fn row<'a>(w: &'a CombatStats, kind: &str) -> &'a AttackRow {
+        w.attacks
+            .iter()
+            .find(|r| r.kind == kind || r.name.as_deref() == Some(kind))
+            .unwrap()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_backstab_counts_its_misses_and_glances() {
+        let t0 = Instant::now();
+        let mut c = CombatTally::load(None, 0);
+        // A stab that lands, one that misses, one the armour takes, and one that became a
+        // plain attack (the monster was already fighting).
+        c.sent("bs rat", t0);
+        c.event(
+            &GameEvent::YouHit {
+                target: "rat".into(),
+                damage: 120,
+                crit: true,
+                backstab: true,
+            },
+            true,
+            t0,
+        );
+        c.event(&hit(6), true, t0);
+        c.sent("bs rat", t0 + Duration::from_secs(20));
+        c.event(&miss(true), true, t0 + Duration::from_secs(21));
+        c.event(&miss(false), true, t0 + Duration::from_secs(21));
+        c.sent("bs rat", t0 + Duration::from_secs(40));
+        c.event(
+            &GameEvent::SwingGlanced {
+                target: "rat".into(),
+            },
+            true,
+            t0 + Duration::from_secs(41),
+        );
+        c.sent("bs rat", t0 + Duration::from_secs(60));
+        c.event(&hit(9), true, t0 + Duration::from_secs(61));
+        // A bs long ago has no say over a miss now.
+        c.sent("bs rat", t0 + Duration::from_secs(80));
+        c.event(&miss(false), true, t0 + Duration::from_secs(95));
+        let w = c.to_wire().unwrap();
+        let bs = row(&w, "backstab");
+        assert_eq!(
+            (
+                bs.tries, bs.hits, bs.crits, bs.misses, bs.dodged, bs.glances
+            ),
+            (3, 1, 1, 1, 1, 1)
+        );
+        assert_eq!((bs.min, bs.max), (120, 120));
+        let sw = row(&w, "swing");
+        assert_eq!((sw.tries, sw.hits, sw.misses), (4, 2, 2));
+        assert_eq!(w.attacks[0].kind, "swing", "the swing first");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_spell_counts_its_resists_and_its_damage_per_mana() {
+        let t0 = Instant::now();
+        let mut c = CombatTally::load(None, 0);
+        c.know_spells(spells());
+        let cast = |damage| GameEvent::SpellCast {
+            spell: "god's wrath".into(),
+            target: Some("orc".into()),
+            damage,
+        };
+        c.sent("c godw orc", t0);
+        c.event(&cast(30), true, t0);
+        c.sent("c godw orc", t0);
+        c.event(&cast(40), true, t0);
+        c.sent("c godw orc", t0);
+        c.event(&GameEvent::CastResisted, true, t0);
+        c.event(
+            &GameEvent::CastFailed {
+                spell: "god's wrath".into(),
+            },
+            true,
+            t0,
+        );
+        // A heal failing in a fight is no attack's miss.
+        c.event(
+            &GameEvent::CastFailed {
+                spell: "minor healing".into(),
+            },
+            true,
+            t0,
+        );
+        let w = c.to_wire().unwrap();
+        let g = row(&w, "god's wrath");
+        assert_eq!(g.kind, "cast");
+        assert_eq!((g.tries, g.hits, g.resisted), (4, 2, 2));
+        // 70 damage for 4 casts of 14 mana: 1.25 a mana.
+        assert_eq!((g.mana, g.per_mana_hundredths), (56, 125));
+        assert_eq!(w.attacks.len(), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn rounds_and_every_hit_go_in_the_histograms() {
+        let t0 = Instant::now();
+        let mut c = CombatTally::load(None, 0);
+        c.event(&hit(5), true, t0);
+        c.event(&hit(5), true, t0);
+        c.event(&hit(8), true, t0 + Duration::from_secs(5));
+        c.close_round_if_due(t0 + Duration::from_secs(10));
+        let t = c.tally();
+        assert_eq!(t.all_hist.0, BTreeMap::from([(5, 2), (8, 1)]));
+        assert_eq!(t.round_hist.0, BTreeMap::from([(10, 1), (8, 1)]));
+        assert_eq!(t.attacks[SWING_KEY].hist.0.get(&5), Some(&2));
+        let back = CombatTally::load(Some(&c.to_json()), 0);
+        assert_eq!(back.tally(), t, "kept in the store");
     }
 
     #[test]

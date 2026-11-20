@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import StatsPanel from "../src/StatsPanel.svelte";
 import {
   age,
+  attackLines,
   combatLines,
   combatSummary,
   count,
@@ -168,7 +169,36 @@ describe("the combat numbers", () => {
     spell_kills: 0,
     intercepts: 0,
     no_weave: [],
+    attacks: [],
   };
+
+  const blow = { crits: 0, dodged: 0, glances: 0, resisted: 0, mana: 0, per_mana_hundredths: 0 };
+  const attacks = [
+    { ...blow, kind: "swing", tries: 200, hits: 150, crits: 10, misses: 46, dodged: 6, glances: 4, min: 3, max: 40, avg_tenths: 181 },
+    { ...blow, kind: "backstab", tries: 40, hits: 30, crits: 8, misses: 10, min: 60, max: 240, avg_tenths: 1325 },
+    { ...blow, kind: "cast", name: "god's wrath", tries: 12, hits: 9, misses: 0, resisted: 3, min: 15, max: 40, avg_tenths: 280, mana: 168, per_mana_hundredths: 150 },
+  ];
+
+  it("lists each attack's outcomes, dim with too few tries (C-123)", () => {
+    const l = attackLines(attacks);
+    expect(l.map((x) => x.label)).toEqual(["swing", "bs", "god's wrath"]);
+    expect(l[0]).toMatchObject({ tries: "200", hit: "75.0%", crit: "5.0%", miss: "23.0%", few: false });
+    expect(l[0].note).toBe("6 dodged, 2.0% glanced");
+    expect(l[1]).toMatchObject({ hit: "75.0%", crit: "20.0%", miss: "25.0%", range: "60-240", avg: "132.5" });
+    // A cast's miss is its resists.
+    expect(l[2]).toMatchObject({ hit: "75.0%", miss: "25.0%", note: "1.50 dmg/mana", few: true });
+    const { container } = render(StatsPanel, {
+      session,
+      character,
+      stats: { ...stats, combat: { ...combat, attacks } },
+      attached: true,
+      onrefresh: () => {},
+    });
+    const rows = container.querySelectorAll(".attacks .row:not(.head)");
+    expect(rows).toHaveLength(3);
+    expect(rows[2].classList.contains("few")).toBe(true);
+    expect(rows[1].textContent).toContain("bs");
+  });
 
   it("formats rates, tenths and ages", () => {
     expect(perCent(714)).toBe("71.4%");
@@ -224,6 +254,7 @@ describe("the combat numbers", () => {
     const section = container.querySelector(".combat")!;
     expect(section.textContent).toContain("20 swings · 80.0% accuracy · 12.5% crits");
     expect(section.querySelectorAll(".row:not(.head)")).toHaveLength(6);
+    expect(section.querySelector(".attacks")).toBeNull();
     expect(section.textContent).toContain("killed 5 · fled 1");
     expect(section.textContent).toContain("lowest hp 41");
     unmount();

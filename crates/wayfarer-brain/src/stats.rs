@@ -458,6 +458,11 @@ impl Ledger {
         &mut self.combat
     }
 
+    /// The spells on the character's `spells` screen, for the combat numbers' casts (C-123).
+    pub fn know_spells(&mut self, spells: Vec<crate::combat_stats::KnownSpell>) {
+        self.combat.know_spells(spells);
+    }
+
     /// The combat numbers for the `stats` message, the round in progress closed if it is over.
     pub fn combat_wire(&mut self, now: Instant) -> Option<wayfarer_proto::CombatStats> {
         self.combat.close_round_if_due(now);
