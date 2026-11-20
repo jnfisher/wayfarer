@@ -821,3 +821,58 @@ async fn an_entry_during_the_catch_up_puts_the_bot_back_after_it() {
         "{said:?}"
     );
 }
+
+impl Game {
+    async fn detail(
+        &mut self,
+        window: wayfarer_proto::CombatWindow,
+    ) -> (Option<CombatStats>, Vec<wayfarer_proto::HistRow>) {
+        self.send(ToClient::CombatDetailRequest(
+            wayfarer_proto::CombatDetailRequest {
+                session: ID.into(),
+                window,
+            },
+        ))
+        .await;
+        self.until(|m| match m {
+            ToGateway::CombatDetail(d) if d.window == window => {
+                Some((d.stats.clone(), d.hists.clone()))
+            }
+            _ => None,
+        })
+        .await
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_last_hour_is_the_numbers_now_less_those_kept_an_hour_ago() {
+    // C-125: kept every ten minutes, the numbers at the window's start come off.
+    use wayfarer_proto::CombatWindow;
+    let dir = tempfile::tempdir().unwrap();
+    let (mut g, run) = arena_brain(brain_on(&dir.path().join("store.sqlite")), &[]).await;
+    g.output(&line("You smack large giant rat for 9 damage!", 35))
+        .await;
+    g.idle(Duration::from_secs(10)).await;
+    // Two hours on, another fight.
+    g.idle(Duration::from_secs(2 * 3600)).await;
+    g.output(&line("You smack large giant rat for 30 damage!", 35))
+        .await;
+    g.output(&line("You swing at large giant rat!", 35)).await;
+    g.idle(Duration::from_secs(10)).await;
+    let (all, _) = g.detail(CombatWindow::Reset).await;
+    let all = all.expect("numbers since the reset");
+    assert_eq!(all.attacks[0].tries, 3);
+    let (hour, hists) = g.detail(CombatWindow::Hour).await;
+    let hour = hour.expect("the last hour's numbers");
+    let swing = &hour.attacks[0];
+    assert_eq!(
+        (swing.tries, swing.hits, swing.min, swing.max),
+        (2, 1, 30, 30)
+    );
+    let round = hists.iter().find(|h| h.kind == "round").unwrap();
+    assert_eq!(round.values, [(30, 1)], "only the last hour's round");
+    // The day reaches back past the reset: all of it.
+    let (day, _) = g.detail(CombatWindow::Day).await;
+    assert_eq!(day.unwrap().attacks[0].tries, 3);
+    g.close(run).await;
+}

@@ -31,9 +31,11 @@
     /** `run`: end the current run and start a new one at zero (the old one stays in the
      * history). `combat`: zero the combat numbers. Each section has its own reset. */
     onreset?: (session: string, only: StatsPart) => void;
+    /** Open the combat zoom on the session (C-125). */
+    onzoom?: (session: string) => void;
   }
 
-  let { session, character, stats, attached, onrefresh, onreset = () => {} }: Props = $props();
+  let { session, character, stats, attached, onrefresh, onreset = () => {}, onzoom = () => {} }: Props = $props();
 
   const run = $derived(character?.run);
   const combat = $derived(stats?.combat);
@@ -164,6 +166,12 @@
             data-reset="combat"
             title="Zero the combat numbers. The run goes on."
             onclick={() => onreset(session.id, "combat")}>reset</button
+          >
+          <button
+            class="reset"
+            data-zoom
+            title="Open the combat numbers full screen: histograms, each monster, the party side by side, the last hour or day"
+            onclick={() => onzoom(session.id)}>zoom</button
           >
         </div>
         <div class="summary">

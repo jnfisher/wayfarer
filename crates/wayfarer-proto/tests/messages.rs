@@ -15,6 +15,7 @@ use wayfarer_proto::{
     SpellPlanItem, Stashed, Stats, StatsPart, TakenRow, TimeSpent, ToClient, ToGateway, Walking,
     WorldPackInfo, protocol_mismatch,
 };
+use wayfarer_proto::{CombatDetail, CombatDetailRequest, CombatWindow, HistRow};
 
 fn kasimir(state: SessionState, last_seq: u64) -> SessionInfo {
     SessionInfo {
@@ -562,6 +563,26 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
             r#"{"type":"gear_detail","session":"kasimir","item":646,"name":"Magebane sword","inputs":{"class":"Witchunter","race":"Kang","level":15,"str":95,"int":30,"wil":45,"agi":56,"hea":91,"cha":41,"load_percent":51,"what_if":[],"buffs":[],"smash":false},"monsters":[{"number":405,"name":"kobold warrior","hp":50,"ac":35,"dr":20,"dodge":0,"rooms":0}],"load_percent":51,"moves":[{"move":"attack","energy":310,"blows_per_round":[3,3,3,3,3,4,3,3],"monsters":[{"monster":405,"hit":819,"crit":8,"dodge":0,"damage":[17,33],"crit_damage":[64,130],"damage_per_blow":209,"damage_round1":627,"damage_round2":627,"kill_by_round":[530,960,999,1000,1000,1000,1000,1000],"rounds":151}]}]}"#,
         ),
         (
+            ToGateway::CombatDetail(CombatDetail {
+                session: "kasimir".into(),
+                window: CombatWindow::Hour,
+                stats: None,
+                hists: vec![
+                    HistRow {
+                        kind: "round".into(),
+                        name: None,
+                        values: vec![(0, 3), (21, 1), (84, 2)],
+                    },
+                    HistRow {
+                        kind: "cast".into(),
+                        name: Some("god's wrath".into()),
+                        values: vec![(30, 1)],
+                    },
+                ],
+            }),
+            r#"{"type":"combat_detail","session":"kasimir","window":"hour","hists":[{"kind":"round","values":[[0,3],[21,1],[84,2]]},{"kind":"cast","name":"god's wrath","values":[[30,1]]}]}"#,
+        ),
+        (
             ToGateway::Settings {
                 session: "kasimir".into(),
                 layer: "character".into(),
@@ -814,6 +835,13 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
                 smash: None,
             }),
             r#"{"type":"gear_detail_request","session":"kasimir","item":646,"monsters":{"loop":"Mwodloop.mp"}}"#,
+        ),
+        (
+            ToGateway::CombatDetailRequest(CombatDetailRequest {
+                session: "kasimir".into(),
+                window: CombatWindow::Hour,
+            }),
+            r#"{"type":"combat_detail_request","session":"kasimir","window":"hour"}"#,
         ),
         (
             ToGateway::StatsReset {
@@ -1493,6 +1521,7 @@ fn families_say_who_may_send_what() {
             | "spell_plan_request"
             | "gear_plan_request"
             | "gear_detail_request"
+            | "combat_detail_request"
             | "stats_reset"
             | "settings_request"
             | "settings_save"
@@ -1514,7 +1543,7 @@ fn families_say_who_may_send_what() {
             | "blessings_save" => Family::Control,
             "event" | "character" | "character_patch" | "brain_info" | "notice" | "warning"
             | "map_view" | "loops" | "stats" | "spell_plan" | "gear_plan" | "gear_detail"
-            | "settings" | "found" | "parties" | "blessings" => Family::Brain,
+            | "combat_detail" | "settings" | "found" | "parties" | "blessings" => Family::Brain,
             "ready_to_leave" | "arbitrate" | "position_trace" => Family::BrainToGateway,
             _ => Family::Gateway,
         };

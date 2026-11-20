@@ -26,6 +26,10 @@ pub const STATS_RUNS: usize = 10;
 /// How long the combat numbers may change before the store gets them: a brain restart loses
 /// at most this much.
 pub const COMBAT_SAVE_EVERY: Duration = Duration::from_secs(5);
+/// How often the combat numbers are kept as they stand, for the last hour's and day's (C-125).
+pub const SNAPSHOT_EVERY: i64 = 600;
+/// How long those are kept: a day and an hour, so the day's window always finds its start.
+pub const SNAPSHOTS_KEPT: i64 = 25 * 3600;
 /// How long the run's time may go uncounted in the store.
 pub const TIME_SAVE_EVERY: Duration = Duration::from_secs(30);
 /// How many places the snapshot lists.
@@ -105,6 +109,10 @@ pub(crate) struct Ledger {
     combat: CombatTally,
     /// When the changed combat numbers go to the store.
     combat_save: Option<Instant>,
+    /// When the combat numbers were last kept as they stood (unix seconds, C-125), and when
+    /// they last changed.
+    last_snapshot: Option<i64>,
+    last_change: Option<i64>,
     /// Where the run's time went; nothing without a run.
     time: TimeTally,
     /// When the run's time goes to the store.
@@ -135,6 +143,8 @@ impl Ledger {
             places: Vec::new(),
             combat: CombatTally::default(),
             combat_save: None,
+            last_snapshot: None,
+            last_change: None,
             time: TimeTally::default(),
             time_save: None,
         };
@@ -447,15 +457,73 @@ impl Ledger {
     pub fn reset_combat(&mut self) {
         let at = self.now();
         self.combat.reset(at);
+        self.with(|s, id| s.clear_combat_snapshots(id));
+        self.last_snapshot = None;
+        self.last_change = None;
         self.save_combat();
+    }
+
+    /// The combat numbers over `window`, with their histograms (C-125): since the reset, or the
+    /// numbers now less those kept when the window starts (or the oldest kept after it, the
+    /// window then shorter, and `since` says so).
+    pub fn combat_detail(
+        &mut self,
+        window: wayfarer_proto::CombatWindow,
+        now: Instant,
+    ) -> (
+        Option<wayfarer_proto::CombatStats>,
+        Vec<wayfarer_proto::HistRow>,
+    ) {
+        use wayfarer_proto::CombatWindow;
+        self.combat.close_round_if_due(now);
+        let total = self.combat.tally_now().clone();
+        let span = match window {
+            CombatWindow::Reset => None,
+            CombatWindow::Hour => Some(3600),
+            CombatWindow::Day => Some(24 * 3600),
+        };
+        let from = span.map(|s| self.now() - s);
+        let old = from
+            .filter(|f| total.since < *f)
+            .and_then(|f| self.with(|s, id| s.combat_snapshot(id, f)).flatten())
+            .and_then(|(at, json)| {
+                serde_json::from_str::<crate::combat_stats::Tally>(&json)
+                    .ok()
+                    .map(|t| (at, t))
+            })
+            // A snapshot from before the last reset is no start.
+            .filter(|(_, t)| t.since == total.since);
+        let shown = match old {
+            Some((at, old)) => total.since(&old, at),
+            None => total,
+        };
+        (CombatTally::wire(&shown), shown.hists())
     }
 
     /// The combat numbers, to count into; the store gets them within [`COMBAT_SAVE_EVERY`].
     pub fn combat(&mut self, now: Instant) -> &mut CombatTally {
+        self.snapshot_before_change(now);
         if self.combat_save.is_none() {
             self.combat_save = Some(now + COMBAT_SAVE_EVERY);
         }
         &mut self.combat
+    }
+
+    /// Keep the combat numbers as they stand, before they change, when the last were kept
+    /// [`SNAPSHOT_EVERY`] ago or more (C-125). They stood so since their last change, so that
+    /// is the time they are kept at: a quiet hour before a fight leaves its start findable.
+    fn snapshot_before_change(&mut self, now: Instant) {
+        let at = self.now();
+        if self.last_snapshot.is_some_and(|t| at - t < SNAPSHOT_EVERY) {
+            self.last_change = Some(at);
+            return;
+        }
+        self.combat.close_round_if_due(now);
+        let json = self.combat.to_json();
+        let stood = self.last_change.unwrap_or(at);
+        self.with(|s, id| s.save_combat_snapshot(id, stood, &json, at - SNAPSHOTS_KEPT));
+        self.last_snapshot = Some(at);
+        self.last_change = Some(at);
     }
 
     /// The spells on the character's `spells` screen, for the combat numbers' casts (C-123).

@@ -146,6 +146,14 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE bot_state ADD COLUMN area_spell TEXT;",
     // 16: a bot the realm took off, to put back in that state at the next entry (C-107).
     "ALTER TABLE bot_state ADD COLUMN on_entry TEXT;",
+    // 17: each session's combat numbers as they stood every few minutes (C-125), as JSON, for
+    // the numbers of the last hour or day.
+    "CREATE TABLE combat_snapshots (
+         session TEXT NOT NULL,
+         at INTEGER NOT NULL,
+         tally TEXT NOT NULL,
+         PRIMARY KEY (session, at)
+     );",
 ];
 
 /// The items a bot collects as stored: a `count name` pair a line (C-102).
@@ -170,7 +178,7 @@ fn collect_from_text(text: &str) -> Vec<(String, u32)> {
 /// The schema version this build writes.
 pub const SCHEMA_VERSION: u32 = MIGRATIONS.len() as u32;
 
-const TABLES: [&str; 13] = [
+const TABLES: [&str; 14] = [
     "bot_state",
     "runs",
     "events",
@@ -182,6 +190,7 @@ const TABLES: [&str; 13] = [
     "parties",
     "blessings",
     "combat_stats",
+    "combat_snapshots",
     "run_time",
     "rule_sets",
 ];
@@ -852,6 +861,60 @@ impl Store {
         self.conn.execute(
             "INSERT OR REPLACE INTO combat_stats (session, tally, updated_at) VALUES (?1, ?2, ?3)",
             params![session, tally, at],
+        )?;
+        Ok(())
+    }
+
+    /// Keep `session`'s combat numbers as they stand at `at` (C-125), and drop those kept
+    /// before `keep_from`.
+    pub fn save_combat_snapshot(
+        &self,
+        session: &str,
+        at: i64,
+        tally: &str,
+        keep_from: i64,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO combat_snapshots (session, at, tally) VALUES (?1, ?2, ?3)",
+            params![session, at, tally],
+        )?;
+        self.conn.execute(
+            "DELETE FROM combat_snapshots WHERE session = ?1 AND at < ?2",
+            params![session, keep_from],
+        )?;
+        Ok(())
+    }
+
+    /// `session`'s combat numbers as they stood when a window from `from` starts: the newest
+    /// kept at or before it, or else the oldest kept after it; with its time.
+    pub fn combat_snapshot(&self, session: &str, from: i64) -> Result<Option<(i64, String)>> {
+        let before = self
+            .conn
+            .query_row(
+                "SELECT at, tally FROM combat_snapshots WHERE session = ?1 AND at <= ?2
+                 ORDER BY at DESC LIMIT 1",
+                params![session, from],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        if before.is_some() {
+            return Ok(before);
+        }
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT at, tally FROM combat_snapshots WHERE session = ?1 ORDER BY at LIMIT 1",
+                params![session],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?)
+    }
+
+    /// Forget `session`'s combat snapshots: its numbers were reset.
+    pub fn clear_combat_snapshots(&self, session: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM combat_snapshots WHERE session = ?1",
+            params![session],
         )?;
         Ok(())
     }

@@ -11,7 +11,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::time::Instant;
 use wayfarer_parse::typed::{Blow, GameEvent};
-use wayfarer_proto::{AttackRow, CombatStats, DamageRow, FoeRow, TakenRow};
+use wayfarer_proto::{AttackRow, CombatStats, DamageRow, FoeRow, HistRow, TakenRow};
 
 /// A round's own lines arrive together, and rounds are 5 s apart (`kb/combat.md` "The round");
 /// a line this long after the round's first starts the next.
@@ -56,6 +56,30 @@ impl Damage {
     }
 }
 
+impl Damage {
+    /// What came since `old` was taken (C-125). The smallest and largest come from `hist`, the
+    /// damage's histogram, when there is one; without, they are the whole count's.
+    fn minus(&self, old: &Damage, hist: Option<&Hist>) -> Damage {
+        let count = self.count.saturating_sub(old.count);
+        let (min, max) = match hist {
+            Some(h) => (
+                h.0.keys().next().copied().unwrap_or(0),
+                h.0.keys().next_back().copied().unwrap_or(0),
+            ),
+            None => (self.min, self.max),
+        };
+        if count == 0 {
+            return Damage::default();
+        }
+        Damage {
+            count,
+            min,
+            max,
+            sum: self.sum - old.sum,
+        }
+    }
+}
+
 /// `n` of `of` in thousandths, rounded down; 0 of nothing.
 fn per_mille(n: u64, of: u64) -> u32 {
     n.saturating_mul(1000)
@@ -72,6 +96,25 @@ pub struct Hist(pub BTreeMap<i64, u64>);
 impl Hist {
     pub fn add(&mut self, d: i64) {
         *self.0.entry(d).or_default() += 1;
+    }
+
+    /// What came since `old` was taken: the counts less `old`'s (C-125).
+    fn minus(&self, old: &Hist) -> Hist {
+        Hist(
+            self.0
+                .iter()
+                .map(|(d, n)| (*d, n.saturating_sub(old.0.get(d).copied().unwrap_or(0))))
+                .filter(|(_, n)| *n > 0)
+                .collect(),
+        )
+    }
+
+    fn row(&self, kind: &str, name: Option<&str>) -> HistRow {
+        HistRow {
+            kind: kind.to_owned(),
+            name: name.map(str::to_owned),
+            values: self.0.iter().map(|(d, n)| (*d, *n)).collect(),
+        }
     }
 }
 
@@ -98,6 +141,21 @@ pub struct Attack {
 }
 
 impl Attack {
+    fn minus(&self, old: &Attack) -> Attack {
+        let hist = self.hist.minus(&old.hist);
+        Attack {
+            hits: self.hits.saturating_sub(old.hits),
+            crits: self.crits.saturating_sub(old.crits),
+            misses: self.misses.saturating_sub(old.misses),
+            dodged: self.dodged.saturating_sub(old.dodged),
+            glances: self.glances.saturating_sub(old.glances),
+            resisted: self.resisted.saturating_sub(old.resisted),
+            damage: self.damage.minus(&old.damage, Some(&hist)),
+            hist,
+            mana: self.mana,
+        }
+    }
+
     fn tries(&self) -> u64 {
         self.hits + self.misses + self.glances + self.resisted
     }
@@ -179,6 +237,18 @@ pub struct Taken {
 }
 
 impl Taken {
+    fn minus(&self, old: &Taken) -> Taken {
+        let hist = self.hist.minus(&old.hist);
+        Taken {
+            hits: self.hits.saturating_sub(old.hits),
+            misses: self.misses.saturating_sub(old.misses),
+            dodged: self.dodged.saturating_sub(old.dodged),
+            deflected: self.deflected.saturating_sub(old.deflected),
+            damage: self.damage.minus(&old.damage, Some(&hist)),
+            hist,
+        }
+    }
+
     fn blow(&mut self, b: Blow) {
         match b {
             Blow::Hit(d) => {
@@ -306,6 +376,96 @@ pub struct Tally {
 pub const NO_WEAVE_HITS: u64 = 10;
 
 impl Tally {
+    /// What was counted since `old`, these numbers as they stood earlier, from `since` (C-125).
+    /// Counts and sums are exact; the smallest and largest damage are exact where there is a
+    /// histogram (each attack, the round, the blows taken) and the whole count's elsewhere;
+    /// the lowest HP and mana are left out.
+    pub fn since(&self, old: &Tally, since: i64) -> Tally {
+        let sub = |a: u64, b: u64| a.saturating_sub(b);
+        let keyed = |new: &BTreeMap<String, Attack>, old: &BTreeMap<String, Attack>| {
+            new.iter()
+                .map(|(k, a)| {
+                    (
+                        k.clone(),
+                        old.get(k).map_or_else(|| a.clone(), |o| a.minus(o)),
+                    )
+                })
+                .filter(|(_, a)| a.tries() > 0)
+                .collect()
+        };
+        let round_hist = self.round_hist.minus(&old.round_hist);
+        Tally {
+            since,
+            hit: self.hit.minus(&old.hit, None),
+            crit: self.crit.minus(&old.crit, None),
+            backstab: self.backstab.minus(&old.backstab, None),
+            backstab_crits: sub(self.backstab_crits, old.backstab_crits),
+            backstab_tries: sub(self.backstab_tries, old.backstab_tries),
+            glances: sub(self.glances, old.glances),
+            misses: sub(self.misses, old.misses),
+            dodged: sub(self.dodged, old.dodged),
+            cast: self.cast.minus(&old.cast, None),
+            cast_misses: sub(self.cast_misses, old.cast_misses),
+            round: self.round.minus(&old.round, Some(&round_hist)),
+            kills: sub(self.kills, old.kills),
+            flees: sub(self.flees, old.flees),
+            lowest_hp: None,
+            lowest_mana: None,
+            openings: self.openings.minus(&old.openings, None),
+            weaves: self.weaves.minus(&old.weaves, None),
+            weaves_resisted: sub(self.weaves_resisted, old.weaves_resisted),
+            spell_kills: sub(self.spell_kills, old.spell_kills),
+            intercepts: sub(self.intercepts, old.intercepts),
+            weave_targets: self
+                .weave_targets
+                .iter()
+                .map(|(k, (h, w))| {
+                    let (oh, ow) = old.weave_targets.get(k).copied().unwrap_or_default();
+                    (k.clone(), (sub(*h, oh), sub(*w, ow)))
+                })
+                .collect(),
+            attacks: keyed(&self.attacks, &old.attacks),
+            round_hist,
+            all_hist: self.all_hist.minus(&old.all_hist),
+            taken: self.taken.minus(&old.taken),
+            foes: self
+                .foes
+                .iter()
+                .map(|(k, f)| {
+                    let o = old.foes.get(k).cloned().unwrap_or_default();
+                    let foe = Foe {
+                        kills: sub(f.kills, o.kills),
+                        exp: sub(f.exp, o.exp),
+                        rounds: sub(f.rounds, o.rounds),
+                        dealt: f.dealt - o.dealt,
+                        taken: f.taken.minus(&o.taken),
+                    };
+                    (k.clone(), foe)
+                })
+                .filter(|(_, f)| f.kills + f.rounds + f.taken.blows() > 0 || f.dealt != 0)
+                .collect(),
+            last_spell: false,
+        }
+    }
+
+    /// The histograms of these numbers (C-125): the round, every hit, the blows taken, and each
+    /// attack's hits, those with any.
+    pub fn hists(&self) -> Vec<HistRow> {
+        let mut rows = vec![
+            self.round_hist.row("round", None),
+            self.all_hist.row("all", None),
+            self.taken.hist.row("taken", None),
+        ];
+        for (k, a) in &self.attacks {
+            match k.strip_prefix(CAST_KEY) {
+                Some(name) => rows.push(a.hist.row("cast", Some(name))),
+                None => rows.push(a.hist.row(k, None)),
+            }
+        }
+        rows.retain(|r| !r.values.is_empty());
+        rows
+    }
+
     fn landed(&self) -> u64 {
         self.hit.count + self.crit.count + self.backstab.count + self.glances
     }
@@ -742,8 +902,7 @@ impl CombatTally {
 
     /// The monsters likely immune to the character's spells: [`NO_WEAVE_HITS`] normal hits or
     /// more and no weave, from a character that has woven into something else.
-    fn no_weave(&self) -> Vec<String> {
-        let t = &self.tally;
+    fn no_weave(t: &Tally) -> Vec<String> {
         if t.weaves.count + t.weaves_resisted == 0 {
             return Vec::new();
         }
@@ -761,7 +920,16 @@ impl CombatTally {
 
     /// For the `stats` message: `None` when nothing has been counted since the reset.
     pub fn to_wire(&self) -> Option<CombatStats> {
-        let t = &self.tally;
+        Self::wire(&self.tally)
+    }
+
+    /// The numbers kept, for a snapshot or a window (C-125).
+    pub fn tally_now(&self) -> &Tally {
+        &self.tally
+    }
+
+    /// The `stats` message's numbers of `t`; `None` when nothing was counted.
+    pub fn wire(t: &Tally) -> Option<CombatStats> {
         if t.is_empty() {
             return None;
         }
@@ -805,8 +973,8 @@ impl CombatTally {
             weaves_resisted: t.weaves_resisted,
             spell_kills: t.spell_kills,
             intercepts: t.intercepts,
-            no_weave: self.no_weave(),
-            attacks: self.attack_rows(),
+            no_weave: Self::no_weave(t),
+            attacks: Self::attack_rows(t),
             taken: (t.taken.blows() > 0).then(|| t.taken.row()),
             monsters: t
                 .foes
@@ -826,8 +994,8 @@ impl CombatTally {
     }
 
     /// The attacks tried at all: the swing, the backstab, then the spells by name.
-    fn attack_rows(&self) -> Vec<AttackRow> {
-        let a = &self.tally.attacks;
+    fn attack_rows(t: &Tally) -> Vec<AttackRow> {
+        let a = &t.attacks;
         [SWING_KEY, BACKSTAB_KEY]
             .into_iter()
             .filter_map(|k| a.get(k).map(|x| (k, x)))

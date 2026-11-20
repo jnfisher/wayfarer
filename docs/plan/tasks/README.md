@@ -309,6 +309,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-122](C-122-sneak-retry.md) | A refused sneak is tried again in two seconds, or in the next room | A | S | C-048 | |
 | [C-123](C-123-attack-outcomes.md) | Combat numbers by attack: each attack's hit, crit, miss and resist rates | A | S | C-050 | |
 | [C-124](C-124-taken-and-monsters.md) | Combat numbers for the blows taken and for each monster fought | A | S | C-123 | |
+| [C-125](C-125-combat-zoom.md) | The combat zoom: histograms, each monster, the party side by side, the last hour or day | A | M | C-124 | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or

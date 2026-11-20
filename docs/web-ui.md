@@ -465,6 +465,27 @@ spells). They are kept across runs, stops and restarts until their own **Reset**
 since" (`only: "combat"`; the run goes on): press it after changing weapons or settings,
 starting a loop or a level-up.
 
+### Combat zoom
+
+**zoom**, beside the combat numbers' reset, opens them full screen over the tiles (C-125;
+Esc or **close** shuts it), for the character and its party:
+
+- **The window**: since reset, the last hour or the last 24 hours (`combat_detail_request`);
+  the line beside says since when the numbers run, which is later than asked when they were
+  reset in the window. Every party member's numbers are asked for the window, and again every
+  minute.
+- **The party** side by side, the leader first: damage a round, the swing's and the backstab's
+  hit rates, the backstab's average, how often monsters hit it, and kills. Click a name to show
+  that character below. A line with fewer than 30 rounds is dim.
+- **A histogram**, picked from a list: damage a round, every hit, backstab hits, swing hits,
+  each attack spell's hits, and the blows taken. About 24 bars of a round width (1, 2, 5, 10,
+  20...), every bar between the smallest and the largest shown, with how many in all and the
+  median.
+- **By attack**, as on the stats tab, and the blows taken.
+- **Each monster** fought, the most rounds first: kills, rounds a kill, the character's damage
+  a round, the monster's damage to it a round, the share of its blows that hit, and exp a kill.
+  A monster with fewer than 30 rounds is dim.
+
 ## The settings
 
 The focused character's settings as a form (`docs/plan/04-settings.md`), from the brain's

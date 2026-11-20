@@ -11,6 +11,8 @@
   import SettingsPanel from "./SettingsPanel.svelte";
   import StatsPanel from "./StatsPanel.svelte";
   import GearPlanner from "./GearPlanner.svelte";
+  import CombatZoom from "./CombatZoom.svelte";
+  import { detailKey, type CombatDetailMessage } from "./lib/combat-zoom";
   import { gearRefusal, type GearDetailMessage, type GearPlanMessage } from "./lib/gear";
   import type { SettingsMessage } from "./lib/settings";
   import { planRefusal, type SpellPlan } from "./lib/spells";
@@ -120,6 +122,10 @@
   let gearRefusals = $state.raw<Record<string, string>>({});
   // The brain's last `stats` per session.
   let statsBySession = $state.raw<Record<string, Stats>>({});
+  /** The combat zoom (C-125): the session it opened on, and the brain's answers by
+   * session and window. */
+  let combatZoom = $state<string | null>(null);
+  let combatDetails = $state.raw<Record<string, CombatDetailMessage>>({});
   // The brain's last `settings` per session, for the settings tab.
   let settingsBySession = $state.raw<Record<string, SettingsMessage>>({});
   // The brain's last `found` per session, for the map panel's go box.
@@ -354,6 +360,9 @@
       stats: (stats) => {
         statsBySession = { ...statsBySession, [stats.session]: stats };
       },
+      combatDetail: (detail) => {
+        combatDetails = { ...combatDetails, [detailKey(detail.session, detail.window)]: detail };
+      },
       spellPlan: (plan) => {
         plansBySession = { ...plansBySession, [plan.session]: plan };
         const { [plan.session]: _, ...rest } = planRefusals;
@@ -438,6 +447,11 @@
     if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === GEAR_CODE) {
       e.preventDefault();
       gearOpen = pressTab(devPrefs, gearOpen, "gear");
+      return;
+    }
+    if (combatZoom && e.key === "Escape" && !helpArea) {
+      e.preventDefault();
+      combatZoom = null;
       return;
     }
     if (gearOpen && e.key === "Escape" && !helpArea) {
@@ -694,6 +708,7 @@
             attached={brain.attached}
             onrefresh={(id) => client.requestStats(id)}
             onreset={(id, only) => client.resetStats(id, only)}
+            onzoom={(id) => (combatZoom = id)}
           />
         {:else}
           <DevPanel
@@ -707,6 +722,20 @@
           />
         {/if}
       </aside>
+    {/if}
+    {#if combatZoom}
+      <!-- Over the tiles and the drawer, like the gear planner. -->
+      {@const zoomed = combatZoom}
+      <CombatZoom
+        party={partySessions(parties ?? [], zoomed).map((id) => ({
+          id,
+          name: sessions.find((s) => s.id === id)?.name ?? id,
+        }))}
+        initial={zoomed}
+        details={combatDetails}
+        onrequest={(id, window) => client.requestCombatDetail(id, window)}
+        onclose={() => (combatZoom = null)}
+      />
     {/if}
     {#if gearOpen}
       <!-- Over the tiles and the drawer; they stay mounted underneath. -->
