@@ -83,7 +83,7 @@ Cards don't repeat these:
 | 14 | Loops not barred by this session's blocked exits (C-071) | 2026-11-03, after Penny's Bandit Keep loop was refused for a door that failed three bashes |
 | 15 | Fixes from the Thrag run: typed moves re-home, ignore replaces flee-from, one flee per party, bosses first, the Labyrinth's blank exit (C-072 to C-076) | 2026-11-04, at John's request after the run |
 | 16 | The Annora and Rhudaur run: levers on doors, Key exits, errands beside the bot, party sysop goto, gear tab (C-077 to C-081) | 2026-11-10, at John's request after the run |
-| 17 | Riley's Go to the dark bishop went the long way west: hidden exits priced by their searches, not a last resort (C-120) | 2026-11-18, at John's request |
+| 17 | The dark bishop run: hidden exits priced by their searches (C-120); followers type the leader's room command with it (C-121); sneaking retried sooner (C-122) | 2026-11-18 and 19, at John's request |
 
 ## Index (wave 1, M0)
 
@@ -304,6 +304,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-118](C-118-far-levers.md) | A sealed hidden exit is opened by going to its levers elsewhere first | A | M | C-077 | |
 | [C-119](C-119-empty-room-commands.md) | A room command that needs an empty room says so when refused | A | S | C-052 | |
 | [C-120](C-120-search-for-hidden-exits.md) | A Go to searches for a hidden exit when that is the short way | A | S | C-077, C-118 | |
+| [C-121](C-121-party-room-commands.md) | Followers type the leader's room command with it | A | S | C-116 | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or

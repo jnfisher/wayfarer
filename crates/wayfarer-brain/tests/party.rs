@@ -13,6 +13,10 @@ use wayfarer_proto::{BotAction, MemberState, PartyDef, PartyRank, PartyStatus};
 
 const LEADER: &str = "penny";
 const FOLLOWER: &str = "lauren";
+/// Newhaven's docks, whose skiff (`borrow skiff`, a Text exit) rows to the Small Pier: a way
+/// through the game's follow does not take a follower (C-121).
+const NEWHAVEN_DOCKS: Key = (1, 2149);
+const SMALL_PIER: Key = (1, 2335);
 
 fn name(session: &str) -> &'static str {
     if session == LEADER {
@@ -275,6 +279,16 @@ impl Gateway {
             }
             "n" if self.world.locked && self.world.rooms[session] == ARENA => {
                 me(said("The door is closed!"))
+            }
+            "borrow skiff" | "go skiff" | "row skiff"
+                if self.world.rooms[session] == NEWHAVEN_DOCKS =>
+            {
+                // The skiff takes the one who typed it, follow or no follow.
+                self.world.rooms.insert(session.to_owned(), SMALL_PIER);
+                me(format!(
+                    "\x1b[79D\x1b[K\x1b[0;37mYou climb into one of the skiffs, and row to Silvermere.\r\n{}",
+                    shown(SMALL_PIER)
+                ))
             }
             "bash n" if !self.world.locked => me(said("The door is already open.")),
             "bash n" if session == LEADER => vec![
@@ -1452,4 +1466,66 @@ async fn a_step_out_that_does_not_go_starts_no_new_stash_round() {
     let said = notices_of(&g, LEADER);
     // The arrival's round, and no other.
     assert_eq!(rounds, 1, "{said:#?}");
+}
+
+/// C-121: the game's follow moves a follower through directions only. The leader's Go to
+/// from the Arena to the Small Pier ends with the docks' skiff (`borrow skiff`, a Text exit),
+/// which took the leader alone and left its followers behind (the Royal Palace kitchen's
+/// `go vortex` left Riley's party wandering the Black Wasteland, 2026-11-19). Now the follower
+/// with the leader types the same phrase as soon as the leader does, then looks where it
+/// took it, and both end up on the pier.
+#[tokio::test(start_paused = true)]
+async fn a_follower_takes_a_room_command_exit_with_its_leader() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    g.world.together = true;
+    g.world.drag = true;
+    formed(&mut g).await;
+    g.send(ToClient::WalkTo {
+        session: LEADER.into(),
+        map: SMALL_PIER.0,
+        room: SMALL_PIER.1,
+        stop_short: None,
+        fight: None,
+    })
+    .await;
+    g.until(|m| match m {
+        ToGateway::InputLine { session, text } if session == FOLLOWER && text == "borrow skiff" => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+    g.play(5).await;
+    assert_eq!(g.world.rooms[LEADER], SMALL_PIER, "{:?}", g.lines);
+    assert_eq!(g.world.rooms[FOLLOWER], SMALL_PIER, "{:?}", g.lines);
+    // The leader's phrase, then the follower's, then the follower's look.
+    let skiff: Vec<&str> = g
+        .lines
+        .iter()
+        .filter(|(_, t)| t == "borrow skiff")
+        .map(|(s, _)| s.as_str())
+        .collect();
+    assert_eq!(skiff, [LEADER, FOLLOWER], "{:?}", g.lines);
+    let after: Vec<&str> = g
+        .lines
+        .iter()
+        .skip_while(|(s, t)| !(s == FOLLOWER && t == "borrow skiff"))
+        .skip(1)
+        .filter(|(s, _)| s == FOLLOWER)
+        .map(|(_, t)| t.as_str())
+        .collect();
+    assert_eq!(
+        after.first(),
+        Some(&"look"),
+        "{after:?} / all: {:?}",
+        g.lines
+    );
+    // The leader's tile says who went with it.
+    assert!(
+        notices_of(&g, LEADER)
+            .iter()
+            .any(|n| n == "`borrow skiff` with the party: Lauren"),
+        "{:?}",
+        notices_of(&g, LEADER)
+    );
 }

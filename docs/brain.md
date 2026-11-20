@@ -1784,6 +1784,16 @@ own, one at a time:
   room" is by both beliefs: on a street of many rooms of one name each may be unsure, and two
   that hold a room in common are taken as together (C-053; before, the lowest of each one's
   rooms was compared, and a party in the slums sent `par` every 5 s).
+- **Room commands** (C-121). The game's follow moves a follower through directions only: a
+  Text exit or a room command the leader takes (`go vortex` in the Royal Palace kitchen, the
+  skiff at Newhaven's docks) took the leader alone and left the followers where they stood
+  (Riley's party wandered the Black Wasteland on their own, 2026-11-19). Now a phrase the
+  leader types that takes such an exit out of its believed room, its walk's or the player's,
+  is typed at once by every follower in its party in the game and in that room, as its own
+  line between its bot's actions, then a `look` where it took it; the leader's tile says who
+  went ("`go vortex` with the party: Asa, Rocco"). A follower's belief lags the game's drag by
+  a tick, so the room is checked for ten seconds; one still elsewhere after that, or one the
+  exit refuses (a level gate), is separated as below and walks back.
 - **Followers don't walk.** A follower's own `run_loop`, `walk_loop` and `walk_to` are refused
   with a warning ("following Penny: it goes where the party goes"). Its errands run: pick up all
   and equip all where it stands, in the party; one that walks (train, recover the pile, buy
