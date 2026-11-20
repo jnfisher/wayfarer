@@ -1494,15 +1494,20 @@ there; a fight comes first anyway).
 
 - **Before a move the bot makes itself** (a leader's or a solo character's loop, Recover's
   walks to a quiet room and back; never Flee), it sends `sneak` until an attempt does not say it
-  failed, narrated "Sneak: sneaking (attempt 2)". `You may not sneak right now!` (just
-  attacked) or `You must wait before you may do that!` waits a round. A walk in progress stops
+  failed, narrated "Sneak: sneaking (attempt 2)". `You may not sneak right now!` is the game
+  still counting an attacker, or a monster in the room that could attack (its `can_sneak`),
+  which a kill clears within a round or two: it and `You must wait before you may do that!`
+  hold the next attempt two seconds, or only until the next room (C-122; before, five seconds,
+  and a follower refused right after a kill went five rooms unsneaked behind its leader). A
+  walk in progress stops
   when a move shows no `Sneaking...` or the game says the sneak ended, and the bot sneaks again
   before going on; a sneaker's moves are not pipelined, so no move has gone ahead by then. A
   failure found by a move counts as a failed attempt. After five failures in a row it moves on
   unsneaked, with a warning, until the next fight.
 - **A follower**, which the game moves with its leader, sneaks whenever it is with the party
   and not sneaking, not fighting, not resting and with no monster in the room: after each
-  fight, after a failure it noticed, and after a party move that showed no `Sneaking...`.
+  fight (two seconds after a refusal, or in the next room), after a failure it noticed, and
+  after a party move that showed no `Sneaking...`.
 - **Backstab.** With *Open with a backstab* on (`combat.backstab`, Combat, on by default),
   Fight opens each fight of a sneaker it believes sneaking with `bs <monster>` instead of its
   attack command or attack spell. When it knows the sneak failed (the move showed no

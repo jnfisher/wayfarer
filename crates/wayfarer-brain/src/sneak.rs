@@ -9,8 +9,10 @@
 //! the failure the character noticed, `You are no longer sneaking.`, `You make a sound as you
 //! enter the room!`, a fight, a cast, a rest, a death. No attempt goes with a monster in the
 //! room (no sneaking with monsters about; a fight comes first). After [`TRIES`] failures in a
-//! row it moves on unsneaked until the next fight. `You may not sneak right now!` (just
-//! attacked) waits a round.
+//! row it moves on unsneaked until the next fight. `You may not sneak right now!` is the game
+//! still counting an attacker, or a monster in the room that could attack (`can_sneak`), which
+//! a kill clears within a round or two: it waits [`NOT_NOW`], or only until the next room
+//! (C-122; a follower that was refused right after a kill went five rooms unsneaked).
 
 use std::time::Duration;
 
@@ -23,8 +25,10 @@ use crate::modes::{Mode, Step, View};
 
 /// Failed attempts in a row before the bot moves on unsneaked.
 pub const TRIES: u32 = 5;
-/// How long `You may not sneak right now!` holds the next attempt: about a round.
-const NOT_NOW: Duration = Duration::from_secs(5);
+/// How long `You may not sneak right now!` holds the next attempt (C-122): the game refuses
+/// while it still counts an attacker or a monster that could attack, which a kill clears
+/// within a round or two; a party on the move is rooms away in five seconds, so two.
+pub const NOT_NOW: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Default)]
 pub(crate) struct Sneak {
@@ -88,7 +92,9 @@ impl Sneak {
     }
 
     /// The character is in `room` now. A move made while believed sneaking that showed no
-    /// `Sneaking...` means the sneak had already ended: counted as a failed attempt.
+    /// `Sneaking...` means the sneak had already ended: counted as a failed attempt. A new room
+    /// ends the wait after a refusal: whatever the game counted against the sneak was left
+    /// behind (C-122).
     pub fn arrived(&mut self, room: Option<Key>) {
         let Some(room) = room else {
             return;
@@ -102,6 +108,7 @@ impl Sneak {
         }
         self.room = Some(room);
         self.heard = false;
+        self.wait_until = None;
     }
 
     fn failed(&mut self) {
@@ -210,6 +217,26 @@ mod tests {
         s.on_event(&GameEvent::NotSneaking, now);
         assert!(!s.on() && s.take_broken() && !s.take_broken());
         s.on_event(&GameEvent::SneakRefused, now);
+        assert_eq!(s.wake(now), Some(now + NOT_NOW));
+    }
+
+    /// C-122: a refusal holds the next attempt two seconds, and not past the next room.
+    #[test]
+    fn a_refusal_waits_two_seconds_or_until_the_next_room() {
+        let now = Instant::now();
+        let mut s = Sneak::default();
+        s.arrived(Some((1, 1)));
+        s.on_event(&GameEvent::SneakRefused, now);
+        assert_eq!(NOT_NOW, Duration::from_secs(2));
+        assert_eq!(s.wake(now), Some(now + NOT_NOW));
+        assert_eq!(s.wake(now + NOT_NOW), None);
+        // The party moved on: the monster or the attack the game counted is behind.
+        s.on_event(&GameEvent::SneakRefused, now);
+        s.arrived(Some((1, 2)));
+        assert_eq!(s.wake(now), None);
+        // The same room again is no move.
+        s.on_event(&GameEvent::SneakRefused, now);
+        s.arrived(Some((1, 2)));
         assert_eq!(s.wake(now), Some(now + NOT_NOW));
     }
 
