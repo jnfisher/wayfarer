@@ -16,7 +16,7 @@ the three hybrids.
 |---|---|---|
 | exp | **+120%** | L2 = 10×(100+race+120). Dwarf: 2,500. Kyau lists 220%, which matches [F]. |
 | basehp / hplevel | 4 / 3 | |
-| combat | **4** | Weak melee. Spells carry. |
+| combat | **4** | Low for its plain blows, but not a weak damage dealer: Class Stealth lets it sneak, and any class sneaking or hidden backstabs with a backstab weapon (LJNCMDA.C:484-525). Played that way it out-damages a warrior (§8). |
 | magery | **Priest (2), level 2** | All priest spells with magelvl ≤ 2. Same list as Cleric (4/2); Priest class (5/3) gets magelvl-3 extras. |
 | weapons | 4 = Any 1H | No 2H, no off-hand items unless the item names class 6 (copper cross, red skull and golden chalice do) |
 | armour | 6 = Studded Rigid Leather | |
@@ -186,6 +186,6 @@ Skip: Slimy Sewers (NonLiving and not undead: only hammer works), Elder Grove go
 Shared quests (`corpus/bosses.md`): **good** alignment line recommended. Holy force, protection from evil, the copper cross and the golden chalice all need non-evil or good alignment. Ice Sorceress (+1 AC), Phoenix Feather, Sunstone Wristband.
 
 ## 8. Group role (brief)
-Party healer (healing rain at L10, major healing rain at L17, greater healing), party AV buffer (chant, greater bless, divine favour), cleanser (poison, blindness, disease, paralysis) and the party's undead killer (turn undead, disrupt). Also has picklocks/traps for doors. Weak melee: keep it in the back rank (+15 defence, combat.md). A separate agent covers grouping.
+Party healer (healing rain at L10, major healing rain at L17, greater healing), party AV buffer (chant, greater bless, divine favour), cleanser (poison, blindness, disease, paralysis) and the party's undead killer (turn undead, disrupt). Also has picklocks/traps for doors. It is a damage dealer too, not only a healer: sneaking and backstabbing, a level-27 Missionary averaged 110.6 damage a round against a level-30 Warrior's 102.5 in the same party, most of it from backstabs [C live 2026-11-20, wayfarer's combat numbers]. A backstab's hit chance is its attack value less the defence (LJNCOMBT.C:1318), so attack blessings (divine favour on itself) count one for one on its stabs. The back rank (+15 defence, combat.md) keeps its hit points for healing, and it still attacks from there. A separate agent covers grouping.
 
 Group role: full mechanics, compositions and spots in `kb/grouping.md`.
