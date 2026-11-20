@@ -5,13 +5,13 @@
 //! resisted, the kills a spell made, and the blows it took for a ward it guards. They build up over every fight, whoever drives,
 //! until the player resets them; the [`Ledger`](crate::stats::Ledger) keeps them in the store.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tokio::time::Instant;
-use wayfarer_parse::typed::GameEvent;
-use wayfarer_proto::{AttackRow, CombatStats, DamageRow};
+use wayfarer_parse::typed::{Blow, GameEvent};
+use wayfarer_proto::{AttackRow, CombatStats, DamageRow, FoeRow, TakenRow};
 
 /// A round's own lines arrive together, and rounds are 5 s apart (`kb/combat.md` "The round");
 /// a line this long after the round's first starts the next.
@@ -164,6 +164,75 @@ pub struct KnownSpell {
     pub attack: bool,
 }
 
+/// Monster blows at the character (C-124): how they came out, and the damage of those that hit.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Taken {
+    pub hits: u64,
+    pub misses: u64,
+    /// The character dodged.
+    pub dodged: u64,
+    /// The armour took it all.
+    pub deflected: u64,
+    pub damage: Damage,
+    #[serde(default)]
+    pub hist: Hist,
+}
+
+impl Taken {
+    fn blow(&mut self, b: Blow) {
+        match b {
+            Blow::Hit(d) => {
+                self.hits += 1;
+                self.damage.add(d);
+                self.hist.add(d);
+            }
+            Blow::Miss => self.misses += 1,
+            Blow::Dodged => self.dodged += 1,
+            Blow::Deflected => self.deflected += 1,
+        }
+    }
+
+    fn blows(&self) -> u64 {
+        self.hits + self.misses + self.dodged + self.deflected
+    }
+
+    fn row(&self) -> TakenRow {
+        let d = self.damage.row("taken", 0);
+        TakenRow {
+            blows: self.blows(),
+            hits: self.hits,
+            misses: self.misses,
+            dodged: self.dodged,
+            deflected: self.deflected,
+            min: d.min,
+            max: d.max,
+            avg_tenths: d.avg_tenths,
+        }
+    }
+}
+
+/// One kind of monster the character fought (C-124), by its name without adjectives.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Foe {
+    /// Deaths of it while the character fought it.
+    pub kills: u64,
+    /// The exp that came within [`EXP_AFTER_KILL`] of those deaths.
+    pub exp: u64,
+    /// The character's rounds with a blow or cast at it.
+    pub rounds: u64,
+    /// The character's damage to it.
+    pub dealt: i64,
+    /// Its blows at the character.
+    pub taken: Taken,
+}
+
+/// How long after a death its exp line may come.
+pub const EXP_AFTER_KILL: Duration = Duration::from_secs(5);
+
+/// How long after the character's last blow at a monster its death is still the character's
+/// fight's.
+pub const FOUGHT_WITHIN: Duration = Duration::from_secs(60);
+
 /// How long a `bs` or a `cast` waits for the line that says how it came out.
 pub const OUTCOME_WAIT: Duration = Duration::from_secs(10);
 
@@ -220,6 +289,12 @@ pub struct Tally {
     pub round_hist: Hist,
     #[serde(default)]
     pub all_hist: Hist,
+    /// Monster blows at the character (C-124).
+    #[serde(default)]
+    pub taken: Taken,
+    /// Each kind of monster fought (C-124), by name without adjectives, lower case.
+    #[serde(default)]
+    pub foes: BTreeMap<String, Foe>,
     /// The character's last own line was a spell (a cast or a weave): a death now is a spell
     /// kill. Not kept.
     #[serde(skip)]
@@ -250,14 +325,16 @@ impl Tally {
             && self.backstab_tries == 0
             && self.kills == 0
             && self.flees == 0
+            && self.taken.blows() == 0
     }
 }
 
-/// The round in progress: its first line's time and the damage so far.
-#[derive(Debug, Clone, Copy)]
+/// The round in progress: its first line's time, the damage so far and the monsters it struck.
+#[derive(Debug, Clone)]
 struct Round {
     start: Instant,
     damage: i64,
+    foes: BTreeSet<String>,
 }
 
 /// The tally and the round in progress; `dirty` until the store has it.
@@ -272,6 +349,10 @@ pub struct CombatTally {
     backstab_sent: Option<Instant>,
     /// The attack spell last sent, for a resist that does not name it.
     cast_sent: Option<(String, Instant)>,
+    /// The monsters the character struck lately, for whose death is its fight's.
+    fought: BTreeMap<String, Instant>,
+    /// The monster that died last in the character's fight, for the exp after it.
+    last_kill: Option<(String, Instant)>,
 }
 
 impl CombatTally {
@@ -359,22 +440,27 @@ impl CombatTally {
         self.round = None;
         self.backstab_sent = None;
         self.cast_sent = None;
+        self.fought.clear();
+        self.last_kill = None;
         self.dirty = true;
     }
 
     /// When the round in progress is over.
     pub fn round_ends(&self) -> Option<Instant> {
-        self.round.map(|r| r.start + ROUND_SPAN)
+        self.round.as_ref().map(|r| r.start + ROUND_SPAN)
     }
 
     /// Close the round in progress if its time is up.
     pub fn close_round_if_due(&mut self, now: Instant) {
-        if let Some(r) = self.round
-            && now.duration_since(r.start) >= ROUND_SPAN
+        if let Some(r) = self
+            .round
+            .take_if(|r| now.duration_since(r.start) >= ROUND_SPAN)
         {
             self.tally.round.add(r.damage);
             self.tally.round_hist.add(r.damage);
-            self.round = None;
+            for f in r.foes {
+                self.tally.foes.entry(f).or_default().rounds += 1;
+            }
             self.dirty = true;
         }
     }
@@ -385,7 +471,11 @@ impl CombatTally {
         match &mut self.round {
             Some(r) => r.damage += damage,
             None => {
-                self.round = Some(Round { start: now, damage });
+                self.round = Some(Round {
+                    start: now,
+                    damage,
+                    foes: BTreeSet::new(),
+                });
             }
         }
         self.dirty = true;
@@ -537,6 +627,71 @@ impl CombatTally {
         }
     }
 
+    /// What a game event says about the monster it names (C-124): `foe` is that monster's name
+    /// without adjectives (the session knows the monsters), lower case. The character's blows
+    /// and casts at it, its blows at the character, its death in the character's fight and the
+    /// exp after.
+    pub fn foe_event(&mut self, ev: &GameEvent, foe: Option<&str>, now: Instant) {
+        let dealt = match ev {
+            GameEvent::YouHit { damage, .. } | GameEvent::SpellCast { damage, .. } => Some(*damage),
+            GameEvent::YouMiss { .. } | GameEvent::SwingGlanced { .. } => Some(0),
+            _ => None,
+        };
+        match (ev, foe) {
+            (_, Some(foe)) if dealt.is_some() => {
+                self.fought.insert(foe.to_owned(), now);
+                if let Some(r) = &mut self.round {
+                    r.foes.insert(foe.to_owned());
+                }
+                self.tally.foes.entry(foe.to_owned()).or_default().dealt += dealt.unwrap_or(0);
+                self.dirty = true;
+            }
+            (
+                GameEvent::AttackedBy {
+                    blow: Some(blow), ..
+                },
+                _,
+            ) => {
+                self.tally.taken.blow(*blow);
+                if let Some(foe) = foe {
+                    self.tally
+                        .foes
+                        .entry(foe.to_owned())
+                        .or_default()
+                        .taken
+                        .blow(*blow);
+                }
+                self.dirty = true;
+            }
+            (GameEvent::MonsterDeath { monsters }, _) => {
+                self.fought
+                    .retain(|_, at| now.duration_since(*at) <= FOUGHT_WITHIN);
+                let dead = monsters
+                    .iter()
+                    .map(|m| m.to_lowercase())
+                    .find(|m| self.fought.contains_key(m));
+                if let Some(dead) = dead {
+                    self.fought.remove(&dead);
+                    self.tally.foes.entry(dead.clone()).or_default().kills += 1;
+                    self.last_kill = Some((dead, now));
+                    self.dirty = true;
+                }
+            }
+            (GameEvent::ExpGain { amount }, _) => {
+                if let Some((dead, _)) = self
+                    .last_kill
+                    .take()
+                    .filter(|(_, at)| now.duration_since(*at) <= EXP_AFTER_KILL)
+                {
+                    self.tally.foes.entry(dead).or_default().exp +=
+                        u64::try_from(*amount).unwrap_or(0);
+                    self.dirty = true;
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// The character's HP and mana now, for the lowest seen.
     pub fn vitals(&mut self, hp: Option<i64>, mana: Option<i64>) {
         let t = &mut self.tally;
@@ -652,6 +807,21 @@ impl CombatTally {
             intercepts: t.intercepts,
             no_weave: self.no_weave(),
             attacks: self.attack_rows(),
+            taken: (t.taken.blows() > 0).then(|| t.taken.row()),
+            monsters: t
+                .foes
+                .iter()
+                .map(|(name, f)| FoeRow {
+                    name: name.clone(),
+                    kills: f.kills,
+                    exp: f.exp,
+                    rounds: f.rounds,
+                    dealt: f.dealt,
+                    taken: f.taken.damage.sum,
+                    blows: f.taken.blows(),
+                    hits: f.taken.hits,
+                })
+                .collect(),
         })
     }
 
@@ -1118,6 +1288,107 @@ mod tests {
         assert_eq!(t.attacks[SWING_KEY].hist.0.get(&5), Some(&2));
         let back = CombatTally::load(Some(&c.to_json()), 0);
         assert_eq!(back.tally(), t, "kept in the store");
+    }
+
+    /// The session's order: the tally, then the monster's part.
+    fn both(c: &mut CombatTally, ev: &GameEvent, foe: Option<&str>, now: Instant) {
+        c.event(ev, true, now);
+        c.foe_event(ev, foe, now);
+    }
+
+    fn blow(name: &str, blow: Blow) -> GameEvent {
+        GameEvent::AttackedBy {
+            name: name.into(),
+            blow: Some(blow),
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn blows_taken_count_how_they_came_out() {
+        let t0 = Instant::now();
+        let mut c = CombatTally::load(None, 0);
+        for b in [
+            Blow::Hit(12),
+            Blow::Hit(30),
+            Blow::Miss,
+            Blow::Dodged,
+            Blow::Deflected,
+        ] {
+            both(&mut c, &blow("nasty salamander", b), Some("salamander"), t0);
+        }
+        // A player moving to attack is no blow.
+        both(
+            &mut c,
+            &GameEvent::AttackedBy {
+                name: "Bob".into(),
+                blow: None,
+            },
+            Some("bob"),
+            t0,
+        );
+        let w = c.to_wire().expect("blows taken are something counted");
+        let t = w.taken.unwrap();
+        assert_eq!(
+            (t.blows, t.hits, t.misses, t.dodged, t.deflected),
+            (5, 2, 1, 1, 1)
+        );
+        assert_eq!((t.min, t.max, t.avg_tenths), (12, 30, 210));
+        assert_eq!(w.monsters.len(), 1);
+        assert_eq!(
+            (w.monsters[0].blows, w.monsters[0].hits, w.monsters[0].taken),
+            (5, 2, 42)
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_monster_counts_its_rounds_its_death_and_the_exp_after() {
+        let t0 = Instant::now();
+        let mut c = CombatTally::load(None, 0);
+        let s = Duration::from_secs;
+        both(&mut c, &hit(40), Some("salamander"), t0);
+        both(&mut c, &miss(false), Some("salamander"), t0 + s(5));
+        both(&mut c, &hit(60), Some("salamander"), t0 + s(10));
+        both(
+            &mut c,
+            &blow("small salamander", Blow::Hit(8)),
+            Some("salamander"),
+            t0 + s(10),
+        );
+        c.close_round_if_due(t0 + s(13));
+        // The death text names every monster it belongs to; the one fought is the kill.
+        both(
+            &mut c,
+            &GameEvent::MonsterDeath {
+                monsters: vec!["fire lizard".into(), "Salamander".into()],
+            },
+            None,
+            t0 + s(13),
+        );
+        both(
+            &mut c,
+            &GameEvent::ExpGain { amount: 1500 },
+            None,
+            t0 + s(13),
+        );
+        // Exp with no death of the character's fight before it goes to no monster.
+        both(&mut c, &GameEvent::ExpGain { amount: 99 }, None, t0 + s(14));
+        // A death of a monster the character never struck is not its kill.
+        both(
+            &mut c,
+            &GameEvent::MonsterDeath {
+                monsters: vec!["giant rat".into()],
+            },
+            None,
+            t0 + s(15),
+        );
+        let f = &c.tally().foes["salamander"];
+        assert_eq!(
+            (f.kills, f.exp, f.rounds, f.dealt, f.taken.damage.sum),
+            (1, 1500, 3, 100, 8)
+        );
+        assert_eq!(c.tally().foes.len(), 1);
+        let back = CombatTally::load(Some(&c.to_json()), 0);
+        assert_eq!(back.tally(), c.tally(), "kept in the store");
     }
 
     #[test]

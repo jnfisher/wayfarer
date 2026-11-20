@@ -1351,8 +1351,24 @@ impl Session {
         let fighting = !self.quiet(now) || self.character.state().in_combat == Some(true);
         let c = self.character.state();
         let (hp, mana) = (c.hp.map(i64::from), c.mana.map(i64::from));
+        // The monster the line names, without its adjectives (C-124).
+        let named = match ev {
+            GameEvent::YouHit { target, .. }
+            | GameEvent::YouMiss { target, .. }
+            | GameEvent::SwingGlanced { target } => Some(target.as_str()),
+            GameEvent::SpellCast { target, .. } => target.as_deref(),
+            GameEvent::AttackedBy { name, .. } => Some(name.as_str()),
+            _ => None,
+        };
+        let foe = named.map(|n| {
+            self.atlas
+                .as_ref()
+                .and_then(|a| a.monsters.by_name(n).first().map(|m| m.name.to_lowercase()))
+                .unwrap_or_else(|| n.trim().to_lowercase())
+        });
         let tally = self.ledger.combat(now);
         tally.event(ev, fighting, now);
+        tally.foe_event(ev, foe.as_deref(), now);
         if matches!(ev, GameEvent::MonsterDeath { .. }) {
             tally.kill();
         }

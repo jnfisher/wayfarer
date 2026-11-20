@@ -269,7 +269,13 @@ mod tests {
         assert!(s.gave_up);
         assert!(s.unsneaked().is_some());
         assert!(s.unsneaked().is_none(), "said once");
-        s.on_event(&GameEvent::AttackedBy { name: "rat".into() }, now);
+        s.on_event(
+            &GameEvent::AttackedBy {
+                name: "rat".into(),
+                blow: None,
+            },
+            now,
+        );
         assert!(!s.gave_up);
     }
 }

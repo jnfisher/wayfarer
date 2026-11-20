@@ -414,6 +414,49 @@ pub struct CombatStats {
     /// those tried at all.
     #[serde(default)]
     pub attacks: Vec<AttackRow>,
+    /// Monster blows at the character (C-124); absent with none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub taken: Option<TakenRow>,
+    /// Each kind of monster fought (C-124), by name.
+    #[serde(default)]
+    pub monsters: Vec<FoeRow>,
+}
+
+/// Monster blows at the character (C-124), in [`CombatStats`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct TakenRow {
+    /// Every blow: hits, misses, dodged and deflected.
+    pub blows: u64,
+    pub hits: u64,
+    pub misses: u64,
+    /// The character dodged.
+    pub dodged: u64,
+    /// The armour took it all.
+    pub deflected: u64,
+    /// The damage of the hits.
+    pub min: i64,
+    pub max: i64,
+    pub avg_tenths: i64,
+}
+
+/// One kind of monster the character fought (C-124), in [`CombatStats`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct FoeRow {
+    /// Without adjectives, lower case.
+    pub name: String,
+    /// Its deaths while the character fought it.
+    pub kills: u64,
+    /// The exp right after those deaths.
+    pub exp: u64,
+    /// The character's rounds with a blow or cast at it.
+    pub rounds: u64,
+    /// The character's damage to it.
+    pub dealt: i64,
+    /// Its damage to the character, its blows at it and the hits among them.
+    pub taken: i64,
+    pub blows: u64,
+    pub hits: u64,
 }
 
 /// One attack's tries and how they came out (C-123), in [`CombatStats`]. The rates are left to

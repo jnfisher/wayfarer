@@ -133,6 +133,19 @@ pub enum Rank {
     Back,
 }
 
+/// A monster's blow at the character (C-124): its damage, or how it did none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Blow {
+    /// `mon_hits_you`: damage done.
+    Hit(i64),
+    /// `mon_miss_you`: it missed.
+    Miss,
+    /// `mon_dodge_you`: the character dodged.
+    Dodged,
+    /// `mon_deflect_you`: the armour took it all.
+    Deflected,
+}
+
 /// The events the character model needs, typed; `Other` for the rest.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GameEvent {
@@ -263,6 +276,8 @@ pub enum GameEvent {
     /// forms). `name` without its article.
     AttackedBy {
         name: String,
+        /// How a monster's blow at the character came out (C-124); None for `attacks_you`.
+        blow: Option<Blow>,
     },
     /// `target_missing`: `You do not see rat here!` (`target` empty for `You don't see your
     /// target here!`).
@@ -857,6 +872,7 @@ impl GameEvent {
             },
             "attacks_you" => G::AttackedBy {
                 name: monster_name(ev, "who"),
+                blow: None,
             },
             // A spellcasting monster's attack slot names a spell message (17 for the dark
             // priest, 18 for an attack spell), whose first text is the caster's own line: "You
@@ -881,6 +897,12 @@ impl GameEvent {
             | "mon_dodge_builtin"
             | "mon_deflect_builtin" => G::AttackedBy {
                 name: monster_name(ev, "mon"),
+                blow: match ev.name.as_str() {
+                    "mon_hits_you" | "mon_hits_you_generic" => int(ev, "dmg").map(Blow::Hit),
+                    "mon_dodge_you" | "mon_dodge_builtin" => Some(Blow::Dodged),
+                    "mon_deflect_you" | "mon_deflect_builtin" => Some(Blow::Deflected),
+                    _ => Some(Blow::Miss),
+                },
             },
             "target_missing" => G::YouDoNotSee {
                 target: text(ev, "target"),

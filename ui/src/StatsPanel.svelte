@@ -12,6 +12,7 @@
     sparkline,
     stashLines,
     startedAt,
+    takenLine,
     timeLines,
     timeTitle,
     type Stats,
@@ -196,6 +197,11 @@
             {/each}
           </div>
         {/if}
+        {#if combat.taken}
+          <div class="taken" data-taken title="Monster blows at the character: deflected means the armour took it all">
+            {takenLine(combat.taken)}
+          </div>
+        {/if}
         <div class="monsters">{combatSummary(combat)}</div>
       {:else}
         <div class="dim">No combat numbers since the last reset.</div>
@@ -375,6 +381,9 @@
     width: 12ch;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .taken {
+    color: var(--vga-lightred);
   }
   .row.few {
     color: var(--dim);

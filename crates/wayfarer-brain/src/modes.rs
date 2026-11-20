@@ -142,14 +142,14 @@ impl Presence {
                 }
             }
             // A player's blow can read like a monster's: not an attack without a PvP line.
-            GameEvent::AttackedBy { name }
+            GameEvent::AttackedBy { name, .. }
                 if self.is_player(atlas, name) && !self.pvp.contains(name) => {}
             GameEvent::MonsterArrives { name } => self.here.push(name.clone()),
             GameEvent::MonsterLeaves { name } => {
                 remove_first(&mut self.here, |n| n == name);
                 remove_first(&mut self.attackers, |n| n == name);
             }
-            GameEvent::AttackedBy { name } if !self.attackers.contains(name) => {
+            GameEvent::AttackedBy { name, .. } if !self.attackers.contains(name) => {
                 self.attackers.push(name.clone());
             }
             GameEvent::MonsterDeath { monsters } => {

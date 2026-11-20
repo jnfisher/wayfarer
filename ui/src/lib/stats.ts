@@ -1,7 +1,7 @@
 // The stats tab (C-029): the brain's `stats` answer, and how its numbers are shown; the combat
 // numbers (C-050) as a table; where the run's time went, and how efficient it is.
 
-import type { AttackRow, CombatStats, DamageRow, ExpSample, Stashed, TimeSpent, ToClient } from "../proto";
+import type { AttackRow, CombatStats, DamageRow, ExpSample, Stashed, TakenRow, TimeSpent, ToClient } from "../proto";
 
 export type Stats = Extract<ToClient, { type: "stats" }>;
 
@@ -166,6 +166,21 @@ export function attackLines(rows: AttackRow[]): AttackLine[] {
       few: r.tries < MIN_SAMPLE,
     };
   });
+}
+
+/** The blows the character took (C-124), as a line: how many, the share that hit, missed, were
+ * dodged or deflected by the armour, and the hits' damage. */
+export function takenLine(t: TakenRow): string {
+  return [
+    `took ${count(t.blows)} blows`,
+    `${pct(t.hits, t.blows)} hit`,
+    t.misses > 0 && `${pct(t.misses, t.blows)} missed`,
+    t.dodged > 0 && `${pct(t.dodged, t.blows)} dodged`,
+    t.deflected > 0 && `${pct(t.deflected, t.blows)} deflected`,
+    t.hits > 0 && `${t.min}-${t.max}, avg ${tenths(t.avg_tenths)}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /** The combat block's last line: kills (the spell kills among them), flees, the blows taken

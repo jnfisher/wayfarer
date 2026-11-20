@@ -1277,6 +1277,16 @@ hit and miss costs it, and its damage per mana is the hits' damage over that. Ev
 the round's damage, of every hit's damage and of each attack's hits is counted too, for
 histograms.
 
+**Blows taken and each monster** (C-124): every monster blow at the character counts as a hit
+(with its damage), a miss, a dodge, or deflected (the armour took it all: the monster's
+defence text, `ATK_NODAMAGE`, LJNCOMBT.C:3738). Each kind of monster the character fights is
+counted by its name without adjectives (the monsters' list finds `small salamander` as
+`salamander`): the character's damage to it, the rounds with a blow or cast at it, its blows at
+the character and their damage, its deaths, and the exp after them. A death text names every
+monster it belongs to; the death is the character's fight's when one of them is a monster it
+struck in the last 60 s, and the exp line within 5 s after goes to that monster. A death of a
+monster it never struck is no kill of its own (the total kills count every death, as before).
+
 The numbers are kept per session in the store (`combat_stats`, as JSON), saved within 5 s of
 a change and when the session goes, so a brain restart loses a few seconds at most (and a
 round still going). Stop, Start, a death, a level-up and restarts leave them; only
