@@ -305,6 +305,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-119](C-119-empty-room-commands.md) | A room command that needs an empty room says so when refused | A | S | C-052 | |
 | [C-120](C-120-search-for-hidden-exits.md) | A Go to searches for a hidden exit when that is the short way | A | S | C-077, C-118 | |
 | [C-121](C-121-party-room-commands.md) | Followers type the leader's room command with it | A | S | C-116 | |
+| [C-122](C-122-sneak-retry.md) | A refused sneak is tried again in two seconds, or in the next room | A | S | C-048 | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or

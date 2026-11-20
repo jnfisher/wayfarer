@@ -65,6 +65,8 @@ struct World {
     /// The game takes a following follower along when its leader moves from their room, as
     /// the real one does: `-- Following your Party leader <dir> --` and the room.
     drag: bool,
+    /// `sneak`s still to refuse with `You may not sneak right now!` (C-122).
+    sneak_refusals: u32,
 }
 
 /// The game's name for a coin, by `hide`'s word.
@@ -463,6 +465,10 @@ impl Gateway {
                         said(&format!("{} is now guarding you.", first(session))),
                     ),
                 ]
+            }
+            "sneak" if self.world.sneak_refusals > 0 => {
+                self.world.sneak_refusals -= 1;
+                me(said("You may not sneak right now!"))
             }
             "sneak" => me(said("Attempting to sneak...")),
             "leave" => {
@@ -1528,4 +1534,45 @@ async fn a_follower_takes_a_room_command_exit_with_its_leader() {
         "{:?}",
         notices_of(&g, LEADER)
     );
+}
+
+/// C-122: a follower refused its sneak right after a kill (`You may not sneak right now!`:
+/// the game still counting the fight) tries again two seconds later, not five, so it is not
+/// dragged through rooms unsneaked behind its leader.
+#[tokio::test(start_paused = true)]
+async fn a_follower_refused_a_sneak_tries_again_within_two_seconds() {
+    let over = wayfarer_settings::Overrides::parse("[movement]\nsneak = true\n").unwrap();
+    let settings =
+        wayfarer_settings::Settings::resolve(&[(wayfarer_settings::Layer::Character, &over)])
+            .unwrap();
+    let (mut g, _run) = Gateway::start(brain(None).with_settings(settings)).await;
+    formed(&mut g).await;
+    g.play(5).await;
+    let before = g.lines.iter().filter(|(_, t)| t == "sneak").count();
+    // The sneak ends (a noticed move, say); the next attempt is refused, the one after takes.
+    g.world.sneak_refusals = 1;
+    g.output(FOLLOWER, said("You are no longer sneaking."))
+        .await;
+    let mut sneaks = 0;
+    let mut first = None;
+    g.until(|m| match m {
+        ToGateway::InputLine { session, text } if session == FOLLOWER && text == "sneak" => {
+            sneaks += 1;
+            if sneaks == 1 {
+                first = Some(tokio::time::Instant::now());
+            }
+            (sneaks == 2).then_some(())
+        }
+        _ => None,
+    })
+    .await;
+    let gap = tokio::time::Instant::now() - first.unwrap();
+    assert!(
+        gap >= Duration::from_secs(2) && gap < Duration::from_secs(4),
+        "{gap:?}"
+    );
+    // The second attempt took, and it stays sneaking.
+    g.play(10).await;
+    let after = g.lines.iter().filter(|(_, t)| t == "sneak").count();
+    assert_eq!(after - before, 2, "{:?}", g.lines);
 }
