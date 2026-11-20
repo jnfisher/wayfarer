@@ -860,6 +860,9 @@
     min-width: 0;
     min-height: 0;
     overflow: hidden;
+    /* xterm's own layers (its scrollbar at z-index 11) stack inside the terminal, under the
+       full-screen views (the gear planner, the combat zoom) and the help. */
+    isolation: isolate;
   }
   .offline {
     position: absolute;

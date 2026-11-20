@@ -84,7 +84,7 @@ Cards don't repeat these:
 | 15 | Fixes from the Thrag run: typed moves re-home, ignore replaces flee-from, one flee per party, bosses first, the Labyrinth's blank exit (C-072 to C-076) | 2026-11-04, at John's request after the run |
 | 16 | The Annora and Rhudaur run: levers on doors, Key exits, errands beside the bot, party sysop goto, gear tab (C-077 to C-081) | 2026-11-10, at John's request after the run |
 | 17 | The dark bishop run: hidden exits priced by their searches (C-120); followers type the leader's room command with it (C-121); sneaking retried sooner (C-122) | 2026-11-18 and 19, at John's request |
-| 18 | Combat numbers by attack, damage taken and per monster, and a zoom-in view with histograms and the party side by side (C-123 to C-125) | 2026-11-20, at John's request |
+| 18 | Combat numbers by attack, damage taken and per monster, and a zoom-in view with histograms and the party side by side (C-123 to C-125); the scrollbar through the overlays (C-126) | 2026-11-20, at John's request |
 
 ## Index (wave 1, M0)
 
@@ -310,6 +310,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-123](C-123-attack-outcomes.md) | Combat numbers by attack: each attack's hit, crit, miss and resist rates | A | S | C-050 | |
 | [C-124](C-124-taken-and-monsters.md) | Combat numbers for the blows taken and for each monster fought | A | S | C-123 | |
 | [C-125](C-125-combat-zoom.md) | The combat zoom: histograms, each monster, the party side by side, the last hour or day | A | M | C-124 | |
+| [C-126](C-126-scrollbar-through-overlays.md) | A tile's scrollbar no longer shows through the full-screen views | A | S | C-125 | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or
