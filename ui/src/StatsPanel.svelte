@@ -1,11 +1,13 @@
 <script lang="ts">
   import {
     age,
+    attackLines,
     combatLines,
     combatSummary,
     count,
     duration,
     efficiency,
+    MIN_SAMPLE,
     perCent,
     sparkline,
     stashLines,
@@ -35,6 +37,7 @@
   const run = $derived(character?.run);
   const combat = $derived(stats?.combat);
   const lines = $derived(combat ? combatLines(combat) : []);
+  const attacks = $derived(combat ? attackLines(combat.attacks ?? []) : []);
   const spark = $derived(stats ? sparkline(stats.samples) : "");
   const time = $derived(run ? stats?.time : undefined);
   const times = $derived(time ? timeLines(time) : []);
@@ -175,6 +178,24 @@
             </div>
           {/each}
         </div>
+        {#if attacks.length > 0}
+          <div class="table attacks" role="table" aria-label="By attack">
+            <div class="row head" role="row" title="Of the tries. A cast's miss is a resist or a failure.">
+              <span class="a-k">by attack</span><span class="c-num">tries</span><span class="c-num">hit</span><span class="c-num">crit</span><span class="c-num">miss</span><span class="c-range">min-max</span><span class="c-num">avg</span>
+            </div>
+            {#each attacks as a (a.kind + a.label)}
+              <div
+                class="row"
+                class:few={a.few}
+                role="row"
+                data-attack={a.label}
+                title={a.few ? `Fewer than ${MIN_SAMPLE} tries: too few to go by` : undefined}
+              >
+                <span class="a-k">{a.label}</span><span class="c-num">{a.tries}</span><span class="c-num">{a.hit}</span><span class="c-num">{a.crit}</span><span class="c-num">{a.miss}</span><span class="c-range">{a.range}</span><span class="c-num">{a.avg}</span>{#if a.note}<span class="note">{a.note}</span>{/if}
+              </div>
+            {/each}
+          </div>
+        {/if}
         <div class="monsters">{combatSummary(combat)}</div>
       {:else}
         <div class="dim">No combat numbers since the last reset.</div>
@@ -346,6 +367,17 @@
   }
   .table .k {
     width: 6ch;
+  }
+  .attacks {
+    margin-top: 4px;
+  }
+  .a-k {
+    width: 12ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .row.few {
+    color: var(--dim);
   }
   .s-room {
     width: 12ch;

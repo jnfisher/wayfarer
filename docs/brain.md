@@ -1264,6 +1264,19 @@ On a Quicksilver 1.20 server (C-065, `docs/kb/quicksilver-1.20.md` "Lines") ther
 - Fight's stalemate counts an opening or a weave that did damage as damage dealt.
 - Another player's openings and weaves count on that player's own numbers, if wayfarer plays it.
 
+**By attack** (C-123): each attack's tries and how they came out, the swing, the backstab and
+each attack spell by name. A blow that did damage says whether it was a backstab (`surprise`);
+a miss or a glance does not, so it is the backstab's when a `bs` sent in the last 10 s is still
+waiting for its first blow (the game strikes the stab first in its round). A plain hit while a
+`bs` waits means the stab became a plain attack (the monster was already fighting): a swing,
+and the `bs` no longer waits. A cast with damage is a hit of its spell; `cast_fail` in a fight a
+miss of the spell it names, when the `spells` screen lists that spell as an attack (a heal's or
+a blessing's failure is not); `cast_resisted`, which names no spell, a miss of the attack spell
+sent in the last 10 s (`a spell` when none). Each spell's mana is the `spells` screen's: every
+hit and miss costs it, and its damage per mana is the hits' damage over that. Every value of
+the round's damage, of every hit's damage and of each attack's hits is counted too, for
+histograms.
+
 The numbers are kept per session in the store (`combat_stats`, as JSON), saved within 5 s of
 a change and when the session goes, so a brain restart loses a few seconds at most (and a
 round still going). Stop, Start, a death, a level-up and restarts leave them; only

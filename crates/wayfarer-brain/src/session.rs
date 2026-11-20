@@ -2094,7 +2094,7 @@ impl Session {
         }
         self.parser.sent(text);
         self.peek.sent(text);
-        self.ledger.combat(now).sent(text);
+        self.ledger.combat(now).sent(text, now);
         if let Some(atlas) = &self.atlas {
             self.position.sent(atlas, text);
         }
@@ -2297,7 +2297,7 @@ impl Session {
         }
         self.parser.sent(cmd);
         self.peek.sent(cmd);
-        self.ledger.combat(now).sent(cmd);
+        self.ledger.combat(now).sent(cmd, now);
         if let Some(atlas) = &self.atlas {
             self.position.sent(atlas, cmd);
         }
@@ -4205,6 +4205,21 @@ impl Session {
         if let (Some(atlas), Some(class)) = (&self.atlas, &self.character.state().class) {
             let spells = atlas.spells_for(self.detect.rules());
             self.spellbook = Spellbook::learn(spells, class, &self.spell_rows);
+            let attacks: Vec<&str> = (self.spellbook.attacks().iter())
+                .chain(self.spellbook.areas())
+                .map(|d| d.short.as_str())
+                .collect();
+            let known = self
+                .spell_rows
+                .iter()
+                .map(|(_, mana, short, name)| crate::combat_stats::KnownSpell {
+                    short: short.clone(),
+                    name: name.clone(),
+                    mana: *mana,
+                    attack: attacks.iter().any(|a| a.eq_ignore_ascii_case(short)),
+                })
+                .collect();
+            self.ledger.know_spells(known);
         }
         self.refresh_blessings();
     }

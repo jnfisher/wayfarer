@@ -1,7 +1,7 @@
 // The stats tab (C-029): the brain's `stats` answer, and how its numbers are shown; the combat
 // numbers (C-050) as a table; where the run's time went, and how efficient it is.
 
-import type { CombatStats, DamageRow, ExpSample, Stashed, TimeSpent, ToClient } from "../proto";
+import type { AttackRow, CombatStats, DamageRow, ExpSample, Stashed, TimeSpent, ToClient } from "../proto";
 
 export type Stats = Extract<ToClient, { type: "stats" }>;
 
@@ -118,6 +118,54 @@ export function combatLines(c: CombatStats): CombatLine[] {
   }
   if (c.round) lines.push(damageLine(c.round, ""));
   return lines;
+}
+
+/** Fewer tries than this and an attack's rates are shown dim: too few to go by (C-123). */
+export const MIN_SAMPLE = 30;
+
+/** A line of the attacks table (C-123): one attack's tries and how they came out. */
+export interface AttackLine {
+  /** `swing`, `bs`, or the spell's name. */
+  label: string;
+  kind: string;
+  tries: string;
+  /** Did damage, crits among them; crits; missed (a cast: resisted or failed). Of the tries. */
+  hit: string;
+  crit: string;
+  miss: string;
+  range: string;
+  avg: string;
+  /** Dodges, glances, and a spell's damage per mana. */
+  note: string;
+  /** Fewer than {@link MIN_SAMPLE} tries. */
+  few: boolean;
+}
+
+/** `n` of `of` as a per cent with one decimal; "" of nothing. */
+export function pct(n: number, of: number): string {
+  return of === 0 ? "" : perCent(Math.floor((n * 1000) / of));
+}
+
+/** The attacks table: the swing, the backstab, each attack spell. */
+export function attackLines(rows: AttackRow[]): AttackLine[] {
+  return rows.map((r) => {
+    const notes = [];
+    if (r.dodged > 0) notes.push(`${count(r.dodged)} dodged`);
+    if (r.glances > 0) notes.push(`${pct(r.glances, r.tries)} glanced`);
+    if (r.per_mana_hundredths > 0) notes.push(`${(r.per_mana_hundredths / 100).toFixed(2)} dmg/mana`);
+    return {
+      label: r.kind === "cast" ? (r.name ?? "cast") : r.kind === "backstab" ? "bs" : r.kind,
+      kind: r.kind,
+      tries: count(r.tries),
+      hit: pct(r.hits, r.tries),
+      crit: pct(r.crits, r.tries),
+      miss: pct(r.kind === "cast" ? r.resisted : r.misses, r.tries),
+      range: r.hits > 0 ? `${r.min}-${r.max}` : "",
+      avg: r.hits > 0 ? tenths(r.avg_tenths) : "",
+      note: notes.join(", "),
+      few: r.tries < MIN_SAMPLE,
+    };
+  });
 }
 
 /** The combat block's last line: kills (the spell kills among them), flees, the blows taken

@@ -410,6 +410,41 @@ pub struct CombatStats {
     /// immune to its spells (1.20).
     #[serde(default)]
     pub no_weave: Vec<String>,
+    /// Each attack's outcomes (C-123): the swing, the backstab, and each attack spell by name,
+    /// those tried at all.
+    #[serde(default)]
+    pub attacks: Vec<AttackRow>,
+}
+
+/// One attack's tries and how they came out (C-123), in [`CombatStats`]. The rates are left to
+/// the page: `tries` is `hits + misses + glances + resisted`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct AttackRow {
+    /// `swing`, `backstab` or `cast`.
+    pub kind: String,
+    /// The spell's name, for a cast.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub name: Option<String>,
+    pub tries: u64,
+    /// Blows or casts that did damage, crits among them.
+    pub hits: u64,
+    pub crits: u64,
+    /// Dodges among them.
+    pub misses: u64,
+    pub dodged: u64,
+    /// Blows the armour took all of.
+    pub glances: u64,
+    /// Casts resisted or failed.
+    pub resisted: u64,
+    /// The damage of the hits.
+    pub min: i64,
+    pub max: i64,
+    pub avg_tenths: i64,
+    /// Mana spent on the casts, the `spells` screen's cost each; 0 for blows or not known.
+    pub mana: u64,
+    /// Damage per mana spent, in hundredths; 0 without mana.
+    pub per_mana_hundredths: i64,
 }
 
 /// One kind of damage in [`CombatStats`].
