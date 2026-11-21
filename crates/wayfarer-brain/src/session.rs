@@ -414,7 +414,8 @@ pub(crate) struct Session {
     party_game: crate::party_game::GameParty,
     /// What the party coordinator makes of it.
     party_role: PartyRole,
-    /// When the character last saw a room, for the party's left-behind check.
+    /// When the character last saw a room it could see, for the party's left-behind check:
+    /// a dark room tells nothing of where it is (C-127).
     room_seen_at: Option<Instant>,
     /// The leader's room it could not walk to, why, and when (tried again after
     /// [`STUCK_RETRY`] or when the leader moves).
@@ -948,7 +949,8 @@ impl Session {
                 self.presence.moved_unseen();
             }
             self.flush_traces(out);
-            if seen.is_some() {
+            // A room too dark to see tells the coordinator nothing of where it is (C-127).
+            if seen.as_ref().is_some_and(|s| !s.dark) {
                 self.room_seen_at = Some(now);
             }
             if let Some(seen) = seen {
@@ -3779,6 +3781,7 @@ impl Session {
             resting: c.resting == Some(true),
             room: self.position.best(),
             certain: self.position.belief.certain(),
+            lost: self.position.lost(),
             traveller: &self.position.traveller,
             doors: &self.position.traveller.doors,
             presence: &heeded,
@@ -3897,6 +3900,7 @@ impl Session {
             name: self.character.state().name.clone(),
             room: self.position.best(),
             rooms: self.position.belief.candidates().iter().copied().collect(),
+            lost: self.position.lost(),
             game: self.party_game.clone(),
             walk: WalkBack {
                 steps_left: walking_back

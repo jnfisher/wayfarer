@@ -44,6 +44,23 @@ fn dir_set(exits: &[wayfarer_parse::helpers::Exit]) -> DirSet {
         .collect()
 }
 
+/// A move whose room has not come yet: what went to the game, and whether it was the game's
+/// own, following the party's leader (C-127).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Move {
+    command: String,
+    follow: bool,
+}
+
+impl Move {
+    fn own(text: &str) -> Move {
+        Move {
+            command: text.trim().to_owned(),
+            follow: false,
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct Position {
     pub belief: Belief,
@@ -64,7 +81,12 @@ pub(crate) struct Position {
     pocket_at: BTreeSet<Key>,
     /// Moves that went to the game and whose rooms have not come yet, oldest first: one, or
     /// two with a move pipelined ahead of the first.
-    moving: VecDeque<String>,
+    moving: VecDeque<Move>,
+    /// The last room shown was too dark to see (C-127): the belief rests on the moves alone.
+    dark: bool,
+    /// Lost in the dark (C-128): a move was refused where the character cannot see, so the
+    /// belief was given up; the next room it is shown places it again.
+    lost: bool,
     /// The direction of an `open` or `bash` that went to the game, until its answer.
     door_cmd: Option<u8>,
     /// A room title waiting for its exits.
@@ -93,7 +115,7 @@ impl Position {
     /// A move went to the game ahead of the one whose room has not come yet (pipelining): its
     /// room comes after that one's.
     pub fn sent_ahead(&mut self, text: &str) {
-        self.moving.push_back(text.trim().to_owned());
+        self.moving.push_back(Move::own(text));
     }
 
     /// A line went to the game (from the brain or the player).
@@ -102,7 +124,7 @@ impl Position {
             // A move that never got its room is forgotten: it went nowhere.
             self.moving.clear();
             self.spoken = None;
-            self.moving.push_back(text.trim().to_owned());
+            self.moving.push_back(Move::own(text));
         }
         let mut words = text.split_whitespace();
         if let (Some(verb), Some(dir), None) = (words.next(), words.next(), words.next())
@@ -188,8 +210,29 @@ impl Position {
                 self.moving.pop_front();
                 return None;
             }
+            // The game moved the character behind its party's leader (C-127): a move like one
+            // it typed, carried through when the room that follows is seen, lit or dark. One
+            // the character typed the same way, answered by this line, is the one move.
+            GameEvent::PartyMoved { dir } => {
+                if let Some(d) = mm::direction(dir.trim_end_matches("wards")) {
+                    let same = self
+                        .moving
+                        .back()
+                        .is_some_and(|m| mm::direction(&m.command) == Some(d));
+                    if !same {
+                        self.moving.push_back(Move {
+                            command: mm::DIRS[d].to_owned(),
+                            follow: true,
+                        });
+                    }
+                }
+                return None;
+            }
             GameEvent::DoorClosed { locked } => {
-                let dir = self.moving.pop_front().and_then(|m| mm::direction(&m));
+                let dir = self
+                    .moving
+                    .pop_front()
+                    .and_then(|m| mm::direction(&m.command));
                 let state = if *locked {
                     LockState::Locked
                 } else {
@@ -219,9 +262,9 @@ impl Position {
                 if self
                     .moving
                     .front()
-                    .is_some_and(|m| m.eq_ignore_ascii_case(said))
+                    .is_some_and(|m| m.command.eq_ignore_ascii_case(said))
                 {
-                    let phrase = self.moving.pop_front();
+                    let phrase = self.moving.pop_front().map(|m| m.command);
                     self.traces.push(serde_json::json!({
                         "kind": "speech",
                         "phrase": phrase,
@@ -257,8 +300,12 @@ impl Position {
             _ => return None,
         };
         let moved = self.moving.pop_front();
-        if let Some(cmd) = &moved {
-            self.belief.moved(&atlas.graph, cmd);
+        if let Some(m) = &moved {
+            self.belief.moved(&atlas.graph, &m.command);
+        }
+        self.dark = seen.dark;
+        if !seen.dark {
+            self.lost = false;
         }
         if self.afresh && seen.title.is_some() && !seen.dark {
             self.afresh = false;
@@ -268,9 +315,9 @@ impl Position {
             .belief
             .observe(&atlas.graph, seen.title.as_deref(), seen.exits, seen.dark);
         const NAMES: [&str; 10] = ["n", "s", "e", "w", "ne", "nw", "se", "sw", "u", "d"];
-        self.traces.push(serde_json::json!({
+        let mut trace = serde_json::json!({
             "kind": "room",
-            "move": moved,
+            "move": moved.as_ref().map(|m| m.command.clone()),
             "title": seen.title,
             "exits": seen.exits.map(|x| {
                 x.iter().map(|d| NAMES[usize::from(d)]).collect::<Vec<_>>().join(",")
@@ -278,7 +325,11 @@ impl Position {
             "how": how.as_str(),
             "count": self.belief.candidates().len(),
             "cands": crate::walker::cands_str(&self.belief),
-        }));
+        });
+        if moved.is_some_and(|m| m.follow) {
+            trace["follow"] = serde_json::Value::Bool(true);
+        }
+        self.traces.push(trace);
         if seen.title.is_some() {
             self.title.clone_from(&seen.title);
         }
@@ -411,7 +462,32 @@ impl Position {
         self.moving.clear();
         self.door_cmd = None;
         self.title_pending = None;
+        self.dark = false;
+        self.lost = false;
         self.visited.insert(room);
+    }
+
+    /// The last room shown was too dark to see (C-127): the belief rests on the moves since
+    /// the last room it could see, and nothing here can check it.
+    pub fn in_the_dark(&self) -> bool {
+        self.dark
+    }
+
+    /// A move was refused where the character cannot see (C-128): the belief was wrong, and
+    /// no look here can put it right, so it is given up until the game shows a room.
+    pub fn lose(&mut self) {
+        self.belief = Belief::unknown();
+        self.lost = true;
+        self.moving.clear();
+        self.traces.push(serde_json::json!({
+            "kind": "lost",
+            "why": "a move was refused in the dark",
+        }));
+    }
+
+    /// Lost in the dark ([`Position::lose`]) and not yet shown a room it can see.
+    pub fn lost(&self) -> bool {
+        self.lost
     }
 
     pub fn refused(&mut self, atlas: &Atlas, command: &str) {

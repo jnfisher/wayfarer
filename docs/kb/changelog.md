@@ -1,5 +1,6 @@
 # KB changelog
 
+- **2026-11-21**: `navigation.md` "Position tracking": in rooms too dark to see the moves are all there is; a refused move there means the belief is wrong and only a lit room can fix it; the game's follow drags a follower through the dark with the follow line and the darkness line alone; the Redstone Tunnels above Khazarad (6/1407 to 6/1431) are at -200 [C live, silver-mirror] (wayfarer C-127, C-128).
 - **2026-11-16**: `combat.md` Afraid: the Flee ability refuses every attack and cast with "You are too afraid!" until it wears off, moves are not blocked [C]; a terror beast's shriek seen lasting 27 s [F] (wayfarer C-108).
 - **2026-11-11**: `megamud-formats.md` Monsters: byte 37 is the Relationship (2 Friend, 3 Avoid, 4 Enemy, 5 Flee) with the counts of the shipped list [C]; bytes 33 and 34 probably priority and options [G] (wayfarer C-096).
 - **2026-11-11**: `spells.md` Confusion: every typed line is checked before the parser (`LJNPEND.C` stage 5), autocombat rounds and casts too; the stock data's 85 confusing spells and items and their lost-action texts [C] (wayfarer C-095).

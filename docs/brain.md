@@ -132,8 +132,14 @@ character may be in (`kb/navigation.md` "Position tracking"). Every room the gam
 it (the title, when it was not lost behind a prompt, and the `Obvious exits`); every move that
 goes to the game, the brain's or one the player typed (a direction, or the phrase of a text
 exit such as `borrow skiff`), carries it through the exit first. So the map follows a character
-played by hand as well as one the brain walks. The snapshot's `position` is the believed room
-(the lowest key when several fit), how many fit, and the last title seen.
+played by hand as well as one the brain walks. The game's own move of a follower behind its
+party's leader (` -- Following your Party leader west --`) is a move like one it typed (C-127),
+so a follower dragged through rooms too dark to see steps along with its leader on the map (a
+dark room shows nothing to narrow the belief, and before C-127 a follower's belief stayed at
+the tunnel mouth; Sasha was taken for left behind in the Redstone Tunnels and walked off on her
+own, 2026-11-21). A move the character typed that the game answered with the follow line is the
+one move. The snapshot's `position` is the believed room (the lowest key when several fit), how
+many fit, and the last title seen.
 
 The map panel gets a `map_view`: the rooms within 15 steps (or what `map_request` asked for)
 laid out on a grid with the believed room at (0, 0), each with its name, whether it spawns
@@ -293,7 +299,15 @@ progress (after the move in flight).
   again, at most five times a walk.
 - **"There is no exit in that direction!"** means the belief is wrong (`kb/pitfalls.md` 34):
   the brain sends `look`, relocates from the room shown, and plans again. A second one in the
-  same walk stops it.
+  same walk, or from the same believed room over walks begun again from it (a walk a fight or a
+  sneak stopped does not start the count over, C-128), stops it: "Stopped walking: no exit `w`
+  twice: lost". **In a room too dark to see** no look can put the belief right, so the first
+  refusal stops the walk as lost ("Stopped walking: lost in the dark: `n` from Redstone Tunnel
+  (6/1408) was refused"), the position is unknown, and nothing walks (not a loop, a Go to or
+  the walk back to a party's leader) until the game shows a room the character can see; it
+  looks for one every 10 s ("Lost in the dark: looking for a room it can see", else "Waiting:
+  lost in the dark") and still fights back, heals and rests. The player can walk it by hand.
+  Sasha sent `n` from the wrong Redstone Tunnel once a second for two minutes (2026-11-21).
 - **A room the map lacks** (C-053). A room shown whole (title and `Obvious exits`) whose title
   no room of the pack has, a player's house ("Shop White House Room"), leaves the position
   unknown: the walk stops ("…; in Shop White House Room, a room not on the map") and the next
@@ -346,10 +360,12 @@ moves after it tell them apart (C-084).
 The brain sends `position_trace` entries, and the gateway writes them to the character's
 `position.log` with `seq` and `ts` (`docs/gateway.md`). One JSON object each, by `kind`:
 
-- `room`: a room seen. `move` (the move it was carried through, or null), `title`, `exits`
+- `room`: a room seen. `move` (the move it was carried through, or null), `follow` (true when
+  that move was the game's, behind the party's leader; absent otherwise), `title`, `exits`
   (`n,sw`), `how` the belief moved (`followed`, `relocated`, `anywhere`, `near`,
   `near_by_name`, `anywhere_by_name`, `exits`, `dark`, `not_a_title`, `not_on_map`), `count`
   of candidates, and the first 8 `cands` (`2/190`).
+- `lost`: the belief was given up (`why`: a move was refused in the dark, C-128).
 - `afresh`: the next room is placed afresh (`why`: `re-sync`).
 - `plan`: a walk's route: `why` (`start`, or the replan's reason), `from`, `to`, `steps`,
   `guessed`, `count`, `cands`.
@@ -1883,9 +1899,15 @@ own, one at a time:
   did not move stays on the leader's list without a word (`kb/grouping.md` §2a), so the `par`
   is no test of it (C-116): one the `par` lists that is out of the leader's room for 10 s
   (`LEFT_BEHIND`), and has seen a room since they parted, is separated too; with no room seen
-  since, its belief may only lag, so it sends `look` (every 10 s at most). One fighting or
-  resting is left where it is until it is done. Back in the leader's room it sends `follow`
-  again. (Lexi and Sasha, after a relog put the party in the Steel Chamber, followed Riley,
+  since, its belief may only lag, so it sends `look` (every 10 s at most). A room too dark to
+  see is no room seen (C-127): it tells nothing of where the follower is, so in the dark the
+  follower keeps looking and never walks off on a belief the darkness cannot check. One
+  fighting or resting is left where it is until it is done. Back in the leader's room it sends
+  `follow` again. A follower **lost in the dark** (its belief given up after a refused move
+  where it cannot see, "Walking", C-128) is `separated` with "lost in the dark" and cannot
+  walk back; the leader's loop stops at once with the warning "Lauren is lost in the dark:
+  walk it to a lit room, or the party to it" (a Go to ends the same way), rather than holding
+  out `party.wait_separated_minutes` for a walk that will not come. (Lexi and Sasha, after a relog put the party in the Steel Chamber, followed Riley,
   who went on by the hidden exit without them; the healers stood rooms away while Riley fell
   to 18%.) Meanwhile the leader **holds**: its loop's next leg (and
   a leg already walking) waits, narrated "Waiting for Lauren to catch up" (all who are out, by
