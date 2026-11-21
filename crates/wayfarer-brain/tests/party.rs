@@ -67,6 +67,17 @@ struct World {
     drag: bool,
     /// `sneak`s still to refuse with `You may not sneak right now!` (C-122).
     sneak_refusals: u32,
+    /// Rooms too dark to see: a move into one, or a `look` there, shows only the darkness line
+    /// (C-127).
+    dark: BTreeSet<Key>,
+    /// Those whose every move the game refuses with "There is no exit in that direction!",
+    /// wherever they are: a wrong belief in the dark (C-128).
+    no_exit: BTreeSet<String>,
+}
+
+/// A room too dark to see, as the game shows it.
+fn dark_room() -> String {
+    said("The room is very dark - you can't see anything")
 }
 
 /// The game's name for a coin, by `hide`'s word.
@@ -251,6 +262,7 @@ impl Gateway {
             {
                 me(game::arena::arena(&[first(other)], 35))
             }
+            "look" if self.world.dark.contains(&self.world.rooms[session]) => me(dark_room()),
             "look" => me(shown(self.world.rooms[session])),
             "i" if self.world.purse.contains_key(session) => {
                 let list: Vec<String> = self.world.purse[session]
@@ -316,6 +328,9 @@ impl Gateway {
             t if is_direction(t) && self.world.held.contains(session) => {
                 me(said("You cannot move!"))
             }
+            t if is_direction(t) && self.world.no_exit.contains(session) => {
+                me(said("There is no exit in that direction!"))
+            }
             t if is_direction(t) => {
                 let here = self.world.rooms[session];
                 let atlas = game::atlas();
@@ -323,7 +338,12 @@ impl Gateway {
                     Some(e) => {
                         let to = e.to;
                         self.world.rooms.insert(session.to_owned(), to);
-                        let mut out = me(shown(to));
+                        let view = if self.world.dark.contains(&to) {
+                            dark_room()
+                        } else {
+                            shown(to)
+                        };
+                        let mut out = me(view.clone());
                         if self.world.drag
                             && self.world.following
                             && session == LEADER
@@ -345,10 +365,7 @@ impl Gateway {
                             };
                             out.push((
                                 other.to_owned(),
-                                format!(
-                                    " -- Following your Party leader {dir} -- \r\n{}",
-                                    shown(to)
-                                ),
+                                format!(" -- Following your Party leader {dir} -- \r\n{view}"),
                             ));
                         }
                         out
@@ -1575,4 +1592,160 @@ async fn a_follower_refused_a_sneak_tries_again_within_two_seconds() {
     g.play(10).await;
     let after = g.lines.iter().filter(|(_, t)| t == "sneak").count();
     assert_eq!(after - before, 2, "{:?}", g.lines);
+}
+
+/// The Dungeon under the Arena: its Entrance is lit, the Small Cavern beyond it too dark to see
+/// (light -200).
+const DUNGEON_ENTRANCE: Key = (1, 2152);
+const SMALL_CAVERN: Key = (1, 2156);
+
+/// Every direction the follower typed itself after `since` lines.
+fn moves_of(g: &Gateway, session: &str, since: usize) -> Vec<String> {
+    g.lines[since..]
+        .iter()
+        .filter(|(s, t)| s == session && is_direction(t))
+        .map(|(_, t)| t.clone())
+        .collect()
+}
+
+/// The leader walks the party into the Small Cavern, dragging the follower through the lit
+/// Entrance and into the dark; `since` is where the follower's own lines then begin.
+async fn into_the_cavern(g: &mut Gateway) -> usize {
+    g.world.together = true;
+    g.world.drag = true;
+    g.world.dark.insert(SMALL_CAVERN);
+    formed(g).await;
+    g.send(ToClient::WalkTo {
+        session: LEADER.into(),
+        map: SMALL_CAVERN.0,
+        room: SMALL_CAVERN.1,
+        stop_short: None,
+        fight: None,
+    })
+    .await;
+    g.play(15).await;
+    assert_eq!(
+        g.world.rooms[LEADER],
+        SMALL_CAVERN,
+        "{:?} / {:?}",
+        notices_of(g, LEADER),
+        g.lines
+    );
+    assert_eq!(g.world.rooms[FOLLOWER], SMALL_CAVERN);
+    g.lines.len()
+}
+
+/// C-127: Sasha, dragged eight rooms into the dark Redstone Tunnels behind Rocco, was taken
+/// for left behind (her belief never moved, and the darkness line counted as a room seen) and
+/// walked off on her own, which really did separate her (silver-mirror, 2026-11-21). A
+/// follower the game moves through the dark keeps its place beside its leader.
+#[tokio::test(start_paused = true)]
+async fn a_follower_dragged_through_the_dark_stays_with_its_leader() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    let since = into_the_cavern(&mut g).await;
+    // Well past the left-behind limit: still joined, and it typed no move of its own.
+    g.play(40).await;
+    assert_eq!(
+        moves_of(&g, FOLLOWER, since),
+        Vec::<String>::new(),
+        "{:?}",
+        &g.lines[since..]
+    );
+    let states: Vec<MemberState> = g
+        .seen
+        .iter()
+        .filter_map(|m| match m {
+            ToGateway::Parties { parties } => parties
+                .iter()
+                .flat_map(|p| p.members.iter())
+                .find(|ms| ms.session == FOLLOWER)
+                .map(|ms| ms.state),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(states.last(), Some(&MemberState::Joined), "{states:?}");
+    assert!(!states.contains(&MemberState::Separated), "{states:?}");
+    g.send(ToClient::StateRequest {
+        session: Some(FOLLOWER.into()),
+    })
+    .await;
+    let pos = g
+        .until(|m| match m {
+            ToGateway::Character { session, state } if session == FOLLOWER => {
+                state.position.clone()
+            }
+            _ => None,
+        })
+        .await;
+    assert_eq!(
+        (pos.map, pos.room, pos.candidates),
+        (Some(1), Some(SMALL_CAVERN.1), 1)
+    );
+}
+
+/// C-128: a follower whose belief is wrong in the dark (the game dropped it, its leader went
+/// back to the lit Entrance, and its one way there is refused) stops at the first refusal as
+/// lost: no move once a second, a look now and then, and the leader told at once.
+#[tokio::test(start_paused = true)]
+async fn a_follower_lost_in_the_dark_waits_and_the_leader_is_told() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    into_the_cavern(&mut g).await;
+    // The game drops the follower without a word, and refuses its every move.
+    g.world.following = false;
+    g.world.no_exit.insert(FOLLOWER.to_owned());
+    g.send(ToClient::WalkTo {
+        session: LEADER.into(),
+        map: DUNGEON_ENTRANCE.0,
+        room: DUNGEON_ENTRANCE.1,
+        stop_short: None,
+        fight: None,
+    })
+    .await;
+    let parties = g.member(FOLLOWER, MemberState::Separated).await;
+    let since = g.lines.len();
+    g.play(60).await;
+    // One move, refused; then looks only.
+    let moves = moves_of(&g, FOLLOWER, since);
+    assert!(moves.len() <= 1, "{moves:?}");
+    let looks = g.lines[since..]
+        .iter()
+        .filter(|(s, t)| s == FOLLOWER && t == "look")
+        .count();
+    assert!(
+        (3..=8).contains(&looks),
+        "{looks} looks: {:?}",
+        &g.lines[since..]
+    );
+    let detail = g
+        .seen
+        .iter()
+        .filter_map(|m| match m {
+            ToGateway::Parties { parties } => parties
+                .iter()
+                .flat_map(|p| p.members.iter())
+                .find(|ms| ms.session == FOLLOWER && ms.state == MemberState::Separated)
+                .and_then(|ms| ms.detail.clone()),
+            _ => None,
+        })
+        .next_back();
+    assert_eq!(detail.as_deref(), Some("lost in the dark"), "{parties:?}");
+    let warned: Vec<String> = g
+        .seen
+        .iter()
+        .filter_map(|m| match m {
+            ToGateway::Warning {
+                session: Some(s),
+                text,
+            } if s == LEADER => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        warned
+            .iter()
+            .any(|w| w
+                .contains("Lauren is lost in the dark: walk it to a lit room, or the party to it")),
+        "{warned:#?} {:#?}",
+        notices_of(&g, LEADER)
+    );
 }

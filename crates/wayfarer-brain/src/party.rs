@@ -281,6 +281,9 @@ pub(crate) struct MemberInfo {
     /// rooms of one name, so a leader and a follower side by side may each be unsure, with
     /// different lowest keys (C-053).
     pub rooms: Vec<Key>,
+    /// Lost in the dark (C-128): a move was refused where it cannot see, its belief was given
+    /// up, and it cannot walk back until the game shows it a room.
+    pub lost: bool,
     pub game: GameParty,
     /// Its walk back to the leader.
     pub walk: WalkBack,
@@ -309,7 +312,8 @@ pub(crate) struct MemberInfo {
     pub passer: wayfarer_world::Passer,
     /// What it knows of its guarding, from the game's lines (1.20, C-068).
     pub guard: crate::guard::Guard,
-    /// When it last saw a room (a move's, or a `look`'s).
+    /// When it last saw a room it could see (a move's, or a `look`'s): a dark room tells
+    /// nothing of where it is (C-127).
     pub room_seen_at: Option<Instant>,
     /// As a leader: the phrase of a Text exit or a room command it typed (`go vortex`), the
     /// room it typed it in and its number, each new one numbered above the last (C-121).
@@ -1206,9 +1210,21 @@ impl Parties {
                                 format!("{name} did not catch up in {minutes} minutes"),
                             ));
                         }
+                        // Lost in the dark (C-128): it cannot walk back, so waiting out the
+                        // minutes would be for nothing; the leader is told at once.
+                        if fi.lost && !together && self.gave_up.insert(f.clone()) {
+                            plan.give_up.push((
+                                def.leader.clone(),
+                                format!(
+                                    "{name} is lost in the dark: walk it to a lit room, or the party to it"
+                                ),
+                            ));
+                        }
                         let leader = lfirst.unwrap_or(&def.leader);
                         if together {
                             (MemberState::NotJoined, Some("forming up".to_owned()))
+                        } else if fi.lost {
+                            (MemberState::Separated, Some("lost in the dark".to_owned()))
                         } else if let Some(why) = &fi.walk.stuck {
                             (MemberState::Unreachable, Some(why.clone()))
                         } else if l.room.is_none() {
@@ -1575,6 +1591,7 @@ mod tests {
             passer: wayfarer_world::Passer::default(),
             room_seen_at: None,
             command: None,
+            lost: false,
         }
     }
 
@@ -1977,6 +1994,73 @@ mod tests {
         let plan = p.plan(&m, t);
         assert!(plan.roles["lauren"].joined_follower());
         assert_eq!(plan.roles["penny"].hold(), None);
+    }
+
+    /// C-127: Sasha followed Rocco eight rooms into the Redstone Tunnels, too dark to see, and
+    /// her belief stayed at the tunnel mouth; the darkness line counted as a room seen, so she
+    /// was taken for left behind and walked off on her own. A dark room tells nothing: she
+    /// keeps looking, and stays joined.
+    #[tokio::test]
+    async fn dark_rooms_since_the_parting_do_not_separate_a_follower() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        p.save(def("penny", &["lauren"]), &known()).unwrap();
+        let mut m = two(now, &["Lauren Phillips"]);
+        m.get_mut("lauren").unwrap().game.following = Some("Penny".into());
+        m.get_mut("lauren").unwrap().room_seen_at = Some(now);
+        assert_eq!(state(&p.plan(&m, now), 1).0, MemberState::Joined);
+        let penny = m.get_mut("penny").unwrap();
+        penny.room = Some((1, 2));
+        let t = now + Duration::from_secs(1);
+        penny.game.as_of = Some(t);
+        p.plan(&m, t);
+        // Rooms since, every one too dark to see: `room_seen_at` stands. For a minute she only
+        // looks, every ten seconds, and stays joined.
+        let mut looks = 0;
+        for i in 1..=6 {
+            let t = t + LEFT_BEHIND * i;
+            m.get_mut("penny").unwrap().game.as_of = Some(t);
+            let plan = p.plan(&m, t);
+            assert!(plan.roles["lauren"].joined_follower(), "{i}");
+            assert_eq!(plan.roles["lauren"].rejoin(), None, "{i}");
+            looks += usize::from(lines(&plan).contains(&("lauren", "look")));
+        }
+        assert!(looks >= 5, "{looks}");
+    }
+
+    /// C-128: a follower lost in the dark (its belief given up after a refused move) cannot
+    /// walk back; the leader is told at once instead of waiting out the minutes.
+    #[tokio::test]
+    async fn a_follower_lost_in_the_dark_stops_the_leader_at_once() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        let mut m = dropped(&mut p, now);
+        let lauren = m.get_mut("lauren").unwrap();
+        lauren.room = None;
+        lauren.rooms.clear();
+        lauren.lost = true;
+        let plan = p.plan(&m, now + Duration::from_secs(2));
+        assert_eq!(
+            state(&plan, 1),
+            (MemberState::Separated, Some("lost in the dark".into()))
+        );
+        assert_eq!(plan.roles["lauren"].rejoin(), None);
+        assert_eq!(
+            plan.give_up,
+            [(
+                "penny".to_owned(),
+                "Lauren is lost in the dark: walk it to a lit room, or the party to it".to_owned()
+            )]
+        );
+        // Said once.
+        assert!(p.plan(&m, now + Duration::from_secs(3)).give_up.is_empty());
+        // Shown a room, it walks back as any separated follower does.
+        let lauren = m.get_mut("lauren").unwrap();
+        lauren.room = Some((1, 1));
+        lauren.lost = false;
+        let plan = p.plan(&m, now + Duration::from_secs(4));
+        assert_eq!(state(&plan, 1).0, MemberState::Separated);
+        assert_eq!(plan.roles["lauren"].rejoin(), Some((1, 2)));
     }
 
     #[tokio::test]

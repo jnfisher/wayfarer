@@ -76,7 +76,8 @@ pub const MAX_SEARCHES: u32 = 300;
 pub const RECHECK_EVERY: u32 = 5;
 /// The walker says it is still searching after this many empty searches, and each this many.
 pub const NARRATE_EVERY: u32 = 10;
-/// "No exit" answers in one walk: the first relocates (look, then replan), the second stops.
+/// "No exit" answers in one walk, or from one believed room across walks begun again from it
+/// (C-128): the first relocates (look, then replan), the second stops.
 pub const MAX_RELOCATIONS: u32 = 2;
 /// Routes planned again in one walk before it gives up (the prototype's five attempts).
 pub const MAX_REPLANS: u32 = 5;
@@ -224,6 +225,9 @@ pub(crate) struct Walker {
     walk: Option<Walk>,
     /// Searches for one hidden exit before it is given up (`movement.search_limit`).
     search_limit: u32,
+    /// "No exit" answers from one believed room, over every walk begun from it since (C-128):
+    /// a walk stopped and begun again does not start the count over.
+    relocated: Option<(Key, u32)>,
     /// A `walk_to` that came while an action of the walk it replaces was in flight, and whether
     /// it stops short of a boss lair.
     then: Option<(Key, bool)>,
@@ -246,6 +250,7 @@ impl Walker {
         Self {
             walk: None,
             search_limit: limit,
+            relocated: None,
             then: None,
         }
     }
@@ -633,6 +638,7 @@ impl Walker {
     ) -> Next {
         let mut next = Next::default();
         let search_limit = self.search_limit;
+        let relocated = &mut self.relocated;
         let Some(w) = &mut self.walk else {
             return next;
         };
@@ -833,11 +839,31 @@ impl Walker {
                 }
                 None => Ok(Doing::Bash),
             },
+            (Doing::Move, Outcome::Refused(Refused::Move(Refusal::NoExit)))
+                if pos.in_the_dark() =>
+            {
+                // Too dark to see (C-128): no look here can put the belief right, so it is
+                // given up, and the next room the game shows places the character again.
+                pos.lose();
+                Err(format!(
+                    "lost in the dark: `{}` from {} ({}/{}) was refused",
+                    step.command,
+                    room_name(atlas, step.from),
+                    step.from.0,
+                    step.from.1
+                ))
+            }
             (Doing::Move, Outcome::Refused(Refused::Move(Refusal::NoExit))) => {
                 // Pitfall 34: the believed position is wrong. Look, and plan again from
-                // where the game says the character is.
+                // where the game says the character is. Counted in this walk, and for the
+                // believed room over the walks begun again from it (C-128).
                 w.relocations += 1;
-                if w.relocations >= MAX_RELOCATIONS {
+                let here = match *relocated {
+                    Some((k, n)) if k == step.from => n + 1,
+                    _ => 1,
+                };
+                *relocated = Some((step.from, here));
+                if w.relocations >= MAX_RELOCATIONS || here >= MAX_RELOCATIONS {
                     Err(format!("no exit `{}` twice: lost", step.command))
                 } else {
                     next.notice(format!("No exit `{}`: looking to relocate", step.command));

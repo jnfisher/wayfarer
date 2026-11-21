@@ -1285,3 +1285,119 @@ async fn the_panel_refused_while_a_monster_is_here_stops_the_walk_saying_why() {
     let (_, played) = g.close(run).await;
     assert_eq!(played, ["push panel", "look"]);
 }
+
+/// The Dungeon's Old Mineshaft under Newhaven: a chain of rooms too dark to see (light -200).
+const MINESHAFT_SOUTH: Key = (1, 2157);
+const MINESHAFT_MIDDLE: Key = (1, 2158);
+const MINESHAFT_NORTH: Key = (1, 2159);
+
+/// What the game shows after a move into a room too dark to see.
+fn dark() -> String {
+    says("The room is very dark - you can't see anything")
+}
+
+/// The game moved the character behind its party's leader, into a room too dark to see.
+fn followed_into_the_dark(dir: &str) -> String {
+    format!(
+        "\x1b[79D\x1b[K -- Following your Party leader {dir} --\r\n\x1b[79D\x1b[KThe room is very \
+         dark - you can't see anything\r\n{PROMPT}"
+    )
+}
+
+/// C-127: Sasha followed Rocco eight rooms into the Redstone Tunnels, too dark to see, and her
+/// belief never left the tunnel mouth (the follow line was nothing to the position, and a dark
+/// room tells nothing), so she was taken for left behind and walked off on her own. The game's
+/// follow is a move like one she typed: her belief steps along with her leader.
+#[tokio::test(start_paused = true)]
+async fn a_follower_moved_by_the_game_in_the_dark_keeps_its_place() {
+    let (mut g, run) = Game::start(SessionState::Realm, MINESHAFT_SOUTH).await;
+    g.output(&followed_into_the_dark("north")).await;
+    g.output(&followed_into_the_dark("north")).await;
+    let pos = g.position().await;
+    assert_eq!(
+        (pos.map, pos.room, pos.candidates),
+        (Some(1), Some(MINESHAFT_NORTH.1), 1)
+    );
+    let (_, played) = g.close(run).await;
+    assert!(played.is_empty(), "{played:?}");
+}
+
+/// A move the player typed that the game answered with the follow line (the leader went the
+/// same way at that moment) is one move, not two.
+#[tokio::test(start_paused = true)]
+async fn a_typed_move_the_game_followed_counts_once() {
+    let (mut g, run) = Game::start(SessionState::Realm, MINESHAFT_SOUTH).await;
+    g.typed("n").await;
+    g.output(&format!("n\r\n{}", followed_into_the_dark("north")))
+        .await;
+    let pos = g.position().await;
+    assert_eq!(
+        (pos.map, pos.room, pos.candidates),
+        (Some(1), Some(MINESHAFT_MIDDLE.1), 1)
+    );
+    g.close(run).await;
+}
+
+/// C-128: a move refused where the character cannot see means the belief is wrong, and no
+/// look here can put it right (Sasha sent `n` from the wrong Redstone Tunnel once a second
+/// for two minutes). The walk stops as lost, the position is unknown, nothing walks until a
+/// room is shown, and the first one shown places it again.
+#[tokio::test(start_paused = true)]
+async fn a_move_refused_in_the_dark_ends_the_walk_as_lost() {
+    let (mut g, run) = Game::start(SessionState::Realm, MINESHAFT_SOUTH).await;
+    g.expect("n", dark());
+    g.walk_to(MINESHAFT_MIDDLE).await;
+    assert_eq!(
+        g.walk_narration().await,
+        "Walking to Dungeon, Old Mineshaft: one step"
+    );
+    assert_eq!(g.walk_narration().await, "Arrived: Dungeon, Old Mineshaft");
+    // The belief says the middle of the shaft; the game says otherwise.
+    g.expect("s", says("There is no exit in that direction!"));
+    g.walk_to(MINESHAFT_SOUTH).await;
+    g.walk_narrated("Walking to Dungeon, Old Mineshaft: one step")
+        .await;
+    assert_eq!(
+        g.walk_narration().await,
+        "Stopped walking: lost in the dark: `s` from Dungeon, Old Mineshaft (1/2158) was refused"
+    );
+    let pos = g.position().await;
+    assert_eq!((pos.map, pos.room, pos.candidates), (None, None, 0));
+    // Shown a room it can see, it is placed again.
+    g.output(&room(MINESHAFT_SOUTH)).await;
+    let pos = g.position().await;
+    assert!(pos.candidates >= 1, "{pos:?}");
+    assert_eq!(pos.title.as_deref(), Some("Dungeon, Old Mineshaft"));
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["n", "s"]);
+}
+
+/// C-128: "no exit" answers from one believed room are counted over the walks begun again
+/// from it, so a walk stopped and started afresh does not look and try once a second for ever.
+#[tokio::test(start_paused = true)]
+async fn relocations_carry_over_walks_from_one_believed_room() {
+    let (mut g, run) = Game::start(SessionState::Realm, VILLAGE_ENTRANCE).await;
+    g.expect("w", says("There is no exit in that direction!"));
+    g.expect("look", room(VILLAGE_ENTRANCE));
+    g.expect("w", says("There is no exit in that direction!"));
+    g.walk_to(NARROW_PATH).await;
+    let said = g
+        .walk_narrated("Stopped walking: no exit `w` twice: lost")
+        .await;
+    assert!(
+        said.contains(&"No exit `w`: looking to relocate".to_owned()),
+        "{said:?}"
+    );
+    // The same walk again from the same room: lost at the first refusal, with no look.
+    g.expect("w", says("There is no exit in that direction!"));
+    g.walk_to(NARROW_PATH).await;
+    let said = g
+        .walk_narrated("Stopped walking: no exit `w` twice: lost")
+        .await;
+    assert!(
+        !said.iter().any(|s| s.contains("looking to relocate")),
+        "{said:?}"
+    );
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["w", "look", "w", "w"]);
+}

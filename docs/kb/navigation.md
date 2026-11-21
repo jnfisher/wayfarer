@@ -199,6 +199,17 @@ A room can cast a spell on you ("The room" is the caster) [C] `LJNROOMC.C:1079-1
   preferring them settles on another wrong room. With the room's exits seen, hold every room
   in the world of that name and exits, and let the moves narrow it. [C data; live 2026-11-10,
   Lexi's walk to Markus] (wayfarer C-085)
+- **In the dark the moves are all there is.** A room with light below -150 and no light carried
+  shows only "The room is very dark - you can't see anything": no title, no exits, so nothing
+  narrows the belief and a wrong one cannot be put right by a `look`. A move the game refuses
+  there ("There is no exit in that direction!") means the belief is wrong and nothing on hand
+  can say where the character is; give the belief up and wait for a room it can see. The
+  game's follow carries a party's follower through dark rooms the same way, with only
+  ` -- Following your Party leader west --` and the darkness line, so a follower's belief must
+  advance on the follow line as on its own move. The Redstone Tunnels above Khazarad (6/1407 to
+  6/1431) are all at -200. [C live, silver-mirror 2026-11-21: Rocco walked them blind by his
+  own moves; Sasha, dragged behind him, kept the tunnel mouth as her room and was lost]
+  (wayfarer C-127, C-128)
 
 ## Routing
 - BFS over walkable exit types, giving commands that include Text-exit phrases. [C]

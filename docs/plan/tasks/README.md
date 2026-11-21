@@ -85,6 +85,7 @@ Cards don't repeat these:
 | 16 | The Annora and Rhudaur run: levers on doors, Key exits, errands beside the bot, party sysop goto, gear tab (C-077 to C-081) | 2026-11-10, at John's request after the run |
 | 17 | The dark bishop run: hidden exits priced by their searches (C-120); followers type the leader's room command with it (C-121); sneaking retried sooner (C-122) | 2026-11-18 and 19, at John's request |
 | 18 | Combat numbers by attack, damage taken and per monster, and a zoom-in view with histograms and the party side by side (C-123 to C-125); the scrollbar through the overlays (C-126) | 2026-11-20, at John's request |
+| 19 | Followers in the dark: the game's follow moves advance a follower's belief and a dark room never separates it (C-127); a move refused in the dark means lost, said once (C-128) | 2026-11-21, after Sasha was lost in the Redstone Tunnels |
 
 ## Index (wave 1, M0)
 
@@ -311,6 +312,8 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-124](C-124-taken-and-monsters.md) | Combat numbers for the blows taken and for each monster fought | A | S | C-123 | |
 | [C-125](C-125-combat-zoom.md) | The combat zoom: histograms, each monster, the party side by side, the last hour or day | A | M | C-124 | |
 | [C-126](C-126-scrollbar-through-overlays.md) | A tile's scrollbar no longer shows through the full-screen views | A | S | C-125 | |
+| [C-127](C-127-follower-in-the-dark.md) | A follower keeps its place in the dark: the game's follow moves advance its belief | A | S | C-108, C-116 | |
+| [C-128](C-128-lost-in-the-dark.md) | A move refused in the dark means lost: the walk stops and says so, once | A | S | C-127 | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or

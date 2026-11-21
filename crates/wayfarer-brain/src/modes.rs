@@ -15,7 +15,7 @@ use wayfarer_store::BotRecord;
 use wayfarer_world::{Key, LockState, MonsterRules, SpellDef, Traveller};
 
 use crate::brain::Atlas;
-use crate::executor::{Action, Outcome};
+use crate::executor::{Action, Expect, Outcome};
 use crate::fight::Fight;
 use crate::flee::Flee;
 use crate::journey::Journey;
@@ -286,6 +286,9 @@ pub(crate) struct View<'a> {
     /// The believed room, and whether the belief is sure of it.
     pub room: Option<Key>,
     pub certain: bool,
+    /// Lost in the dark (C-128): a move was refused where it cannot see, the belief was given
+    /// up, and no walk starts until the game shows a room.
+    pub lost: bool,
     pub traveller: &'a Traveller,
     /// The doors as the game showed them this session.
     pub doors: &'a BTreeMap<(Key, u8), LockState>,
@@ -906,6 +909,8 @@ pub(crate) struct Bot {
     /// Boss fight mode (C-100): it fights where it stands, never flees or walks, casts no
     /// blessings.
     boss: bool,
+    /// Lost in the dark (C-128): when it last looked for a room it can see.
+    lost_look: Option<Instant>,
 }
 
 impl Bot {
@@ -1246,13 +1251,35 @@ impl Bot {
         says
     }
 
+    /// Lost in the dark (C-128): a `look` every [`crate::fight::BLIND_LOOK`], so the first
+    /// room the game shows places the character again; waiting between.
+    fn lost_step(&mut self, v: &View) -> Step {
+        if self
+            .lost_look
+            .is_none_or(|t| v.now >= t + crate::fight::BLIND_LOOK)
+        {
+            self.lost_look = Some(v.now);
+            return Step::send(
+                Action::new("look", Expect::RoomSeen),
+                "Lost in the dark: looking for a room it can see",
+            );
+        }
+        Step::wait("Waiting: lost in the dark")
+    }
+
     /// The leader waited `party.wait_separated_minutes` for a member who did not catch up:
     /// its loop stops, and a Go to ends at the next tick ("Not going to …: why").
     pub fn party_gave_up(&mut self, why: &str) -> Vec<Say> {
+        let journey = self.journey.is_some();
         if let Some(j) = &mut self.journey {
             j.give_up(why);
         }
-        self.stop_loop(why)
+        let mut says = self.stop_loop(why);
+        if !journey && says.is_empty() {
+            // Neither a loop nor a Go to to stop: the player is still told (C-128).
+            self.narrate_as(why.to_owned(), true, &mut says);
+        }
+        says
     }
 
     /// For the party coordinator (C-093): the last leader's stash round this follower is done
@@ -1828,6 +1855,10 @@ impl Bot {
             } else if let Some(r) = self.stash.wants(v) {
                 // Nothing to fight: the coins are hidden before the loop goes on (C-092).
                 (BotMode::Stash, r)
+            } else if v.lost && v.room.is_none() {
+                // Lost in the dark (C-128): no walk, back to the party or anywhere, until a room
+                // it is shown places it again; a look now and then asks for one.
+                (BotMode::Idle, "lost in the dark".to_owned())
             } else if !self.boss && v.party.rejoin().is_some_and(|k| v.room != Some(k)) {
                 // Out of its party: back to the leader, the one walk a follower makes.
                 (BotMode::Task, "walking back to the party".to_owned())
@@ -1867,6 +1898,7 @@ impl Bot {
                     }
                     step
                 }
+                BotMode::Idle if v.lost && v.room.is_none() => self.lost_step(v),
                 BotMode::Idle if let Some(step) = self.bash_help.step(v) => step,
                 // Blind with nothing else to do: a look now and then to see whether it can.
                 BotMode::Idle if let Some(step) = self.fight.blind_look(v) => step,
