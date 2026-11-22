@@ -487,6 +487,33 @@ describe("the go box", () => {
     }
   });
 
+  it("asks again for another tile's character, keeping what is typed in the go and loop boxes", async () => {
+    const onfind = vi.fn();
+    const { onloops, rerender } = mount({ character: here, loops, onfind });
+    const go = await typeIn("chi");
+    await fireEvent.click(screen.getByRole("button", { name: "Loop list" }));
+    const find = screen.getByRole("searchbox", { name: "Find a loop" });
+    await fireEvent.input(find, { target: { value: "keep" } });
+    await new Promise((r) => setTimeout(r, 500));
+    expect(onfind).toHaveBeenCalledWith("aria", "chi");
+    expect(onloops).toHaveBeenCalledWith("aria", 8, "keep", 12);
+    onfind.mockClear();
+    onloops.mockClear();
+    // The other tile: the text stays and both lists are asked for its character, at once.
+    await rerender({ session: { ...session, id: "bea", name: "Bea" } } as never);
+    expect(go.value).toBe("chi");
+    expect((find as HTMLInputElement).value).toBe("keep");
+    expect(onfind).toHaveBeenCalledWith("bea", "chi");
+    await new Promise((r) => setTimeout(r, 50));
+    expect(onloops).toHaveBeenCalledWith("bea", 8, "keep", 12);
+    // The old answers are not shown as the new character's: both lists wait for the brain.
+    expect(screen.getAllByText("Asking the brain…")).toHaveLength(2);
+    // Back again: asked once more, nothing typed is lost.
+    onfind.mockClear();
+    await rerender({ session } as never);
+    expect(onfind).toHaveBeenCalledWith("aria", "chi");
+  });
+
   it("lists what was found; Enter walks to the chosen row, stopping short of a boss lair", async () => {
     const { onwalk } = mount({ character: here, found: chiefFound, goAsked: 1 });
     const input = await typeIn("chief");
