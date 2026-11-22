@@ -73,6 +73,11 @@ struct World {
     /// Those whose every move the game refuses with "There is no exit in that direction!",
     /// wherever they are: a wrong belief in the dark (C-128).
     no_exit: BTreeSet<String>,
+    /// The leader is a Mage with speed (level 12, 12 mana) and 60 mana, for a blessing on the
+    /// follower (C-131).
+    mage: bool,
+    /// What the game says to the leader's `sped lauren` in place of casting it.
+    speed_refusal: Option<&'static str>,
 }
 
 /// A room too dark to see, as the game shows it.
@@ -113,6 +118,21 @@ fn whole_status(session: &str) -> String {
         ),
         1,
     )
+}
+
+/// The leader's status screen as a Mage with 60 mana (C-131).
+fn mage_status() -> String {
+    let hits = "Thievery:    \x1b[36m    0\r\n";
+    whole_status(LEADER)
+        .replace("Warrior    ", "Mage       ")
+        .replacen(
+            hits,
+            &format!(
+                "{hits}\x1b[32mMana: \x1b[36m * 60/60    \x1b[32mSpellcasting: \x1b[36m  40     \
+                 \x1b[32mTraps:       \x1b[36m    0\r\n"
+            ),
+            1,
+        )
 }
 
 /// A room as `look` shows it; the Arena with nothing in it, so nobody stops to fight.
@@ -232,7 +252,28 @@ impl Gateway {
         let other = if session == LEADER { FOLLOWER } else { LEADER };
         let me = |t: String| vec![(session.to_owned(), t)];
         match text {
-            "st" if self.world.cleric => me(whole_status(session)),
+            "st" if self.world.mage && session == LEADER => me(mage_status()),
+            "st" if self.world.cleric || self.world.mage => me(whole_status(session)),
+            "spells" if self.world.mage && session == LEADER => me(format!(
+                "You have the following spells:\r\nLevel Mana Short Spell Name\r\n  \
+                 12  12    sped  speed\r\n{PROMPT}"
+            )),
+            t if t.starts_with("sped ") => match self.world.speed_refusal {
+                Some(line) => me(said(line)),
+                None => vec![
+                    (
+                        session.to_owned(),
+                        said(&format!("You cast speed on {}.", first(other))),
+                    ),
+                    (
+                        other.to_owned(),
+                        said(&format!(
+                            "{} casts speed on you.\r\nYou feel fast!",
+                            first(session)
+                        )),
+                    ),
+                ],
+            },
             "st" => me(format!(
                 "\x1b[0;32mName: \x1b[36m{:<25}\x1b[32mLives/CP:\x1b[36m     9/0\r\n{PROMPT}",
                 name(session)
@@ -1748,4 +1789,139 @@ async fn a_follower_lost_in_the_dark_waits_and_the_leader_is_told() {
         "{warned:#?} {:#?}",
         notices_of(&g, LEADER)
     );
+}
+
+/// The leader's casts of speed on the follower so far (C-131).
+fn speeds(g: &Gateway) -> usize {
+    g.lines
+        .iter()
+        .filter(|(s, t)| s == LEADER && t == "sped lauren")
+        .count()
+}
+
+/// A Mage leader with speed ticked for the follower, the party formed (C-131).
+async fn speed_on_lauren(g: &mut Gateway) {
+    g.world.mage = true;
+    g.world.together = true;
+    formed(g).await;
+    g.send(ToClient::BlessingsSave {
+        session: LEADER.into(),
+        spells: Vec::new(),
+        on_others: BTreeMap::from([("sped".to_owned(), vec!["Lauren".to_owned()])]),
+    })
+    .await;
+}
+
+/// Blessings on a party member (C-131): Penny, a Mage, keeps speed on Lauren. She casts
+/// `sped lauren` once Lauren stands with her; Lauren's own session sees "You feel fast!", so
+/// nothing is cast again while that holds; her "You slow down." brings the next cast.
+#[tokio::test(start_paused = true)]
+async fn speed_is_kept_on_a_party_member_from_its_own_lines() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    speed_on_lauren(&mut g).await;
+    g.until(|m| match m {
+        ToGateway::InputLine { session, text } if session == LEADER && text == "sped lauren" => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+    g.play(60).await;
+    assert_eq!(speeds(&g), 1, "{:?}", g.lines);
+    assert!(
+        g.seen
+            .iter()
+            .any(|m| matches!(m, ToGateway::Notice { session: Some(s), text }
+            if s == LEADER && text == "Blessing: casting speed on Lauren")),
+        "{:?}",
+        g.seen
+    );
+    // The panel: speed on Lauren, ticked and on.
+    let on = g.seen.iter().any(|m| {
+        matches!(m, ToGateway::Blessings { characters }
+            if characters.iter().any(|c| c.session == LEADER && c.spells.iter().any(|s|
+                s.short == "sped" && !s.chosen && s.others.iter().any(|o| o.name == "Lauren" && o.chosen && o.on))))
+    });
+    assert!(on, "a blessings message with speed on Lauren: {:?}", g.seen);
+    // Lauren's speed wears off: Penny casts it again.
+    g.tell(FOLLOWER, &said("You slow down.")).await;
+    g.play(30).await;
+    assert_eq!(speeds(&g), 2, "{:?}", g.lines);
+}
+
+/// A member in another room gets no blessing and no word about it (C-131): the party is
+/// saved but not formed, so Lauren is no mate of Penny's.
+#[tokio::test(start_paused = true)]
+async fn a_member_elsewhere_gets_no_blessing() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    g.world.rooms.insert(FOLLOWER.to_owned(), (1, 9));
+    g.logs.get_mut(FOLLOWER).unwrap()[0].text = shown((1, 9));
+    g.world.mage = true;
+    for s in [LEADER, FOLLOWER] {
+        g.bot(s, BotAction::Start).await;
+    }
+    g.send(ToClient::PartySave { party: party() }).await;
+    g.send(ToClient::BlessingsSave {
+        session: LEADER.into(),
+        spells: Vec::new(),
+        on_others: BTreeMap::from([("sped".to_owned(), vec!["Lauren".to_owned()])]),
+    })
+    .await;
+    g.play(60).await;
+    assert_eq!(speeds(&g), 0, "{:?}", g.lines);
+    assert!(
+        !g.seen
+            .iter()
+            .any(|m| matches!(m, ToGateway::Notice { text, .. } if text.contains("speed"))),
+        "{:?}",
+        g.seen
+    );
+}
+
+/// A cast on a member the game refuses ("You attempt to cast speed, but fail.": a roll, or a
+/// copy already on it) is tried again after a round and held after three (C-131).
+#[tokio::test(start_paused = true)]
+async fn a_member_cast_that_keeps_failing_is_held() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    g.world.speed_refusal = Some("You attempt to cast speed, but fail.");
+    speed_on_lauren(&mut g).await;
+    g.play(120).await;
+    assert_eq!(speeds(&g), 3, "{:?}", g.lines);
+    g.play(120).await;
+    assert_eq!(speeds(&g), 3, "held for five minutes: {:?}", g.lines);
+}
+
+/// "You do not see lauren here!" is no failure: the member was not there after all, and the
+/// cast waits for the mates list to catch up, with no hold (C-131).
+#[tokio::test(start_paused = true)]
+async fn a_member_the_game_does_not_see_is_not_held() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    g.world.speed_refusal = Some("You do not see lauren here!");
+    speed_on_lauren(&mut g).await;
+    g.play(60).await;
+    assert!(speeds(&g) > 3, "{:?}", g.lines);
+}
+
+/// A spell the game will not cast on a player drops its member targets, said once (C-131).
+#[tokio::test(start_paused = true)]
+async fn a_spell_the_game_will_not_cast_on_a_player_is_dropped_with_a_notice() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    g.world.speed_refusal = Some("You may not cast that spell on a user!");
+    speed_on_lauren(&mut g).await;
+    g.play(120).await;
+    assert_eq!(speeds(&g), 1, "{:?}", g.lines);
+    let notices: Vec<&String> = g
+        .seen
+        .iter()
+        .filter_map(|m| match m {
+            ToGateway::Notice {
+                session: Some(s),
+                text,
+            } if s == LEADER && text == "Blessing: speed cannot be cast on another player" => {
+                Some(text)
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(notices.len(), 1, "{:?}", g.seen);
 }

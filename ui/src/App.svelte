@@ -673,7 +673,7 @@
             {sessions}
             {blessings}
             attached={brain.attached}
-            onsave={(session, spells) => client.saveBlessings(session, spells)}
+            onsave={(session, spells, onOthers) => client.saveBlessings(session, spells, onOthers)}
           />
         {:else if devPrefs.panel === "accounts"}
           <AccountsPanel

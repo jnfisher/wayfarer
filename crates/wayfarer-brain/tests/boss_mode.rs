@@ -211,6 +211,7 @@ async fn no_blessing_is_cast() {
     g.send(ToClient::BlessingsSave {
         session: ID.into(),
         spells: vec!["bles".into()],
+        on_others: Default::default(),
     })
     .await;
     g.expect("st", caster_status("Cleric", 35, 20));

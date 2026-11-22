@@ -425,6 +425,7 @@ async fn a_ticked_blessing_is_kept_on() {
     g.send(ToClient::BlessingsSave {
         session: ID.into(),
         spells: vec!["bles".into()],
+        on_others: Default::default(),
     })
     .await;
     start_caster(&mut g, "Cleric", &BLESSER_SPELLS, &[], 35, 20).await;
@@ -457,6 +458,7 @@ async fn a_blessing_goes_ahead_of_a_rest_over_the_rest_line() {
     g.send(ToClient::BlessingsSave {
         session: ID.into(),
         spells: vec!["bles".into()],
+        on_others: Default::default(),
     })
     .await;
     start_caster(&mut g, "Cleric", &[(2, 4, "bles", "bless")], &[], 14, 20).await;
@@ -492,6 +494,7 @@ async fn a_blessing_that_keeps_failing_is_held() {
     g.send(ToClient::BlessingsSave {
         session: ID.into(),
         spells: vec!["bles".into()],
+        on_others: Default::default(),
     })
     .await;
     start_caster(&mut g, "Cleric", &BLESSER_SPELLS, &[], 35, 20).await;
@@ -515,6 +518,7 @@ async fn a_failure_after_another_players_prompt_is_tried_again() {
     g.send(ToClient::BlessingsSave {
         session: ID.into(),
         spells: vec!["bles".into()],
+        on_others: Default::default(),
     })
     .await;
     start_caster(&mut g, "Cleric", &BLESSER_SPELLS, &[], 35, 20).await;
@@ -545,6 +549,7 @@ async fn blessed_and_checked(seconds: u32) -> (Game, Run) {
     g.send(ToClient::BlessingsSave {
         session: ID.into(),
         spells: vec!["bles".into()],
+        on_others: Default::default(),
     })
     .await;
     start_caster(&mut g, "Cleric", &BLESSER_SPELLS, &[], 35, 20).await;
@@ -602,6 +607,7 @@ async fn blessed_and_fighting(text: &str) -> (Game, Run) {
     g.send(ToClient::BlessingsSave {
         session: ID.into(),
         spells: vec!["bles".into()],
+        on_others: Default::default(),
     })
     .await;
     start_caster(
@@ -701,6 +707,7 @@ async fn no_blessing_in_a_fight_when_turned_off_or_short_of_mana() {
         g.send(ToClient::BlessingsSave {
             session: ID.into(),
             spells: vec!["bles".into()],
+            on_others: Default::default(),
         })
         .await;
         start_caster(
@@ -968,6 +975,7 @@ async fn paladin_with_the_sword(inventory: &str, tick: bool) -> (Game, Run) {
         g.send(ToClient::BlessingsSave {
             session: ID.into(),
             spells: vec![SWORD.into()],
+            on_others: Default::default(),
         })
         .await;
     }
@@ -1140,6 +1148,7 @@ async fn a_worn_buff_item_puts_back_what_it_took_off() {
     g.send(ToClient::BlessingsSave {
         session: ID.into(),
         spells: vec!["large silvery cross".into()],
+        on_others: Default::default(),
     })
     .await;
     let status = caster_status("Missionary", 35, 20).replacen(

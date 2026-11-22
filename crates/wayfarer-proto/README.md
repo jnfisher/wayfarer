@@ -100,7 +100,7 @@ Client → gateway:
 {"type":"party_join","session":"isolde","party":"party-1"}
 {"type":"party_resync"}
 {"type":"blessings_request"}
-{"type":"blessings_save","session":"isolde","spells":["bles","aura"]}
+{"type":"blessings_save","session":"isolde","spells":["bles","aura"],"on_others":{"bles":["Kasimir"]}}
 ```
 
 Brain → gateway → UIs (the same JSON both ways):
@@ -122,7 +122,7 @@ Brain → gateway → UIs (the same JSON both ways):
 {"type":"settings","session":"kasimir","layer":"character","files":[{"layer":"mine","path":"/data/settings.toml","exists":false},{"layer":"character","path":"/data/characters/kasimir.toml","exists":true}],"rows":[{"key":"health.flee_below_hp","label":"Flee below","help":"Leave the fight and run when HP falls below this.","group":"health","tier":"essential","kind":{"kind":"int","min":0,"max":90},"unit":"%","default":25,"value":35,"source":"character","own":35,"megamud":"HP Run If Below"}]}
 {"type":"found","session":"kasimir","query":"chief","results":[{"kind":"monster","name":"minotaur chieftain","rooms":[{"map":1,"room":1865,"name":"Large Wooden Room","steps":46,"boss":true}],"count":1,"monsters":["minotaur chieftain"]}]}
 {"type":"parties","parties":[{"party":{"id":"party-1","leader":"kasimir","followers":["isolde","brynja"]},"members":[{"session":"kasimir","state":"joined","rank":"front"},{"session":"isolde","state":"joined","rank":"back"},{"session":"brynja","state":"not_joined","detail":"in another room"}]}]}
-{"type":"blessings","characters":[{"session":"isolde","spells":[{"short":"bles","name":"bless","mana":4,"chosen":true,"on":true},{"short":"aura","name":"holy aura","mana":15,"chosen":false,"on":false}]}]}
+{"type":"blessings","characters":[{"session":"isolde","spells":[{"short":"bles","name":"bless","mana":4,"chosen":true,"on":true,"others":[{"name":"Kasimir","chosen":true,"on":false}]},{"short":"aura","name":"holy aura","mana":15,"chosen":false,"on":false,"others":[]}]}]}
 ```
 
 The control messages above are relayed to the brain the same way.

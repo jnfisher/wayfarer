@@ -1,8 +1,10 @@
 <script lang="ts">
   // The drawer's Blessings panel (C-047): one box per character, the lasting spells it knows
   // (bless, barkskin, holy aura), ticked for the bot to keep on, ● when one is on now. The
-  // brain casts them between fights; this only edits the ticks.
-  import { changed, chosenOf, spellLabel, toggleSpell } from "./lib/blessings";
+  // brain casts them between fights; this only edits the ticks. A spell the game lets go on
+  // another player (speed, bless) lists the other characters under it, each ticked for the bot
+  // to keep the spell on that character too, with its own ● (C-131).
+  import { changed, spellLabel, ticksOf, toggleSpell, toggleTarget, type Ticks } from "./lib/blessings";
   import type { Blessings, SessionInfo } from "./proto";
 
   interface Props {
@@ -10,26 +12,33 @@
     /** The brain's last `blessings`; undefined before the first. */
     blessings: Blessings[] | undefined;
     attached: boolean | null;
-    onsave: (session: string, spells: string[]) => void;
+    /** Save a character's ticks: its own spells, and per spell the other characters it keeps it on. */
+    onsave: (session: string, spells: string[], onOthers: Record<string, string[]>) => void;
   }
 
   let { sessions, blessings, attached, onsave }: Props = $props();
 
   /** Ticks being edited, by session. */
-  let drafts = $state<Record<string, string[]>>({});
+  let drafts = $state<Record<string, Ticks>>({});
 
-  function ticks(b: Blessings): string[] {
-    return drafts[b.session] ?? chosenOf(b);
+  function ticks(b: Blessings): Ticks {
+    return drafts[b.session] ?? ticksOf(b);
   }
   function toggle(b: Blessings, short: string) {
-    drafts = { ...drafts, [b.session]: toggleSpell(b, ticks(b), short) };
+    const t = ticks(b);
+    drafts = { ...drafts, [b.session]: { ...t, spells: toggleSpell(b, t.spells, short) } };
+  }
+  function toggleOther(b: Blessings, short: string, name: string) {
+    const t = ticks(b);
+    drafts = { ...drafts, [b.session]: { ...t, others: toggleTarget(b, t.others, short, name) } };
   }
   function forget(session: string) {
     const { [session]: _, ...rest } = drafts;
     drafts = rest;
   }
   function save(b: Blessings) {
-    onsave(b.session, ticks(b));
+    const t = ticks(b);
+    onsave(b.session, t.spells, t.others);
     forget(b.session);
   }
   const name = (id: string) => sessions.find((s) => s.id === id)?.name ?? id;
@@ -51,11 +60,24 @@
             {#each b.spells as s (s.short)}
               <li>
                 <label>
-                  <input type="checkbox" checked={ticks(b).includes(s.short)} onchange={() => toggle(b, s.short)} />
+                  <input type="checkbox" checked={ticks(b).spells.includes(s.short)} onchange={() => toggle(b, s.short)} />
                   {spellLabel(s)}
                 </label>
                 {#if s.on}<span class="on" title="On now">●</span>{/if}
               </li>
+              {#each s.others ?? [] as o (o.name)}
+                <li class="target">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={(ticks(b).others[s.short] ?? []).includes(o.name)}
+                      onchange={() => toggleOther(b, s.short, o.name)}
+                    />
+                    on {o.name}
+                  </label>
+                  {#if o.on}<span class="on" title="On {o.name} now">●</span>{/if}
+                </li>
+              {/each}
             {/each}
           </ul>
         {/if}
@@ -108,6 +130,10 @@
     display: flex;
     justify-content: space-between;
     gap: 1ch;
+  }
+  li.target {
+    padding-left: 3ch;
+    color: var(--dim);
   }
   .on {
     color: var(--vga-lightgreen);

@@ -415,9 +415,13 @@ for any character.
 The `blessings` tab (`Alt+B`) has a box for each character with the lasting spells it knows
 that it can keep on itself or its party (from its `spells` screen: bless, barkskin, holy
 aura), each with its word and mana. Tick the ones its bot keeps on and `save` (`undo` puts the
-ticks back); `●` marks a spell that is on now. The brain keeps the ticks and casts the spells
-between fights ([brain.md](brain.md) "Blessings"). A character whose spells have not been read
-yet, or that knows none, says so.
+ticks back); `●` marks a spell that is on now. A spell the game lets go on another player
+(speed, bless) lists the other characters under it, "on Riley", each ticked on its own: the
+bot casts it on that character when the two stand together in a party, and the `●` beside the
+name says it is on that character now (C-131; [brain.md](brain.md) "Blessings on party
+members"). A Self-only spell (mageshield) and a party spell (holy aura) list none. The brain
+keeps the ticks and casts the spells between fights ([brain.md](brain.md) "Blessings"). A
+character whose spells have not been read yet, or that knows none, says so.
 
 ## The stats
 

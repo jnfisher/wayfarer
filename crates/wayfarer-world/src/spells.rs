@@ -132,6 +132,12 @@ impl BuffDef {
         matches!(self.target, 10 | 13)
     }
 
+    /// Can be cast on another player (C-131): a Self or Single spell (target 2: speed, bless,
+    /// blur). A Self-only spell (1) gets "You may not cast that spell on a user!".
+    pub fn on_another(&self) -> bool {
+        self.target == 2
+    }
+
     /// A buff for tests: `rounds` long at any level.
     pub fn flat(short: &str, name: &str, mana: i64, rounds: i64) -> BuffDef {
         BuffDef {
@@ -536,6 +542,12 @@ impl Spells {
     /// Whether the class casts at all.
     pub fn casts(&self, class: &str) -> bool {
         self.classes.get(class).is_some_and(|&(m, _)| m > 0)
+    }
+
+    /// Every lasting spell of the pack, whatever the class: what another caster may put on a
+    /// character, known by the lines the character sees (C-131).
+    pub fn lasting(&self) -> &[BuffDef] {
+        &self.buffs
     }
 
     /// The lasting spell the `spells` screen listed by this short name and name, if the class

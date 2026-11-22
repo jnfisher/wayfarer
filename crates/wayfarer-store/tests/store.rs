@@ -456,7 +456,12 @@ fn blessings_round_trip_per_session() {
     let path = dir.path().join("store.sqlite");
     let (store, _) = Store::open(&path).unwrap();
     assert!(store.blessings().unwrap().is_empty());
-    let both = vec!["bles".to_owned(), "aura".to_owned()];
+    // A spell kept on another character is a `short name` entry (C-131): the same list.
+    let both = vec![
+        "bles".to_owned(),
+        "aura".to_owned(),
+        "bles penny".to_owned(),
+    ];
     store.save_blessings("lauren", &both, T0).unwrap();
     store
         .save_blessings("faye", &["skin".to_owned()], T0)

@@ -15,6 +15,7 @@
 //! `walk_to`'s `stop_short`, `walking`'s `short_of`). [`Family`] says who may send what.
 //! Adding a variant later bumps nothing; removing or changing one bumps [`PROTOCOL`].
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde::de::DeserializeOwned;
@@ -888,6 +889,22 @@ pub struct BlessingSpell {
     /// The player ticked it: the bot keeps it on.
     pub chosen: bool,
     /// On the character now, as far as the brain knows.
+    pub on: bool,
+    /// The other characters of the gateway the spell can be kept on (C-131), for a spell the
+    /// game lets go on another player (Self or Single: speed, bless); empty otherwise.
+    #[serde(default)]
+    pub others: Vec<BlessingTarget>,
+}
+
+/// Another character a blessing is kept on (C-131).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct BlessingTarget {
+    /// Its first name as the game shows it (`Riley`); the brain sends the cast at it in lower
+    /// case (`sped riley`).
+    pub name: String,
+    /// The player ticked it: the bot keeps the spell on that character.
+    pub chosen: bool,
+    /// On that character now, as far as its own session or the caster knows.
     pub on: bool,
 }
 
@@ -2045,6 +2062,8 @@ pub enum ToClient {
     BlessingsSave {
         session: SessionId,
         spells: Vec<String>,
+        #[serde(default)]
+        on_others: BTreeMap<String, Vec<String>>,
     },
 
     /// To the brain only: a line went to the game, typed by a client or sent by a logon or
@@ -2399,10 +2418,14 @@ pub enum ToGateway {
     /// UI → brain: ask for every character's blessings; the brain answers with `blessings`.
     BlessingsRequest,
     /// UI → brain: the lasting spells (by short name) `session` keeps on itself (C-047),
-    /// replacing the ones it kept. Stored by the brain.
+    /// replacing the ones it kept, and `on_others` the ones it keeps on other characters of the
+    /// gateway (C-131): short name → their first names (`{"sped": ["Riley"]}`). Stored by the
+    /// brain.
     BlessingsSave {
         session: SessionId,
         spells: Vec<String>,
+        #[serde(default)]
+        on_others: BTreeMap<String, Vec<String>>,
     },
 
     /// Brain → UIs: one parsed event, as `wayfarer-parse` produced it, with the output `seq`
@@ -3128,7 +3151,15 @@ impl ToGateway {
             Self::PartyJoin { session, party } => ToClient::PartyJoin { session, party },
             Self::PartyResync { party } => ToClient::PartyResync { party },
             Self::BlessingsRequest => ToClient::BlessingsRequest,
-            Self::BlessingsSave { session, spells } => ToClient::BlessingsSave { session, spells },
+            Self::BlessingsSave {
+                session,
+                spells,
+                on_others,
+            } => ToClient::BlessingsSave {
+                session,
+                spells,
+                on_others,
+            },
             Self::Event {
                 session,
                 seq,

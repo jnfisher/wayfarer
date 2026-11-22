@@ -4,15 +4,24 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import BlessingsPanel from "../src/BlessingsPanel.svelte";
 import type { Blessings, SessionInfo } from "../src/proto";
 
-const sessions = [{ id: "lauren", name: "Lauren" }].map(
-  (s) => ({ ...s, server: "local", state: "realm", last_seq: 0 }) as SessionInfo,
-);
+const sessions = [
+  { id: "lauren", name: "Lauren" },
+  { id: "penny", name: "Penny" },
+].map((s) => ({ ...s, server: "local", state: "realm", last_seq: 0 }) as SessionInfo);
 const blessings: Blessings[] = [
   {
     session: "lauren",
     spells: [
-      { short: "bles", name: "bless", mana: 4, chosen: true, on: true },
-      { short: "aura", name: "holy aura", mana: 15, chosen: false, on: false },
+      {
+        short: "bles",
+        name: "bless",
+        mana: 4,
+        chosen: true,
+        on: true,
+        // Bless goes on another player: Penny is offered, not ticked, and bless is on her.
+        others: [{ name: "Penny", chosen: false, on: true }],
+      },
+      { short: "aura", name: "holy aura", mana: 15, chosen: false, on: false, others: [] },
     ],
   },
 ];
@@ -27,7 +36,18 @@ describe("BlessingsPanel", () => {
     expect(screen.queryByText("save")).toBeNull();
     await fireEvent.click(screen.getByLabelText("holy aura (aura, 15 mana)"));
     await fireEvent.click(screen.getByText("save"));
-    expect(onsave).toHaveBeenCalledWith("lauren", ["bles", "aura"]);
+    expect(onsave).toHaveBeenCalledWith("lauren", ["bles", "aura"], {});
+  });
+
+  it("lists the other characters under a spell that goes on a player, and saves a ticked one (C-131)", async () => {
+    const onsave = vi.fn();
+    render(BlessingsPanel, { sessions, blessings, attached: true, onsave });
+    // Holy aura is a party spell: no targets under it. Bless has Penny, with bless on her now.
+    expect(screen.getAllByRole("checkbox")).toHaveLength(3);
+    expect(screen.getByTitle("On Penny now")).toBeTruthy();
+    await fireEvent.click(screen.getByLabelText("on Penny"));
+    await fireEvent.click(screen.getByText("save"));
+    expect(onsave).toHaveBeenCalledWith("lauren", ["bles"], { bles: ["Penny"] });
   });
 
   it("says so with no brain", () => {

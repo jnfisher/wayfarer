@@ -15,7 +15,15 @@
 //! looks at its inventory, wields or wears the item if it is not in place (the game uses a
 //! weapon only wielded and a worn item only worn), uses it, puts back what it took the place
 //! of, and looks again.
+//!
+//! A blessing on another of our characters (C-131): a Self or Single spell ticked for a party
+//! member is cast at it by name (`sped riley`) when the member stands in the room and its own
+//! session does not believe the spell on it. Every session watches the lines of every lasting
+//! spell for its own character ("You feel fast!", "You slow down.", the status screen) and
+//! says what is on it ([`Bless::buffs_on`]), which the party coordinator carries to the caster
+//! as its mate's `buffs`.
 
+use std::collections::BTreeSet;
 use std::time::Duration;
 
 use tokio::time::Instant;
@@ -34,9 +42,50 @@ const HOLD: Duration = Duration::from_secs(300);
 /// The status screen's spell list for a sysop with debug on, in place of the spells' lines.
 const SPELLS_LISTED: &str = "You have the following spell cast upon you:";
 
+/// Whom a kept spell is for (C-131).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Target {
+    /// The caster itself, or its party for a party spell: no target word.
+    Me,
+    /// Another of our characters, by the first name the game takes (`riley`).
+    Member(String),
+}
+
+impl Target {
+    /// The name as it is said: `Riley`.
+    fn shown(name: &str) -> String {
+        let mut c = name.chars();
+        match c.next() {
+            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+            None => String::new(),
+        }
+    }
+}
+
+/// How a cast in flight came out, from the lines before its prompt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CastResult {
+    Pending,
+    /// "You attempt to cast speed, but fail.", no mana, or one already this round.
+    Failed,
+    /// "You do not see riley here!": the member was not there after all.
+    Missing,
+    /// "You may not cast that spell on a user!": the spell cannot go on a player.
+    NotOnPlayer,
+}
+
+#[derive(Debug, Clone)]
+struct Casting {
+    short: String,
+    target: Target,
+    at: Instant,
+    result: CastResult,
+}
+
 #[derive(Debug, Clone)]
 struct Kept {
     def: BuffDef,
+    target: Target,
     /// On until then, as far as the bot knows.
     on_until: Option<Instant>,
     /// Not cast again before this (a failure, or held).
@@ -82,12 +131,21 @@ struct Swap {
 #[derive(Debug, Default)]
 pub(crate) struct Bless {
     kept: Vec<Kept>,
-    /// The spell being cast (its short name), when it went, and whether the game said it
-    /// failed.
-    casting: Option<(String, Instant, bool)>,
-    /// The last cast taken as on (its short name, when it went), for a failure line that comes
-    /// after the prompt that ended it.
-    settled: Option<(String, Instant)>,
+    /// The cast in flight: the spell, whom it is for, when it went and what the game said.
+    casting: Option<Casting>,
+    /// The last cast taken as on (its spell, target and when it went), for a failure line that
+    /// comes after the prompt that ended it.
+    settled: Option<(String, Target, Instant)>,
+    /// Every lasting spell the character could carry, for the lines it sees (C-131).
+    watch: Vec<BuffDef>,
+    /// The lasting spells (short names) believed on the character from its own lines and
+    /// status screen, whoever cast them (C-131).
+    seen: BTreeSet<String>,
+    /// Spells the game would not cast on a player ("You may not cast that spell on a user!"):
+    /// their member targets are dropped for the session.
+    refused: BTreeSet<String>,
+    /// Something to say once, at the next turn.
+    notice: Option<String>,
     /// The character's level when it last cast: how long a spell lasts.
     level: i64,
     /// How often the status screen is looked at (`spells.bless_check_seconds`); zero: never.
@@ -112,26 +170,57 @@ fn fighting(v: &View) -> bool {
 }
 
 impl Bless {
-    /// The spells to keep on from now on; what is believed of those kept before stays.
-    pub fn set(&mut self, defs: Vec<BuffDef>) {
+    /// The spells to keep on from now on, each with whom it is for; what is believed of those
+    /// kept before stays. A spell the game refused on a player keeps no member targets.
+    pub fn set(&mut self, defs: Vec<(BuffDef, Target)>) {
         let old = std::mem::take(&mut self.kept);
         self.kept = defs
             .into_iter()
-            .map(|def| {
+            .filter(|(def, target)| *target == Target::Me || !self.refused.contains(&def.short))
+            .map(|(def, target)| {
                 old.iter()
-                    .find(|k| k.def.short == def.short)
+                    .find(|k| k.def.short == def.short && k.target == target)
                     .map(|k| Kept {
                         def: def.clone(),
                         ..k.clone()
                     })
                     .unwrap_or(Kept {
                         def,
+                        target,
                         on_until: None,
                         retry_at: None,
                         fails: 0,
                     })
             })
             .collect();
+    }
+
+    /// The lasting spells whose lines the character's own session reads for what is on it
+    /// (C-131): every lasting spell of the pack, whatever the class.
+    pub fn watch(&mut self, defs: Vec<BuffDef>) {
+        self.watch = defs;
+    }
+
+    /// The lasting spells (short names) believed on the character from the lines it saw and
+    /// its status screen, whoever cast them (C-131).
+    pub fn buffs_on(&self) -> &BTreeSet<String> {
+        &self.seen
+    }
+
+    /// Whether the spell `short` kept on the member `name` is believed on by this caster's
+    /// own casts (C-131); what the member's session sees is the surer word.
+    pub fn is_on_member(&self, short: &str, name: &str, now: Instant) -> bool {
+        self.kept.iter().any(|k| {
+            k.def.short == short
+                && k.target == Target::Member(name.to_owned())
+                && k.on_until.is_some_and(|t| now < t)
+        })
+    }
+
+    fn find(&mut self, short: &str, target: &Target) -> Option<&mut Kept> {
+        self.kept
+            .iter_mut()
+            .find(|k| k.def.short == short && k.target == *target)
     }
 
     /// The regen tier believed on at `now` (1.20), what it adds to mana regeneration.
@@ -143,11 +232,11 @@ impl Bless {
             .max()
     }
 
-    /// Whether the spell `short` is believed on at `now`.
+    /// Whether the spell `short` is believed on the character at `now`.
     pub fn is_on(&self, short: &str, now: Instant) -> bool {
-        self.kept
-            .iter()
-            .any(|k| k.def.short == short && k.on_until.is_some_and(|t| now < t))
+        self.kept.iter().any(|k| {
+            k.def.short == short && k.target == Target::Me && k.on_until.is_some_and(|t| now < t)
+        })
     }
 
     /// The first spell to cast now, if any: off, not held, and paid for without taking the
@@ -162,6 +251,16 @@ impl Bless {
                 && k.retry_at.is_none_or(|t| v.now >= t)
                 && mana >= k.def.mana
                 && mana - k.def.mana >= line
+                && match &k.target {
+                    Target::Me => true,
+                    // A member: here with the character, and its own session not seeing the
+                    // spell on it (C-131).
+                    Target::Member(name) => v
+                        .party
+                        .mates()
+                        .iter()
+                        .any(|m| m.name == *name && !m.buffs.contains(&k.def.short)),
+                }
         })
     }
 
@@ -208,17 +307,36 @@ impl Bless {
             let Some(felt) = k.def.felt.as_deref() else {
                 continue;
             };
-            if k.on_until.is_some_and(|t| now < t) && !seen.iter().any(|l| l == felt) {
+            if k.target == Target::Me
+                && k.on_until.is_some_and(|t| now < t)
+                && !seen.iter().any(|l| l == felt)
+            {
                 k.on_until = None;
                 self.unseen.push(k.def.short.clone());
             }
         }
+        // What is on the character, whoever cast it (C-131): the screen is the whole list.
+        for def in &self.watch {
+            if let Some(felt) = def.felt.as_deref() {
+                if seen.iter().any(|l| l == felt) {
+                    self.seen.insert(def.short.clone());
+                } else {
+                    self.seen.remove(&def.short);
+                }
+            }
+        }
     }
 
-    fn turn_on(&mut self, short: &str, at: Instant) {
+    fn turn_on(&mut self, short: &str, target: &Target, at: Instant) {
         let level = self.level.max(1);
-        if let Some(k) = self.kept.iter_mut().find(|k| k.def.short == short) {
-            let rounds = k.def.rounds(level);
+        if let Some(k) = self.find(short, target) {
+            // On a member whose own session reads the spell's line, the member's word decides
+            // (C-131): the caster's belief only covers the rounds before that word arrives.
+            let rounds = if matches!(target, Target::Member(_)) && k.def.felt.is_some() {
+                2
+            } else {
+                k.def.rounds(level)
+            };
             k.on_until = Some(at + ROUND * u32::try_from(rounds.max(1)).unwrap_or(1));
             k.fails = 0;
             k.retry_at = None;
@@ -226,9 +344,10 @@ impl Bless {
         self.checked_at = Some(at);
     }
 
-    /// The cast of `short` that went at `at` failed: tried again after a round, or held.
-    fn failed(&mut self, short: &str, at: Instant) {
-        if let Some(k) = self.kept.iter_mut().find(|k| k.def.short == short) {
+    /// The cast of `short` for `target` that went at `at` failed: tried again after a round,
+    /// or held.
+    fn failed(&mut self, short: &str, target: &Target, at: Instant) {
+        if let Some(k) = self.find(short, target) {
             k.fails += 1;
             k.on_until = None;
             k.retry_at = Some(if k.fails >= FAILS {
@@ -239,12 +358,35 @@ impl Bless {
             });
         }
     }
+
+    /// The member was not there for the cast that went at `at` (C-131): not a failure, looked
+    /// at again after a round, by which time the mates list has caught up.
+    fn away(&mut self, short: &str, target: &Target, at: Instant) {
+        if let Some(k) = self.find(short, target) {
+            k.on_until = None;
+            k.retry_at = Some(at + ROUND);
+        }
+    }
+
+    /// The game would not cast `short` on a player (C-131): its member targets are dropped for
+    /// the session, said once.
+    fn not_on_players(&mut self, short: &str) {
+        let name = self
+            .kept
+            .iter()
+            .find(|k| k.def.short == short)
+            .map_or_else(|| short.to_owned(), |k| k.def.name.clone());
+        self.kept
+            .retain(|k| k.def.short != short || k.target == Target::Me);
+        self.refused.insert(short.to_owned());
+        self.notice = Some(format!("Blessing: {name} cannot be cast on another player"));
+    }
 }
 
 impl Bless {
     /// Leaves the item `short` alone for [`HOLD`]: it cannot be put in place now.
     fn hold(&mut self, short: &str, now: Instant) {
-        if let Some(k) = self.kept.iter_mut().find(|k| k.def.short == short) {
+        if let Some(k) = self.find(short, &Target::Me) {
             k.fails = 0;
             k.on_until = None;
             k.retry_at = Some(now + HOLD);
@@ -269,7 +411,7 @@ impl Bless {
                 let Some(it) = carried(&name) else {
                     let short = swap.short.clone();
                     self.swap = None;
-                    self.failed(&short, v.now);
+                    self.failed(&short, &Target::Me, v.now);
                     return Some(Step::wait(format!(
                         "Blessing: the {name} is not carried; trying again later"
                     )));
@@ -379,7 +521,7 @@ impl Bless {
                 if refused {
                     // Nothing used: what was taken off, if anything, goes back.
                     swap.stage = Stage::PutBack;
-                    self.failed(&short, sent);
+                    self.failed(&short, &Target::Me, sent);
                 } else {
                     swap.stage = Stage::Use;
                 }
@@ -391,9 +533,9 @@ impl Bless {
                     self.swap = None;
                 }
                 if refused {
-                    self.failed(&short, sent);
+                    self.failed(&short, &Target::Me, sent);
                 } else {
-                    self.turn_on(&short, sent);
+                    self.turn_on(&short, &Target::Me, sent);
                 }
             }
             Stage::PutBack => swap.stage = Stage::LookAgain,
@@ -413,11 +555,19 @@ impl Mode for Bless {
         {
             return Some(format!("using the {}", swap.item.name));
         }
+        if self.notice.is_some() {
+            return Some("saying why a blessing was dropped".to_owned());
+        }
         if fighting && !v.settings.bool("spells.bless_in_combat") {
             return None;
         }
         if let Some(k) = self.due(v) {
-            return Some(format!("{} is off", k.def.name));
+            return Some(match &k.target {
+                Target::Me => format!("{} is off", k.def.name),
+                Target::Member(name) => {
+                    format!("{} is off {}", k.def.name, Target::shown(name))
+                }
+            });
         }
         // The status screen only between fights.
         (!fighting && self.check_at(v.now).is_some_and(|t| v.now >= t))
@@ -425,6 +575,9 @@ impl Mode for Bless {
     }
 
     fn step(&mut self, v: &View) -> Step {
+        if let Some(notice) = self.notice.take() {
+            return Step::wait(notice);
+        }
         if !fighting(v)
             && let Some(step) = self.swap_step(v)
         {
@@ -460,18 +613,36 @@ impl Mode for Bless {
             }
             return Step::wait("Blessing: nothing to cast");
         };
-        let (short, name) = (k.def.short.clone(), k.def.name.clone());
-        let narration = if self.unseen.contains(&short) {
-            format!("Blessing: {name} is not on the status screen; casting it")
-        } else {
-            format!("Blessing: casting {name}")
+        let (short, name, target) = (k.def.short.clone(), k.def.name.clone(), k.target.clone());
+        // A spell on the caster or the party takes no target word; one on a member takes its
+        // name (C-131): `sped riley`.
+        let (command, narration, doing) = match &target {
+            Target::Me if self.unseen.contains(&short) => (
+                short.clone(),
+                format!("Blessing: {name} is not on the status screen; casting it"),
+                format!("casting {name}"),
+            ),
+            Target::Me => (
+                short.clone(),
+                format!("Blessing: casting {name}"),
+                format!("casting {name}"),
+            ),
+            Target::Member(who) => (
+                format!("{short} {who}"),
+                format!("Blessing: casting {name} on {}", Target::shown(who)),
+                format!("casting {name} on {}", Target::shown(who)),
+            ),
         };
         self.unseen.clear();
-        self.casting = Some((short.clone(), v.now, false));
+        self.casting = Some(Casting {
+            short,
+            target,
+            at: v.now,
+            result: CastResult::Pending,
+        });
         self.settled = None;
         self.level = v.level;
-        // A spell on the caster or the party takes no target word.
-        Step::send(Action::new(short, Expect::Prompt), narration).doing(format!("casting {name}"))
+        Step::send(Action::new(command, Expect::Prompt), narration).doing(doing)
     }
 
     fn on_event(&mut self, ev: &GameEvent, now: Instant) {
@@ -500,27 +671,44 @@ impl Mode for Bless {
             GameEvent::CastFailed { spell } if self.casting.is_none() => {
                 // The cast taken as on, failed after all: by name, so another spell's failure
                 // (Fight's) is not taken for it.
-                if let Some((short, at)) = self.settled.take() {
+                if let Some((short, target, at)) = self.settled.take() {
                     let named = self
                         .kept
                         .iter()
                         .any(|k| k.def.short == short && k.def.name.eq_ignore_ascii_case(spell));
                     if named && now < at + ROUND {
-                        self.failed(&short, at);
+                        self.failed(&short, &target, at);
                     } else {
-                        self.settled = Some((short, at));
+                        self.settled = Some((short, target, at));
                     }
                 }
             }
             GameEvent::CastFailed { .. } | GameEvent::NoMana | GameEvent::AlreadyCast => {
-                if let Some((_, _, failed)) = &mut self.casting {
-                    *failed = true;
+                if let Some(c) = &mut self.casting {
+                    c.result = CastResult::Failed;
+                }
+            }
+            // The member the cast was for is not here (C-131).
+            GameEvent::YouDoNotSee { .. } => {
+                if let Some(c) = &mut self.casting
+                    && matches!(c.target, Target::Member(_))
+                {
+                    c.result = CastResult::Missing;
+                }
+            }
+            // "You may not cast that spell on a user!" (C-131).
+            GameEvent::Other(e) if e.name == "bad_target" => {
+                if let Some(c) = &mut self.casting
+                    && matches!(c.target, Target::Member(_))
+                {
+                    c.result = CastResult::NotOnPlayer;
                 }
             }
             GameEvent::YouKilled => {
                 for k in &mut self.kept {
                     k.on_until = None;
                 }
+                self.seen.clear();
             }
             // 1.20's regen line (C-067): its lines are typed, by family. Its end: the tier of
             // that family is off; during a cast of it, the cast only removed the old tier.
@@ -529,7 +717,7 @@ impl Mode for Bless {
                 kind,
                 who: None,
             } if kind == "ends" => {
-                let casting = self.casting.as_ref().map(|(short, _, _)| short.clone());
+                let casting = self.casting.as_ref().map(|c| c.short.clone());
                 for k in &mut self.kept {
                     if k.def.regen.is_some_and(|r| r.family.as_str() == family) {
                         k.on_until = None;
@@ -576,7 +764,7 @@ impl Mode for Bless {
                     screen.push(line.to_owned());
                 }
                 for k in &mut self.kept {
-                    if k.def.wear_off.as_deref() == Some(line) {
+                    if k.target == Target::Me && k.def.wear_off.as_deref() == Some(line) {
                         k.on_until = None;
                         k.retry_at = None;
                         k.fails = 0;
@@ -587,11 +775,22 @@ impl Mode for Bless {
                     .kept
                     .iter()
                     .find(|k| {
-                        k.def.felt.as_deref() == Some(line) && k.on_until.is_none_or(|t| now >= t)
+                        k.target == Target::Me
+                            && k.def.felt.as_deref() == Some(line)
+                            && k.on_until.is_none_or(|t| now >= t)
                     })
                     .map(|k| k.def.short.clone())
                 {
-                    self.turn_on(&short, now);
+                    self.turn_on(&short, &Target::Me, now);
+                }
+                // What is on the character, whoever cast it (C-131), by every lasting spell's
+                // lines; wind of haste and speed share "You feel fast!", so both count.
+                for def in &self.watch {
+                    if def.wear_off.as_deref() == Some(line) {
+                        self.seen.remove(&def.short);
+                    } else if def.felt.as_deref() == Some(line) {
+                        self.seen.insert(def.short.clone());
+                    }
                 }
             }
         }
@@ -602,25 +801,36 @@ impl Mode for Bless {
             self.swap_outcome(&outcome);
             return;
         }
-        let Some((short, at, failed)) = self.casting.take() else {
+        let Some(Casting {
+            short,
+            target,
+            at,
+            result,
+        }) = self.casting.take()
+        else {
             return;
         };
+        let failed = result == CastResult::Failed;
         if std::mem::take(&mut self.cleared) && !failed {
             // The old tier is gone; the new one goes on with a second cast, now.
-            if let Some(k) = self.kept.iter_mut().find(|k| k.def.short == short) {
+            if let Some(k) = self.find(&short, &target) {
                 k.on_until = None;
                 k.retry_at = None;
             }
+        } else if result == CastResult::Missing {
+            self.away(&short, &target, at);
+        } else if result == CastResult::NotOnPlayer {
+            self.not_on_players(&short);
         } else if failed
             || matches!(
                 outcome,
                 Outcome::TimedOut | Outcome::Refused(crate::executor::Refused::Afraid)
             )
         {
-            self.failed(&short, at);
+            self.failed(&short, &target, at);
         } else {
-            self.turn_on(&short, at);
-            self.settled = Some((short, at));
+            self.turn_on(&short, &target, at);
+            self.settled = Some((short, target, at));
         }
     }
 }
