@@ -57,6 +57,11 @@ pub struct Event {
     /// The index of the line in the session's text, counting from 0 (lines as
     /// `patterns.raw_to_lines` cuts them).
     pub line_no: u64,
+    /// The colours (SGR parameters, `1;35`) in `line`, each at the byte offset of the first
+    /// character it coloured; only for `room_also_here` (C-129: a name's colour tells its
+    /// alignment), empty otherwise.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub colours: Vec<(usize, String)>,
 }
 
 impl Event {

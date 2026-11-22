@@ -235,12 +235,17 @@ impl Traveller {
 
     /// The odds, in percent a try, of opening a locked door or gate whatever its state: the
     /// better of a bash, `strength + exitpar2`, and a pick, `picklocks + exitpar2` with
-    /// picklocks above 0 (`kb/navigation.md` "Door / Gate"), from 0 to 100. `None` for an exit
-    /// that is not a Door or Gate (a Key exit is opened with its key), or with the strength
-    /// unknown.
+    /// picklocks above 0 (`kb/navigation.md` "Door / Gate"), from 0 to 100; 100 for a keyed
+    /// door (`exitpar4` its key, C-130) whose key the traveller holds. `None` for an exit that
+    /// is not a Door or Gate (a Key exit is opened with its key), or with the strength unknown.
     pub fn lock_odds(&self, e: &Edge) -> Option<u32> {
         if !matches!(e.kind, ExitType::Door | ExitType::Gate) {
             return None;
+        }
+        if let Gate::Key { item } = e.gate
+            && self.keys.contains(&item)
+        {
+            return Some(100);
         }
         let bash = self.strength? + e.params[1];
         let pick = self
@@ -260,9 +265,12 @@ impl Traveller {
 
     /// Whether this traveller may take the exit.
     pub fn can_take(&self, e: &Edge) -> bool {
+        // A keyed door (C-130) is open to a traveller allowed every key, as a Key exit is,
+        // whatever its bash odds; the odds still price it.
+        let key_allowed = matches!(e.gate, Gate::Key { .. }) && self.allows(Category::Key);
         if self.blocked.contains(&(e.from, e.dir))
             || (self.no_doors && e.door.is_some())
-            || (self.door_odds(e) == Some(0) && e.lever.is_empty())
+            || (self.door_odds(e) == Some(0) && e.lever.is_empty() && !key_allowed)
         {
             return false;
         }
@@ -278,7 +286,14 @@ impl Traveller {
             Gate::Toll { .. } => self.allows(Category::Toll),
             Gate::Spell => self.allows(Category::Spell),
             Gate::Cast { .. } => self.allows(Category::Cast),
-            Gate::Key { item } => self.allows(Category::Key) || self.keys.contains(&item),
+            // A keyed door or gate (C-130) is also bashed or picked open as any locked one,
+            // when the odds allow (`door_odds`: `None` is not locked, or the strength unknown).
+            Gate::Key { item } => {
+                self.allows(Category::Key)
+                    || self.keys.contains(&item)
+                    || (matches!(e.kind, ExitType::Door | ExitType::Gate)
+                        && self.door_odds(e).is_none_or(|odds| odds > 0))
+            }
             Gate::Ability { .. } => self.allows(Category::Ability),
             Gate::Unnamed => false,
         };

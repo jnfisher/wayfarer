@@ -114,6 +114,12 @@ pub(crate) fn why_unreachable(
         "door"
     };
     if t.door_odds(&e) == Some(0) && e.lever.is_empty() {
+        // A keyed door (C-130) without its key, and no strength to bash it.
+        if let Some(need) = gate_need(&e, keys)
+            && matches!(e.gate, wayfarer_world::Gate::Key { .. })
+        {
+            return format!("the {door} {dir} of {at} {need} and cannot be bashed open");
+        }
         format!("the {door} {dir} of {at} cannot be opened")
     } else if e.door.is_some() && t.blocked.contains(&(e.from, e.dir)) {
         format!("the {door} {dir} of {at} would not open")
@@ -784,7 +790,7 @@ impl Mode for Task {
                 .presence
                 .here
                 .iter()
-                .any(|n| hostile(&v.atlas.monsters, n));
+                .any(|n| hostile(&v.atlas.monsters, n, v.presence.hint(n)));
             if lingering && v.now < *quiet_from + self.stop_quiet {
                 return Step::wait(format!(
                     "Stop {}: waiting for it to go quiet",

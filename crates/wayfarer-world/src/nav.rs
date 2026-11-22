@@ -667,6 +667,9 @@ impl RoomGraph {
                     ExitType::Spell => Gate::Spell,
                     ExitType::Cast => Gate::Cast { spell: p[0] },
                     ExitType::Key => Gate::Key { item: p[0] },
+                    // A keyed door (C-130): `exitpar4` names the key that turns a Door or
+                    // Gate (`use <key> <dir>`, `kb/navigation.md` "Door / Gate"); 0 is none.
+                    ExitType::Door | ExitType::Gate if p[3] != 0 => Gate::Key { item: p[3] },
                     ExitType::Ability => Gate::Ability {
                         ability: p[0],
                         min: p[1],

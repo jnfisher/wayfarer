@@ -157,6 +157,33 @@ pub fn parse_carrying(items: &str) -> (BTreeMap<String, u64>, Vec<Carried>) {
     (coins, out)
 }
 
+/// What the colour of a name in `Also here:` says of the monster's alignment (C-129). The
+/// game colours good and neutral names cyan (`ESC[0;36m`), lawful ones grey (`ESC[0;37m`:
+/// lawful good for a viewer under 40 evil points, lawful evil for an outlaw) and every evil
+/// one in the player's "here names" palette colour, which may be no colour of its own at all
+/// (`display/room.rs` `monster_colour`, mirroring `LJNDISP.C`; `kb/combat.md`). So cyan and
+/// grey are the game's, and anything else, or nothing, is evil.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NameColour {
+    GoodOrNeutral,
+    Lawful,
+    Evil,
+}
+
+/// The alignment an SGR's parameters (`1;35`) say: bright anything is the names colour (evil);
+/// plain cyan good or neutral; plain grey (white) lawful; else evil.
+pub fn name_colour(params: &str) -> NameColour {
+    let codes: Vec<u32> = params.split(';').filter_map(|c| c.parse().ok()).collect();
+    if codes.contains(&1) {
+        return NameColour::Evil;
+    }
+    match codes.iter().rev().find(|c| (30..=37).contains(*c)) {
+        Some(36) => NameColour::GoodOrNeutral,
+        Some(37) => NameColour::Lawful,
+        _ => NameColour::Evil,
+    }
+}
+
 /// One name of an `Also here:` list.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Present {
@@ -165,32 +192,49 @@ pub struct Present {
     pub player: bool,
     /// `Hidden`, `Charmed`, `star` (the outlaw/evil mark).
     pub flags: Vec<String>,
+    /// What its colour says of its alignment, when the line's colours are known (C-129).
+    pub colour: Option<NameColour>,
 }
 
 /// `parse_also_here`: the `Also here:` list to names (LJNDISP.C:2576,2723).
 pub fn parse_also_here(who: &str) -> Vec<Present> {
-    who.split(", ")
-        .map(|part| {
-            let mut part = part.trim();
-            let mut flags = Vec::new();
-            for (suffix, flag) in [
-                ("(Hidden)", "Hidden"),
-                (" (Charmed)", "Charmed"),
-                ("*", "star"),
-            ] {
-                if let Some(p) = part.strip_suffix(suffix) {
-                    flags.push(flag.to_owned());
-                    part = p;
-                }
+    parse_also_here_coloured(who, &[])
+}
+
+/// [`parse_also_here`] with the list's colours, `(byte offset into who, SGR parameters)` as
+/// [`crate::Event::colours`] has them for the line: each name takes the colour in force at
+/// its first character. With no colours, no name has one.
+pub fn parse_also_here_coloured(who: &str, colours: &[(usize, String)]) -> Vec<Present> {
+    let mut out = Vec::new();
+    let mut at = 0;
+    for part in who.split(", ") {
+        let start = at + (part.len() - part.trim_start().len());
+        at += part.len() + 2;
+        let mut part = part.trim();
+        let mut flags = Vec::new();
+        for (suffix, flag) in [
+            ("(Hidden)", "Hidden"),
+            (" (Charmed)", "Charmed"),
+            ("*", "star"),
+        ] {
+            if let Some(p) = part.strip_suffix(suffix) {
+                flags.push(flag.to_owned());
+                part = p;
             }
-            let player = part.chars().next().is_some_and(char::is_uppercase) && !part.contains(' ');
-            Present {
-                name: part.to_owned(),
-                player,
-                flags,
-            }
-        })
-        .collect()
+        }
+        let player = part.chars().next().is_some_and(char::is_uppercase) && !part.contains(' ');
+        let colour = colours
+            .iter()
+            .rfind(|(o, _)| *o <= start)
+            .map(|(_, p)| name_colour(p));
+        out.push(Present {
+            name: part.to_owned(),
+            player,
+            flags,
+            colour,
+        });
+    }
+    out
 }
 
 #[cfg(test)]
@@ -318,7 +362,8 @@ mod tests {
             Present {
                 name: "Thornwyn".into(),
                 player: true,
-                flags: vec!["star".into()]
+                flags: vec!["star".into()],
+                colour: None,
             }
         );
         assert!(!p[1].player);
@@ -328,8 +373,43 @@ mod tests {
             Present {
                 name: "kobold".into(),
                 player: false,
-                flags: vec!["Charmed".into()]
+                flags: vec!["Charmed".into()],
+                colour: None,
             }
         );
+    }
+
+    /// C-129: Asa's line (silver-mirror, 2026-11-22), the names' colours as the game sends
+    /// them: the label's magenta, the lunatic's bright magenta, a reset after it.
+    #[test]
+    fn also_here_names_carry_their_colour() {
+        let who = "crazed lunatic";
+        let p = parse_also_here_coloured(who, &[(0, "1;35".into()), (14, "0".into())]);
+        assert_eq!(p[0].colour, Some(NameColour::Evil));
+        // Cyan is good or neutral, grey lawful; the colour in force at the name counts, so a
+        // second name after a reset and a plain comma is evil.
+        let who = "unicorn, Sheriff Lionheart, giant rat";
+        let colours = [
+            (0, "0;36".into()),
+            (7, "0".into()),
+            (9, "0;37".into()),
+            (26, "0".into()),
+        ];
+        let p = parse_also_here_coloured(who, &colours);
+        assert_eq!(
+            p.iter().map(|w| w.colour).collect::<Vec<_>>(),
+            [
+                Some(NameColour::GoodOrNeutral),
+                Some(NameColour::Lawful),
+                Some(NameColour::Evil)
+            ]
+        );
+        // A palette with no names colour of its own: the label's colour runs on, evil.
+        let p = parse_also_here_coloured("giant rat", &[(0, "0;32".into())]);
+        assert_eq!(p[0].colour, Some(NameColour::Evil));
+        assert_eq!(name_colour("1;36"), NameColour::Evil);
+        assert_eq!(name_colour("0;36"), NameColour::GoodOrNeutral);
+        assert_eq!(name_colour("0;37;40"), NameColour::Lawful);
+        assert_eq!(name_colour("0"), NameColour::Evil);
     }
 }

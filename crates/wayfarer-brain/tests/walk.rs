@@ -442,8 +442,11 @@ async fn a_locked_door_beyond_the_characters_strength_is_given_up_without_a_bash
     g.output(&strength(50)).await;
     g.expect("e", says("The door is closed!"));
     g.walk_to(BURNING_VALLEY).await;
+    // Its key (C-130: the slimey spiked key in `exitpar4`) is named, not held.
     let said = g
-        .walk_narrated("The door east is beyond my strength (needs more than 999)")
+        .walk_narrated(
+            "The door east needs the slimey spiked key (a bash needs more than 999 strength)",
+        )
         .await;
     assert_eq!(said[0], "Walking to Burning Valley: one step, one door");
     let stop = g.walk_narration().await;

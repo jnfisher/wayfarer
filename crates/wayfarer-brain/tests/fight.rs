@@ -5,7 +5,7 @@
 
 mod game;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use game::arena::*;
 use game::*;
@@ -13,6 +13,7 @@ use wayfarer_brain::ATTACK_TRIES;
 use wayfarer_brain::executor::{ATTACK_REFUSALS, Action, Executor, Expect, Outcome, Refused};
 use wayfarer_brain::policy::{self, RestAt};
 use wayfarer_parse::Parser;
+use wayfarer_parse::helpers::NameColour;
 use wayfarer_parse::typed::GameEvent;
 use wayfarer_proto::{BotAction, BotMode, BotState};
 
@@ -1068,26 +1069,59 @@ fn no_rest_is_walked_into_a_players_house() {
 #[test]
 fn targets_are_hostile_attackers_first_and_never_skipped() {
     let ms = &atlas().monsters;
-    assert!(policy::hostile(ms, "large giant rat"));
-    assert!(!policy::hostile(ms, "healer"), "an NPC");
-    assert!(!policy::hostile(ms, "Thornwyn"), "no such monster");
+    assert!(policy::hostile(ms, "large giant rat", None));
+    assert!(!policy::hostile(ms, "healer", None), "an NPC");
+    assert!(!policy::hostile(ms, "Thornwyn", None), "no such monster");
+    // C-129: a name two records share, one Neutral (the slums' crazed lunatic) and one Neutral
+    // Evil (the Warped Asylum's), is settled by the colour the room view gave it.
+    assert!(policy::ambiguous(ms, "crazed lunatic"));
+    assert!(!policy::ambiguous(ms, "large giant rat"));
+    assert!(!policy::hostile(ms, "crazed lunatic", None));
+    assert!(policy::hostile(
+        ms,
+        "crazed lunatic",
+        Some(NameColour::Evil)
+    ));
+    assert!(!policy::hostile(
+        ms,
+        "crazed lunatic",
+        Some(NameColour::GoodOrNeutral)
+    ));
+    // A colour no record explains falls back to every record.
+    assert!(!policy::hostile(
+        ms,
+        "crazed lunatic",
+        Some(NameColour::Lawful)
+    ));
+    // One record, evil: a colour changes nothing.
+    assert!(policy::hostile(
+        ms,
+        "large giant rat",
+        Some(NameColour::Evil)
+    ));
+    assert!(policy::hostile(
+        ms,
+        "large giant rat",
+        Some(NameColour::GoodOrNeutral)
+    ));
+    let colours = BTreeMap::new();
     let here: Vec<String> = ["healer", "large giant rat", "fat giant rat"]
         .map(String::from)
         .to_vec();
     let none = BTreeSet::new();
     let rules = wayfarer_world::MonsterRules::defaults();
     assert_eq!(
-        policy::target(ms, &rules, &here, &[], &none),
+        policy::target(ms, &rules, &here, &[], &none, &colours),
         Some("large giant rat")
     );
     let attackers = vec!["fat giant rat".to_owned()];
     assert_eq!(
-        policy::target(ms, &rules, &here, &attackers, &none),
+        policy::target(ms, &rules, &here, &attackers, &none, &colours),
         Some("fat giant rat")
     );
     let skip: BTreeSet<String> = ["fat giant rat".to_owned()].into();
     assert_eq!(
-        policy::target(ms, &rules, &here, &attackers, &skip),
+        policy::target(ms, &rules, &here, &attackers, &skip, &colours),
         Some("large giant rat")
     );
     assert!(policy::is_one_of(
@@ -1367,4 +1401,74 @@ async fn a_move_lost_five_times_is_given_up_as_held() {
             .any(|m| matches!(m, ToGateway::Notice { text, .. } if text.contains("refused"))),
         "the exit is not marked refused"
     );
+}
+
+/// C-129: the Warped Asylum's crazed lunatic (Neutral Evil, 275 exp) shares its name with the
+/// slums' (Neutral). The room view colours the name as the game does: bright magenta, the names
+/// colour, is the evil one, and the bot fights it; cyan is good or neutral, and it does not; a
+/// view with no colours at all cannot tell, and the bot says so once.
+const WARPED_ASYLUM: Key = (9, 1183);
+
+fn asylum(name_sgr: Option<&str>, hp: i32) -> String {
+    let text = room(WARPED_ASYLUM);
+    let title = "\x1b[1;36mWarped Asylum\r\n";
+    let at = text.find(title).unwrap() + title.len();
+    let also = match name_sgr {
+        Some(sgr) => {
+            format!("\x1b[0;35mAlso here: \x1b[{sgr}mcrazed lunatic\x1b[0m\x1b[0;35m.\r\n")
+        }
+        None => "Also here: crazed lunatic.\r\n".to_owned(),
+    };
+    at_hp(&format!("{}{also}{}", &text[..at], &text[at..]), hp)
+}
+
+async fn in_asylum(name_sgr: Option<&str>) -> (Game, Run) {
+    let (mut g, run) = Game::start_with(SessionState::Realm, asylum(name_sgr, 35)).await;
+    g.idle(Duration::from_secs(20)).await;
+    g.expect("st", status(35));
+    g.expect("look", asylum(name_sgr, 35));
+    g.bot(BotAction::Start).await;
+    g.narrated("Starting in Warped Asylum: re-syncing").await;
+    (g, run)
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_monster_whose_colour_says_evil_is_fought_though_its_name_has_a_neutral_twin() {
+    let (mut g, run) = in_asylum(Some("1;35")).await;
+    g.expect("a lunatic", line(ENGAGED, 35));
+    g.narrated("Fight: crazed lunatic").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a lunatic"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_monster_whose_colour_says_good_or_neutral_is_left_alone() {
+    let (mut g, run) = in_asylum(Some("0;36")).await;
+    g.narrated("Waiting here").await;
+    g.idle(Duration::from_secs(30)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look"]);
+    assert!(
+        !notices(&seen).iter().any(|n| n.starts_with("Not fighting")),
+        "{:?}",
+        notices(&seen)
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_shared_name_the_view_did_not_colour_is_not_fought_and_said_once() {
+    let (mut g, run) = in_asylum(None).await;
+    g.narrated(
+        "Not fighting crazed lunatic: two monsters share the name and the room did not show which",
+    )
+    .await;
+    g.idle(Duration::from_secs(30)).await;
+    let (seen, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look"]);
+    let all = notices(&seen);
+    let said: Vec<&String> = all
+        .iter()
+        .filter(|n| n.starts_with("Not fighting"))
+        .collect();
+    assert_eq!(said.len(), 1, "{:?}", notices(&seen));
 }

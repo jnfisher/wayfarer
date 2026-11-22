@@ -86,6 +86,7 @@ Cards don't repeat these:
 | 17 | The dark bishop run: hidden exits priced by their searches (C-120); followers type the leader's room command with it (C-121); sneaking retried sooner (C-122) | 2026-11-18 and 19, at John's request |
 | 18 | Combat numbers by attack, damage taken and per monster, and a zoom-in view with histograms and the party side by side (C-123 to C-125); the scrollbar through the overlays (C-126) | 2026-11-20, at John's request |
 | 19 | Followers in the dark: the game's follow moves advance a follower's belief and a dark room never separates it (C-127); a move refused in the dark means lost, said once (C-128) | 2026-11-21, after Sasha was lost in the Redstone Tunnels |
+| 20 | Two things seen on the live host: the colour of a name in `Also here:` tells its alignment and settles a name with two records (C-129); a locked door or gate with a key in `exitpar4` is routed through and opened with the key (C-130) | 2026-11-22, after Asa would not fight the asylum's crazed lunatic and Lexi had "no route" to the dread mystic with the skeleton key in hand |
 
 ## Index (wave 1, M0)
 
@@ -314,6 +315,8 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-126](C-126-scrollbar-through-overlays.md) | A tile's scrollbar no longer shows through the full-screen views | A | S | C-125 | |
 | [C-127](C-127-follower-in-the-dark.md) | A follower keeps its place in the dark: the game's follow moves advance its belief | A | S | C-108, C-116 | |
 | [C-128](C-128-lost-in-the-dark.md) | A move refused in the dark means lost: the walk stops and says so, once | A | S | C-127 | |
+| [C-129](C-129-name-colour-tells-alignment.md) | The colour of a name in `Also here:` tells the bot its alignment, and settles a name with two records | A | S | C-090 | |
+| [C-130](C-130-keyed-doors-and-gates.md) | A locked door or gate with a key in `exitpar4` is routed through and opened with that key | A | S | C-091, C-118 | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or
