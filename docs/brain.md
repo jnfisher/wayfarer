@@ -1675,7 +1675,10 @@ Bard, Gypsy, Warlock, Mage, Druid, Ranger, Mystic) gets one more re-sync command
 or 8, ability 17), area attacks (type 0, target 12, ability 17: fireball, swarm) and
 self-castable heals (type 3, target 1, 2 or 6, ability 18) are the spellbook; buffs, light and
 the area spells that hurt over time (ice storm, acid rain) are left out, and a Warrior's
-re-sync is unchanged. The
+re-sync is unchanged. An instant spell must have an amount at the level it is first cast
+(`maxval + maxinc*level/maxlvls` above 0): 1.20's maelstrom and comet grow from a base of 0 and
+ember from below it, so the base alone does not tell; restoration (level 0, a resurrection) and
+an item's spell have none and stay out. The
 mana cost is the game's own, from the screen. The list is read again at every re-sync, so a
 scroll read since is found the next time.
 

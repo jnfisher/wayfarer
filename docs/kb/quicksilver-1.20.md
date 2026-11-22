@@ -81,7 +81,10 @@ where each file comes from).
 - **Spell Mod v2.1.** The Mage, Priest and Druid player spells carry Spell Mod v2.1's values: 132
   of the 219 spells in those books differ from 1.11p (damage minimums grow with level, caps
   raised, the alignment nukes brought level, area spells up about 15-30% at their caps, buffs
-  longer, a few big heals raised; mana costs almost unchanged) [Q].
+  longer, a few big heals raised; mana costs almost unchanged) [Q]. Some grow from a base of 0
+  or below: maelstrom (292) is 0+2L to 60+4L (stock 62 to 35+5L), comet (1063) 0+2L to 20+5L,
+  ember (207) 0+2L to -25+5L, so a spell's base minimum alone does not say whether it does
+  anything [C, the server's `spells` table on a 1.20.0 realm, 2026-11-22].
 - **Renamed.** Spell 24 detect magic is **protective aura** (Mage, level 5, 10 mana: magic
   resistance +4+L/5 to +3+L/2 for 20+2L/3 rounds, cap 30); item 121, the scroll that taught it,
   is `scroll of protective aura`. Spell 1056 dark plague is **dark binding** (Druid, level 50) [Q].
