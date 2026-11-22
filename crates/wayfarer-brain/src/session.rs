@@ -281,6 +281,17 @@ fn answers(step: usize, ev: &GameEvent) -> bool {
     }
 }
 
+/// Another character of the gateway, for the Blessings panel's targets (C-131).
+#[derive(Debug, Clone)]
+pub(crate) struct OtherCharacter {
+    /// Its first name in lower case: what a cast at it says, and what the ticked list keeps.
+    pub key: String,
+    /// Its first name as the game shows it.
+    pub shown: String,
+    /// The lasting spells (short names) its own session believes on it.
+    pub buffs: std::collections::BTreeSet<String>,
+}
+
 /// How often the blessings are looked for on the status screen; zero: never.
 fn bless_check(settings: &Settings) -> Duration {
     Duration::from_secs(u64::try_from(settings.int("spells.bless_check_seconds")).unwrap_or(0))
@@ -3887,6 +3898,12 @@ impl Session {
         self.party_command = Some((room, text.to_owned(), self.party_commands));
     }
 
+    /// The lasting spells (short names) the character's own lines and status screen say are
+    /// on it, whoever cast them (C-131).
+    pub(crate) fn buffs_on(&self) -> &std::collections::BTreeSet<String> {
+        self.bot.buffs_on()
+    }
+
     /// What the party coordinator reads of this session.
     pub(crate) fn party_info(&self) -> MemberInfo {
         let minutes = |key: &str| {
@@ -3929,6 +3946,7 @@ impl Session {
             passer: self.position.traveller.passer(),
             room_seen_at: self.room_seen_at,
             command: self.party_command.clone(),
+            buffs: self.bot.buffs_on().clone(),
         }
     }
 
@@ -4260,10 +4278,19 @@ impl Session {
         self.refresh_blessings();
     }
 
-    /// The lasting spells the player ticked for the character (C-047), by short name.
+    /// The lasting spells the player ticked for the character (C-047), by short name, and
+    /// those it keeps on other characters (C-131) as `short name` entries (`sped riley`).
     pub(crate) fn set_blessings(&mut self, chosen: Vec<String>) {
         self.blessings = chosen;
         self.refresh_blessings();
+    }
+
+    /// The `short name` entries of the ticked list as `(short, name)`, the name in lower case.
+    fn blessings_on_others(&self) -> impl Iterator<Item = (&str, String)> {
+        self.blessings.iter().filter_map(|e| {
+            let (short, name) = e.split_once(' ')?;
+            Some((short, name.trim().to_lowercase()))
+        })
     }
 
     /// The lasting spells the character knows (its `spells` screen) that it can keep on
@@ -4305,18 +4332,46 @@ impl Session {
                     .cloned()
             })
             .flatten();
-        let mut kept: Vec<wayfarer_world::BuffDef> = known
-            .into_iter()
+        let mut kept: Vec<(wayfarer_world::BuffDef, crate::bless::Target)> = known
+            .iter()
             .filter(|b| self.blessings.contains(&b.short))
             .filter(|b| regen.is_none() || b.regen.is_none())
+            .map(|b| (b.clone(), crate::bless::Target::Me))
             .collect();
-        kept.extend(regen);
+        kept.extend(regen.map(|b| (b, crate::bless::Target::Me)));
+        // On other characters (C-131): a spell the game lets go on a player, cast by name.
+        for (short, name) in self.blessings_on_others() {
+            if let Some(b) = known.iter().find(|b| b.short == short && b.on_another()) {
+                kept.push((b.clone(), crate::bless::Target::Member(name)));
+            }
+        }
         self.bot.set_blessings(kept);
+        if let Some(atlas) = &self.atlas {
+            self.bot
+                .watch_buffs(atlas.spells_for(self.detect.rules()).lasting().to_vec());
+        }
     }
 
-    /// The character's lasting spells for the Blessings panel.
-    pub(crate) fn blessings_status(&self) -> wayfarer_proto::Blessings {
+    /// The character's first name in lower case, as another's cast names it (`sped riley`),
+    /// and as the game shows it; the session id when the status screen has not shown it.
+    pub(crate) fn first_name(&self) -> (String, String) {
+        let shown = self
+            .character
+            .state()
+            .name
+            .as_deref()
+            .and_then(|n| n.split_whitespace().next())
+            .unwrap_or(&self.id)
+            .to_owned();
+        (shown.to_lowercase(), shown)
+    }
+
+    /// The character's lasting spells for the Blessings panel; `others` the other characters
+    /// of the gateway (first name in lower case, as shown, the spells their sessions see on
+    /// them), offered as targets for a spell that goes on another player (C-131).
+    pub(crate) fn blessings_status(&self, others: &[OtherCharacter]) -> wayfarer_proto::Blessings {
         let now = self.clock.instant();
+        let on_others: Vec<(&str, String)> = self.blessings_on_others().collect();
         wayfarer_proto::Blessings {
             session: self.id.clone(),
             spells: self
@@ -4326,6 +4381,20 @@ impl Session {
                     chosen: self.blessings.contains(&b.short),
                     on: self.bot.blessed(&b.short, now),
                     mana: u32::try_from(b.mana).unwrap_or(0),
+                    others: if b.on_another() && b.item.is_none() {
+                        others
+                            .iter()
+                            .filter(|o| o.key != self.first_name().0)
+                            .map(|o| wayfarer_proto::BlessingTarget {
+                                name: o.shown.clone(),
+                                chosen: on_others.iter().any(|(s, n)| *s == b.short && *n == o.key),
+                                on: o.buffs.contains(&b.short)
+                                    || self.bot.blessed_member(&b.short, &o.key, now),
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    },
                     short: b.short,
                     name: b.name,
                 })

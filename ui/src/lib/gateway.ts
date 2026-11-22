@@ -429,9 +429,10 @@ export class GatewayClient {
     return this.send({ type: "blessings_request" });
   }
 
-  /** The lasting spells (short names) `session` keeps on; false when not connected. */
-  saveBlessings(session: string, spells: string[]): boolean {
-    return this.send({ type: "blessings_save", session, spells });
+  /** The lasting spells (short names) `session` keeps on itself, and per spell the other
+   * characters it keeps it on (C-131); false when not connected. */
+  saveBlessings(session: string, spells: string[], onOthers: Record<string, string[]> = {}): boolean {
+    return this.send({ type: "blessings_save", session, spells, on_others: onOthers });
   }
 
   private send(message: ToGateway): boolean {

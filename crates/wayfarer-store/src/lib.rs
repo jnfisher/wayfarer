@@ -818,7 +818,8 @@ impl Store {
             > 0)
     }
 
-    /// Keep the lasting spells (short names) `session` keeps on itself, replacing its last;
+    /// Keep the lasting spells (short names) `session` keeps on itself, and as `short name`
+    /// entries those it keeps on other characters (C-131: `sped riley`), replacing its last;
     /// none forgets them.
     pub fn save_blessings(&self, session: &str, spells: &[String], at: i64) -> Result<()> {
         if spells.is_empty() {

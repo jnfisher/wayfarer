@@ -864,11 +864,25 @@ impl Brain {
                 self.blessings_sent = None;
                 self.blessings_tick(out);
             }
-            ToClient::BlessingsSave { session, spells } => {
+            ToClient::BlessingsSave {
+                session,
+                spells,
+                on_others,
+            } => {
                 let Some(s) = self.sessions.get_mut(&session) else {
                     out.push(no_session("blessings_save", &session));
                     return;
                 };
+                // The ticked list keeps a spell on another character as `short name` (C-131).
+                let mut spells = spells;
+                for (short, names) in &on_others {
+                    for name in names {
+                        let entry = format!("{short} {}", name.trim().to_lowercase());
+                        if !spells.contains(&entry) {
+                            spells.push(entry);
+                        }
+                    }
+                }
                 s.set_blessings(spells.clone());
                 if let Some(store) = &self.store {
                     let at = crate::stats::unix(self.clock.now());
@@ -1002,10 +1016,23 @@ impl Brain {
 
     /// Every character's lasting spells to the UIs, when they changed (C-047).
     fn blessings_tick(&mut self, out: &mut Vec<ToGateway>) {
+        // Every character of the gateway, a target for the others' blessings (C-131).
+        let others: Vec<crate::session::OtherCharacter> = self
+            .sessions
+            .values()
+            .map(|s| {
+                let (key, shown) = s.first_name();
+                crate::session::OtherCharacter {
+                    key,
+                    shown,
+                    buffs: s.buffs_on().clone(),
+                }
+            })
+            .collect();
         let characters: Vec<wayfarer_proto::Blessings> = self
             .sessions
             .values()
-            .map(Session::blessings_status)
+            .map(|s| s.blessings_status(&others))
             .collect();
         if self.blessings_sent.as_ref() != Some(&characters) {
             self.blessings_sent = Some(characters.clone());

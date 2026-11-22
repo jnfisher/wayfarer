@@ -223,7 +223,7 @@ to every UI. It relays by message type and never reads `fields` or `patch`.
 {"type":"settings","session":"kasimir","layer":"character","files":[{"layer":"mine","path":"/data/settings.toml","exists":false},{"layer":"character","path":"/data/characters/kasimir.toml","exists":true}],"rows":[{"key":"health.flee_below_hp","label":"Flee below","help":"Leave the fight and run when HP falls below this.","group":"health","tier":"essential","kind":{"kind":"int","min":0,"max":90},"unit":"%","default":25,"value":35,"source":"character","own":35,"megamud":"HP Run If Below"}]}
 {"type":"found","session":"kasimir","query":"chief","results":[{"kind":"monster","name":"minotaur chieftain","rooms":[{"map":1,"room":1865,"name":"Large Wooden Room","steps":46,"boss":true}],"count":1,"monsters":["minotaur chieftain"]}]}
 {"type":"parties","parties":[{"party":{"id":"party-1","leader":"kasimir","followers":["isolde","brynja"]},"members":[{"session":"kasimir","state":"joined","rank":"front"},{"session":"isolde","state":"joined","rank":"back"},{"session":"brynja","state":"not_joined","detail":"in another room"}]}]}
-{"type":"blessings","characters":[{"session":"isolde","spells":[{"short":"bles","name":"bless","mana":4,"chosen":true,"on":true},{"short":"aura","name":"holy aura","mana":15,"chosen":false,"on":false}]}]}
+{"type":"blessings","characters":[{"session":"isolde","spells":[{"short":"bles","name":"bless","mana":4,"chosen":true,"on":true,"others":[{"name":"Kasimir","chosen":true,"on":false}]},{"short":"aura","name":"holy aura","mana":15,"chosen":false,"on":false,"others":[]}]}]}
 ```
 
 The character snapshot: every field is optional and left out until the brain knows it.
@@ -349,7 +349,7 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 | `party_join {session, party}` | Add `session` to party `party` as a follower; it joins in the game when it is in the leader's room |
 | `party_resync {party?}` | Form party `party` (left out: every party) up again now, for one that is stuck: each member in the realm sends `par` at once, then the `invite`s and `follow`s those screens call for go without their 10-second wait; a follower's walk back that found no way is tried again and the leader's wait for a separated member starts afresh ([brain.md](brain.md) "Parties"). A notice says so; a warning names a party that does not exist |
 | `blessings_request` | Send a `blessings` message |
-| `blessings_save {session, spells}` | The lasting spells, by short name, that `session` keeps on itself from now on, replacing the ones it kept ([brain.md](brain.md) "Blessings"); stored by the brain; a `blessings` message follows |
+| `blessings_save {session, spells, on_others}` | The lasting spells, by short name, that `session` keeps on itself from now on, replacing the ones it kept, and `on_others` (short name → the other characters' first names, `{"sped": ["Riley"]}`) the ones it keeps on other characters of the gateway (C-131) ([brain.md](brain.md) "Blessings"); stored by the brain; a `blessings` message follows |
 | `set_monster_rule {session, pattern, rule}` | Set the player's monster rule for names that hold `pattern` (any case): `ignore`, `avoid` or `first` ([brain.md](brain.md) "Monster rules"; the old `never_fight` and `flee_from` are read as `ignore`). `null` removes the top rule for the pattern: the player's own, else a learned one, else it switches the default off (a player `off`); `null` on a player `off` puts the default back. Stored with the bot's record; the bot's `monster_rules` shows the result |
 | `set_boss_mode {session, on}` | Boss fight mode on or off: fight where it stands, never flee or walk, no blessings, its own casts limit and hang-up line. On ends a loop or walk under way and starts a stopped bot where it stands; off plays on there. Stored with the bot's record; the bot's `boss_mode` shows it ([brain.md](brain.md) "Boss fight mode", C-100) |
 | `set_collect_items {session, items}` | The items the bot picks up off the floor, `[{name, count}]`, the whole list (empty: none): it takes one where it stands, out of a fight, until it carries `count` (worn ones do not count). A name that is no item a character can pick up is refused with a warning; the rest are kept. Stored with the bot's record; the bot's `collect_items` shows it ([brain.md](brain.md) "Collecting items", C-102) |
@@ -389,7 +389,7 @@ Relayed to the brain. With no brain attached the gateway answers `error` `no bra
 {"type":"party_join","session":"isolde","party":"party-1"}
 {"type":"party_resync"}
 {"type":"blessings_request"}
-{"type":"blessings_save","session":"isolde","spells":["bles","aura"]}
+{"type":"blessings_save","session":"isolde","spells":["bles","aura"],"on_others":{"bles":["Kasimir"]}}
 {"type":"set_monster_rule","session":"kasimir","pattern":"giant rat","rule":null}
 {"type":"set_attack_spell","session":"kasimir","spell":"mmis"}
 {"type":"set_area_spell","session":"kasimir","spell":"fbal"}

@@ -1786,6 +1786,28 @@ screen usually comes first). The data is `crates/wayfarer-world/data/quicksilver
   the status screen; casting it"). A spell with no such line, or a sysop's debug list in place
   of the lines, is left as believed. `st` ends no rest (`kb/recovery.md`). The panel shows which
   are on (`blessings`).
+- **Blessings on party members** (C-131). A spell the game lets go on another player (Self or
+  Single, target 2: speed, blur, frenzy, bless, divine favour, the Bard's songs of might and
+  quickness) lists the other characters of the gateway under it in the panel, each ticked on
+  its own (`blessings_save`'s `on_others`, kept with the blessings as `sped riley` entries).
+  Bless casts it at a ticked character by its first name (`sped riley`, "Blessing: casting
+  speed on Riley") when that character is one of the caster's mates (in its party and in the
+  room, HP known), the spell is not on it, and the mana line holds; the caster's own spells go
+  first, and a member elsewhere is passed over without a word. What is on the member is its
+  own session's word: every session watches the lines of every lasting spell for its character
+  ("You feel fast!" on, "You slow down." off, a death off, the status screen the whole list)
+  and the party coordinator carries that set to the caster as its mate's `buffs`; the caster's
+  own belief in its cast lasts two rounds, until that word arrives, so a brain restart does not
+  cast again what the member still feels, and two casters ticked for one member cast once. A
+  spell with no line of its own is believed on for its rounds, as the caster's own are. "You
+  attempt to cast speed, but fail." is a failure as for the caster's own (it is also what a copy
+  already on the member brings): a round's retry, three in a row a five-minute hold. "You do
+  not see riley here!" is not a failure: the member was not there after all, and the cast
+  waits a round for the mates list. "You may not cast that spell on a user!" (a Self-only
+  spell, which the data should keep from being offered) drops that spell's member targets for
+  the session and says once "Blessing: speed cannot be cast on another player". Buff items and
+  the regen tier stay the caster's own. The panel's ● beside a member comes from the member's
+  own word or the caster's two rounds.
 - **Buff items** (C-109). An item of unlimited charges, weapon or worn, whose `use` casts a
   lasting spell on its user or its party (its first One Time Cast, 43, before any Auto Use,
   114: shimmering greatsword, large silvery cross, emerald-tipped crozier, cosmic staff) is
@@ -1804,7 +1826,8 @@ screen usually comes first). The data is `crates/wayfarer-world/data/quicksilver
   shows bless's lines, which chant and bless from the party bring too. A fight during the
   swap goes first; the swap goes on after. The put-back is held in memory: a brain restart in
   the middle of it leaves the item in hand.
-- **Not done.** Buffs on other members, light, area spells, cures, spells
+- **Not done.** Buffs on a stranger in the game's party (no word comes back from it; the name
+  list would have to come from `par`), light, area spells, cures, spells
   that need a target the bot does not pick (a Thief's backstab is not a spell), and the
   Witchunter's no-cast rule are later slices. The average damage is the KB's formula; whether
   one spell beats another against resistances is not modelled.

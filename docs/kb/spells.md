@@ -126,6 +126,18 @@
 - A spell ending prints the spell's "Descriptive Message" record line 0 (with the spell name)
   in brown; there is no built-in "wears off" text. Line 2 of the same record is the extra
   line the target sees when it is cast. [C] `LJNSPELL.C:9221-9230, :406-410`
+- **A lasting spell on another player**: `sped riley` (the short name and the first name) casts
+  a Self or Single spell (target 2: speed, blur, frenzy, bless, divine favour, protection from
+  evil, alertness, rapid healing, the Bard's songs of might, agility, quickness, heroism) on
+  another player in the room; a Self-only spell (target 1: mageshield, magic armour, ethereal
+  shield, barkskin) is refused with "You may not cast that spell on a user!" (`bad_target`), and
+  a target not in the room with "You do not see riley here!". The caster sees the spell's cast
+  message line 0 ("You cast speed on Riley."; bless: "You cast bless on Riley!"), the target
+  line 1 ("Penny casts speed on you.") and then the descriptive message's line 2 ("You feel
+  fast!"); when it ends the target alone sees line 0 ("You slow down."). The stock data has 42
+  lasting player spells of target 2, 46 of target 1 and 22 of target 13 (whole party), none of
+  6 or 10. Note `classes/gypsy.md` says ethereal shield can go on a fighter: the data says
+  Self (target 1). [C data, wayfarer C-131]
 - `purge <spell>` forgets a spell: "Purging spell %s from your spellbook." (PURGE must be
   typed in full). [C] `LJNCMDB.C:5851-5876`
 - Kai classes learn their powers into the normal spellbook at TRAIN: "You learn the following

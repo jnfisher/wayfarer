@@ -8,6 +8,7 @@ export type { Accounts } from "./Accounts";
 export type { AttackRow } from "./AttackRow";
 export type { AttackSpellOption } from "./AttackSpellOption";
 export type { BlessingSpell } from "./BlessingSpell";
+export type { BlessingTarget } from "./BlessingTarget";
 export type { Blessings } from "./Blessings";
 export type { BossLair } from "./BossLair";
 export type { BossStatus } from "./BossStatus";

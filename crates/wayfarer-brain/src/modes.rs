@@ -1176,9 +1176,25 @@ impl Bot {
         says
     }
 
-    /// The lasting spells to keep on (C-047).
-    pub fn set_blessings(&mut self, defs: Vec<wayfarer_world::BuffDef>) {
+    /// The lasting spells to keep on (C-047), each with whom it is for (C-131).
+    pub fn set_blessings(&mut self, defs: Vec<(wayfarer_world::BuffDef, crate::bless::Target)>) {
         self.bless.set(defs);
+    }
+
+    /// Every lasting spell whose lines say what is on the character (C-131).
+    pub fn watch_buffs(&mut self, defs: Vec<wayfarer_world::BuffDef>) {
+        self.bless.watch(defs);
+    }
+
+    /// The lasting spells (short names) believed on the character from its own lines and
+    /// status screen, whoever cast them (C-131).
+    pub fn buffs_on(&self) -> &std::collections::BTreeSet<String> {
+        self.bless.buffs_on()
+    }
+
+    /// Whether this character's casts have the spell `short` on the member `name` (C-131).
+    pub fn blessed_member(&self, short: &str, name: &str, now: Instant) -> bool {
+        self.bless.is_on_member(short, name, now)
     }
 
     /// The game said the character stopped sneaking since last asked (C-048): a walk in

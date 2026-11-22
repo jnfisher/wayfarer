@@ -115,6 +115,10 @@ pub(crate) struct Mate {
     /// Seconds until its mana is back at its rest-until mana line (0 for one that does not
     /// cast; `None` when that is not known).
     pub mana_wait: Option<i64>,
+    /// The lasting spells (short names) its own session believes on it, from the lines it saw
+    /// and its status screen (C-131): a blessing another member keeps on it is not cast again
+    /// while it is here.
+    pub buffs: BTreeSet<String>,
 }
 
 impl PartyRole {
@@ -318,6 +322,9 @@ pub(crate) struct MemberInfo {
     /// As a leader: the phrase of a Text exit or a room command it typed (`go vortex`), the
     /// room it typed it in and its number, each new one numbered above the last (C-121).
     pub command: Option<(Key, String, u64)>,
+    /// The lasting spells (short names) it believes on itself, from its own lines and status
+    /// screen (C-131), for the members that keep a blessing on it.
+    pub buffs: BTreeSet<String>,
 }
 
 /// One tick's plan: the lines to send, each session's role, and the parties for the UIs when
@@ -1408,6 +1415,7 @@ impl Parties {
                             resting: i.health.resting,
                             hp_rate: i.health.hp_rate,
                             mana_wait: i.health.mana_wait,
+                            buffs: i.buffs.clone(),
                         })
                     })
                     .collect();
@@ -1590,6 +1598,7 @@ mod tests {
             guard: crate::guard::Guard::default(),
             passer: wayfarer_world::Passer::default(),
             room_seen_at: None,
+            buffs: BTreeSet::new(),
             command: None,
             lost: false,
         }
@@ -2535,6 +2544,7 @@ mod tests {
                 resting: false,
                 hp_rate: Some(600),
                 mana_wait: Some(0),
+                buffs: BTreeSet::new(),
             }]
         );
         assert_eq!(plan.roles["lauren"].mates()[0].name, "penny");

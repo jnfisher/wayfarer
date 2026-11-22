@@ -1,19 +1,20 @@
 //! Every message: a fixed JSON string (so a field rename is caught), the round trip, and the
 //! examples in the README and `docs/protocol.md`.
 
+use std::collections::BTreeMap;
 use wayfarer_proto::{
     AccountCharacter, AccountServer, Accounts, AttackRow, AttackSpellOption, BlessingSpell,
-    Blessings, Bot, BotAction, BotMode, BotState, CharacterState, Chunk, ClientKind, CoinCount,
-    Coins, CollectItem, CombatStats, DamageRow, DecodeError, Encumbrance, ExitKind, ExpSample,
-    Family, FoeRow, Found, FoundKind, FoundRoom, GearBuff, GearDetail, GearDetailMove,
-    GearDetailRequest, GearFilter, GearInputs, GearMonster, GearMonsterScore, GearMonsters,
-    GearMove, GearMoveScore, GearPlan, GearPlanRequest, GearRow, GearSource, GearSourceKind,
-    GearStatus, GearWhatIf, GeneratedLoop, Journey, LoopStop, MapExit, MapRoom, MegaMudLoop,
-    MemberState, MemberStatus, MonsterRuleEntry, MonsterRuleKind, PROTOCOL, ParseCounts, PartyDef,
-    PartyRank, PartyStatus, Position, RoomKey, RoomKind, RuleSource, RunSummary, SessionAction,
-    SessionInfo, SessionState, SettingChange, SettingKind, SettingRow, SettingValue, SettingsFile,
-    SpellPlanItem, Stashed, Stats, StatsPart, TakenRow, TimeSpent, ToClient, ToGateway, Walking,
-    WorldPackInfo, protocol_mismatch,
+    BlessingTarget, Blessings, Bot, BotAction, BotMode, BotState, CharacterState, Chunk,
+    ClientKind, CoinCount, Coins, CollectItem, CombatStats, DamageRow, DecodeError, Encumbrance,
+    ExitKind, ExpSample, Family, FoeRow, Found, FoundKind, FoundRoom, GearBuff, GearDetail,
+    GearDetailMove, GearDetailRequest, GearFilter, GearInputs, GearMonster, GearMonsterScore,
+    GearMonsters, GearMove, GearMoveScore, GearPlan, GearPlanRequest, GearRow, GearSource,
+    GearSourceKind, GearStatus, GearWhatIf, GeneratedLoop, Journey, LoopStop, MapExit, MapRoom,
+    MegaMudLoop, MemberState, MemberStatus, MonsterRuleEntry, MonsterRuleKind, PROTOCOL,
+    ParseCounts, PartyDef, PartyRank, PartyStatus, Position, RoomKey, RoomKind, RuleSource,
+    RunSummary, SessionAction, SessionInfo, SessionState, SettingChange, SettingKind, SettingRow,
+    SettingValue, SettingsFile, SpellPlanItem, Stashed, Stats, StatsPart, TakenRow, TimeSpent,
+    ToClient, ToGateway, Walking, WorldPackInfo, protocol_mismatch,
 };
 use wayfarer_proto::{CombatDetail, CombatDetailRequest, CombatWindow, HistRow};
 
@@ -686,6 +687,11 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                             mana: 4,
                             chosen: true,
                             on: true,
+                            others: vec![BlessingTarget {
+                                name: "Kasimir".into(),
+                                chosen: true,
+                                on: false,
+                            }],
                         },
                         BlessingSpell {
                             short: "aura".into(),
@@ -693,11 +699,12 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                             mana: 15,
                             chosen: false,
                             on: false,
+                            others: Vec::new(),
                         },
                     ],
                 }],
             },
-            r#"{"type":"blessings","characters":[{"session":"isolde","spells":[{"short":"bles","name":"bless","mana":4,"chosen":true,"on":true},{"short":"aura","name":"holy aura","mana":15,"chosen":false,"on":false}]}]}"#,
+            r#"{"type":"blessings","characters":[{"session":"isolde","spells":[{"short":"bles","name":"bless","mana":4,"chosen":true,"on":true,"others":[{"name":"Kasimir","chosen":true,"on":false}]},{"short":"aura","name":"holy aura","mana":15,"chosen":false,"on":false,"others":[]}]}]}"#,
         ),
     ]
 }
@@ -979,8 +986,9 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
             ToGateway::BlessingsSave {
                 session: "isolde".into(),
                 spells: vec!["bles".into(), "aura".into()],
+                on_others: BTreeMap::from([("bles".to_owned(), vec!["Kasimir".to_owned()])]),
             },
-            r#"{"type":"blessings_save","session":"isolde","spells":["bles","aura"]}"#,
+            r#"{"type":"blessings_save","session":"isolde","spells":["bles","aura"],"on_others":{"bles":["Kasimir"]}}"#,
         ),
     ]
 }
