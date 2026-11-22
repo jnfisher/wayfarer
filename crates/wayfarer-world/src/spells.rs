@@ -239,21 +239,20 @@ impl SpellDef {
     /// `minval + mininc*L/minlvls` to `maxval + maxinc*L/maxlvls`, `L` held to the level cap,
     /// a minimum above the maximum lowered to it.
     pub fn average(&self, level: i64) -> f64 {
-        let l = if self.level_cap > 0 {
-            level.min(self.level_cap)
-        } else {
-            level
-        };
-        let at = |(base, inc, lvls): (i64, i64, i64)| {
-            if lvls > 0 {
-                base + inc * l / lvls
-            } else {
-                base
-            }
-        };
-        let hi = at(self.max);
-        let lo = at(self.min).min(hi);
+        let hi = amount_at(self.max, level, self.level_cap);
+        let lo = amount_at(self.min, level, self.level_cap).min(hi);
         (lo + hi) as f64 / 2.0
+    }
+}
+
+/// One bound of a spell's range for a caster of `level`: `base + inc*L/lvls`, `L` held to
+/// `cap` (0: no cap).
+fn amount_at((base, inc, lvls): (i64, i64, i64), level: i64, cap: i64) -> i64 {
+    let l = if cap > 0 { level.min(cap) } else { level };
+    if lvls > 0 {
+        base + inc * l / lvls
+    } else {
+        base
     }
 }
 
@@ -469,7 +468,12 @@ impl Spells {
                 .and_then(Value::as_array)
                 .and_then(|l| l.first())
                 .and_then(Value::as_i64);
-            let instant = int("duration") == 0 && int("minval") > 0;
+            let min = (int("minval"), int("mininc"), int("minlvls"));
+            let max = (int("maxval"), int("maxinc"), int("maxlvls"));
+            // The amount is judged at the level the spell is first cast: 1.20's maelstrom and
+            // comet grow from a base of 0 (`min 0, +2 a level`), ember and prismatic blast from
+            // below it, while restoration (level 0, 30 a level) and the item spells have none.
+            let instant = int("duration") == 0 && amount_at(max, int("level"), int("levelcap")) > 0;
             if is_lasting(&s, &v) {
                 // A regen-line spell (1.20 only): its lines are 1.20's own, not the pack's.
                 let regen = qs120.then(|| qs120::regen_spell(s.number)).flatten();
@@ -504,8 +508,8 @@ impl Spells {
                 magery,
                 magery_level: int("magelvl"),
                 target: s.target,
-                min: (int("minval"), int("mininc"), int("minlvls")),
-                max: (int("maxval"), int("maxinc"), int("maxlvls")),
+                min,
+                max,
                 level_cap: int("levelcap"),
                 cast_line,
             });

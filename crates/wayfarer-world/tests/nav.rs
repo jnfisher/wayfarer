@@ -22,8 +22,9 @@ fn graph() -> (WorldPack, RoomGraph) {
     let took = t.elapsed();
     eprintln!("RoomGraph::load: {took:?}");
     // About 180 ms, of which some 55 ms read the rooms' command texts (C-052); this crate is
-    // optimised in test builds too. The card's bound is 500 ms.
-    assert!(took.as_millis() < 500, "RoomGraph::load took {took:?}");
+    // optimised in test builds too. The card's bound was 500 ms; a loaded CI runner has taken
+    // 565 ms with the whole suite beside it, so the bound is 1000 ms (John, 2026-11-22).
+    assert!(took.as_millis() < 1000, "RoomGraph::load took {took:?}");
     (pack, g)
 }
 

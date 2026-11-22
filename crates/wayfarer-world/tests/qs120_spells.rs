@@ -24,6 +24,30 @@ fn the_1_20_view_replaces_the_stock_spells_and_adds_the_regen_line() {
     assert_eq!(mm.kind, SpellKind::Attack);
     assert_eq!(mm.average(5), (11 + 20) as f64 / 2.0);
     assert_eq!(mm.average(40), mm.average(9), "capped at 9");
+    // Maelstrom grows from a base of 0 on 1.20 (0+2L to 60+4L, 48 to 156 at 24): an amount of
+    // 0 at level 0 is not "no amount"; the amount is judged at the spell's own level. Comet
+    // (Mage 50) is the same on both rule sets; restoration (level 0, 30 a level: a
+    // resurrection) and an item's spell (level 0) stay out.
+    let mael = qs.find("Druid", "mael", "maelstrom").unwrap();
+    assert_eq!(
+        (mael.kind, mael.level, mael.average(24)),
+        (SpellKind::Area, 24, 102.0)
+    );
+    assert_eq!(
+        stock
+            .find("Druid", "mael", "maelstrom")
+            .unwrap()
+            .average(24),
+        108.5
+    );
+    for view in [&stock, &qs] {
+        assert_eq!(
+            view.find("Mage", "come", "comet").unwrap().kind,
+            SpellKind::Attack
+        );
+        assert!(view.find("Priest", "rsto", "restoration").is_none());
+        assert!(view.find("Mage", "lbol", "thunderstaff-lbol").is_none());
+    }
     // The regen line: a level-20 Mage keeps arcane attunement up; it is no stock spell.
     let aatt = qs.buff("Mage", "aatt", "arcane attunement").unwrap();
     assert_eq!((aatt.level, aatt.mana, aatt.rounds(20)), (20, 8, 150));
