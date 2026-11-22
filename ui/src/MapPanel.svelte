@@ -451,6 +451,24 @@
     });
   });
 
+  // Another tile: what is typed stays, and the brain is asked again for its character, since
+  // a find or loops answer is the session's own and the lists show only the current one's.
+  let lastSession: string | undefined;
+  $effect(() => {
+    const id = session?.id;
+    if (id === lastSession) return;
+    lastSession = id;
+    if (!id) return;
+    untrack(() => {
+      const q = query.trim();
+      if (q.length >= MIN_QUERY) {
+        clearTimeout(findTimer);
+        onfind?.(id, q);
+      }
+      if (loopsOpen) askLoopsSoon(0);
+    });
+  });
+
   /** Pick a loop to keep it drawn (again to let it go), showing the floor of its first stop. */
   function pickLoop(id: string) {
     pickedLoop = pickedLoop === id ? null : id;
