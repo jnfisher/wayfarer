@@ -7,7 +7,7 @@ use crate::event::{Event, Fields, Value};
 use crate::prompt::{Peeled, PromptParser, PromptProgress};
 use crate::pyre::{is_py_space, py_strip};
 use crate::registry::{JoinRule, Registry, groups};
-use crate::text::LineCutter;
+use crate::text::{CutLine, LineCutter};
 
 /// Commands remembered for echo detection (`patterns.py` keeps four).
 const ECHO_DEPTH: usize = 4;
@@ -20,6 +20,8 @@ const JOIN_MAX: usize = 12;
 enum Item {
     Line {
         text: String,
+        /// The line's colours, as [`CutLine`] has them.
+        colours: Vec<(usize, String)>,
         no: u64,
         seq: u64,
     },
@@ -101,7 +103,26 @@ fn event(name: &str, cat: &str, fields: Fields, line: &str, seq: u64, line_no: u
         line: line.to_owned(),
         seq,
         line_no,
+        colours: Vec::new(),
     }
+}
+
+/// The colours of a line that fall in its slice from byte `base` for `len` bytes, at offsets
+/// into the slice, the colour in force at `base` first, at 0 (C-129).
+fn shift_colours(colours: &[(usize, String)], base: usize, len: usize) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    let mut in_force = None;
+    for (at, params) in colours {
+        if *at <= base {
+            in_force = Some(params.clone());
+        } else if *at <= base + len {
+            out.push((at - base, params.clone()));
+        }
+    }
+    if let Some(p) = in_force {
+        out.insert(0, (0, p));
+    }
+    out
 }
 
 struct Ctx<'a> {
@@ -145,9 +166,21 @@ impl Ctx<'_> {
         }
     }
 
+    fn colours_at(&self, i: usize) -> &[(usize, String)] {
+        match self.items.get(i) {
+            Some(Item::Line { colours, .. }) => colours,
+            _ => &[],
+        }
+    }
+
     /// `_join`: join a wrapped display's continuation lines; how many items that took.
     /// `None`: more text is needed.
-    fn join(&self, s: &mut String, rule: JoinRule) -> Option<usize> {
+    fn join(
+        &self,
+        s: &mut String,
+        cols: &mut Vec<(usize, String)>,
+        rule: JoinRule,
+    ) -> Option<usize> {
         let mut used = 0;
         for _ in 0..JOIN_MAX {
             let done_already = match rule {
@@ -174,6 +207,14 @@ impl Ctx<'_> {
                     if stops(nxt) {
                         break;
                     }
+                    // The continuation's colours follow its text, after the space.
+                    let nbase = nxt.as_ptr() as usize - t.as_ptr() as usize;
+                    let shift = s.len() + 1;
+                    cols.extend(
+                        shift_colours(self.colours_at(at), nbase, nxt.len())
+                            .into_iter()
+                            .map(|(o, p)| (o + shift, p)),
+                    );
                     s.push(' ');
                     s.push_str(nxt);
                     used = at;
@@ -195,7 +236,13 @@ impl Ctx<'_> {
     /// One `iter_events` step for the line at the front: its events, and how many items it
     /// took (more than one when a wrapped display is joined). `None`: more text is needed.
     fn line(&self, st: &mut State, out: &mut Vec<Event>) -> Option<usize> {
-        let Some(Item::Line { text, no, seq }) = self.items.front() else {
+        let Some(Item::Line {
+            text,
+            colours,
+            no,
+            seq,
+        }) = self.items.front()
+        else {
             return Some(1);
         };
         let (no, seq) = (*no, *seq);
@@ -248,6 +295,9 @@ impl Ctx<'_> {
             out.push(event("echo", "echo", f, line, seq, no));
             return Some(1);
         }
+        // The colours over the text kept, at offsets into it (C-129).
+        let base = s.as_ptr() as usize - text.as_ptr() as usize;
+        let mut cols = shift_colours(colours, base, s.len());
         let mut s = s.to_owned();
         let mut used = 0;
         if let Some((_, rule)) = self
@@ -256,7 +306,7 @@ impl Ctx<'_> {
             .iter()
             .find(|(prefix, _)| s.starts_with(prefix.as_str()))
         {
-            used = self.join(&mut s, *rule)?;
+            used = self.join(&mut s, &mut cols, *rule)?;
         }
         let seq = if used > 0 { self.seq_of(used) } else { seq };
         let taken = 1 + used;
@@ -287,7 +337,12 @@ impl Ctx<'_> {
             if p.cat == "room" && p.name.starts_with("room_") {
                 st.after_title = false;
             }
-            out.push(event(&p.name, &p.cat, self.reg.fields(p, &c), &s, seq, no));
+            let mut ev = event(&p.name, &p.cat, self.reg.fields(p, &c), &s, seq, no);
+            // The names' colours tell their alignment (C-129).
+            if p.name == "room_also_here" {
+                ev.colours = cols;
+            }
+            out.push(ev);
             return Some(taken);
         }
         if st.after_title {
@@ -345,7 +400,7 @@ impl Parser {
     pub fn feed_at(&mut self, seq: u64, text: &str) -> Vec<Event> {
         self.next_seq = seq + 1;
         let mut lines = Vec::new();
-        self.cutter.feed(text, &mut lines);
+        self.cutter.feed_lines(text, &mut lines);
         self.push_lines(lines, seq);
         let mut out = Vec::new();
         self.drain(false, &mut out);
@@ -357,17 +412,18 @@ impl Parser {
     pub fn finish(&mut self) -> Vec<Event> {
         let seq = self.next_seq.saturating_sub(1);
         let mut lines = Vec::new();
-        self.cutter.finish(&mut lines);
+        self.cutter.finish_lines(&mut lines);
         self.push_lines(lines, seq);
         let mut out = Vec::new();
         self.drain(true, &mut out);
         out
     }
 
-    fn push_lines(&mut self, lines: Vec<String>, seq: u64) {
-        for text in lines {
+    fn push_lines(&mut self, lines: Vec<CutLine>, seq: u64) {
+        for CutLine { text, colours } in lines {
             self.items.push_back(Item::Line {
                 text,
+                colours,
                 no: self.lines,
                 seq,
             });

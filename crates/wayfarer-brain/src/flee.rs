@@ -342,7 +342,7 @@ impl Mode for Flee {
                 .followed
                 .clone()
                 .or_else(|| {
-                    let hostile = |n: &&String| hostile(&v.atlas.monsters, n);
+                    let hostile = |n: &&String| hostile(&v.atlas.monsters, n, v.presence.hint(n));
                     self.arrived.iter().find(hostile).cloned()
                 })
                 .or_else(|| v.presence.attackers.first().cloned())

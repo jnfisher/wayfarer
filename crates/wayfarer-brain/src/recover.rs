@@ -133,7 +133,12 @@ impl Recover {
     /// again in the round Fight just cast in.
     fn heal_due(&self, v: &View) -> bool {
         self.heal_ready.is_none_or(|t| v.now >= t)
-            && crate::policy::quiet(&v.atlas.monsters, v.rules, &v.presence.here)
+            && crate::policy::quiet(
+                &v.atlas.monsters,
+                v.rules,
+                &v.presence.here,
+                &v.presence.colours,
+            )
             && v.rest_party_heal().is_some()
     }
 

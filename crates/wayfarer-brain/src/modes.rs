@@ -9,6 +9,7 @@
 use std::collections::BTreeMap;
 
 use tokio::time::Instant;
+use wayfarer_parse::helpers::NameColour;
 use wayfarer_parse::typed::GameEvent;
 use wayfarer_proto::{BotMode, BotState};
 use wayfarer_store::BotRecord;
@@ -37,6 +38,9 @@ pub const HELD_PAUSE: std::time::Duration = std::time::Duration::from_secs(4);
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Presence {
     pub here: Vec<String>,
+    /// What the colour of each monster's name in the last `Also here:` said of its alignment
+    /// (C-129), by the name in lower case; a name the view did not colour is absent.
+    pub colours: BTreeMap<String, NameColour>,
     pub attackers: Vec<String>,
     /// Attackers the monster rules ignore, set aside by [`Presence::heeded`] for the modes;
     /// always empty in the session's own presence.
@@ -55,6 +59,12 @@ pub(crate) struct Presence {
 }
 
 impl Presence {
+    /// What the last room view's colour of `name` said of its alignment (C-129), if it was
+    /// shown there.
+    pub fn hint(&self, name: &str) -> Option<NameColour> {
+        self.colours.get(&name.to_lowercase()).copied()
+    }
+
     /// The player `name` (its first name, as `Also here:` gives it) is in the room.
     pub fn sees_player(&self, name: &str) -> bool {
         let first = name.split_whitespace().next().unwrap_or(name);
@@ -70,6 +80,7 @@ impl Presence {
     pub fn moved_unseen(&mut self) {
         self.shown = None;
         self.here.clear();
+        self.colours.clear();
         self.players.clear();
         self.floor.clear();
         self.floor_items.clear();
@@ -113,7 +124,17 @@ impl Presence {
                 self.floor
                     .retain(|name, _| crate::loot::coin_word(name) != word);
             }
-            GameEvent::AlsoHere { monsters, players } => {
+            GameEvent::AlsoHere {
+                monsters,
+                players,
+                colours,
+            } => {
+                // What each name's colour says of its alignment (C-129), for `hostile`.
+                self.colours = monsters
+                    .iter()
+                    .zip(colours)
+                    .filter_map(|(n, c)| c.map(|c| (n.to_lowercase(), c)))
+                    .collect();
                 // A one-word, capitalised name reads as a player's; a monster's name (`Thrag`)
                 // is a monster's.
                 let (named, players): (Vec<String>, Vec<String>) = players
@@ -906,6 +927,9 @@ pub(crate) struct Bot {
     learned: Vec<String>,
     /// Ignored monsters attacking it, said once each (C-073).
     ignoring: Vec<String>,
+    /// Monsters here whose name two records share, one not worth fighting, that the room view
+    /// did not colour: said once each while they stay (C-129).
+    unsure: Vec<String>,
     /// Boss fight mode (C-100): it fights where it stands, never flees or walks, casts no
     /// blessings.
     boss: bool,
@@ -1718,6 +1742,22 @@ impl Bot {
             if !self.ignoring.contains(name) {
                 self.ignoring.push(name.clone());
                 self.narrate(format!("Ignoring {name}: not fighting back"), &mut says);
+            }
+        }
+        // A name two records share that no colour settles (C-129): not fought, said once.
+        self.unsure.retain(|n| v.presence.here.contains(n));
+        for name in &v.presence.here {
+            if !self.unsure.contains(name)
+                && v.presence.hint(name).is_none()
+                && policy::ambiguous(&v.atlas.monsters, name)
+            {
+                self.unsure.push(name.clone());
+                self.narrate(
+                    format!(
+                        "Not fighting {name}: two monsters share the name and the room did not show which"
+                    ),
+                    &mut says,
+                );
             }
         }
         // A round of swings that is over counts now: it may be the stalemate's last.

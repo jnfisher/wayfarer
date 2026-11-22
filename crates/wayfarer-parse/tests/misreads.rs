@@ -204,3 +204,58 @@ fn an_exits_line_with_a_blank_exit_keeps_the_slot() {
     let dirs: Vec<Option<&str>> = exits.iter().map(|e| e.dir.as_deref()).collect();
     assert_eq!(dirs, [Some("north"), None, Some("west")]);
 }
+
+/// C-129: the colour of each name in `Also here:` reaches the typed event. Asa's room view
+/// (silver-mirror, 2026-11-22), hand-copied: the lunatic in the names colour, bright magenta,
+/// which is the evil case; the same list with the name in cyan is good or neutral.
+#[test]
+fn also_here_colours_tell_alignment() {
+    use wayfarer_parse::helpers::NameColour;
+    use wayfarer_parse::typed::GameEvent;
+    let view = |name_colour: &str| {
+        format!(
+            "\x1b[79D\x1b[K\x1b[1;36mWarped Asylum\r\n\x1b[0;35mAlso here: \x1b[{name_colour}mcrazed \
+             lunatic\x1b[0m\x1b[0;35m.\r\n\x1b[0m\x1b[0;32mObvious exits: nV\x08orth, eC\x08ast, wI\x08est\r\n"
+        )
+    };
+    for (sgr, want) in [
+        ("1;35", NameColour::Evil),
+        ("0;36", NameColour::GoodOrNeutral),
+    ] {
+        let mut p = Parser::new(common::registry());
+        let mut evs = p.feed(&view(sgr));
+        evs.extend(p.finish());
+        let here = evs
+            .iter()
+            .find(|e| e.name == "room_also_here")
+            .expect("the list");
+        assert_eq!(here.colours[0], (0, "0;35".to_owned()), "{here:?}");
+        assert_eq!(
+            GameEvent::from_event(here),
+            GameEvent::AlsoHere {
+                players: vec![],
+                monsters: vec!["crazed lunatic".into()],
+                colours: vec![Some(want)],
+            }
+        );
+    }
+    // A list that wraps: the continuation's colours follow its names.
+    let mut p = Parser::new(common::registry());
+    let mut evs = p.feed(
+        "\x1b[0;35mAlso here: \x1b[0;36municorn\x1b[0m\x1b[0;35m, \x1b[1;35mgiant rat\x1b[0m\x1b[0;35m,\r\n\x1b[1;35mkobold\x1b[0m\x1b[0;35m.\r\n",
+    );
+    evs.extend(p.finish());
+    let here = evs.iter().find(|e| e.name == "room_also_here").unwrap();
+    assert_eq!(
+        GameEvent::from_event(here),
+        GameEvent::AlsoHere {
+            players: vec![],
+            monsters: vec!["unicorn".into(), "giant rat".into(), "kobold".into()],
+            colours: vec![
+                Some(NameColour::GoodOrNeutral),
+                Some(NameColour::Evil),
+                Some(NameColour::Evil)
+            ],
+        }
+    );
+}

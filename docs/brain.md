@@ -194,8 +194,13 @@ progress (after the move in flight).
   session, else as the pack has it. A locked one is in a route only if the character can open
   it: a bash opens it on `Str + exitpar2` out of 100, a pick on `picklocks + exitpar2` (with
   picklocks above 0), `kb/navigation.md` "Door / Gate"; with both nil it is left out (the Hidden
-  Keep's courtyard door, `exitpar2` -250, needs a strength over 250). Strength and picklocks come
-  from the status screen (`st`); unknown, a locked door is not checked. A shut door that is not
+  Keep's courtyard door, `exitpar2` -250, needs a strength over 250). A **keyed door** (C-130),
+  a door or gate whose `exitpar4` names a key (the slums' Western Door and the rusty iron key,
+  the Rancid Sewer gate before the Shadow Fist Temple and the skeleton key, 93 in the stock
+  data), is certain when the character holds the key, whatever its bash odds, and bashed or
+  picked as any other without it; with neither it is left out and the reason names the key:
+  "the gate east of Rancid Sewer needs the skeleton key and cannot be bashed open". Strength
+  and picklocks come from the status screen (`st`); unknown, a locked door is not checked. A shut door that is not
   locked opens with `open` and is always passable. A locked door costs one extra step per
   expected try, `ceil(100 / odds)`: two at 90 %, five at 20 %, so a sure way round of a few
   more steps wins. Another character with more strength may get through the same door. A door
@@ -218,8 +223,11 @@ progress (after the move in flight).
 - **Keys and items**: a Key exit (exit type 2, `exitpar1` the key's item number) is routed through
   only when the character holds that key (the `You have the following keys:` line of `i`), and an
   Item exit (`exitpar1` the item, a rope and grapple, a room ticket) only when the item is carried
-  (the `i` list). At a Key exit's shut door the walker sends `use <key name>` (twice at most), then
-  moves again; an Item exit just works while the item is carried. Without them the exit is not
+  (the `i` list). At a Key exit's shut door, or a keyed door's or gate's (C-130), the walker
+  sends `use <key name> <dir>` (twice at most), then `open <dir>` and the move; the game
+  unlocks both sides, and relocks them `exitpar3` steps later, one at least (`kb/navigation.md`
+  "Door / Gate"), so the way back takes the key again. An Item exit just works while the item
+  is carried. Without them the exit is not
   taken, and the reason names it: "the exit east of Stone Passageway, Guardroom needs the large iron
   key" (Thrag's cavern, 1:1810, is in by that key and nothing else).
 - **Items a shop sells**: when the item an Item or Key exit asks for is sold in a shop (a room
@@ -660,7 +668,17 @@ It needs a world pack (who is worth fighting, which rooms spawn) and the realm.
   | Idle | Otherwise | Sends nothing: "Waiting here" |
 
 - **Worth fighting**: every record the name finds (adjectives stripped: `fat giant rat` is a
-  giant rat) is evil, not an NPC and worth experience (`kb/pitfalls.md` 1). **Who is here**:
+  giant rat) is evil, not an NPC and worth experience (`kb/pitfalls.md` 1). **The name's
+  colour** (C-129): the game colours each name of `Also here:` by the monster's alignment
+  (`kb/combat.md`: cyan good or neutral, grey lawful, the player's "here names" colour, or
+  none of its own, for the evil ones), and the parser keeps it; when a name finds records of
+  more than one alignment, only those its colour shows count, if any do: the Warped Asylum's
+  crazed lunatic (Neutral Evil) in magenta is fought though the slums' (Neutral) shares the
+  name, and the giant roc in cyan is left alone. The colour comes with the room view only (a
+  monster that walks in has none until the next `look`); a shared name no colour settles is not
+  fought, and the bot says once while it stays "Not fighting crazed lunatic: two monsters share
+  the name and the room did not show which". The character is taken for one under 40 evil
+  points (the outlaw sees lawful good in the names colour and lawful evil grey). **Who is here**:
   the last room view's `Also here:`, then the arrivals, departures and deaths since, and any
   monster seen fighting in the room though no view showed it: hitting or missing a party
   member, casting at someone, a member attacking it, a guard intercepting it (C-090). A

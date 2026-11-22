@@ -550,7 +550,9 @@ impl Fight {
             .iter()
             .chain(&v.presence.attackers)
             .map(String::as_str)
-            .filter(|n| !self.skip.contains(*n) && hostile(&v.atlas.monsters, n))
+            .filter(|n| {
+                !self.skip.contains(*n) && hostile(&v.atlas.monsters, n, v.presence.hint(n))
+            })
             .find(|n| is_first(&v.atlas.monsters, v.rules, n));
         let Some(first) = first else {
             self.switched_to = None;
@@ -632,7 +634,7 @@ impl Fight {
         let p = v.presence;
         let fightable = |n: &String| {
             !self.skip.contains(n)
-                && hostile(&v.atlas.monsters, n)
+                && hostile(&v.atlas.monsters, n, v.presence.hint(n))
                 && v.rules.rule_for(n) != Some(wayfarer_world::MonsterRule::Ignore)
         };
         let others = p.attackers.iter().chain(&p.ignored);
@@ -749,6 +751,7 @@ impl Fight {
                 std::slice::from_ref(name),
                 &[],
                 &self.skip,
+                &v.presence.colours,
             )
             .is_some()
         {
@@ -769,6 +772,7 @@ impl Fight {
             &presence.here,
             &presence.attackers,
             &self.skip,
+            &presence.colours,
         )
     }
 

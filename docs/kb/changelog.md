@@ -1,5 +1,6 @@
 # KB changelog
 
+- **2026-11-22**: `combat.md` Monster name colour: the rule by alignment and viewer (cyan good or neutral, grey lawful, the here-names palette colour or none for evil) [C quicksilver `display/room.rs`] (wayfarer C-129). `navigation.md` "Door / Gate": `exitpar4` is the key that turns a locked door or gate with `use <key> <dir>`, both sides, relocking after `exitpar3` steps; 93 such exits in the stock data [C quicksilver `items/use_item.rs`, data] (wayfarer C-130).
 - **2026-11-21**: `navigation.md` "Position tracking": in rooms too dark to see the moves are all there is; a refused move there means the belief is wrong and only a lit room can fix it; the game's follow drags a follower through the dark with the follow line and the darkness line alone; the Redstone Tunnels above Khazarad (6/1407 to 6/1431) are at -200 [C live, silver-mirror] (wayfarer C-127, C-128).
 - **2026-11-16**: `combat.md` Afraid: the Flee ability refuses every attack and cast with "You are too afraid!" until it wears off, moves are not blocked [C]; a terror beast's shriek seen lasting 27 s [F] (wayfarer C-108).
 - **2026-11-11**: `megamud-formats.md` Monsters: byte 37 is the Relationship (2 Friend, 3 Avoid, 4 Enemy, 5 Flee) with the counts of the shipped list [C]; bytes 33 and 34 probably priority and options [G] (wayfarer C-096).

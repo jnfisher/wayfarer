@@ -308,7 +308,8 @@ fn origin(pos: &Position, atlas: &Atlas, to: Key, lair: Option<Key>, near: &[Key
 /// `use <key>` at one Key exit before the walker gives it up.
 const MAX_KEY_TRIES: u32 = 2;
 
-/// The name of the key that turns the Key exit of `step`, when the character holds it.
+/// The name of the key that turns the Key exit, or the keyed door or gate (C-130), of `step`,
+/// when the character holds it.
 fn key_for(pos: &Position, atlas: &Atlas, step: &Step) -> Option<String> {
     let e = atlas
         .graph
@@ -333,9 +334,18 @@ fn hopeless(pos: &Position, atlas: &Atlas, step: &Step) -> Option<String> {
         .find(|e| e.dir == step.dir && e.door.is_some())?;
     (pos.traveller.lock_odds(e) == Some(0)).then(|| {
         let what = door_word(atlas, step);
+        let dir = dir_name(step.dir);
+        // A keyed door without its key (C-130): the key is what it needs.
+        if let wayfarer_world::Gate::Key { item } = e.gate
+            && let Some(key) = atlas.item_names.get(&item)
+        {
+            return format!(
+                "The {what} {dir} needs the {key} (a bash needs more than {} strength)",
+                -e.params[1]
+            );
+        }
         format!(
-            "The {what} {} is beyond my strength (needs more than {})",
-            dir_name(step.dir),
+            "The {what} {dir} is beyond my strength (needs more than {})",
             -e.params[1]
         )
     })
@@ -766,13 +776,14 @@ impl Walker {
                 }
             }
             // A shut Key exit ("There is a closed door in that direction!", `kb/navigation.md`
-            // "Key"): `use <key> <dir>` with the key held, twice at most, then `open <dir>`.
+            // "Key"), or a keyed door or gate ("The gate is closed!", its key in `exitpar4`,
+            // C-130) with the key held: `use <key> <dir>`, twice at most, then `open <dir>`.
             (
                 Doing::Move,
                 Outcome::Refused(Refused::DoorClosed { .. } | Refused::Move(Refusal::ClosedDoor)),
             )
             | (Doing::Open, Outcome::Refused(Refused::Locked))
-                if step.exit_type == ExitType::Key =>
+                if step.exit_type == ExitType::Key || key_for(pos, atlas, &step).is_some() =>
             {
                 if w.key_tries < MAX_KEY_TRIES && key_for(pos, atlas, &step).is_some() {
                     w.key_tries += 1;

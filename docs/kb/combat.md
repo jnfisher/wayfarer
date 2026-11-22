@@ -25,7 +25,15 @@ For the full formulas, see `test/play/notes/combat.md` (with source references).
   beautiful woman and handsome man, and the chess pieces. The ice sorceress blasts players on
   sight. So group 2 means an NPC only when the monster is not evil or never comes back
   (Cygani and Aderem: Chaotic Evil, 9 exp, `regenhrs` 0). [C data; C live 2026-11-10]
-- In-game, monster name colour shows alignment. [F, John]
+- **Monster name colour shows alignment** in `Also here:` (`monster_colour`, quicksilver
+  `display/room.rs`, mirroring `LJNDISP.C`): Good and Neutral names in `ANSI_CYAN` (`ESC[0;36m`);
+  Lawful Good in `ANSI_GREY` (`ESC[0;37m`) for a viewer under 40 evil points, else in the
+  here-names colour; Lawful Evil the other way round (the here-names colour under 40, grey at 40
+  or over); Evil, Chaotic Evil and Neutral Evil in the here-names colour, palette row 8
+  (`COL_HERENAMES`): `ANSI_LTMAGENTA` (`ESC[1;35m`) in palettes 0 and 3, **no colour of its own**
+  in palettes 1 and 2, where the name runs on in the `Also here:` label's colour. Players are
+  listed first in the here-names colour, an outlaw with a `*`. [C] (first noted [F, John];
+  wayfarer C-129)
 
 ## What attacks you [C LJNBKGND.C:2683-2942]
 - Monsters of the four evil alignments attack players they can see; Good, Lawful Good and Neutral

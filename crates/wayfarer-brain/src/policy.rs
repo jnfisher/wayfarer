@@ -4,9 +4,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
+use wayfarer_parse::helpers::NameColour;
 use wayfarer_world::{
     ExitType, Gate, Key, LockState, MonsterRule, MonsterRules, Monsters, Traveller, distances,
-    huntable,
+    huntable, is_evil,
 };
 
 use crate::brain::Atlas;
@@ -55,16 +56,69 @@ pub fn attack_word(name: &str) -> &str {
     name.split_whitespace().last().unwrap_or(name)
 }
 
+/// The alignments of `ALIGNMENTS`: Good, Evil, Chaotic Evil, Neutral, Lawful Good, Neutral
+/// Evil, Lawful Evil.
+const NEUTRAL: i64 = 3;
+const LAWFUL_GOOD: i64 = 4;
+const LAWFUL_EVIL: i64 = 6;
+
+/// Whether a record of `alignment` can be the monster a name's colour showed (C-129): cyan is
+/// Good or Neutral; grey is Lawful Good, or Lawful Evil to an outlaw viewer (40 evil points or
+/// more); the names colour is every evil alignment but, to the viewer under 40, Lawful Good is
+/// grey and so not it, while to an outlaw Lawful Evil is grey and Lawful Good takes its place.
+pub fn fits(alignment: i64, colour: NameColour, outlaw: bool) -> bool {
+    match colour {
+        NameColour::GoodOrNeutral => alignment == 0 || alignment == NEUTRAL,
+        NameColour::Lawful => alignment == if outlaw { LAWFUL_EVIL } else { LAWFUL_GOOD },
+        NameColour::Evil => {
+            if outlaw {
+                alignment == LAWFUL_GOOD || (is_evil(alignment) && alignment != LAWFUL_EVIL)
+            } else {
+                is_evil(alignment)
+            }
+        }
+    }
+}
+
 /// A monster the bot fights: the records its name finds (adjectives stripped) are all worth
 /// hunting, evil and not an NPC (`kb/pitfalls.md` 1: skip a name any of whose records isn't).
-pub fn hostile(monsters: &Monsters, name: &str) -> bool {
+/// With the colour its name had in the room view (C-129), only the records of an alignment
+/// that colour shows count, when there are any: the asylum's crazed lunatic (Neutral Evil) in
+/// magenta is fought though the slums' (Neutral) shares its name. The viewer is taken for one
+/// under 40 evil points: the brain does not read them yet.
+pub fn hostile(monsters: &Monsters, name: &str, hint: Option<NameColour>) -> bool {
     let records = monsters.by_name(name);
-    !records.is_empty() && records.into_iter().all(huntable)
+    if records.is_empty() {
+        return false;
+    }
+    if let Some(colour) = hint {
+        let shown: Vec<_> = records
+            .iter()
+            .copied()
+            .filter(|m| fits(m.alignment, colour, false))
+            .collect();
+        if !shown.is_empty() {
+            return shown.into_iter().all(huntable);
+        }
+    }
+    records.into_iter().all(huntable)
+}
+
+/// A name two or more records share, some worth fighting and some not: hostile only when the
+/// room view's colour settles it (C-129).
+pub fn ambiguous(monsters: &Monsters, name: &str) -> bool {
+    let records = monsters.by_name(name);
+    records.iter().any(|m| huntable(m)) && !records.iter().all(|m| huntable(m))
 }
 
 /// Nothing in the room the bot would go for (`here` as the room showed it): between fights.
-pub fn quiet(monsters: &Monsters, rules: &MonsterRules, here: &[String]) -> bool {
-    target(monsters, rules, here, &[], &BTreeSet::new()).is_none()
+pub fn quiet(
+    monsters: &Monsters,
+    rules: &MonsterRules,
+    here: &[String],
+    colours: &BTreeMap<String, NameColour>,
+) -> bool {
+    target(monsters, rules, here, &[], &BTreeSet::new(), colours).is_none()
 }
 
 /// Whether the name seen (`fat giant rat`) is one of the monsters `names` (`giant rat`).
@@ -97,9 +151,12 @@ pub fn target<'a>(
     here: &'a [String],
     attackers: &'a [String],
     skip: &BTreeSet<String>,
+    colours: &BTreeMap<String, NameColour>,
 ) -> Option<&'a str> {
     let fightable = |n: &&str| {
-        !skip.contains(*n) && hostile(monsters, n) && rules.rule_for(n) != Some(MonsterRule::Ignore)
+        !skip.contains(*n)
+            && hostile(monsters, n, colours.get(&n.to_lowercase()).copied())
+            && rules.rule_for(n) != Some(MonsterRule::Ignore)
     };
     let first = here
         .iter()
@@ -325,10 +382,10 @@ mod tests {
         let none = MonsterRules::default();
         let never = MonsterRules::new([("giant rat", MonsterRule::Ignore)]);
         let here = vec!["fat giant rat".to_owned()];
-        assert!(quiet(&monsters, &none, &[]));
-        assert!(!quiet(&monsters, &none, &here));
+        assert!(quiet(&monsters, &none, &[], &BTreeMap::new()));
+        assert!(!quiet(&monsters, &none, &here, &BTreeMap::new()));
         // A rat it ignores leaves the room quiet.
-        assert!(quiet(&monsters, &never, &here));
+        assert!(quiet(&monsters, &never, &here, &BTreeMap::new()));
     }
 
     #[test]
@@ -354,14 +411,30 @@ mod tests {
         let s = |v: &[&str]| v.iter().map(|n| (*n).to_owned()).collect::<Vec<_>>();
         let here = s(&["fat giant rat", "orc", "kobold"]);
         // Ignored monsters are passed over; avoid is fought.
-        assert_eq!(target(&monsters, &rules, &here, &[], &none), Some("kobold"));
-        assert_eq!(target(&monsters, &rules, &here[..2], &[], &none), None);
+        assert_eq!(
+            target(&monsters, &rules, &here, &[], &none, &BTreeMap::new()),
+            Some("kobold")
+        );
+        assert_eq!(
+            target(&monsters, &rules, &here[..2], &[], &none, &BTreeMap::new()),
+            None
+        );
         // An ignored monster that attacks is not fought back; one it does fight is.
         let rat = s(&["fat giant rat"]);
-        assert_eq!(target(&monsters, &rules, &here[..1], &rat, &none), None);
+        assert_eq!(
+            target(&monsters, &rules, &here[..1], &rat, &none, &BTreeMap::new()),
+            None
+        );
         let both = s(&["orc", "kobold"]);
         assert_eq!(
-            target(&monsters, &rules, &here[1..], &both, &none),
+            target(
+                &monsters,
+                &rules,
+                &here[1..],
+                &both,
+                &none,
+                &BTreeMap::new()
+            ),
             Some("kobold")
         );
     }
@@ -394,19 +467,26 @@ mod tests {
         assert!(is_first(&monsters, &rules, "Thrag"));
         assert!(!is_first(&monsters, &rules, "dire wolf"));
         assert_eq!(
-            target(&monsters, &rules, &here, &wolves, &none),
+            target(&monsters, &rules, &here, &wolves, &none, &BTreeMap::new()),
             Some("Thrag")
         );
         // Two to attack first: the room's order.
         let both = s(&["Leo the Quick", "dire wolf", "Thrag"]);
         assert_eq!(
-            target(&monsters, &rules, &both, &wolves, &none),
+            target(&monsters, &rules, &both, &wolves, &none, &BTreeMap::new()),
             Some("Leo the Quick")
         );
         // One the game refused is skipped: the next first one, then the attackers.
         let refused: BTreeSet<String> = ["Thrag".to_owned()].into();
         assert_eq!(
-            target(&monsters, &rules, &here, &wolves, &refused),
+            target(
+                &monsters,
+                &rules,
+                &here,
+                &wolves,
+                &refused,
+                &BTreeMap::new()
+            ),
             Some("dire wolf")
         );
         // The player's rule wins over the default: ignored, or switched off.
@@ -414,7 +494,7 @@ mod tests {
             let rules = MonsterRules::new([("thrag", rule)]);
             assert!(!is_first(&monsters, &rules, "Thrag"), "{rule:?}");
             assert_eq!(
-                target(&monsters, &rules, &here, &wolves, &none),
+                target(&monsters, &rules, &here, &wolves, &none, &BTreeMap::new()),
                 Some("dire wolf")
             );
         }
@@ -426,7 +506,8 @@ mod tests {
                 &rules,
                 &s(&["dire wolf", "large dire wolf"]),
                 &[],
-                &none
+                &none,
+                &BTreeMap::new()
             ),
             Some("large dire wolf")
         );

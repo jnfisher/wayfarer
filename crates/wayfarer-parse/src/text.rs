@@ -75,6 +75,17 @@ fn escape_at(s: &[char], i: usize, last: bool) -> Escape {
     }
 }
 
+/// One line as the cutter hands it up: its text with the escapes gone, and the colours
+/// (`ESC[...m`, SGR) that were in the text, each with the byte offset in `text` of the first
+/// character it coloured (C-129: a name's colour in `Also here:` tells its alignment). A line
+/// cut from the middle of coloured text starts with the colour in force at offset 0.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CutLine {
+    pub text: String,
+    /// `(offset, parameters)`: `(11, "1;35")` for `ESC[1;35m` before the 12th byte.
+    pub colours: Vec<(usize, String)>,
+}
+
 /// Cuts text into lines incrementally.
 #[derive(Clone, Debug, Default)]
 pub struct LineCutter {
@@ -82,6 +93,8 @@ pub struct LineCutter {
     pending: Vec<char>,
     /// The current line, after escapes and backspaces; may hold CRs and bells.
     cur: String,
+    /// The SGR sequences dropped from `cur`, each at the count of chars before it.
+    colours: Vec<(usize, String)>,
 }
 
 impl LineCutter {
@@ -91,6 +104,20 @@ impl LineCutter {
 
     /// Add text; complete lines are appended to `out`.
     pub fn feed(&mut self, text: &str, out: &mut Vec<String>) {
+        let mut lines = Vec::new();
+        self.feed_lines(text, &mut lines);
+        out.extend(lines.into_iter().map(|l| l.text));
+    }
+
+    /// End of text: whatever is left is the last line (possibly empty, as `str.split` gives).
+    pub fn finish(&mut self, out: &mut Vec<String>) {
+        let mut lines = Vec::new();
+        self.finish_lines(&mut lines);
+        out.extend(lines.into_iter().map(|l| l.text));
+    }
+
+    /// [`LineCutter::feed`], with each line's colours.
+    pub fn feed_lines(&mut self, text: &str, out: &mut Vec<CutLine>) {
         if self.pending.is_empty() && !text.contains('\x1b') {
             for c in text.chars() {
                 self.put(c, out);
@@ -101,11 +128,12 @@ impl LineCutter {
         self.run(false, out);
     }
 
-    /// End of text: whatever is left is the last line (possibly empty, as `str.split` gives).
-    pub fn finish(&mut self, out: &mut Vec<String>) {
+    /// [`LineCutter::finish`], with each line's colours.
+    pub fn finish_lines(&mut self, out: &mut Vec<CutLine>) {
         self.run(true, out);
         let cur = std::mem::take(&mut self.cur);
-        Self::cut(cur, false, out);
+        let colours = std::mem::take(&mut self.colours);
+        Self::cut(cur, colours, false, out);
     }
 
     /// The text of the line in progress, for recognising a prompt before its line ends. `None`
@@ -117,7 +145,7 @@ impl LineCutter {
         Some(self.cur.chars().filter(|&c| c != '\x07').collect())
     }
 
-    fn run(&mut self, last: bool, out: &mut Vec<String>) {
+    fn run(&mut self, last: bool, out: &mut Vec<CutLine>) {
         let s = std::mem::take(&mut self.pending);
         let mut i = 0;
         while i < s.len() {
@@ -136,7 +164,14 @@ impl LineCutter {
                     self.line_break(out);
                     i += CLRLINE.len();
                 }
-                Escape::Drop(n) => i += n,
+                Escape::Drop(n) => {
+                    // A colour (`ESC[...m`) is kept with its place in the line.
+                    if n > 2 && s[i + 1] == '[' && s[i + n - 1] == 'm' {
+                        let params: String = s[i + 2..i + n - 1].iter().collect();
+                        self.colours.push((self.cur.chars().count(), params));
+                    }
+                    i += n;
+                }
                 Escape::Literal => {
                     self.cur.push('\x1b');
                     i += 1;
@@ -145,26 +180,45 @@ impl LineCutter {
         }
     }
 
-    fn put(&mut self, c: char, out: &mut Vec<String>) {
+    fn put(&mut self, c: char, out: &mut Vec<CutLine>) {
         match c {
             '\n' | '\x01' => self.line_break(out),
             // `[^\n\x08]\x08` removed until nothing changes: a backspace erases the character
             // before it on its line, and one with nothing before it vanishes.
             '\x08' => {
                 self.cur.pop();
+                if !self.colours.is_empty() {
+                    let len = self.cur.chars().count();
+                    for c in &mut self.colours {
+                        c.0 = c.0.min(len);
+                    }
+                }
             }
             _ => self.cur.push(c),
         }
     }
 
-    fn line_break(&mut self, out: &mut Vec<String>) {
+    fn line_break(&mut self, out: &mut Vec<CutLine>) {
         let cur = std::mem::take(&mut self.cur);
-        Self::cut(cur, true, out);
+        let colours = std::mem::take(&mut self.colours);
+        Self::cut(cur, colours, true, out);
     }
 
-    /// Bells go; then CR LF is one line break and a lone CR another.
-    fn cut(cur: String, by_lf: bool, out: &mut Vec<String>) {
+    /// Bells go; then CR LF is one line break and a lone CR another. `colours` are at char
+    /// counts into `cur`; each line gets its own, at byte offsets, the colour in force at its
+    /// start first.
+    fn cut(cur: String, mut colours: Vec<(usize, String)>, by_lf: bool, out: &mut Vec<CutLine>) {
         let mut text: String = if cur.contains('\x07') {
+            // A colour's place moves up by the bells before it.
+            let bells: Vec<usize> = cur
+                .chars()
+                .enumerate()
+                .filter(|&(_, c)| c == '\x07')
+                .map(|(i, _)| i)
+                .collect();
+            for c in &mut colours {
+                c.0 -= bells.iter().filter(|&&b| b < c.0).count();
+            }
             cur.chars().filter(|&c| c != '\x07').collect()
         } else {
             cur
@@ -172,10 +226,50 @@ impl LineCutter {
         if by_lf && text.ends_with('\r') {
             text.pop();
         }
-        if text.contains('\r') {
-            out.extend(text.split('\r').map(str::to_owned));
-        } else {
-            out.push(text);
+        if colours.is_empty() {
+            if text.contains('\r') {
+                out.extend(text.split('\r').map(|t| CutLine {
+                    text: t.to_owned(),
+                    colours: Vec::new(),
+                }));
+            } else {
+                out.push(CutLine {
+                    text,
+                    colours: Vec::new(),
+                });
+            }
+            return;
+        }
+        let mut start = 0; // chars before this piece
+        let mut in_force: Option<String> = None;
+        for piece in text.split('\r') {
+            let len = piece.chars().count();
+            let bytes: Vec<usize> = piece
+                .char_indices()
+                .map(|(b, _)| b)
+                .chain(std::iter::once(piece.len()))
+                .collect();
+            let mut own: Vec<(usize, String)> = Vec::new();
+            for (at, params) in &colours {
+                if *at <= start {
+                    in_force = Some(params.clone());
+                } else if *at <= start + len {
+                    own.push((bytes[*at - start], params.clone()));
+                }
+            }
+            if let Some(p) = &in_force
+                && own.first().is_none_or(|(b, _)| *b > 0)
+            {
+                own.insert(0, (0, p.clone()));
+            }
+            if let Some((_, p)) = own.last() {
+                in_force = Some(p.clone());
+            }
+            out.push(CutLine {
+                text: piece.to_owned(),
+                colours: own,
+            });
+            start += len + 1; // the CR
         }
     }
 }
@@ -192,6 +286,50 @@ mod tests {
         }
         c.finish(&mut out);
         out
+    }
+
+    fn coloured(chunks: &[&str]) -> Vec<CutLine> {
+        let mut c = LineCutter::new();
+        let mut out = Vec::new();
+        for ch in chunks {
+            c.feed_lines(ch, &mut out);
+        }
+        c.finish_lines(&mut out);
+        out
+    }
+
+    #[test]
+    fn colours_keep_their_place_in_the_line() {
+        // Asa's room view (silver-mirror, 2026-11-22): the lunatic in bright magenta.
+        let got = coloured(&[
+            "\x1b[79D\x1b[K\x1b[1;36mWarped Asylum\r\n\x1b[0;35mAlso here: \x1b[1;35mcrazed lunatic\x1b[0m\x1b[0;35m.\r\n",
+        ]);
+        // The clear-line sequence that opens the chunk ends an empty line first.
+        assert_eq!(got[0].text, "");
+        assert_eq!(got[1].text, "Warped Asylum");
+        assert_eq!(got[1].colours, [(0, "1;36".to_owned())]);
+        assert_eq!(got[2].text, "Also here: crazed lunatic.");
+        assert_eq!(
+            got[2].colours,
+            [
+                (0, "0;35".to_owned()),
+                (11, "1;35".to_owned()),
+                (25, "0".to_owned()),
+                (25, "0;35".to_owned()),
+            ]
+        );
+        // The last colour of a line is in force at the start of the next; a backspace moves a
+        // colour back with the text it coloured; a bell takes no place.
+        let got = coloured(&["\x1b[0;32mab\rcd\x07\x1b[1;31mX\x08Y\n"]);
+        assert_eq!(got[0].text, "ab");
+        assert_eq!(got[1].text, "cdY");
+        assert_eq!(
+            got[1].colours,
+            [(0, "0;32".to_owned()), (2, "1;31".to_owned())]
+        );
+        // Split between the escape's characters: the colour still lands.
+        let got = coloured(&["a\x1b[1;", "35mb\n"]);
+        assert_eq!(got[0].colours, [(1, "1;35".to_owned())]);
     }
 
     #[test]

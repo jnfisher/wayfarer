@@ -6,6 +6,7 @@ mod common;
 
 use std::sync::{Arc, OnceLock};
 
+use wayfarer_parse::helpers::NameColour;
 use wayfarer_parse::helpers::{Carried, Exit};
 use wayfarer_parse::typed::{Blow, GameEvent, ManaKind, PromptForm, Rank, Refusal, Rest};
 use wayfarer_parse::{Event, Parser, PromptMode, PromptParser, Registry};
@@ -466,14 +467,16 @@ fn who_is_here_and_who_attacks() {
         first(f, "room_also_here", "fat"),
         GameEvent::AlsoHere {
             players: vec![],
-            monsters: vec!["fat giant rat".into()]
+            monsters: vec!["fat giant rat".into()],
+            colours: vec![Some(NameColour::Evil)],
         }
     );
     assert_eq!(
         example("room_also_here"),
         GameEvent::AlsoHere {
             players: vec!["Thornwyn".into()],
-            monsters: vec!["giant rat".into()]
+            monsters: vec!["giant rat".into()],
+            colours: vec![None],
         }
     );
     // The monster's own arrival text, and the generic one.

@@ -14,7 +14,9 @@ use std::sync::OnceLock;
 use regex::Regex;
 
 use crate::event::{Event, Value};
-use crate::helpers::{Carried, Exit, parse_also_here, parse_carrying, parse_exits};
+use crate::helpers::{
+    Carried, Exit, NameColour, parse_also_here_coloured, parse_carrying, parse_exits,
+};
 
 /// Which prompt form a prompt was read in (`set statline`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -261,6 +263,9 @@ pub enum GameEvent {
     AlsoHere {
         players: Vec<String>,
         monsters: Vec<String>,
+        /// What each monster's colour says of its alignment, one for one with `monsters`
+        /// (C-129); `None` when the line's colours were not kept.
+        colours: Vec<Option<NameColour>>,
     },
     /// `monster_arrives` (the monster's own text) or `monster_arrives_generic`: a monster came
     /// in. `name` as shown, without its article (`thin giant rat`).
@@ -856,11 +861,24 @@ impl GameEvent {
                 reason: Refusal::of(name).expect("a refusal"),
             },
             "room_also_here" => {
-                let (players, monsters) = parse_also_here(ev.text("who").unwrap_or_default())
+                let who = ev.text("who").unwrap_or_default();
+                // The line's colours, at offsets into the list (C-129).
+                let at = ev.line.find(who).unwrap_or(0);
+                let mut colours: Vec<(usize, String)> = Vec::new();
+                for (o, p) in &ev.colours {
+                    if *o <= at {
+                        colours.clear();
+                        colours.push((0, p.clone()));
+                    } else {
+                        colours.push((o - at, p.clone()));
+                    }
+                }
+                let (players, monsters) = parse_also_here_coloured(who, &colours)
                     .into_iter()
                     .partition::<Vec<_>, _>(|p| p.player);
                 G::AlsoHere {
                     players: players.into_iter().map(|p| p.name).collect(),
+                    colours: monsters.iter().map(|p| p.colour).collect(),
                     monsters: monsters.into_iter().map(|p| p.name).collect(),
                 }
             }

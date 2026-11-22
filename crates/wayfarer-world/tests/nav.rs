@@ -1049,14 +1049,21 @@ fn a_go_to_searches_for_a_hidden_exit_when_that_is_the_short_way() {
     found.found.insert(((7, 148), 1));
     let again = route_or_search(&g, temple, chamber, &found).unwrap();
     assert_eq!(commands(&again), commands(&go));
-    // A character at the 3 % floor expects 34 searches (68 steps' worth): still less than the
-    // way round costs over the Black House way here, so it too goes under the Black House.
+    // A character at the 3 % floor expects 34 searches (68 steps' worth): more than the way
+    // round costs over the Black House way, now that Riley's rusty iron key makes the slums'
+    // Western Door certain (C-130: a keyed door with its key is one step, not a bash at 30 %),
+    // so it goes the long way round.
     let clumsy = Traveller {
         perception: Some(10),
         ..riley.clone()
     };
     assert_eq!(clumsy.search_odds(), Some(3));
     let r = route_or_search(&g, temple, chamber, &clumsy).unwrap();
+    assert!(passes(&r, western_road), "{} steps", r.len());
+    // Without the key the door is a bash at 30 %, four steps' worth, and the searches win.
+    let mut keyless = clumsy.clone();
+    keyless.keys.remove(&569);
+    let r = route_or_search(&g, temple, chamber, &keyless).unwrap();
     assert!(passes(&r, black_house_foyer), "{} steps", r.len());
     // With the perception not seen yet, one search is assumed.
     let unseen = Traveller {
