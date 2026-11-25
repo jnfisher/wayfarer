@@ -418,9 +418,14 @@ fn blocks(params: [i64; 4]) -> Option<i64> {
 
 /// The clauses a room command line may have and still be a way through: what they do can be
 /// told beforehand (`kb/navigation.md` "Text blocks"). `cast` of a spell that only teleports is
-/// one too (C-086). Anything else (another `cast`, a `random`, a skill test, an item taken or
-/// checked, an ability or alignment check) leaves the line out.
-const PLAIN_CLAUSES: [&str; 7] = [
+/// one too (C-086). A check of a quest's ability (`checkability`, `testability`,
+/// `failability`) is the game's to judge: the brain cannot see those abilities, so the way is
+/// taken, and a character the game turns away lands where the next line says and plans again
+/// (the Ancient Darkwood Tree's portal, 9/1291: `go portal` takes the invited, quest ability
+/// 133 at 5, up to 9/1424, and anyone else into the Caves of Chaos). Anything else (another
+/// `cast`, a `random`, a skill test, an item taken or checked, an alignment check) leaves the
+/// line out.
+const PLAIN_CLAUSES: [&str; 10] = [
     "message",
     "text",
     "adddelay",
@@ -428,6 +433,9 @@ const PLAIN_CLAUSES: [&str; 7] = [
     "maxlevel",
     "nomonsters",
     "teleport",
+    "checkability",
+    "testability",
+    "failability",
 ];
 
 /// Where a spell puts its caster, when all it does is teleport (C-086): the Dragon's Teeth
@@ -575,7 +583,7 @@ fn ask_script(script: &str) -> (Vec<Opener>, Option<Key>) {
                     plain = false;
                 }
             }
-            "message" | "text" | "adddelay" => {}
+            "message" | "text" | "adddelay" | "checkability" | "testability" | "failability" => {}
             _ => plain = false,
         }
     }
