@@ -35,7 +35,7 @@ use crate::errand::{Active, Ctx, Errand, ErrandKind, ErrandNext};
 use crate::executor::{Action, Executor, Expect, Outcome};
 use crate::journey::Journey;
 use crate::modes::{Bot, Do, Presence, View};
-use crate::party::{Health, MemberInfo, PartyRole, WalkBack};
+use crate::party::{Health, LeaderCommand, MemberInfo, PartyRole, WalkBack};
 use crate::peek::Peek;
 use crate::policy::{COMBAT_QUIET, hp_percent};
 use crate::position::Position;
@@ -435,7 +435,7 @@ pub(crate) struct Session {
     /// (`go vortex`), the room it was typed in and its number: the game's follow moves nobody
     /// through such an exit, so the coordinator has the followers in that room type it too
     /// (C-121).
-    party_command: Option<(Key, String, u64)>,
+    party_command: Option<LeaderCommand>,
     party_commands: u64,
     /// The walk in progress is the bot's.
     bot_walk: bool,
@@ -3900,17 +3900,25 @@ impl Session {
             return;
         };
         let text = text.trim();
-        if followers.is_empty()
-            || !atlas
-                .graph
-                .edges(room)
-                .iter()
-                .any(|e| e.kind.is_phrase() && e.taken_by(text))
-        {
+        let Some(delay) = atlas
+            .graph
+            .edges(room)
+            .iter()
+            .find(|e| e.kind.is_phrase() && e.taken_by(text))
+            .map(|e| Duration::from_secs(u64::from(e.delay_secs)))
+        else {
+            return;
+        };
+        if followers.is_empty() {
             return;
         }
         self.party_commands += 1;
-        self.party_command = Some((room, text.to_owned(), self.party_commands));
+        self.party_command = Some(LeaderCommand {
+            room,
+            phrase: text.to_owned(),
+            seq: self.party_commands,
+            delay,
+        });
     }
 
     /// The lasting spells (short names) the character's own lines and status screen say are

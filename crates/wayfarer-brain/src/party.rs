@@ -41,8 +41,44 @@ const RANK_EVERY: Duration = Duration::from_secs(10);
 const COMMAND_PATIENCE: Duration = Duration::from_secs(20);
 /// How long after the leader typed a room command its followers may still be sent after it: a
 /// follower's belief lags the game's drag by a tick or so, so it is not in the room yet when
-/// the leader types (C-121). One still elsewhere after this is separated as ever.
+/// the leader types (C-121). For as long, plus the script's own wait (`adddelay`), a follower
+/// sent after it is crossing: not left behind, not separated, not walked back, whatever the
+/// beliefs say meanwhile (the vortices teleport five seconds after the phrase, and the party
+/// is scattered in the game's eyes until then). One still elsewhere after this is separated
+/// as ever.
 const COMMAND_WINDOW: Duration = Duration::from_secs(10);
+/// How long after a delayed script fires the follower's `look` goes: the room comes with it.
+const LOOK_MARGIN: Duration = Duration::from_secs(1);
+
+/// A Text exit's or a room command's phrase a leader typed (C-121): the room it typed it in,
+/// its number (each new one above the last) and how long the script waits before it acts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LeaderCommand {
+    pub room: Key,
+    pub phrase: String,
+    pub seq: u64,
+    pub delay: Duration,
+}
+
+/// A leader's last room command as the coordinator follows it up: the followers sent after
+/// it so far, and when it was first seen (C-121).
+#[derive(Debug, Clone)]
+struct Commanded {
+    seq: u64,
+    since: Instant,
+    sent: BTreeSet<String>,
+    delay: Duration,
+    phrase: String,
+}
+
+/// A follower's line still to go: when it was queued (dropped as stale after
+/// [`COMMAND_PATIENCE`]) and when it may go.
+#[derive(Debug, Clone)]
+struct Queued {
+    line: String,
+    at: Instant,
+    not_before: Instant,
+}
 
 /// What a session is in a party, for its modes.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -320,8 +356,8 @@ pub(crate) struct MemberInfo {
     /// nothing of where it is (C-127).
     pub room_seen_at: Option<Instant>,
     /// As a leader: the phrase of a Text exit or a room command it typed (`go vortex`), the
-    /// room it typed it in and its number, each new one numbered above the last (C-121).
-    pub command: Option<(Key, String, u64)>,
+    /// room it typed it in, its number and the script's wait (C-121).
+    pub command: Option<LeaderCommand>,
     /// The lasting spells (short names) it believes on itself, from its own lines and status
     /// screen (C-131), for the members that keep a blessing on it.
     pub buffs: BTreeSet<String>,
@@ -395,12 +431,11 @@ pub(crate) struct Parties {
     unguard: BTreeSet<String>,
     /// Guards held for their refusals whose tile has been told.
     guard_noted: BTreeSet<String>,
-    /// Each leader's last room command (its number and when it was first seen) and the
-    /// followers sent after it so far (C-121).
-    commanded: HashMap<String, (u64, Instant, BTreeSet<String>)>,
-    /// Followers' lines still to go, one at a time, with when they were queued: the leader's
-    /// phrase, then a `look` where it took them (C-121).
-    pending: HashMap<String, VecDeque<(String, Instant)>>,
+    /// Each leader's last room command and the followers sent after it so far (C-121).
+    commanded: HashMap<String, Commanded>,
+    /// Followers' lines still to go, one at a time: the leader's phrase, then a `look` where it
+    /// took them, after the script's wait (C-121).
+    pending: HashMap<String, VecDeque<Queued>>,
 }
 
 /// The rank commands sent and the ranks refused (`party.rank`).
@@ -950,7 +985,7 @@ impl Parties {
     /// A planned line went out through the session's executor.
     pub fn sent(&mut self, session: &str, line: &str, now: Instant) {
         if let Some(q) = self.pending.get_mut(session)
-            && q.front().is_some_and(|(l, _)| l == line)
+            && q.front().is_some_and(|l| l.line == line)
         {
             q.pop_front();
         }
@@ -997,18 +1032,17 @@ impl Parties {
         }
         self.leaving
             .retain(|s| m.get(s).is_some_and(|i| i.game.following.is_some()));
-        // Followers' queued lines (C-121): the front one each, dropped when stale.
+        // Followers' queued lines (C-121): the front one each once it may go, dropped when
+        // stale.
         for (f, q) in &mut self.pending {
-            while q
-                .front()
-                .is_some_and(|(_, at)| now >= *at + COMMAND_PATIENCE)
-            {
+            while q.front().is_some_and(|l| now >= l.at + COMMAND_PATIENCE) {
                 q.pop_front();
             }
-            if let Some((line, _)) = q.front()
+            if let Some(l) = q.front()
+                && now >= l.not_before
                 && m.get(f).is_some_and(|i| i.realm)
             {
-                plan.lines.push((f.clone(), line.clone()));
+                plan.lines.push((f.clone(), l.line.clone()));
             }
         }
         self.pending.retain(|_, q| !q.is_empty());
@@ -1039,18 +1073,26 @@ impl Parties {
             );
             // A Text exit or a room command the leader typed (`go vortex`, C-121): the
             // game's follow moves nobody through it, so every follower in the leader's party
-            // in the game and in that room types the same phrase, and looks where it took it.
-            // A follower's belief may lag the drag by a tick, so the room is checked for
-            // [`COMMAND_WINDOW`]; one still elsewhere after that is separated as ever.
-            if let Some((room, phrase, seq)) = &l.command {
+            // in the game and in that room types the same phrase, and looks where it took it
+            // once the script has acted (its `adddelay`). A follower's belief may lag the drag
+            // by a tick, so the room is checked for [`COMMAND_WINDOW`]; one still elsewhere
+            // after that and the wait is separated as ever.
+            if let Some(cmd) = &l.command {
+                let fresh_entry = || Commanded {
+                    seq: cmd.seq,
+                    since: now,
+                    sent: BTreeSet::new(),
+                    delay: cmd.delay,
+                    phrase: cmd.phrase.clone(),
+                };
                 let entry = self
                     .commanded
                     .entry(def.leader.clone())
-                    .or_insert_with(|| (*seq, now, BTreeSet::new()));
-                if entry.0 < *seq {
-                    *entry = (*seq, now, BTreeSet::new());
+                    .or_insert_with(fresh_entry);
+                if entry.seq < cmd.seq {
+                    *entry = fresh_entry();
                 }
-                if entry.0 == *seq && now < entry.1 + COMMAND_WINDOW {
+                if entry.seq == cmd.seq && now < entry.since + COMMAND_WINDOW {
                     let mut who = Vec::new();
                     for f in &def.followers {
                         let Some(fi) = m.get(f) else {
@@ -1060,24 +1102,39 @@ impl Parties {
                             (fi.game.following.as_deref(), lfirst),
                             (Some(a), Some(b)) if a.eq_ignore_ascii_case(b)
                         );
-                        let there = fi.room == Some(*room) || fi.rooms.contains(room);
-                        if fi.realm && fi.running && follows && there && !entry.2.contains(f) {
-                            entry.2.insert(f.clone());
+                        let there = fi.room == Some(cmd.room) || fi.rooms.contains(&cmd.room);
+                        if fi.realm && fi.running && follows && there && !entry.sent.contains(f) {
+                            entry.sent.insert(f.clone());
                             let q = self.pending.entry(f.clone()).or_default();
-                            q.push_back((phrase.clone(), now));
-                            q.push_back(("look".to_owned(), now));
-                            plan.lines.push((f.clone(), phrase.clone()));
+                            q.push_back(Queued {
+                                line: cmd.phrase.clone(),
+                                at: now,
+                                not_before: now,
+                            });
+                            q.push_back(Queued {
+                                line: "look".to_owned(),
+                                at: now,
+                                not_before: now + cmd.delay + LOOK_MARGIN,
+                            });
+                            plan.lines.push((f.clone(), cmd.phrase.clone()));
                             who.push(fi.name.as_deref().map_or(f.as_str(), first).to_owned());
                         }
                     }
                     if !who.is_empty() {
                         plan.notices.push((
                             def.leader.clone(),
-                            format!("`{phrase}` with the party: {}", who.join(", ")),
+                            format!("`{}` with the party: {}", cmd.phrase, who.join(", ")),
                         ));
                     }
                 }
             }
+            // The followers crossing after the leader's phrase: for the window and the
+            // script's wait, their beliefs and the game's party say nothing yet.
+            let (crossing, crossing_phrase): (BTreeSet<String>, String) = self
+                .commanded
+                .get(&def.leader)
+                .filter(|c| now < c.since + COMMAND_WINDOW + c.delay)
+                .map_or_else(Default::default, |c| (c.sent.clone(), c.phrase.clone()));
             // The followers walking back, by name, for the leader's hold.
             let mut waiting: Vec<String> = Vec::new();
             // The followers still hiding their coins for the leader's stash round (C-093).
@@ -1116,6 +1173,7 @@ impl Parties {
                 // belief may only lag (no room shown since), so a room seen after they parted
                 // decides; until one is, it looks.
                 if listed
+                    && !crossing.contains(f)
                     && fi.realm
                     && l.realm
                     && fi.room.is_some()
@@ -1154,7 +1212,7 @@ impl Parties {
                     self.walk_in.remove(f);
                     self.out_since.remove(f);
                     self.gave_up.remove(f);
-                    if fi.room.is_some() && !same_room(fi, l) {
+                    if fi.room.is_some() && !same_room(fi, l) && !crossing.contains(f) {
                         let since = *self.apart.entry(f.clone()).or_insert(now);
                         if now >= since + APART {
                             owe_par = true;
@@ -1202,11 +1260,18 @@ impl Parties {
                         }
                     }
                     // Dropped by the game (an exit refused it, a flee, a stun), or added with
-                    // `party_join`: it walks back to the leader, and the leader waits.
-                    if self.was_joined.contains(f) {
+                    // `party_join`: it walks back to the leader, and the leader waits. Not
+                    // while it crosses after the leader's phrase: the game drops it and the
+                    // beliefs go one at a time; it forms up again where it lands.
+                    if self.was_joined.contains(f) && !crossing.contains(f) {
                         self.walk_in.insert(f.clone());
                     }
-                    if self.walk_in.contains(f) {
+                    if crossing.contains(f) {
+                        (
+                            MemberState::NotJoined,
+                            Some(format!("going through `{crossing_phrase}`")),
+                        )
+                    } else if self.walk_in.contains(f) {
                         let name = ffirst.map_or_else(|| f.clone(), str::to_owned);
                         waiting.push(name.clone());
                         let since = *self.out_since.entry(f.clone()).or_insert(now);
@@ -1808,6 +1873,78 @@ mod tests {
         assert_eq!(
             lines(&p.plan(&m, now + Duration::from_secs(6))),
             [("penny", "par")]
+        );
+    }
+
+    /// C-121, the Black Wasteland's vortices (live, 2026-11-25): the leader's `go vortex`
+    /// fires five seconds after the phrase. Meanwhile the game drops the followers and the
+    /// beliefs move one at a time, so a follower looked separated and was walked back through
+    /// the vortex, and another typed the phrase twice. A follower sent after the phrase is
+    /// crossing for the window and the wait: not separated, not walked back, its look after
+    /// the wait; the leader is not held for it. After that, one still elsewhere walks back.
+    #[tokio::test]
+    async fn a_follower_sent_through_a_delayed_room_command_crosses_before_it_is_judged() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        p.save(def("penny", &["lauren"]), &known()).unwrap();
+        let mut m = two(now, &["Lauren Phillips"]);
+        m.get_mut("lauren").unwrap().game.following = Some("Penny".into());
+        assert!(p.plan(&m, now).lines.is_empty());
+        m.get_mut("penny").unwrap().command = Some(LeaderCommand {
+            room: (1, 1),
+            phrase: "go vortex".into(),
+            seq: 1,
+            delay: Duration::from_secs(5),
+        });
+        let plan = p.plan(&m, now);
+        assert_eq!(lines(&plan), [("lauren", "go vortex")]);
+        p.sent("lauren", "go vortex", now);
+        // A second on: the game moved the leader and dropped the follower from the party; the
+        // follower still believes itself in the old room.
+        let t1 = now + Duration::from_secs(1);
+        {
+            let penny = m.get_mut("penny").unwrap();
+            penny.room = Some((3, 740));
+            penny.game.members.retain(|r| r.name != "Lauren Phillips");
+            penny.game.as_of = Some(t1);
+            m.get_mut("lauren").unwrap().game.following = None;
+        }
+        let plan = p.plan(&m, t1);
+        assert!(plan.roles["lauren"].rejoin().is_none(), "{:?}", plan.roles);
+        assert!(
+            !lines(&plan).contains(&("lauren", "look")),
+            "{:?}",
+            plan.lines
+        );
+        assert_eq!(
+            state(&plan, 1),
+            (
+                MemberState::NotJoined,
+                Some("going through `go vortex`".to_owned())
+            )
+        );
+        assert!(
+            matches!(&plan.roles["penny"], PartyRole::Leader { hold: None, .. }),
+            "{:?}",
+            plan.roles["penny"]
+        );
+        // Six seconds on, the look goes.
+        let t6 = now + Duration::from_secs(6);
+        assert!(
+            lines(&p.plan(&m, t6)).contains(&("lauren", "look")),
+            "{:?}",
+            p.plan(&m, t6).lines
+        );
+        p.sent("lauren", "look", t6);
+        // The window and the wait over, one still on the near side is separated and walks
+        // back to the leader.
+        let t16 = now + Duration::from_secs(16);
+        let plan = p.plan(&m, t16);
+        assert_eq!(
+            plan.roles["lauren"].rejoin(),
+            Some((3, 740)),
+            "{:?}",
+            plan.roles
         );
     }
 

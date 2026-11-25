@@ -1,5 +1,6 @@
 # KB changelog
 
+- **2026-11-25**: `navigation.md` Text blocks, Clauses: `adddelay N` runs the rest of the line N seconds after the prompt, the vortices' teleport and room with it; a party typing it together is scattered until it fires [F live].
 - **2026-11-25**: `navigation.md` Text blocks "For routes": the Ancient Darkwood Tree's portal (texts 1461/1462, spells 619-621, quest ability 133 at 5) as the only way to the tree and Morukai, the Caves of Chaos for the uninvited [C data, F John].
 - **2026-11-25**: `navigation.md` ASK and GREET: the 34 monster answers whose script acts on the world, the shadow guards' door to Morukai (`ask shadow guard morukai`, quest ability 133), the sphinxes' ways up, and the unconditional NPC teleports [C data, F John].
 - **2026-11-25**: `navigation.md` Remote Action: the item a Remote Action asks for (`exitpar4`), the Catacombs' fork passages (messages 1776-1795, item 983), and that a phrase starting with a command word (`use fork east`) is the command, not the phrase [C data, F John]; "Text blocks": items with a script (`ABL_ONETIMECAST` → `ABL_TEXTBLOCK`), the potion of levitation's teleport up the waterfall as the only way into the Catacombs pocket, and the four zeroed map-9 crossings [C data, F John]. `megamud-formats.md` section 0: two rooms with one id, the White Jelly's drainage pipes [C data, F John].

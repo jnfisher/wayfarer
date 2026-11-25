@@ -1928,9 +1928,18 @@ own, one at a time:
   leader types that takes such an exit out of its believed room, its walk's or the player's,
   is typed at once by every follower in its party in the game and in that room, as its own
   line between its bot's actions, then a `look` where it took it; the leader's tile says who
-  went ("`go vortex` with the party: Asa, Rocco"). A follower's belief lags the game's drag by
-  a tick, so the room is checked for ten seconds; one still elsewhere after that, or one the
-  exit refuses (a level gate), is separated as below and walks back.
+  went ("`go vortex` with the party: Asa, Rocco"). A script may wait before it acts
+  (`adddelay`: the vortices teleport five seconds after the phrase, the prompt coming at once
+  and the room when they fire; `Edge::delay_secs`), so the look after such a phrase, the
+  leader's and the followers', waits that long. For ten seconds plus the wait, a follower sent
+  after the phrase is *crossing*: whatever the beliefs and the game's party say meanwhile (the
+  game drops the followers and the beliefs move one at a time), it is not left behind, not
+  separated and not walked back, the leader is not held for it, and its tile says "going
+  through `go vortex`"; it forms up again where it lands. Before this, a follower seen in the
+  old room with the leader already across was walked back through the vortex, and one whose
+  belief lagged typed the phrase twice and came out alone in the Darkwood Forest (Sasha's
+  party, 2026-11-25). One still elsewhere after the window, or one the exit refuses (a level
+  gate), is separated as below and walks back.
 - **Followers don't walk.** A follower's own `run_loop`, `walk_loop` and `walk_to` are refused
   with a warning ("following Penny: it goes where the party goes"). Its errands run: pick up all
   and equip all where it stands, in the party; one that walks (train, recover the pile, buy
