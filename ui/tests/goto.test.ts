@@ -81,6 +81,26 @@ describe("the go box's rows", () => {
     expect(goRows([{ ...island, rooms: [] }], new Set())[0].look).toBeUndefined();
   });
 
+  it("carry the brain's reason for a room with no route, and only there", () => {
+    const stuck: Found = {
+      ...island,
+      rooms: [
+        room(1, "Tournament Arena", { no_route: true, why: "the exit north of Gate is for level 10 and up" }),
+        room(2, "Tournament Arena", { no_route: true, why: "no route known" }),
+      ],
+    };
+    const rows = goRows([stuck, passage], new Set([0]));
+    expect(rows.map((r) => r.why)).toEqual([
+      "the exit north of Gate is for level 10 and up",
+      "the exit north of Gate is for level 10 and up",
+      "no route known",
+      undefined,
+    ]);
+    // A result with a walkable room has no reason to give, whatever its other rooms say.
+    const mixed: Found = { ...passage, rooms: [passage.rooms[0], stuck.rooms[0]] };
+    expect(goRows([mixed], new Set())[0].why).toBeUndefined();
+  });
+
   it("move the choice within the list", () => {
     const rows = goRows([passage, chief], new Set());
     expect(moveChoice(rows, -1, 1)).toBe(0);

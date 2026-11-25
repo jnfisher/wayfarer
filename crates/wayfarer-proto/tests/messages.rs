@@ -629,6 +629,7 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                         name: "Large Wooden Room".into(),
                         steps: Some(46),
                         no_route: false,
+                        why: None,
                         boss: true,
                     }],
                     count: 1,

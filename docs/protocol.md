@@ -293,7 +293,7 @@ anywhere), then the nearer, then places before monsters before room names.
 |---|---|
 | `kind` | `rooms` (every room with this exact name), `shop`, `bank`, `trainer` (a shop room by its name, or a MegaMud waypoint), `boss` or `place` (another MegaMud waypoint), or `monster` (with the rooms it spawns in) |
 | `name` | The room name, the place's name or the monster's |
-| `rooms` | `[{map, room, name, steps?, no_route?, boss}]`, the nearest 20 first: `steps` the route length from the character's room when within 200 steps, `no_route` when there is no way there; neither: farther, or the character's room is unknown. `boss`: a boss lair, which `walk_to` stops one room short of by default |
+| `rooms` | `[{map, room, name, steps?, no_route?, why?, boss}]`, the nearest 20 first: `steps` the route length from the character's room when within 200 steps, `no_route` when there is no way there, with `why` the brain's reason (the first exit the character may not take on the way an unrestricted traveller would go: "the exit north of Stone Hallway is for level 10 and up", "the door east of Cellar needs the rusty iron key and cannot be bashed open", "the hidden exit south of Crypt is not known"; "no route known" when even that traveller has no way); neither `steps` nor `no_route`: farther, or the character's room is unknown. `boss`: a boss lair, which `walk_to` stops one room short of by default |
 | `count` | How many rooms it names in all |
 | `monsters` | The bosses of its boss lairs (for a monster, itself if it is one), by name; absent when none |
 
