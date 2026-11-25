@@ -23,6 +23,8 @@ export interface GoRow {
   text: string;
   /** Where Enter walks: the result's nearest room, or this room. Absent: nowhere to go. */
   room?: FoundRoom;
+  /** Where the eye looks: the result's nearest room, or this room, route or no route. */
+  look?: RoomKey;
   /** The result has more than one room, so it can be expanded. */
   expandable: boolean;
 }
@@ -77,7 +79,8 @@ export function goRows(found: Found[], expanded: ReadonlySet<number>): GoRow[] {
   const rows: GoRow[] = [];
   found.forEach((f, i) => {
     const room = f.rooms.find((r) => !r.no_route);
-    rows.push({ id: `${i}`, result: i, sub: false, text: resultText(f), room, expandable: f.rooms.length > 1 });
+    const look = f.rooms[0] && { map: f.rooms[0].map, room: f.rooms[0].room };
+    rows.push({ id: `${i}`, result: i, sub: false, text: resultText(f), room, look, expandable: f.rooms.length > 1 });
     if (expanded.has(i) && f.rooms.length > 1) {
       f.rooms.forEach((r, j) =>
         rows.push({
@@ -86,6 +89,7 @@ export function goRows(found: Found[], expanded: ReadonlySet<number>): GoRow[] {
           sub: true,
           text: roomText(r),
           room: r.no_route ? undefined : r,
+          look: { map: r.map, room: r.room },
           expandable: false,
         }),
       );

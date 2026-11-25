@@ -670,8 +670,12 @@ impl Brain {
                 Some(s) => s.bot_control(action, now, out),
                 None => out.push(no_session("bot_control", &session)),
             },
-            ToClient::MapRequest { session, radius } => match self.sessions.get_mut(&session) {
-                Some(s) => s.map_request(radius, out),
+            ToClient::MapRequest {
+                session,
+                radius,
+                center,
+            } => match self.sessions.get_mut(&session) {
+                Some(s) => s.map_request(radius, center, out),
                 None => out.push(no_session("map_request", &session)),
             },
             ToClient::LoopsRequest {

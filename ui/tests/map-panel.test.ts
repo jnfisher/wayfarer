@@ -584,6 +584,40 @@ describe("the go box", () => {
     expect(onwalk).toHaveBeenCalledExactlyOnceWith("aria", 1, 20, undefined, undefined);
   });
 
+  it("the eye shows a room on the map without walking, no route or not; centre comes back to the character", async () => {
+    const onlook = vi.fn();
+    const { onwalk, rerender } = mount({ character: here, found: chiefFound, goAsked: 6, onlook });
+    await typeIn("chief");
+    await fireEvent.click(screen.getByRole("button", { name: "Open the rooms" }));
+    await fireEvent.click(screen.getByText("Chief's Hall 1:21, no route"));
+    expect(screen.queryByRole("button", { name: "go" })).toBeNull();
+    await fireEvent.click(screen.getByRole("button", { name: "Show on the map" }));
+    expect(onlook).toHaveBeenCalledExactlyOnceWith("aria", { map: 1, room: 21 });
+    expect(onwalk).not.toHaveBeenCalled();
+    // The brain's view around that room: the map shows it centred, with a way back.
+    expect(screen.queryByRole("button", { name: "centre" })).toBeNull();
+    const far: MapView = {
+      ...view,
+      center: { map: 1, room: 21 },
+      rooms: [{ map: 1, room: 21, name: "Chief's Hall", x: 0, y: 0, level: 0, spawns: false, visited: false, candidate: false, collides: false }],
+      exits: [],
+      route: undefined,
+    };
+    await rerender({ view: far } as never);
+    await fireEvent.click(screen.getByRole("button", { name: "centre" }));
+    expect(onlook).toHaveBeenLastCalledWith("aria");
+  });
+
+  it("the eye shows a recent place on the map", async () => {
+    const onlook = vi.fn();
+    const places = [{ at: "2026-10-22T11:59:00Z", kind: "death", map: 1, room: 1217, name: "Slum Street" }];
+    mount({ character: { ...here, places }, onlook });
+    await fireEvent.focus(screen.getByRole("textbox", { name: "Go to" }));
+    await fireEvent.click(screen.getByRole("button", { name: /Slum Street/ }));
+    await fireEvent.click(screen.getByRole("button", { name: "Show on the map" }));
+    expect(onlook).toHaveBeenCalledExactlyOnceWith("aria", { map: 1, room: 1217 });
+  });
+
   it("Esc clears it, and again closes its list", async () => {
     mount({ character: here, found: chiefFound, goAsked: 5 });
     const input = await typeIn("chief");

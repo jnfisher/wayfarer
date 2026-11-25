@@ -4137,18 +4137,44 @@ impl Session {
         self.say(says, out);
     }
 
-    /// `map_request`.
-    pub fn map_request(&mut self, radius: Option<u32>, out: &mut Vec<ToGateway>) {
+    /// `map_request`: a view around the believed room, or around `center` to look at a room
+    /// far away (the automatic views go on following the character).
+    pub fn map_request(
+        &mut self,
+        radius: Option<u32>,
+        center: Option<RoomKey>,
+        out: &mut Vec<ToGateway>,
+    ) {
         if let Some(r) = radius {
             self.map_radius = r;
         }
         if self.atlas.is_none() {
             out.push(self.warning("map: the brain has no world pack"));
+        } else if let Some(c) = center {
+            self.send_map_around((c.map, c.room), out);
         } else if self.position.best().is_none() {
             out.push(self.warning("map: the position is unknown"));
         } else {
             self.send_map(out);
         }
+    }
+
+    /// A `map_view` laid out around `center`, whatever the character's position; it is not
+    /// the view the brain keeps up to date, so the next change of position sends the usual one.
+    fn send_map_around(&mut self, center: Key, out: &mut Vec<ToGateway>) {
+        let Some(atlas) = &self.atlas else { return };
+        if !atlas.graph.contains(center) {
+            out.push(self.warning(&format!(
+                "map: no room {}:{} in the world pack",
+                center.0, center.1
+            )));
+            return;
+        }
+        let route = self.walker.route_keys();
+        out.push(
+            self.position
+                .map_view_around(atlas, &self.id, center, self.map_radius, route),
+        );
     }
 
     pub(crate) fn warning(&self, text: &str) -> ToGateway {

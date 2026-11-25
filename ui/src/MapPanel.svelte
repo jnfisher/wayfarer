@@ -76,6 +76,8 @@
     found?: FoundMessage;
     /** Find rooms, places and monsters by part of a name. */
     onfind?: (session: string, query: string) => void;
+    /** Ask for a view around `room`, to look at a place far away, or around the character again. */
+    onlook?: (session: string, room?: RoomKey) => void;
     /** Bumped by Alt+G: open the go box and focus it. */
     goAsked?: number;
     /** The leader's name when the character follows one: its own walks are off. */
@@ -99,6 +101,7 @@
     ondeleteloop,
     found,
     onfind,
+    onlook,
     goAsked = 0,
   }: Props = $props();
 
@@ -188,6 +191,11 @@
     onwalk(session.id, r.map, r.room, r.boss ? !walkIn.has(row.id) : undefined, fightArg);
   }
 
+  /** Show the map around a room, route or no route, however far: the brain lays it out. */
+  function look(room: RoomKey | undefined) {
+    if (room && session) onlook?.(session.id, room);
+  }
+
   function toggleOpen(i: number) {
     const next = new Set(expanded);
     if (!next.delete(i)) next.add(i);
@@ -244,6 +252,12 @@
     if (session && !locked) onwalk(session.id, p.map, p.room, undefined, fightArg);
   }
   const known = $derived(position?.room !== undefined);
+  /** The believed room: the view's centre, unless the view looks at another room. */
+  const here = $derived<RoomKey | undefined>(
+    position?.map != null && position.room != null ? { map: position.map, room: position.room } : view?.center,
+  );
+  /** The view is laid out around a room the character is not in (the eye in the go box). */
+  const looking = $derived(!!view && !!here && keyOf(view.center) !== keyOf(here));
   /** The go list has something to show: the recent places, or what was found. */
   const goListed = $derived(goOpen && (query.trim().length === 0 ? places.length > 0 : query.trim().length >= MIN_QUERY));
   const walking = $derived(character?.walking);
@@ -481,7 +495,7 @@
     }
   }
 
-  const vs = $derived<ViewState>({ width, height, zoom, panX, panY, level, hover, loop: drawnLoop });
+  const vs = $derived<ViewState>({ width, height, zoom, panX, panY, level, here, hover, loop: drawnLoop });
   const levels = $derived(view ? [...new Set(view.rooms.map((r) => r.level))].sort((a, b) => a - b) : []);
 
   function recentre() {
@@ -491,7 +505,14 @@
     level = view?.level ?? 0;
   }
 
-  // A new view: recentre on the believed room, or keep a moved view where it was.
+  /** The `centre` button: back to the character, from a pan or from a look at another room. */
+  function centre() {
+    if (looking && session) onlook?.(session.id);
+    recentre();
+  }
+
+  // A new view: recentre on the believed room, or keep a moved view where it was. A view
+  // around another room (a look) starts centred on it, whatever was moved before.
   let last: MapView | undefined;
   $effect(() => {
     const next = view;
@@ -500,7 +521,7 @@
     last = next;
     if (!next) return;
     untrack(() => {
-      if (moved && prev && prev.session === next.session) {
+      if (moved && !looking && prev && prev.session === next.session) {
         ({ panX, panY } = carryPan(prev, next, vs));
       } else {
         recentre();
@@ -552,7 +573,7 @@
     const [x, y] = local(e);
     const room = roomAt(view, vs, x, y);
     hover = room;
-    tip = room ? { x, y, lines: describeRoom(view, room) } : null;
+    tip = room ? { x, y, lines: describeRoom(view, room, here) } : null;
   }
 
   function onpointerup(e: PointerEvent) {
@@ -561,7 +582,7 @@
     if (!p || p.dragged || !view || !session || locked) return;
     const [x, y] = local(e);
     const room = roomAt(view, vs, x, y);
-    if (room && !(room.map === view.center.map && room.room === view.center.room)) {
+    if (room && !(here && keyOf(room) === keyOf(here))) {
       onwalk(session.id, room.map, room.room, undefined, fightArg);
     }
   }
@@ -684,6 +705,9 @@
                   >{placeText(p)}</button
                 >
                 {#if chosen === i}
+                  <button class="look" aria-label="Show on the map" title="Show this room on the map, without walking" onclick={() => look({ map: p.map, room: p.room })}
+                    >◉</button
+                  >
                   <button class="walk" disabled={!!locked} title={locked ?? undefined} onclick={() => goPlace(p)}>go</button>
                 {/if}
               </li>
@@ -715,6 +739,14 @@
                     <label title="Stop in the room before the lair, to look before going in">
                       <input type="checkbox" checked={!walkIn.has(row.id)} onchange={() => toggleShort(row.id)} /> stop short
                     </label>
+                  {/if}
+                  {#if chosen === i && row.look}
+                    <button
+                      class="look"
+                      aria-label="Show on the map"
+                      title="Show this room on the map, without walking: route or no route, however far"
+                      onclick={() => look(row.look)}>◉</button
+                    >
                   {/if}
                   {#if chosen === i && row.room}
                     <button class="walk" disabled={!!locked} title={locked ?? undefined} onclick={() => go(row)}>go</button>
@@ -857,8 +889,8 @@
         <span class="level">{level}</span>
         <button aria-label="Level up" disabled={levels.indexOf(level) >= levels.length - 1} onclick={() => changeLevel(1)}>▲</button>
         <span class="dim">zoom {zoom + 1}/{ZOOMS.length}</span>
-        {#if moved}
-          <button onclick={recentre}>centre</button>
+        {#if moved || looking}
+          <button onclick={centre} title={looking ? "Back to the map around the character" : undefined}>centre</button>
         {/if}
         {#if (position?.candidates ?? 0) > 1}
           <span class="maybe">{position?.candidates} candidates</span>
@@ -1031,6 +1063,9 @@
   }
   .go .walk {
     background: var(--vga-lightgreen);
+  }
+  .go .look {
+    background: var(--vga-lightcyan);
   }
   .fight {
     color: var(--dim);

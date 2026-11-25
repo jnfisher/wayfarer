@@ -560,6 +560,19 @@ impl Position {
         route: Option<Vec<Key>>,
     ) -> Option<ToGateway> {
         let center = self.belief.best()?;
+        Some(self.map_view_around(atlas, session, center, radius, route))
+    }
+
+    /// The `map_view` laid out around `center` (a room of the graph): the believed rooms are
+    /// marked where they fall in it.
+    pub fn map_view_around(
+        &self,
+        atlas: &Atlas,
+        session: &str,
+        center: Key,
+        radius: u32,
+        route: Option<Vec<Key>>,
+    ) -> ToGateway {
         let lay = layout(&atlas.graph, center, radius);
         let key = |k: Key| RoomKey {
             map: k.0,
@@ -601,14 +614,14 @@ impl Position {
                 one_way: s.one_way,
             })
             .collect();
-        Some(ToGateway::MapView {
+        ToGateway::MapView {
             session: session.to_owned(),
             center: key(center),
             level: 0,
             rooms,
             exits,
             route: route.map(|r| r.into_iter().map(key).collect()),
-        })
+        }
     }
 
     /// The wire's view of it.

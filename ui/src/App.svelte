@@ -78,6 +78,9 @@
   let retryInMs = $state(0);
   let focused = $state(0);
   let zooms = $state<Record<string, number>>({});
+  /** The same for a tile zoomed to fill the window (Alt+Z), kept apart: a smaller font there
+   * for more text is not a smaller font back in the grid. */
+  let fullZooms = $state<Record<string, number>>({});
   let gridWidth = $state(0);
   let gridHeight = $state(0);
   let helpArea = $state<{ left: number; top: number; width: number; height: number } | null>(null);
@@ -536,7 +539,8 @@
           : null;
     if (step === null) return;
     e.preventDefault();
-    zooms[id] = step === 0 ? 0 : (zooms[id] ?? 0) + step;
+    if (zoomedIn) fullZooms[id] = step === 0 ? 0 : (fullZooms[id] ?? 0) + step;
+    else zooms[id] = step === 0 ? 0 : (zooms[id] ?? 0) + step;
   }
 </script>
 
@@ -587,7 +591,8 @@
           {info}
           number={i + 1}
           focused={i === focused}
-          zoom={zooms[info.id] ?? 0}
+          zoom={zoomedIn && i === focused ? (fullZooms[info.id] ?? 0) : (zooms[info.id] ?? 0)}
+          full={zoomedIn && i === focused}
           {offline}
           {client}
           {sinks}
@@ -646,6 +651,7 @@
             }}
             found={focusedId ? foundBySession[focusedId] : undefined}
             onfind={(id, query) => client.find(id, query)}
+            onlook={(id, room) => client.requestMap(id, MAP_RADIUS, room)}
             {goAsked}
             onstop={(id) => client.walkStop(id)}
             loops={focusedId ? loopsBySession[focusedId] : undefined}

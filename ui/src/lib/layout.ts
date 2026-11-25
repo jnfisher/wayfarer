@@ -58,6 +58,18 @@ export function fitFontSize(width: number, cellAspect = CELL_ASPECT, cols = TERM
   return Math.max(min, Math.floor(width / (cols * cellAspect)));
 }
 
+/** The rows a tile zoomed to fill the window shows at least (John, 2026-11-25: 80 columns
+ * across a whole screen leaves a huge font and the game's 24 rows; more text matters more). */
+export const ZOOMED_ROWS = 40;
+
+/**
+ * The font size for a tile zoomed to fill the window: the largest whose 80 columns fit the
+ * `width`, but no larger than lets `rows` rows fit the `height`. At least `min`.
+ */
+export function fitZoomedFontSize(width: number, height: number, rows = ZOOMED_ROWS, min = 6) {
+  return Math.max(min, Math.min(fitFontSize(width, CELL_ASPECT, TERM_COLS, min), Math.floor(height / rows)));
+}
+
 /** Relative sizes of a grid's columns and rows (proportions, not pixels). */
 export interface Weights {
   cols: number[];

@@ -3,6 +3,7 @@ import {
   drag,
   equalWeights,
   fitFontSize,
+  fitZoomedFontSize,
   fitsGrid,
   LAYOUT_KEY,
   loadLayout,
@@ -51,6 +52,16 @@ describe("fitFontSize", () => {
     expect(fitFontSize(1279)).toBe(31);
     expect(fitFontSize(500)).toBe(12);
     expect(fitFontSize(100)).toBe(6);
+  });
+});
+
+describe("fitZoomedFontSize", () => {
+  it("keeps 40 rows on a tile zoomed to the window, else fits the width", () => {
+    // A wide window: 80 columns would allow 40 px, but 40 rows allow 22.
+    expect(fitZoomedFontSize(1600, 900)).toBe(22);
+    // A tall, narrow one: the width decides.
+    expect(fitZoomedFontSize(640, 2000)).toBe(16);
+    expect(fitZoomedFontSize(100, 100)).toBe(6);
   });
 });
 

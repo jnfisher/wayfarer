@@ -765,8 +765,9 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
             ToGateway::MapRequest {
                 session: "kasimir".into(),
                 radius: Some(15),
+                center: Some(RoomKey { map: 1, room: 1865 }),
             },
-            r#"{"type":"map_request","session":"kasimir","radius":15}"#,
+            r#"{"type":"map_request","session":"kasimir","radius":15,"center":{"map":1,"room":1865}}"#,
         ),
         (
             ToGateway::BotControl {

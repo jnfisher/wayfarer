@@ -123,8 +123,8 @@ but no pause sign, so pause is `[║]`.
 | `Up`, `Down` in the input line | That tile's command history |
 | `keys` button | Sends what you type in the terminal straight to the game, key by key; click it again to go back to the input line |
 | `Alt+1` to `Alt+6` | Focus a tile (on a Mac, `Option`) |
-| `Alt+Z` | Zoom the focused tile to fill the window, or back; the others keep playing, and `Alt+1` to `Alt+6` zoom another (on a Mac, `Option`) |
-| `Ctrl +`, `Ctrl -` | Make the focused tile's font larger or smaller |
+| `Alt+Z` | Zoom the focused tile to fill the window, or back; the others keep playing, and `Alt+1` to `Alt+6` zoom another (on a Mac, `Option`). The font grows only as far as still shows 40 rows, so more of the game's text is on screen than at 80 columns across the whole window |
+| `Ctrl +`, `Ctrl -` | Make the focused tile's font larger or smaller (a zoomed tile has its own setting, kept apart from the grid's) |
 | `Ctrl 0` | Back to "fit to tile" |
 | Drag the line between two tiles | Gives one tile more room and the other less; remembered per browser |
 | Double-click a line between tiles | Back to equal shares for that direction (columns or rows) |
@@ -135,8 +135,9 @@ but no pause sign, so pause is `[║]`.
 | Click a room on the map | Go there: the bot turns on, fights on the way and plays where it arrives; `stop` under the map ends the walk, as `[■]` |
 | `Alt+G`, or the `go` button | Open the go box above the map: type part of the name of a room, a shop, bank or trainer, or a monster (two letters or more) and the list fills as you type (on a Mac, `Option`) |
 | `Up`, `Down`, `Enter` in the go box | Choose a row (the map centres on its room when in view) and walk there; a boss lair's row has a ticked `stop short` box: the walk stops one room before it |
+| `◉` on the chosen row of the go box | Show its room on the map without walking, route or no route, however far: the brain lays out the map around it, so a room near it can be clicked to walk there; `centre` comes back to the character |
 | `Esc` in the go box | Clear it; `Esc` again closes it |
-| Mouse wheel, drag on the map | Zoom (three sizes), pan; `centre` goes back to the character |
+| Mouse wheel, drag on the map | Zoom (three sizes), pan; `centre` goes back to the character (from a look at another room too) |
 | `loops`, beside `go` | The 12 loops nearest the character, nearest first, with a box to find one by name, file, author or a stop, however far: hover or pick one to draw it in yellow, `walk once` walks it, `run` hunts round it (untick a stop to pass it by) |
 | `Alt+P`, or the `parties` button | Open the drawer on the parties: pick a leader, tick its followers, save; each member's state under it (on a Mac, `Option`) |
 | The party chip in the tile's header | `★ Leading`, `Following` or `Separated`; click it to leave the party, or to join one |
@@ -249,7 +250,11 @@ and works nothing out itself.
   beyond 200 steps a room is `far`, and one the character has no way to is `no route`,
   listed last and not walkable. `Up` and `Down` choose a row, and the map centres on its room
   when the room is in view; `Enter` (or the row's **go** button, or a double-click) walks
-  there as a click on the map does. A **boss lair**'s row (a room whose monster spawns one
+  there as a click on the map does. The row's **◉** shows its room on the map without
+  walking, route or no route, however far: the brain lays the map out around that room
+  (`map_request` with a `center`) and the believed room keeps its white frame when it is in
+  view, so a room near the one shown can be clicked to walk there, and **centre** brings the
+  map back to the character (the next move of the character brings it back too). A **boss lair**'s row (a room whose monster spawns one
   at a time, such as the Chieftain's) has a ticked **stop short** box: the walk stops in the
   room before the lair so you can look before going in, and the walk bar says `one room
   short of Large Wooden Room (boss: minotaur chieftain)`. Untick it to walk in. `Esc` clears
@@ -306,8 +311,9 @@ and works nothing out itself.
 - **Recent places**: with nothing typed, the go box lists where the character died (its gear
   is in that room), fled from and was stopped in, newest first, ten at most, each with how long
   ago, the room's name and `map:room` (`died 12 m ago: Slum Street 1:1217`; a flee says from
-  whom, a stop why). Pick a row (`Up` and `Down`) and press **go** or `Enter` to walk there. The
-  brain keeps them, run or no run, and they survive a restart.
+  whom, a stop why). Pick a row (`Up` and `Down`) and press **go** or `Enter` to walk there, or
+  **◉** to see the room on the map first. The brain keeps them, run or no run, and they
+  survive a restart.
 - **Loops**: `loops ▸`, beside `go` above the map, opens the list of the 12 loops nearest the
   character ([brain.md](brain.md), "Loops"), nearest first, each with its distance in steps
   (the green number on the left). Opening it asks the brain again, and while it is open it

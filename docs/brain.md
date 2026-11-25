@@ -146,7 +146,9 @@ laid out on a grid with the believed room at (0, 0), each with its name, whether
 monsters, its kind (shop, trainer, bank, arena, lair; from the room data and MegaMud's
 waypoints), whether the character has certainly been there and whether it is a candidate; the
 exits between them; and the walk's route. One goes out when the believed room changes, when a
-route starts, changes or ends, and on `map_request` (`docs/protocol.md`).
+route starts, changes or ends, and on `map_request` (`docs/protocol.md`); a `map_request` with
+a `center` gets one view laid out around that room instead, for the go box's look at a place far
+away, and the automatic views go on following the character.
 
 ## Walking
 

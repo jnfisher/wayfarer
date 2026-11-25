@@ -83,6 +83,7 @@ async fn the_map_view_puts_the_believed_room_at_the_center() {
     g.send(ToClient::MapRequest {
         session: ID.into(),
         radius: Some(4),
+        center: None,
     })
     .await;
     let (rooms, exits) = g
@@ -115,6 +116,45 @@ async fn the_map_view_puts_the_believed_room_at_the_center() {
         exits.iter().any(|e| e.kind == ExitKind::Door),
         "the Arena's door"
     );
+    g.close(run).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_map_request_with_a_center_looks_at_a_room_far_away() {
+    let (mut g, run) = Game::start(SessionState::Realm, VILLAGE_ENTRANCE).await;
+    // A room on another map, far from the character: the view is laid out around it, and no
+    // room of it is where the character is believed to be.
+    g.send(ToClient::MapRequest {
+        session: ID.into(),
+        radius: Some(3),
+        center: Some(key(FLAMING_CHAMBER)),
+    })
+    .await;
+    let (center, rooms) = g
+        .until(|m| match m {
+            ToGateway::MapView { center, rooms, .. } => Some((*center, rooms.clone())),
+            _ => None,
+        })
+        .await;
+    assert_eq!(center, key(FLAMING_CHAMBER));
+    let c = &rooms[0];
+    assert_eq!((c.map, c.room, c.x, c.y, c.level), (17, 2978, 0, 0, 0));
+    assert!(rooms.iter().all(|r| !r.candidate && !r.visited));
+    assert!(rooms.iter().any(|r| (r.map, r.room) == BURNING_VALLEY));
+    // A room the world pack lacks: a warning, no view.
+    g.send(ToClient::MapRequest {
+        session: ID.into(),
+        radius: None,
+        center: Some(wayfarer_proto::RoomKey { map: 999, room: 1 }),
+    })
+    .await;
+    let text = g
+        .until(|m| match m {
+            ToGateway::Warning { text, .. } => Some(text.clone()),
+            _ => None,
+        })
+        .await;
+    assert_eq!(text, "map: no room 999:1 in the world pack");
     g.close(run).await;
 }
 
