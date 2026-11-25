@@ -22,9 +22,14 @@ export const KEY_ROWS: KeyRow[] = [
   {
     group: "Tiles",
     keys: "Alt+Z",
-    does: "Zoom the focused tile to fill the window, or back; the others keep playing, and Alt+1 to Alt+6 zoom another (on a Mac, Option)",
+    does:
+      "Zoom the focused tile to fill the window, or back; the others keep playing, and Alt+1 to Alt+6 zoom another (on a Mac, Option). The font grows only as far as still shows 40 rows, so more of the game's text is on screen than at 80 columns across the whole window",
   },
-  { group: "Display", keys: "Ctrl +, Ctrl -", does: "Make the focused tile's font larger or smaller" },
+  {
+    group: "Display",
+    keys: "Ctrl +, Ctrl -",
+    does: "Make the focused tile's font larger or smaller (a zoomed tile has its own setting, kept apart from the grid's)",
+  },
   { group: "Display", keys: "Ctrl 0", does: 'Back to "fit to tile"' },
   { group: "Layout", keys: "Drag the line between two tiles", does: "Gives one tile more room and the other less; remembered per browser" },
   { group: "Layout", keys: "Double-click a line between tiles", does: "Back to equal shares for that direction (columns or rows)" },
@@ -49,8 +54,18 @@ export const KEY_ROWS: KeyRow[] = [
     does:
       "Choose a row (the map centres on its room when in view) and walk there; a boss lair's row has a ticked stop short box: the walk stops one room before it",
   },
+  {
+    group: "Map",
+    keys: "◉ on the chosen row of the go box",
+    does:
+      "Show its room on the map without walking, route or no route, however far: the brain lays out the map around it, so a room near it can be clicked to walk there; centre comes back to the character",
+  },
   { group: "Map", keys: "Esc in the go box", does: "Clear it; Esc again closes it" },
-  { group: "Map", keys: "Mouse wheel, drag on the map", does: "Zoom (three sizes), pan; centre goes back to the character" },
+  {
+    group: "Map",
+    keys: "Mouse wheel, drag on the map",
+    does: "Zoom (three sizes), pan; centre goes back to the character (from a look at another room too)",
+  },
   {
     group: "Map",
     keys: "loops, beside go",

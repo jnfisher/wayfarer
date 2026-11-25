@@ -61,10 +61,13 @@ export interface ViewState {
   width: number;
   height: number;
   zoom: number;
-  /** Pixels the believed room sits from the canvas' middle. */
+  /** Pixels the view's centre sits from the canvas' middle. */
   panX: number;
   panY: number;
   level: number;
+  /** The believed room, when the view is laid out around another room (a look at a place far
+   * away); left out, it is the view's centre. */
+  here?: RoomKey | null;
   hover?: RoomKey | null;
   /**
    * A loop to draw: every room it passes, and its stops (numbered in loop order). For the loop
@@ -184,14 +187,15 @@ export function exitsOf(view: MapView, room: RoomKey): [string, MapExit][] {
   return out;
 }
 
-/** The tooltip for a room: name, map:room and kind, what spawns, exits, and the belief. */
-export function describeRoom(view: MapView, room: MapRoom): string[] {
+/** The tooltip for a room: name, map:room and kind, what spawns, exits, and the belief
+ * (`here` is the believed room: the view's centre unless the view looks at another room). */
+export function describeRoom(view: MapView, room: MapRoom, here: RoomKey = view.center): string[] {
   const lines = [room.name || "(no name)", `${room.map}:${room.room}${room.kind ? ` ${room.kind}` : ""}`];
   lines.push(room.spawns ? "monsters spawn here" : "no spawns");
   const exits = exitsOf(view, room).map(([dir, e]) => (e.kind === "plain" ? dir : `${dir} (${e.kind})`));
   lines.push(`exits: ${exits.length ? exits.join(", ") : "none in view"}`);
   const flags = [
-    same(view.center, room) ? "believed here" : room.candidate ? "maybe here" : "",
+    same(here, room) ? "believed here" : room.candidate ? "maybe here" : "",
     room.visited ? "visited" : "",
     room.collides ? "drawn over another room" : "",
   ].filter(Boolean);
@@ -481,7 +485,7 @@ interface Marks {
 function drawRoom(ctx: Ctx, view: MapView, r: MapRoom, v: ViewState, m: Metrics, marks: Marks): void {
   const [x, y, w, h] = roomBox(r, v);
   const s = ZOOMS[v.zoom] ?? 1;
-  const here = same(view.center, r);
+  const here = same(v.here ?? view.center, r);
   const lw = Math.max(1, Math.round(2 * s));
   ctx.setLineDash([]);
   if (!r.collides) {

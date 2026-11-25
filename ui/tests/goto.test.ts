@@ -69,6 +69,18 @@ describe("the go box's rows", () => {
     expect(open[2].room?.room).toBe(1840);
   });
 
+  it("give every row a room to look at, route or no route", () => {
+    const rows = goRows([passage, island], new Set([0]));
+    expect(rows.map((r) => r.look)).toEqual([
+      { map: 1, room: 1839 },
+      { map: 1, room: 1839 },
+      { map: 1, room: 1840 },
+      { map: 1, room: 1 },
+    ]);
+    expect(rows[3].room).toBeUndefined();
+    expect(goRows([{ ...island, rooms: [] }], new Set())[0].look).toBeUndefined();
+  });
+
   it("move the choice within the list", () => {
     const rows = goRows([passage, chief], new Set());
     expect(moveChoice(rows, -1, 1)).toBe(0);

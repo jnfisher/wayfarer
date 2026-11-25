@@ -10,7 +10,7 @@
   import { badgeText, classBadge } from "./lib/classes";
   import { InputHistory } from "./lib/input";
   import { HELP_KEY } from "./lib/keys";
-  import { TERM_COLS, TERM_ROWS, fitFontSize } from "./lib/layout";
+  import { TERM_COLS, TERM_ROWS, fitFontSize, fitZoomedFontSize } from "./lib/layout";
   import type { TerminalSinks } from "./lib/sinks";
   import { FONT_FAMILY, FONT_NAME, VGA_THEME } from "./lib/theme";
   import type { SpellPlan } from "./lib/spells";
@@ -25,6 +25,8 @@
     focused: boolean;
     /** Font size steps above (or below) "fit to tile". */
     zoom: number;
+    /** Zoomed to fill the window (Alt+Z): the font is kept small enough for more rows of text. */
+    full?: boolean;
     /** The gateway connection is down: say so over the terminal. */
     offline: string | null;
     client: GatewayClient;
@@ -53,6 +55,7 @@
     number,
     focused,
     zoom,
+    full = false,
     offline,
     client,
     sinks,
@@ -161,10 +164,12 @@
     };
   });
 
-  /** Size the font so 80 columns fill the tile's width (plus the zoom), rows to fill its height. */
+  /** Size the font so 80 columns fill the tile's width (plus the zoom), rows to fill its height.
+   * Zoomed to the window, the font stops growing where fewer than `ZOOMED_ROWS` rows would show. */
   function refit() {
     if (!term || !fit || host.clientWidth === 0) return;
-    let size = Math.max(6, fitFontSize(host.clientWidth) + zoom);
+    const fitted = full ? fitZoomedFontSize(host.clientWidth, host.clientHeight) : fitFontSize(host.clientWidth);
+    let size = Math.max(6, fitted + zoom);
     term.options.fontSize = size;
     if (zoom <= 0) {
       // xterm rounds cells to device pixels and keeps room for its scrollbar: step down until
@@ -180,6 +185,7 @@
 
   $effect(() => {
     void zoom;
+    void full;
     refit();
   });
 
@@ -499,7 +505,7 @@
     <div class="narration {c?.bot?.state}" title={c?.bot?.reason ?? ""}>{narration}</div>
   {/if}
   <div class="screen">
-    <div class="term" bind:this={host}></div>
+    <div class="term" class:full bind:this={host}></div>
     {#if offline}
       <div class="offline">{offline}</div>
     {/if}
@@ -863,6 +869,10 @@
     /* xterm's own layers (its scrollbar at z-index 11) stack inside the terminal, under the
        full-screen views (the gear planner, the combat zoom) and the help. */
     isolation: isolate;
+  }
+  /* Zoomed to the window, the 80 columns are narrower than it: in the middle, not at the left. */
+  .term.full :global(.xterm-screen) {
+    margin: 0 auto;
   }
   .offline {
     position: absolute;

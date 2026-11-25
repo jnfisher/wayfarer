@@ -263,9 +263,10 @@ export class GatewayClient {
     return this.send({ type: "session_control", session, action });
   }
 
-  /** Ask for a `map_view` now, of the rooms within `radius` steps (clamped to 1-30). */
-  requestMap(session: string, radius?: number): boolean {
-    return this.send({ type: "map_request", session, radius: clampRadius(radius) });
+  /** Ask for a `map_view` now, of the rooms within `radius` steps (clamped to 1-30): around
+   * the believed room, or around `center` to look at a room far away. */
+  requestMap(session: string, radius?: number, center?: RoomKey): boolean {
+    return this.send({ type: "map_request", session, radius: clampRadius(radius), center });
   }
 
   /** Ask for the nearest loops, at most `limit`, those matching `query` if given, from anywhere

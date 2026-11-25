@@ -1933,6 +1933,9 @@ pub enum ToClient {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         radius: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        center: Option<RoomKey>,
     },
     BotControl {
         session: SessionId,
@@ -2227,12 +2230,17 @@ pub enum ToGateway {
         fight: bool,
     },
     /// UI → brain: send a `map_view` now, of the rooms within `radius` steps (15 when left
-    /// out; later automatic views use the same radius).
+    /// out; later automatic views use the same radius). With a `center`, the view is laid out
+    /// around that room instead of the believed one, to look at a place far away: the
+    /// automatic views go on following the character.
     MapRequest {
         session: SessionId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         radius: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        center: Option<RoomKey>,
     },
     /// UI → brain: start, stop, pause or resume the bot for the character.
     BotControl {
@@ -3079,7 +3087,15 @@ impl ToGateway {
             Self::SysGoto { session, town } => ToClient::SysGoto { session, town },
             Self::RecoverTo { session, town } => ToClient::RecoverTo { session, town },
             Self::JourneyFight { session, fight } => ToClient::JourneyFight { session, fight },
-            Self::MapRequest { session, radius } => ToClient::MapRequest { session, radius },
+            Self::MapRequest {
+                session,
+                radius,
+                center,
+            } => ToClient::MapRequest {
+                session,
+                radius,
+                center,
+            },
             Self::BotControl { session, action } => ToClient::BotControl { session, action },
             Self::LoopsRequest {
                 session,
