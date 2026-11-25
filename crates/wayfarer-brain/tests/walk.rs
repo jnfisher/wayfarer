@@ -1104,6 +1104,49 @@ async fn a_locked_door_is_opened_by_asking_the_monster_that_guards_it() {
     assert_eq!(played, ["w", "ask shadow guard morukai", "w"]);
 }
 
+/// The Darkwood Forest's Ancient Darkwood Tree (7:1360): west is the portal room 9:1291,
+/// whose `go portal` takes a character with the quest's ability up to 9:1424, beside the
+/// guards' door (live, 2026-11-25: Lexi's party, with "no route known" before).
+const FOREST_TREE: Key = (7, 1360);
+const LOWER_PORTAL: Key = (9, 1291);
+const UPPER_PORTAL: Key = (9, 1424);
+
+#[tokio::test(start_paused = true)]
+async fn the_portal_to_morukai_is_a_room_command_the_game_judges() {
+    let (mut g, run) = Game::start(SessionState::Realm, FOREST_TREE).await;
+    g.output(&strength(50)).await;
+    g.expect("w", room(LOWER_PORTAL));
+    // The teleport shows no room: the walker looks (C-055).
+    g.expect(
+        "go portal",
+        format!("You step into the portal...\r\n{}", game::arena::prompt(35)),
+    );
+    g.expect("look", room(UPPER_PORTAL));
+    g.expect("w", room(DARKWOOD_TREE));
+    g.expect("w", says("The door is closed!"));
+    g.expect(
+        "ask shadow guard morukai",
+        says("The shadow guard whispers \"You may pass.\""),
+    );
+    g.expect("w", room(MYSTICAL_CHAMBERS));
+    g.walk_to(MYSTICAL_CHAMBERS).await;
+    let said = g.walk_narrated("Arrived: Mystical Chambers").await;
+    assert_eq!(said[0], "Walking to Mystical Chambers: 4 steps, one door");
+    let (_, played) = g.close(run).await;
+    assert_eq!(
+        played,
+        [
+            "w",
+            "go portal",
+            "look",
+            "w",
+            "w",
+            "ask shadow guard morukai",
+            "w"
+        ]
+    );
+}
+
 #[tokio::test(start_paused = true)]
 async fn a_gate_still_locked_after_its_lever_is_given_up() {
     let (mut g, run) = Game::start(SessionState::Realm, INNER_GATE).await;

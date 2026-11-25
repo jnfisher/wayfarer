@@ -561,9 +561,16 @@ walk to at all is left out.
   plain pattern (no wildcard), and only `message`, `adddelay`, `minlevel`, `maxlevel`,
   `nomonsters` and one `teleport <room> <map>` (`minlevel` and `maxlevel` gate it as a Level
   exit). `ring chime` on Slum Street (1:1182) puts the character in the Strange Mansion's
-  Entrance (1:65), the only way in for most: the front door is -800, beyond any bash. A line
-  with a `cast`, a `random`, a skill test, an item taken or checked, or an ability or alignment
-  check is left out (120 of the 552 teleport lines of the stock data are ways through). The
+  Entrance (1:65), the only way in for most: the front door is -800, beyond any bash. A check
+  of a quest's ability (`checkability`, `testability`, `failability`) is the game's to judge:
+  the brain cannot see those abilities, so the line is a way, and a character the game turns
+  away lands where the next line says and plans again from there. The Ancient Darkwood Tree's
+  portal (9:1291, west of the Darkwood Forest's tree 7:1360) is one: `go portal` takes a
+  character with quest ability 133 at 5 up to 9:1424, beside the shadow guards' door to
+  Morukai, and anyone else into the Caves of Chaos; without it the whole tree is "no route
+  known" (live, 2026-11-25). A line with a `cast` of anything but a teleport, a `random`, a
+  skill test, an item taken or checked, or an alignment check is left out (120 of the 552
+  teleport lines of the stock data were ways through before the quest checks counted). The
   game reads a room's command text only once its command parser has found no command in the
   line, so the brain gives each one the first phrase its command table does not claim (`ring
   chime`, not `use chime`); one with none is not taken. And a step of a verified MegaMud path

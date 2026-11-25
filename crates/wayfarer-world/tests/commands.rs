@@ -159,3 +159,37 @@ fn the_dragons_teeth_hole_is_in_its_own_room_not_a_look_alike() {
         g.edges(LOOK_ALIKE)
     );
 }
+
+#[test]
+fn a_room_command_behind_a_quest_check_is_a_way_the_game_judges() {
+    let (_, g) = graph();
+    // The Ancient Darkwood Tree's portal (9:1291, reached from the Darkwood Forest's tree
+    // 7:1360): `go portal` with quest ability 133 at 5 casts the lower portal (spell 620), a
+    // teleport to the portal room above, 9:1424; the lines after it send anyone else into the
+    // Caves of Chaos. The first line is the way; the game decides who it serves.
+    let portal = g
+        .edges((9, 1291))
+        .iter()
+        .find(|e| e.kind == ExitType::RoomCommand)
+        .unwrap();
+    assert_eq!(portal.to, (9, 1424));
+    assert_eq!(portal.phrases, ["go portal", "enter portal"]);
+    assert_eq!(portal.gate, Gate::None);
+    // And back down: `go portal` at 9:1424 casts the upper portal (619) to 9:1291.
+    let back = g
+        .edges((9, 1424))
+        .iter()
+        .find(|e| e.kind == ExitType::RoomCommand)
+        .unwrap();
+    assert_eq!(back.to, (9, 1291));
+    // From the forest's tree to Morukai: the map change west, the portal, then the door the
+    // shadow guards open (its lever on the step).
+    let t = Traveller {
+        strength: Some(50),
+        ..Traveller::default()
+    };
+    let r = route(&g, (7, 1360), (9, 1425), &t).unwrap();
+    let cmds: Vec<&str> = r.iter().map(|s| s.command.as_str()).collect();
+    assert_eq!(cmds, ["w", "go portal", "w", "w"]);
+    assert_eq!(r[3].lever.len(), 1);
+}

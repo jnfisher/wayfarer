@@ -50,8 +50,9 @@ fn graph_loads_every_room_and_exit() {
     // 2/115, 2/487 and 2/630, and the two organic chambers' `go hole`, 2/2366 and 2/2367); one
     // way an item's script gives, the potion of levitation's at Mossy Cave, Waterfall; and what
     // the monsters answer: 5 Remote Actions (the shadow guards' door, the sphinxes' ways up) and
-    // 6 teleports.
-    assert_eq!(g.edge_count(), 62_409);
+    // 6 teleports; and 3 room commands behind a quest ability check (the Ancient Darkwood Tree's
+    // two portals, and the Ancient Fortress jail cell's `shakabuku`, level 65).
+    assert_eq!(g.edge_count(), 62_412);
     // Into players' houses, which have no name: there, but never taken (C-053).
     assert_eq!(g.into_unnamed, 34);
     assert_eq!(g.dangling, 0);
