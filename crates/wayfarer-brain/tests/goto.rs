@@ -11,6 +11,7 @@ use wayfarer_proto::{Found, FoundKind};
 const CHIEFTAIN: Key = (1, 1865);
 const BY_CHIEFTAIN: Key = (1, 1864);
 const PASSAGE: Key = (1, 1863);
+const STONE_HALLWAY: Key = (1, 1297);
 
 async fn find(g: &mut Game, query: &str) -> Vec<Found> {
     g.send(ToClient::Find {
@@ -23,6 +24,31 @@ async fn find(g: &mut Game, query: &str) -> Vec<Found> {
         _ => None,
     })
     .await
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_room_with_no_route_says_which_exit_stops_the_character() {
+    // From the Crypt's Stone Hallway, the rooms beyond the Small Chamber's hidden exit are
+    // out of reach until it is found: each says so.
+    let (mut g, run) = Game::start_with(
+        SessionState::Realm,
+        format!("{}{}", game::arena::status(35), room(STONE_HALLWAY)),
+    )
+    .await;
+    let found = find(&mut g, "crypt").await;
+    let whys: Vec<&str> = found
+        .iter()
+        .flat_map(|f| f.rooms.iter())
+        .filter(|r| r.no_route)
+        .map(|r| r.why.as_deref().unwrap_or("(none)"))
+        .collect();
+    assert!(!whys.is_empty(), "{found:?}");
+    assert!(
+        whys.iter()
+            .all(|w| *w == "the hidden exit south of Crypt, Small Chamber is not known"),
+        "{whys:?}"
+    );
+    g.close(run).await;
 }
 
 /// A brain whose character is certainly in the Wooden Passage two rooms north of the
@@ -50,6 +76,10 @@ async fn find_answers_with_rooms_places_and_monsters_nearest_first() {
     );
     assert_eq!(arena.rooms[0].steps, Some(3));
     assert!(arena.rooms[1].no_route);
+    // A room with no route says why: the other Arena is an island no traveller reaches. One
+    // with a route says nothing.
+    assert_eq!(arena.rooms[1].why.as_deref(), Some("no route known"));
+    assert_eq!(arena.rooms[0].why, None);
 
     let found = find(&mut g, "chief").await;
     let chief = found

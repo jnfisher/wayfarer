@@ -112,6 +112,8 @@
   let chosen = $state(-1);
   let expanded = $state.raw<Set<number>>(new Set());
   let walkIn = $state.raw<Set<string>>(new Set());
+  /** The no-route rows whose reason is shown (by row id). */
+  let whyOpen = $state.raw<Set<string>>(new Set());
   let goInput = $state<HTMLInputElement>();
   let findTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -146,6 +148,7 @@
       chosen = rows.length > 0 ? 0 : -1;
       expanded = new Set();
       walkIn = new Set();
+      whyOpen = new Set();
     });
   });
 
@@ -200,6 +203,12 @@
     const next = new Set(expanded);
     if (!next.delete(i)) next.add(i);
     expanded = next;
+  }
+
+  function toggleWhy(id: string) {
+    const next = new Set(whyOpen);
+    if (!next.delete(id)) next.add(id);
+    whyOpen = next;
   }
 
   function toggleShort(id: string) {
@@ -740,6 +749,15 @@
                       <input type="checkbox" checked={!walkIn.has(row.id)} onchange={() => toggleShort(row.id)} /> stop short
                     </label>
                   {/if}
+                  {#if row.why}
+                    <button
+                      class="why"
+                      aria-label="Why no route"
+                      aria-expanded={whyOpen.has(row.id)}
+                      title="Why the brain has no way there"
+                      onclick={() => toggleWhy(row.id)}>?</button
+                    >
+                  {/if}
                   {#if chosen === i && row.look}
                     <button
                       class="look"
@@ -747,6 +765,9 @@
                       title="Show this room on the map, without walking: route or no route, however far"
                       onclick={() => look(row.look)}>◉</button
                     >
+                  {/if}
+                  {#if row.why && whyOpen.has(row.id)}
+                    <div class="whytext">no route: {row.why}</div>
                   {/if}
                   {#if chosen === i && row.room}
                     <button class="walk" disabled={!!locked} title={locked ?? undefined} onclick={() => go(row)}>go</button>
@@ -1066,6 +1087,14 @@
   }
   .go .look {
     background: var(--vga-lightcyan);
+  }
+  .go .why {
+    background: var(--vga-yellow);
+  }
+  .go .whytext {
+    flex-basis: 100%;
+    padding-left: 2ch;
+    color: var(--vga-yellow);
   }
   .fight {
     color: var(--dim);

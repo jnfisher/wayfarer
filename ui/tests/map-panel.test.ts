@@ -432,7 +432,7 @@ describe("the go box", () => {
         name: "Chief's Hall",
         rooms: [
           { map: 1, room: 20, name: "Chief's Hall", steps: 5, boss: false },
-          { map: 1, room: 21, name: "Chief's Hall", no_route: true, boss: false },
+          { map: 1, room: 21, name: "Chief's Hall", no_route: true, why: "the door north of Chief's Hall cannot be opened", boss: false },
         ],
         count: 2,
       },
@@ -606,6 +606,19 @@ describe("the go box", () => {
     await rerender({ view: far } as never);
     await fireEvent.click(screen.getByRole("button", { name: "centre" }));
     expect(onlook).toHaveBeenLastCalledWith("aria");
+  });
+
+  it("? on a no-route row says why, and again puts it away", async () => {
+    mount({ character: here, found: chiefFound, goAsked: 7 });
+    await typeIn("chief");
+    expect(screen.queryByRole("button", { name: "Why no route" })).toBeNull();
+    await fireEvent.click(screen.getByRole("button", { name: "Open the rooms" }));
+    const why = screen.getByRole("button", { name: "Why no route" });
+    expect(screen.queryByText(/cannot be opened/)).toBeNull();
+    await fireEvent.click(why);
+    expect(screen.getByText("no route: the door north of Chief's Hall cannot be opened")).toBeTruthy();
+    await fireEvent.click(why);
+    expect(screen.queryByText(/cannot be opened/)).toBeNull();
   });
 
   it("the eye shows a recent place on the map", async () => {

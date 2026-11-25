@@ -25,6 +25,8 @@ export interface GoRow {
   room?: FoundRoom;
   /** Where the eye looks: the result's nearest room, or this room, route or no route. */
   look?: RoomKey;
+  /** With no `room`: why the brain has no way there (the nearest room's reason, or this room's). */
+  why?: string;
   /** The result has more than one room, so it can be expanded. */
   expandable: boolean;
 }
@@ -80,7 +82,8 @@ export function goRows(found: Found[], expanded: ReadonlySet<number>): GoRow[] {
   found.forEach((f, i) => {
     const room = f.rooms.find((r) => !r.no_route);
     const look = f.rooms[0] && { map: f.rooms[0].map, room: f.rooms[0].room };
-    rows.push({ id: `${i}`, result: i, sub: false, text: resultText(f), room, look, expandable: f.rooms.length > 1 });
+    const why = room ? undefined : f.rooms[0]?.why;
+    rows.push({ id: `${i}`, result: i, sub: false, text: resultText(f), room, look, why, expandable: f.rooms.length > 1 });
     if (expanded.has(i) && f.rooms.length > 1) {
       f.rooms.forEach((r, j) =>
         rows.push({
@@ -90,6 +93,7 @@ export function goRows(found: Found[], expanded: ReadonlySet<number>): GoRow[] {
           text: roomText(r),
           room: r.no_route ? undefined : r,
           look: { map: r.map, room: r.room },
+          why: r.no_route ? r.why : undefined,
           expandable: false,
         }),
       );

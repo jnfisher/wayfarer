@@ -420,8 +420,12 @@ for the map panel's go box (`docs/web-ui.md`, "The map").
   whole name, its start, the start of a word, anywhere); then the nearer; then places before
   monsters before room names. Route lengths come from one breadth-first pass from the
   believed room by the exits the character may take (some milliseconds over the whole
-  world); a room beyond 200 steps is "far", one not reached at all "no route". With the
-  position unknown, nothing has steps.
+  world); a room beyond 200 steps is "far", one not reached at all "no route", with why: the
+  first exit the character may not take on the way a traveller with no restrictions would go,
+  as a loop that cannot run says it ("the exit north of Stone Hallway is for level 10 and up",
+  "the door east of Cellar needs the rusty iron key and cannot be bashed open"; "no route
+  known" when even that traveller has no way, as to an island). With the position unknown,
+  nothing has steps.
 - **Boss lairs**: a room whose spawn pool (its `genmonster`, its group's monsters, or its
   `specmon`) holds a boss, or that a MegaMud waypoint flags boss. A boss is a monster that
   spawns one at a time and comes back hours after its kill (`maxalive` 1, `regenhrs` set,

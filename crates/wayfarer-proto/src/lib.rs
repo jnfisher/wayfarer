@@ -875,6 +875,12 @@ pub struct FoundRoom {
     #[serde(default, skip_serializing_if = "is_false")]
     #[ts(as = "Option<bool>", optional)]
     pub no_route: bool,
+    /// With `no_route`: why, as the brain sees it. The first exit the character may not take
+    /// on the way an unrestricted traveller would go ("the exit north of Stone Hallway is for
+    /// level 10 and up").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub why: Option<String>,
     /// A boss lair: `walk_to` stops one room short of it by default.
     pub boss: bool,
 }

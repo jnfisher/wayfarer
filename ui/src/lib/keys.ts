@@ -60,6 +60,12 @@ export const KEY_ROWS: KeyRow[] = [
     does:
       "Show its room on the map without walking, route or no route, however far: the brain lays out the map around it, so a room near it can be clicked to walk there; centre comes back to the character",
   },
+  {
+    group: "Map",
+    keys: "? on a no route row of the go box",
+    does:
+      "Say why the brain has no way there: the first exit the character may not take on the way it would otherwise go (a level gate, a locked door and the key it needs, a hidden exit not known); again to put it away",
+  },
   { group: "Map", keys: "Esc in the go box", does: "Clear it; Esc again closes it" },
   {
     group: "Map",

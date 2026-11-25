@@ -136,6 +136,7 @@ but no pause sign, so pause is `[║]`.
 | `Alt+G`, or the `go` button | Open the go box above the map: type part of the name of a room, a shop, bank or trainer, or a monster (two letters or more) and the list fills as you type (on a Mac, `Option`) |
 | `Up`, `Down`, `Enter` in the go box | Choose a row (the map centres on its room when in view) and walk there; a boss lair's row has a ticked `stop short` box: the walk stops one room before it |
 | `◉` on the chosen row of the go box | Show its room on the map without walking, route or no route, however far: the brain lays out the map around it, so a room near it can be clicked to walk there; `centre` comes back to the character |
+| `?` on a `no route` row of the go box | Say why the brain has no way there: the first exit the character may not take on the way it would otherwise go (a level gate, a locked door and the key it needs, a hidden exit not known); again to put it away |
 | `Esc` in the go box | Clear it; `Esc` again closes it |
 | Mouse wheel, drag on the map | Zoom (three sizes), pan; `centre` goes back to the character (from a look at another room too) |
 | `loops`, beside `go` | The 12 loops nearest the character, nearest first, with a box to find one by name, file, author or a stop, however far: hover or pick one to draw it in yellow, `walk once` walks it, `run` hunts round it (untick a stop to pass it by) |
@@ -248,7 +249,11 @@ and works nothing out itself.
   pack has them) and monsters with the rooms they spawn in (`minotaur chieftain, boss, lairs
   at Large Wooden Room 1:1865, 46 steps`). Distances are route lengths from the character;
   beyond 200 steps a room is `far`, and one the character has no way to is `no route`,
-  listed last and not walkable. `Up` and `Down` choose a row, and the map centres on its room
+  listed last and not walkable; its row's **?** says why, as the brain sees it: the first
+  exit it may not take on the way it would otherwise go ("the exit north of Stone Hallway is
+  for level 10 and up", "the door east of Cellar needs the rusty iron key and cannot be
+  bashed open", "the hidden exit south of Crypt is not known"), and **◉** then shows the
+  room named. `Up` and `Down` choose a row, and the map centres on its room
   when the room is in view; `Enter` (or the row's **go** button, or a double-click) walks
   there as a click on the map does. The row's **◉** shows its room on the map without
   walking, route or no route, however far: the brain lays the map out around that room

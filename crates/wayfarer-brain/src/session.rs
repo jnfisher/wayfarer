@@ -2463,6 +2463,20 @@ impl Session {
             self.position.best(),
             &self.position.traveller,
         );
+        let here = self.position.best();
+        // A room with no route says why: the first exit on the open way there that the
+        // character may not take (as a loop that cannot run does).
+        let why = |k: Key| {
+            here.map(|from| {
+                why_unreachable(
+                    &atlas.graph,
+                    &self.position.traveller,
+                    &atlas.item_names,
+                    from,
+                    k,
+                )
+            })
+        };
         let results = found
             .into_iter()
             .map(|f| Found {
@@ -2490,6 +2504,7 @@ impl Session {
                             _ => None,
                         },
                         no_route: r.reach == Reach::NoRoute,
+                        why: (r.reach == Reach::NoRoute).then(|| why(r.key)).flatten(),
                         boss: r.boss,
                     })
                     .collect(),

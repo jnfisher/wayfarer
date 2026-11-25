@@ -14,6 +14,12 @@ steps?: number,
  */
 no_route?: boolean, 
 /**
+ * With `no_route`: why, as the brain sees it. The first exit the character may not take
+ * on the way an unrestricted traveller would go ("the exit north of Stone Hallway is for
+ * level 10 and up").
+ */
+why?: string, 
+/**
  * A boss lair: `walk_to` stops one room short of it by default.
  */
 boss: boolean, };
