@@ -1422,7 +1422,14 @@ there says so and stops ("Train stopped: could not get to Training Room").
   points there.
 - **Recover death pile** (`bot_control` `recover_pile`): walks to the room of the character's last
   death (the recent places, kept whether or not a run was going), then runs Pick up all and Equip
-  all there ("Pick up done: ...; Equip done: ..."). With no death on record it says so.
+  all there ("Pick up done: ...; Equip done: ..."). With no death on record it says so. On a
+  Quicksilver 1.20 server (1.20.7) a death leaves a corpse, not a pile: `Kasimir's corpse` at the
+  end of the room's item line, which `get` cannot take, so the trip runs **Loot** first: one
+  `loot`, which takes the character's own corpse (else the oldest there), everything that fits;
+  what is too heavy falls to the floor for the Pick up all after ("Loot done: took 3 gold
+  crowns, quarterstaff; too heavy, on the floor: platemail armour"; "Loot done: no corpse
+  here"). The room's corpses are kept apart from its items (`RoomItems.corpses`): Pick up all
+  never sends `get` for one.
 
 An errand in progress is asked again every half second even when the game says nothing, so a walk
 or a re-sync that ends quietly does not leave it waiting.

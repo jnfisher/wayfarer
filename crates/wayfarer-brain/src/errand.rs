@@ -36,6 +36,9 @@ pub(crate) enum ErrandKind {
     Equip,
     /// `train` until the trainer will not.
     Train,
+    /// `loot` (Quicksilver 1.20.7): the character's own corpse in the room, else the oldest;
+    /// what does not fit falls to the floor for Pick up all.
+    Loot,
 }
 
 impl ErrandKind {
@@ -45,6 +48,7 @@ impl ErrandKind {
             ErrandKind::PickUp => "Pick up",
             ErrandKind::Equip => "Equip",
             ErrandKind::Train => "Train",
+            ErrandKind::Loot => "Loot",
         }
     }
 }
@@ -99,6 +103,8 @@ enum Job {
     },
     /// `train`.
     Train,
+    /// `loot` (1.20.7).
+    Loot,
 }
 
 impl Job {
@@ -109,6 +115,7 @@ impl Job {
             Job::Wear { name } => format!("wear {name}"),
             Job::Wield { name } => format!("wield {name}"),
             Job::Train => "train".to_owned(),
+            Job::Loot => "loot".to_owned(),
         }
     }
 }
@@ -134,6 +141,9 @@ struct Heard {
     too_heavy: bool,
     trained: Option<u64>,
     train_refused: Option<&'static str>,
+    /// `You loot Kasimir's corpse.` / `There is no corpse here to loot.` (1.20.7).
+    looted: bool,
+    no_corpse: bool,
 }
 
 #[derive(Debug)]
@@ -153,6 +163,11 @@ pub(crate) struct Errand {
     levels: u32,
     fees: u64,
     stopped: Option<&'static str>,
+    /// What a `loot` took (the game's `You took ...` lines), what fell to the floor as too
+    /// heavy, and what stayed on the corpse (1.20.7).
+    loot_took: Vec<String>,
+    loot_floor: Vec<String>,
+    loot_kept: Vec<String>,
 }
 
 impl Errand {
@@ -169,6 +184,9 @@ impl Errand {
             levels: 0,
             fees: 0,
             stopped: None,
+            loot_took: Vec::new(),
+            loot_floor: Vec::new(),
+            loot_kept: Vec::new(),
         }
     }
 
@@ -184,6 +202,7 @@ impl Errand {
                 ErrandKind::PickUp => "looking".to_owned(),
                 ErrandKind::Equip => "checking what is carried".to_owned(),
                 ErrandKind::Train => "training".to_owned(),
+                ErrandKind::Loot => "looting".to_owned(),
             },
             (None, Stage::Working) => "finishing".to_owned(),
         };
@@ -205,6 +224,12 @@ impl Errand {
                     ErrandKind::Train => {
                         self.stage = Stage::Working;
                         self.todo.push_back(Job::Train);
+                        return self.step(ctx);
+                    }
+                    // Nor before `loot`: the game says what the corpse held.
+                    ErrandKind::Loot => {
+                        self.stage = Stage::Working;
+                        self.todo.push_back(Job::Loot);
                         return self.step(ctx);
                     }
                 };
@@ -273,7 +298,7 @@ impl Errand {
                     }
                 }
             }
-            ErrandKind::Train => {}
+            ErrandKind::Train | ErrandKind::Loot => {}
             ErrandKind::Equip => {
                 self.weapon = ctx
                     .carried
@@ -298,12 +323,27 @@ impl Errand {
 
     /// An event from the game, whether or not a command is in flight.
     pub fn on_event(&mut self, ev: &GameEvent) {
-        let Some((_, heard)) = &mut self.current else {
+        let Some((job, heard)) = &mut self.current else {
             return;
         };
+        let looting = *job == Job::Loot;
         match ev {
             GameEvent::CoinsPicked { .. } => heard.coins = true,
+            // A loot's `You took 3 gold crowns, quarterstaff.` is the stock line with a list.
+            GameEvent::ItemTaken { item } if looting => {
+                heard.taken = true;
+                self.loot_took.extend(item.split(", ").map(str::to_owned));
+            }
             GameEvent::ItemTaken { .. } => heard.taken = true,
+            GameEvent::Looted { .. } => heard.looted = true,
+            GameEvent::LootLeft { items, floor } if looting => {
+                if *floor {
+                    self.loot_floor.extend(items.iter().cloned());
+                } else {
+                    self.loot_kept.extend(items.iter().cloned());
+                }
+            }
+            GameEvent::NoCorpse => heard.no_corpse = true,
             GameEvent::Worn { .. } => heard.worn = true,
             GameEvent::Wielded { .. } => heard.wielded = true,
             GameEvent::WearFailed => heard.wear_failed = true,
@@ -376,6 +416,13 @@ impl Errand {
                     self.skipped.push(name);
                 }
             }
+            Job::Loot => {
+                if heard.no_corpse {
+                    self.stopped = Some("no_corpse");
+                } else if !heard.looted || timed_out {
+                    self.stopped = Some("no_answer");
+                }
+            }
         }
         if self.full {
             // Nothing more fits: the rest of the pickups are not tried.
@@ -385,6 +432,25 @@ impl Errand {
     }
 
     fn summary(&self) -> String {
+        if self.kind == ErrandKind::Loot {
+            let list = |v: &[String]| v.join(", ");
+            let mut text = match self.stopped {
+                Some("no_corpse") => return "Loot done: no corpse here".to_owned(),
+                Some(_) => return "Loot done: no answer to `loot`".to_owned(),
+                None if self.loot_took.is_empty() => "Loot done: took nothing".to_owned(),
+                None => format!("Loot done: took {}", list(&self.loot_took)),
+            };
+            if !self.loot_floor.is_empty() {
+                text.push_str(&format!(
+                    "; too heavy, on the floor: {}",
+                    list(&self.loot_floor)
+                ));
+            }
+            if !self.loot_kept.is_empty() {
+                text.push_str(&format!("; still on the corpse: {}", list(&self.loot_kept)));
+            }
+            return text;
+        }
         if self.kind == ErrandKind::Train {
             let why = match self.stopped {
                 Some("no_exp") => "not enough experience for the next level",
@@ -473,6 +539,40 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// 1.20.7: `loot` takes the corpse's coins and items in one command; what the game says
+    /// it took, dropped and kept makes the summary.
+    #[test]
+    fn loot_takes_the_corpse_in_one_command_and_says_what_fell_to_the_floor() {
+        let (floor, items, carried, coins) = (BTreeMap::new(), vec![], vec![], BTreeMap::new());
+        let c = ctx(&floor, &items, &carried, &coins);
+        let mut e = Errand::new(ErrandKind::Loot);
+        let sent = play(&mut e, &c, |cmd| {
+            assert_eq!(cmd, "loot");
+            vec![
+                GameEvent::Looted {
+                    owner: "Kasimir".into(),
+                },
+                GameEvent::ItemTaken {
+                    item: "3 gold crowns, quarterstaff".into(),
+                },
+                GameEvent::LootLeft {
+                    items: vec!["platemail armour".into()],
+                    floor: true,
+                },
+            ]
+        });
+        assert_eq!(
+            sent,
+            [
+                "loot",
+                "= Loot done: took 3 gold crowns, quarterstaff; too heavy, on the floor: platemail armour"
+            ]
+        );
+        let mut e = Errand::new(ErrandKind::Loot);
+        let sent = play(&mut e, &c, |_| vec![GameEvent::NoCorpse]);
+        assert_eq!(sent, ["loot", "= Loot done: no corpse here"]);
     }
 
     #[test]

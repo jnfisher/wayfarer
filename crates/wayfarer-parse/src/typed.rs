@@ -363,6 +363,10 @@ pub enum GameEvent {
         coins: BTreeMap<String, u64>,
         /// The other things lying there, counted.
         items: Vec<Carried>,
+        /// The corpses lying there (Quicksilver 1.20.7: `Kasimir's corpse`, at the end of the
+        /// line), by their owner's first name. Not items: `get` takes nothing of them; `loot`
+        /// does.
+        corpses: Vec<String>,
     },
     /// `took_item`: `You took torch.`
     ItemTaken {
@@ -542,6 +546,9 @@ pub enum GameEvent {
         resting: bool,
         rank: Option<Rank>,
         invited: bool,
+        /// Quicksilver 1.20.7: the ward this member guards, from `Brannoc Stone guards Mirelle`
+        /// in the name column.
+        guards: Option<String>,
     },
 
     /// `inv_carrying` (and `inv_nothing`, empty): coins by name and items.
@@ -600,10 +607,25 @@ pub enum GameEvent {
         on: bool,
     },
     /// The game would not take `guard` (1.20): `not_guarding` (`guard` alone with no ward),
-    /// `not_here`, `not_party` (`<Name> is not in your party.`), `self` or `resting`.
+    /// `not_here`, `not_party` (`<Name> is not in your party.`) or `self` (1.20.0 also refused
+    /// `resting`; a guard lasts through rests since 1.20.7).
     GuardRefused {
         why: &'static str,
     },
+    /// `loot_you` (1.20.7): `You loot Kasimir's corpse.`, the owner's first name. What was taken
+    /// follows as `took_item` (`You took 3 gold crowns, quarterstaff.`).
+    Looted {
+        owner: String,
+    },
+    /// `loot_dropped` / `loot_kept` (1.20.7): what the looter could not carry, `floor` when it
+    /// fell to the floor (`Too heavy to carry, left on the floor: platemail armour.`), else
+    /// still on the corpse (`No room on the floor, still on the corpse: ...`).
+    LootLeft {
+        items: Vec<String>,
+        floor: bool,
+    },
+    /// `loot_no_corpse` (1.20.7): `There is no corpse here to loot.`
+    NoCorpse,
     /// `look_weapon_strreq` (1.20): `It requires 75 strength to wield well (you have 92).`
     StrRequirement {
         required: i64,
@@ -1005,7 +1027,18 @@ impl GameEvent {
             "guard_not_here" => G::GuardRefused { why: "not_here" },
             "guard_not_party" => G::GuardRefused { why: "not_party" },
             "guard_self" => G::GuardRefused { why: "self" },
-            "guard_resting" => G::GuardRefused { why: "resting" },
+            "loot_you" => G::Looted {
+                owner: text(ev, "owner"),
+            },
+            "loot_dropped" | "loot_kept" => G::LootLeft {
+                items: text(ev, "items")
+                    .split(", ")
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_owned)
+                    .collect(),
+                floor: ev.name == "loot_dropped",
+            },
+            "loot_no_corpse" => G::NoCorpse,
             name if name.starts_with("regen_") => match name[6..].split_once('_') {
                 Some((family, kind)) => G::RegenLine {
                     family: family.to_owned(),
@@ -1059,7 +1092,20 @@ impl GameEvent {
             "blind" => G::Blind,
             "room_items" => {
                 let (coins, items) = parse_carrying(ev.text("items").unwrap_or_default());
-                G::RoomItems { coins, items }
+                // A corpse (1.20.7) lies among the items as `Kasimir's corpse`: not a thing to
+                // `get`.
+                let (corpses, items): (Vec<Carried>, Vec<Carried>) = items
+                    .into_iter()
+                    .partition(|c| c.name.ends_with("'s corpse"));
+                let corpses = corpses
+                    .into_iter()
+                    .map(|c| c.name.trim_end_matches("'s corpse").to_owned())
+                    .collect();
+                G::RoomItems {
+                    coins,
+                    items,
+                    corpses,
+                }
             }
             "took_item" => G::ItemTaken {
                 item: text(ev, "item"),
@@ -1240,13 +1286,22 @@ fn par_row(ev: &Event) -> GameEvent {
             resting: false,
             rank: None,
             invited: true,
+            guards: None,
         };
     }
     // ` R - Frontrank`: the rest mark before the dash, the rank after it.
     let flags = ev.text("flags").unwrap_or_default();
     let (mark, rank) = flags.split_once('-').unwrap_or((flags, ""));
+    // 1.20.7: a guard's name column reads `Brannoc Stone guards Mirelle`.
+    let name = text(ev, "name");
+    let (name, guards) = match name.split_once(" guards ") {
+        Some((n, ward)) if !ward.trim().is_empty() => {
+            (n.trim().to_owned(), Some(ward.trim().to_owned()))
+        }
+        _ => (name, None),
+    };
     GameEvent::ParRow {
-        name: text(ev, "name"),
+        name,
         class: ev.text("cls").map(str::to_owned),
         mana: int(ev, "mpct"),
         hp: int(ev, "hpct"),
@@ -1258,6 +1313,7 @@ fn par_row(ev: &Event) -> GameEvent {
             _ => None,
         },
         invited: false,
+        guards,
     }
 }
 

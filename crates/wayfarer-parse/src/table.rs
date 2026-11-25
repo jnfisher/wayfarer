@@ -15,6 +15,11 @@ const STATIC_ORDER: &str = include_str!("../../../tests/fixtures/parse-golden/st
 const QS120_JSON: &str = include_str!("../../../tests/fixtures/qs120/patterns-1.20.json");
 const QS120_REGEN_JSON: &str =
     include_str!("../../../tests/fixtures/qs120-regen/patterns-1.20.json");
+/// The lines Quicksilver 1.20.7 adds: the LOOT command's (`tests/fixtures/qs120-7`).
+const QS1207_JSON: &str = include_str!("../../../tests/fixtures/qs120-7/patterns-1.20.7.json");
+/// 1.20.0 lines a later 1.20 no longer prints: `guard_resting` went in 1.20.7, when a guard
+/// began to last through rests. Left out of the registry.
+const QS120_REMOVED: [&str; 1] = ["guard_resting"];
 
 #[derive(Debug, Deserialize)]
 pub struct Table {
@@ -57,17 +62,19 @@ struct RulesTable {
     statics: Vec<RulesStatic>,
 }
 
-/// Quicksilver 1.20's patterns, in the file's order.
+/// Quicksilver 1.20's patterns, in the files' order (1.20.0, its regen lines, 1.20.7), less
+/// the lines a later 1.20 dropped.
 pub fn qs120() -> &'static [RulesStatic] {
     static QS120: OnceLock<Vec<RulesStatic>> = OnceLock::new();
     QS120.get_or_init(|| {
-        [QS120_JSON, QS120_REGEN_JSON]
+        [QS120_JSON, QS120_REGEN_JSON, QS1207_JSON]
             .into_iter()
             .flat_map(|json| {
                 let t: RulesTable =
                     serde_json::from_str(json).expect("embedded patterns-1.20.json parses");
                 t.statics
             })
+            .filter(|s| !QS120_REMOVED.contains(&s.name.as_str()))
             .collect()
     })
 }

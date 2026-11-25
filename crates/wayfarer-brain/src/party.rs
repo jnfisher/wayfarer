@@ -1678,6 +1678,7 @@ mod tests {
             resting: false,
             rank: None,
             invited,
+            guards: None,
         }
     }
 

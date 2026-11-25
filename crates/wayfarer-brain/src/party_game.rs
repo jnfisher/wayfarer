@@ -19,6 +19,8 @@ pub(crate) struct ParMember {
     pub rank: Option<Rank>,
     /// Invited, not following yet.
     pub invited: bool,
+    /// The ward it guards, when the screen says (1.20.7).
+    pub guards: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -87,6 +89,7 @@ impl GameParty {
                 resting,
                 rank,
                 invited,
+                guards,
             } if self.screen.is_some() => {
                 let s = self.screen.as_mut().expect("a screen");
                 s.members.push(ParMember {
@@ -97,6 +100,7 @@ impl GameParty {
                     resting: *resting,
                     rank: *rank,
                     invited: *invited,
+                    guards: guards.clone(),
                 });
             }
             other => {
@@ -189,6 +193,7 @@ mod tests {
             resting: false,
             rank: Some(Rank::Mid),
             invited: false,
+            guards: None,
         }
     }
 

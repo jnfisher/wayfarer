@@ -111,6 +111,7 @@ Light = "LIGHT",
 List = "LIST",
 Lock = "LOCK",
 Look = "LOOK",
+Loot = "LOOT",
 Map = "MAP",
 MarkUp = "MARKUP",
 Meditate = "MEDITATE",
@@ -309,6 +310,8 @@ pub const TABLE: &[CommandWord] = &[
     w("LIST", 3, Cmd::List),
     w("LOCK", 3, Cmd::Lock),
     w("LOOK", 1, Cmd::Look),
+    // Quicksilver 1.20.7 ([`QS120_ONLY`]): only in full, `loo` is still LOOK.
+    w("LOOT", 4, Cmd::Loot),
     // M
     w("MAP", 2, Cmd::Map),
     w("MARKUP", 3, Cmd::MarkUp),
@@ -402,6 +405,10 @@ pub const TABLE: &[CommandWord] = &[
     w("WIELD", 3, Cmd::Wield),
     w("WITHDRAW", 3, Cmd::Withdraw),
 ];
+
+/// The commands a Quicksilver 1.20 server has and stock 1.11p has not: the stock oracle knows
+/// nothing of them.
+pub const QS120_ONLY: [Cmd; 1] = [Cmd::Loot];
 
 /// The command one typed word names, `None` when it is no command. Case does not matter.
 pub fn parse_command(word: &str) -> Option<Cmd> {
@@ -533,6 +540,10 @@ mod tests {
         for e in entries {
             let word = e["word"].as_str().unwrap();
             let want = e["code"].as_str().unwrap().strip_prefix("CMD_").unwrap();
+            // A 1.20-only command is not the stock parser's to know.
+            if parse_command(word).is_some_and(|c| QS120_ONLY.contains(&c)) {
+                continue;
+            }
             let got = parse_command(word).map_or("NONE", Cmd::name);
             assert_eq!(got, want, "{word:?} ({})", e["kind"]);
             // Case does not matter.
@@ -548,7 +559,11 @@ mod tests {
             .filter(|c| *c != "NONE")
             .collect();
         reached.sort_unstable();
-        let mut ours: Vec<&str> = Cmd::ALL.iter().map(|c| c.name()).collect();
+        let mut ours: Vec<&str> = Cmd::ALL
+            .iter()
+            .filter(|c| !QS120_ONLY.contains(c))
+            .map(|c| c.name())
+            .collect();
         ours.sort_unstable();
         assert_eq!(ours, reached);
     }
@@ -685,5 +700,18 @@ mod tests {
         // `x` asks to leave before the parser sees it: an act, with no command.
         assert_eq!(classify("X").cmd, None);
         assert_eq!(kind_of("xy"), Kind::Unknown);
+    }
+}
+
+#[cfg(test)]
+mod loot_tests {
+    use super::{Cmd, parse_command};
+
+    #[test]
+    fn loot_is_a_command_only_in_full_and_loo_is_still_look() {
+        assert_eq!(parse_command("loot"), Some(Cmd::Loot));
+        assert_eq!(parse_command("LOOT"), Some(Cmd::Loot));
+        assert_eq!(parse_command("loo"), Some(Cmd::Look));
+        assert_eq!(parse_command("look"), Some(Cmd::Look));
     }
 }

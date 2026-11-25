@@ -1,0 +1,10 @@
+# Quicksilver 1.20.7 lines and the pattern each must classify as (tab-separated).
+# From the server's messages (v120.toml) as quoted in John's 1.20.7 notes; see PROVENANCE.md.
+You loot Kasimir's corpse.	loot_you
+Bob loots Kasimir's corpse.	loot_room
+Too heavy to carry, left on the floor: platemail armour.	loot_dropped
+No room on the floor, still on the corpse: platemail armour.	loot_kept
+Kasimir's corpse crumbles to dust.	corpse_crumbles
+There is no corpse here to loot.	loot_no_corpse
+You don't see zed's corpse here.	loot_no_such
+You took 3 gold crowns, quarterstaff.	took_item

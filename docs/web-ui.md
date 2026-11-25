@@ -299,7 +299,7 @@ and works nothing out itself.
   a menu: **Pick up all** (the coins and the items on the floor, copper included) and **Equip all**
   (wear and wield what is carried, into empty slots only; nothing worn is replaced), and
   **Train** (walk to the right trainer and train levels; it stays there so you can train stats),
-  **Recover death pile** (walk to where the character last died, pick up and equip; greyed with no
+  **Recover death pile** (walk to where the character last died, on a 1.20 server `loot` the corpse first, then pick up and equip; greyed with no
   death on record), **Cancel errand** while one runs, and **Spell plan…**, which lists the spells the class could
   learn and the character lacks, each at its best shop with the price in coins, the steps there and
   a tick (`✓`) where the cash on hand still covers it, then what the cash buys now and what all of

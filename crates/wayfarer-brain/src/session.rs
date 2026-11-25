@@ -1021,6 +1021,24 @@ impl Session {
             }
             let me = self.character.state().name.clone();
             self.party_game.event(&typed, me.as_deref(), now);
+            // The PARTY screen says who guards whom (1.20.7): the character's own row names
+            // its ward, and another's row naming this character makes that one its guard. A row
+            // with no ward says nothing (a 1.20.0 screen shows none): the stop lines end a guard.
+            if let GameEvent::ParRow {
+                name,
+                guards: Some(ward),
+                invited: false,
+                ..
+            } = &typed
+                && let Some(me) = me.as_deref()
+            {
+                let first = |n: &str| n.split_whitespace().next().unwrap_or(n).to_owned();
+                if first(name).eq_ignore_ascii_case(&first(me)) {
+                    self.guard.guarding = Some(ward.clone());
+                } else if first(ward).eq_ignore_ascii_case(&first(me)) {
+                    self.guard.guarded_by = Some(first(name));
+                }
+            }
             if let Some(atlas) = self.atlas.clone() {
                 self.presence.event(&atlas, &typed);
                 self.sighted(&typed, now, out);
@@ -3609,16 +3627,21 @@ impl Session {
             .graph
             .room(died.room)
             .map_or_else(|| "where it died".to_owned(), |r| r.name.clone());
+        // On Quicksilver 1.20 (1.20.7) a death leaves a corpse, not a pile: `loot` it first,
+        // then pick up what fell to the floor as too heavy, then equip.
+        let mut errands = Vec::new();
+        if self.detect.rules().qs120() {
+            errands.push(Errand::new(ErrandKind::Loot));
+        }
+        errands.push(Errand::new(ErrandKind::PickUp));
+        errands.push(Errand::new(ErrandKind::Equip));
         Ok(Active::Trip(crate::trip::Trip::new(
             "Recover",
             (
                 died.room,
                 format!("{name} ({}:{})", died.room.0, died.room.1),
             ),
-            vec![
-                Errand::new(ErrandKind::PickUp),
-                Errand::new(ErrandKind::Equip),
-            ],
+            errands,
             None,
         )))
     }
