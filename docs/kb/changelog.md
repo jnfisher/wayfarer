@@ -1,5 +1,6 @@
 # KB changelog
 
+- **2026-11-25**: `quicksilver-1.20.md` for 1.20.7 [C server source, John's notes]: corpses replace death piles and the LOOT command with its seven lines (`loot_took` is the stock `took_item`); GUARD lasts like a rank and PARTY shows the ward (`Brannoc Stone guards Mirelle`), `guard_resting` gone; monster fear is 2 rounds, no forced move, 2 immune after; HELP 1.20's new text.
 - **2026-11-25**: `navigation.md` Text blocks, Clauses: `adddelay N` runs the rest of the line N seconds after the prompt, the vortices' teleport and room with it; a party typing it together is scattered until it fires [F live].
 - **2026-11-25**: `navigation.md` Text blocks "For routes": the Ancient Darkwood Tree's portal (texts 1461/1462, spells 619-621, quest ability 133 at 5) as the only way to the tree and Morukai, the Caves of Chaos for the uninvited [C data, F John].
 - **2026-11-25**: `navigation.md` ASK and GREET: the 34 monster answers whose script acts on the world, the shadow guards' door to Morukai (`ask shadow guard morukai`, quest ability 133), the sphinxes' ways up, and the unconditional NPC teleports [C data, F John].

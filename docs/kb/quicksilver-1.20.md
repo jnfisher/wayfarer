@@ -10,7 +10,8 @@ C-069) build on this page; each adds its section.
 
 ## Lines
 
-1.20 adds 22 lines. Each has a prefix no 1.11p line has, so their patterns are registered for
+1.20.0 added 22 lines; 1.20.7 took one away (`guard_resting`) and added the LOOT command's seven
+("Corpses and LOOT" below) [C 1.20.7 source]. Each has a prefix no 1.11p line has, so their patterns are registered for
 every server and match only on a 1.20 one [Q]. Wayfarer's copy is
 `tests/fixtures/qs120/patterns-1.20.json` (each entry marked `"rules": "1.20"`; that mark is a
 property of the data and is never sent over the wire). Priority 40, and 39 for the `_victim`
@@ -23,7 +24,8 @@ forms, so they are tried before every stock pattern (50 and up) [Q].
 | `weave_resisted_you`, `_room`, `_victim` | `You weave meteor swarm into giant rat, but it is resisted!`, `Thornwyn weaves meteor swarm into you, but you resist!` | One resist roll for the whole proc: no damage. Not a miss or a failed cast [Q] |
 | `guard_intercept_you`, `_ward`, `_room` | `You intercept the orc's attack on Mirelle!` (the guard), `Brannoc intercepts the orc's attack!` (the ward), `Brannoc intercepts the orc's attack on Mirelle!` (the room) | A guard took a monster's melee blow meant for its ward. No damage on this line: the stock monster hit or miss line that follows names the guard, and the ward took nothing from that blow [Q] |
 | `guard_start_you`, `_ward`, `guard_stop_you`, `_ward` | `You are now guarding Mirelle.` / `Brannoc is now guarding you.`; `You stop guarding Mirelle.` / `Brannoc stops guarding you.` | Start and stop come in pairs, guard's side and ward's side [Q] |
-| `guard_not_guarding`, `guard_not_here`, `guard_not_party`, `guard_self`, `guard_resting` | `You are not guarding anyone.`, `You don't see that player here.`, `Mirelle is not in your party.`, `You cannot guard yourself.`, `You cannot guard while resting or meditating.` | The refusals of `guard` [Q] |
+| `guard_not_guarding`, `guard_not_here`, `guard_not_party`, `guard_self` | `You are not guarding anyone.`, `You don't see that player here.`, `Mirelle is not in your party.`, `You cannot guard yourself.` | The refusals of `guard` [Q] |
+| `loot_you`, `loot_room`, `loot_dropped`, `loot_kept`, `corpse_crumbles`, `loot_no_corpse`, `loot_no_such` (1.20.7) | `You loot Kasimir's corpse.` / `Bob loots Kasimir's corpse.`; `Too heavy to carry, left on the floor: platemail armour.`; `No room on the floor, still on the corpse: platemail armour.`; `Kasimir's corpse crumbles to dust.`; `There is no corpse here to loot.`; `You don't see zed's corpse here.` | The LOOT command (below). What was taken is the stock `took_item` line with a list in it, `You took 3 gold crowns, quarterstaff.`, coins first then items in corpse order, a count before repeats, wrapped; it has no pattern of its own [C 1.20.7 source] |
 | `look_weapon_strreq` | `It requires 75 strength to wield well (you have 92).` | After a weapon's description when its Str requirement is above 0, wherever the weapon is: the requirement and the looker's Str. Above it, the weapon is wielded badly, as in 1.11p [Q] |
 
 - **Weave spell names.** The weave patterns' spell group is lazy (`.+?`), so it stops at the
@@ -158,8 +160,68 @@ where each file comes from).
   (the raw rating minus 2, at least 0: a Warrior 45%). Several guards on one ward roll in the
   order they started. A guard at 0 HP or below rolls nothing but keeps the guard [Q].
 - **What it doesn't cover**: spells, robbery, PvP and room damage still reach the ward [Q].
-- **It ends by itself**, with the stop lines, when the two part: either moves away, leaves the
+- **It ends by itself** (1.20.0), with the stop lines, when the two part: either moves away, leaves the
   party, rests or meditates, logs off, hangs up or dies. No state survives a reconnect [Q].
+- **Since 1.20.7 it lasts** like the battle rank: through moving, resting and meditating. It
+  ends only on `guard` alone, or when either leaves the party or the game (logoff, hangup, a death
+  that dissolves the party). It intercepts only while the two share a room; apart, it stays set
+  and covers nothing. A resting or meditating guard still covers its ward and stands up when it
+  takes a blow. The refusal `You cannot guard while resting or meditating.` is gone (the server's
+  pattern count went from 428 to 427). **PARTY shows it**: a guard's row has the ward in the
+  30-column name field, `Brannoc Stone guards Mirelle`, or `Brannoc guards Mirelle` when the full
+  form does not fit; the other columns stay where they are, and the first word is still the first
+  name. A client need not re-issue `guard` after a move or a rest; wayfarer reads who guards whom
+  from the screen [C quicksilver-dev #62, 1.20.7].
+
+## Corpses and LOOT (1.20.7)
+
+[C quicksilver-dev #63, QS-084.] On death, what `game.death_drops_coins` / `game.death_drops_items`
+would have dropped on the floor goes onto the character's **corpse** in the death room; no corpse
+when nothing dropped. Destroy-on-death items are still destroyed, loyal and major-cursed items stay
+with the character. The corpse shows **at the end of the room's `You notice ... here.` line** as
+`Kasimir's corpse` (first name + `'s corpse`); it is not an item and `get` cannot take it. It lasts
+until looted, through restarts and the nightly cleanup, and holds any number of items, so the old
+spill of a full floor into neighbouring rooms, the trail or the lost-item room is gone. Anyone may
+loot anyone's corpse.
+
+- **`LOOT`**, `LOOT CORPSE`, `LOOT <name>` (a prefix of the owner's name, `LOOT KAS`, or
+  `LOOT KASIMIR'S CORPSE`), only in full: `LOO` is still LOOK. `LOOT` alone takes **your own**
+  corpse if it is in the room, else the **oldest** there. It takes every coin (most valuable first)
+  and item (in the order they came off the body) the looter can carry; what does not fit falls to
+  the floor of the room, as from an opened chest; an item a full floor cannot take stays on the
+  corpse. The corpse crumbles once empty. Refused while mortally wounded.
+- **Lines**: `You loot Kasimir's corpse.` (plain); `Bob loots Kasimir's corpse.` to the room
+  (brown); `You took 3 gold crowns, quarterstaff.` (plain; coins first, then items in corpse order,
+  a count before repeats, wrapped; only when something was taken); `Too heavy to carry, left on the
+  floor: platemail armour.`; `No room on the floor, still on the corpse: platemail armour.` (light
+  red); `Kasimir's corpse crumbles to dust.` to the room, looter included (brown); `There is no
+  corpse here to loot.`; `You don't see zed's corpse here.` (the name as typed; light red).
+- **Recovering a death**: back to the death room, `LOOT` (yours first), re-wield and re-wear, then
+  `get` what `Too heavy to carry, left on the floor:` names. On stock 1.11p the floor pile is picked
+  up as before.
+- Server side: tables `corpses` and `corpse_items` (migration 9002); not client-visible.
+
+## Fear (1.20.7)
+
+[C quicksilver-dev #64.] Every stock spell with a Flee effect (14, all monster-only: terror beast,
+Death Shrieker and Scarecrow shriek, beholder gaze, dark phoenix, monkey spirit, brine hag, fallen
+angels, spores, dragon fear, mamba fear, ...) now makes the target **too afraid to attack or cast
+for 2 rounds** and **never moves it through a random exit** (1.11p: 10 rounds, 100 for dragon
+fear, a 35-100% chance a round of a forced random move, renewed by every new shriek). The player
+may still walk away while afraid. When it ends, 2 rounds of fear immunity follow (a silent spell
+6021, "Negate Flee", no message); a fear does not land on someone already afraid or immune, so
+fears never chain. No new lines: the stock "afraid" refusals to attack and cast still print. For a
+client: expect attacks and casts refused for about two rounds, no forced move, no re-sync needed,
+and fear is no reason to flee; wayfarer's fight already waits out `You are too afraid!` and tries
+again (C-108). The realm needs `quicksilver import --content-only` (content 1.20.3) for it.
+
+## HELP 1.20 (1.20.7)
+
+[C.] Groups: `GUARD <player>: take blows aimed at a party member in the same room. It lasts until
+GUARD alone or one of you leaves the party. PARTY shows it.` A new heading `Corpses`: `A death
+leaves your coins and items on your corpse, not on the floor. LOOT CORPSE takes what you can carry;
+the rest falls to the floor.` And `Monster fear: 2 rounds unable to attack or cast, no running, then
+2 immune.` The topic still exists, which is all wayfarer's detection asks of it.
 
 ## Numbers
 

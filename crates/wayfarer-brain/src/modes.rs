@@ -99,7 +99,7 @@ impl Presence {
                 self.floor.clear();
                 self.floor_items.clear();
             }
-            GameEvent::RoomItems { coins, items } => {
+            GameEvent::RoomItems { coins, items, .. } => {
                 self.floor.clone_from(coins);
                 self.floor_items.clone_from(items);
             }

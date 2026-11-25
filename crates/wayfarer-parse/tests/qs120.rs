@@ -19,6 +19,11 @@ fn fixture(name: &str) -> String {
     std::fs::read_to_string(common::fixtures().join("qs120").join(name)).unwrap()
 }
 
+/// A file of the 1.20.7 fixture (`tests/fixtures/qs120-7`).
+fn fixture7(name: &str) -> String {
+    std::fs::read_to_string(common::fixtures().join("qs120-7").join(name)).unwrap()
+}
+
 fn events(text: &str) -> Vec<Event> {
     let mut p = Parser::new(reg().clone());
     let mut evs = p.feed(&format!("{text}\n"));
@@ -39,7 +44,12 @@ fn typed(line: &str) -> GameEvent {
 #[test]
 fn every_line_classifies_as_named() {
     let mut bad = Vec::new();
-    for row in fixture("lines.txt").lines().filter(|l| !l.starts_with('#')) {
+    let lines = fixture("lines.txt") + &fixture7("lines.txt");
+    for row in lines.lines().filter(|l| !l.starts_with('#')) {
+        // 1.20.7 dropped the resting refusal: its 1.20.0 line is checked below, not here.
+        if row.ends_with("\tguard_resting") {
+            continue;
+        }
         let (line, name) = row.split_once('\t').unwrap();
         let ev = one(line);
         if ev.name != name {
@@ -56,8 +66,9 @@ fn the_patterns_are_marked_and_rank_first() {
         .iter()
         .filter(|p| p.rules.is_some())
         .collect();
-    // 22 lines of section 3, 16 regen-line texts of 3.8 (C-066).
-    assert_eq!(qs.len(), 38);
+    // 22 lines of section 3 less `guard_resting` (gone in 1.20.7), 16 regen-line texts of 3.8
+    // (C-066), and the 7 LOOT lines of 1.20.7.
+    assert_eq!(qs.len(), 44);
     for p in qs {
         assert_eq!(p.rules.as_deref(), Some("1.20"));
         let want = if p.name.ends_with("_victim") { 39 } else { 40 };
@@ -262,9 +273,93 @@ fn guard_lines() {
         ("You don't see that player here.", "not_here"),
         ("Mirelle is not in your party.", "not_party"),
         ("You cannot guard yourself.", "self"),
-        ("You cannot guard while resting or meditating.", "resting"),
     ] {
         assert_eq!(typed(line), GameEvent::GuardRefused { why }, "{line}");
+    }
+    // 1.20.7: a guard lasts through rests, and the refusal is gone with it.
+    assert_ne!(
+        one("You cannot guard while resting or meditating.").name,
+        "guard_resting"
+    );
+}
+
+/// 1.20.7: the LOOT command's lines, the corpse in the room's item line, and the ward in a
+/// guard's PARTY row.
+#[test]
+fn loot_corpses_and_wards() {
+    assert_eq!(
+        typed("You loot Kasimir's corpse."),
+        GameEvent::Looted {
+            owner: "Kasimir".into()
+        }
+    );
+    assert_eq!(
+        typed("Too heavy to carry, left on the floor: platemail armour, anvil."),
+        GameEvent::LootLeft {
+            items: vec!["platemail armour".into(), "anvil".into()],
+            floor: true
+        }
+    );
+    assert_eq!(
+        typed("No room on the floor, still on the corpse: platemail armour."),
+        GameEvent::LootLeft {
+            items: vec!["platemail armour".into()],
+            floor: false
+        }
+    );
+    assert_eq!(
+        typed("There is no corpse here to loot."),
+        GameEvent::NoCorpse
+    );
+    // What a loot took is the stock `took_item` line with a list in it.
+    assert_eq!(
+        typed("You took 3 gold crowns, quarterstaff."),
+        GameEvent::ItemTaken {
+            item: "3 gold crowns, quarterstaff".into()
+        }
+    );
+    // A corpse among the room's items is kept apart from them.
+    match typed("You notice 9 copper farthings, torch, Kasimir's corpse here.") {
+        GameEvent::RoomItems {
+            coins,
+            items,
+            corpses,
+        } => {
+            assert_eq!(coins.get("copper farthings"), Some(&9));
+            assert_eq!(
+                items.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+                ["torch"]
+            );
+            assert_eq!(corpses, ["Kasimir"]);
+        }
+        other => panic!("{other:?}"),
+    }
+    // A guard's PARTY row names its ward in the name column.
+    let screen = "The following people are in your travel party:\n  \
+                  Brannoc Stone guards Mirelle   (Warrior)        [H:100%]   - Frontrank\n  \
+                  Mirelle Vane                   (Cleric)   [M: 90%] [H: 81%] R - Midrank";
+    let rows: Vec<GameEvent> = events(screen)
+        .iter()
+        .map(GameEvent::from_event)
+        .filter(|e| matches!(e, GameEvent::ParRow { .. }))
+        .collect();
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    match &rows[0] {
+        GameEvent::ParRow {
+            name, guards, rank, ..
+        } => {
+            assert_eq!(name, "Brannoc Stone");
+            assert_eq!(guards.as_deref(), Some("Mirelle"));
+            assert_eq!(*rank, Some(wayfarer_parse::typed::Rank::Front));
+        }
+        other => panic!("{other:?}"),
+    }
+    match &rows[1] {
+        GameEvent::ParRow { name, guards, .. } => {
+            assert_eq!(name, "Mirelle Vane");
+            assert_eq!(*guards, None);
+        }
+        other => panic!("{other:?}"),
     }
 }
 

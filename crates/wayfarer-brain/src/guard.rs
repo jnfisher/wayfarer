@@ -1,8 +1,10 @@
 //! `guard` on a Quicksilver 1.20 server (C-068, docs/brain.md "Parties"): what one session
 //! knows of its guarding, from the game's lines. The party coordinator reads it to decide when
-//! a `guard <ward>` (or a plain `guard` to stop) goes; nothing is sent from here. The game ends
-//! a guard by itself, with its stop lines, when the two part, either rests or meditates, leaves
-//! the party, logs off or dies; no state survives a reconnect.
+//! a `guard <ward>` (or a plain `guard` to stop) goes; nothing is sent from here. Since 1.20.7
+//! a guard lasts like a rank, through moves, rests and meditation, and ends only on a plain
+//! `guard` or when either leaves the party or the game; the PARTY screen shows it (`Brannoc
+//! Stone guards Mirelle`), and the session reads it from there, so it survives a reconnect
+//! (1.20.0 ended it on a rest or a parting, with no state surviving).
 
 use std::time::Duration;
 
@@ -22,7 +24,8 @@ pub(crate) struct Guard {
     pub guarded_by: Option<String>,
     /// Refusals in a row since the last start.
     pub refusals: u32,
-    /// The last refusal (`not_here`, `not_party`, `self`, `resting`, `not_guarding`).
+    /// The last refusal (`not_here`, `not_party`, `self`, `not_guarding`; 1.20.0 also
+    /// `resting`).
     pub refused: Option<&'static str>,
     /// No `guard` before this: refused too often.
     pub held_until: Option<Instant>,

@@ -1,0 +1,69 @@
+{
+ "version": "1.20.7",
+ "source": "quicksilver-dev PR #63 (QS-084), crates/silvermere-text/messages/v120.toml, 2026-11-25",
+ "static": [
+  {
+   "name": "loot_you",
+   "cat": "loot",
+   "rx": "You loot (?P<owner>.+?)'s corpse\\.",
+   "example": "You loot Kasimir's corpse.",
+   "seen": "C",
+   "prio": 40,
+   "rules": "1.20"
+  },
+  {
+   "name": "loot_room",
+   "cat": "loot",
+   "rx": "(?P<who>[A-Z][^ ]*) loots (?P<owner>.+?)'s corpse\\.",
+   "example": "Bob loots Kasimir's corpse.",
+   "seen": "C",
+   "prio": 40,
+   "rules": "1.20"
+  },
+  {
+   "name": "loot_dropped",
+   "cat": "loot",
+   "rx": "Too heavy to carry, left on the floor: (?P<items>.+)\\.",
+   "example": "Too heavy to carry, left on the floor: platemail armour.",
+   "seen": "C",
+   "prio": 40,
+   "rules": "1.20"
+  },
+  {
+   "name": "loot_kept",
+   "cat": "loot",
+   "rx": "No room on the floor, still on the corpse: (?P<items>.+)\\.",
+   "example": "No room on the floor, still on the corpse: platemail armour.",
+   "seen": "C",
+   "prio": 40,
+   "rules": "1.20"
+  },
+  {
+   "name": "corpse_crumbles",
+   "cat": "loot",
+   "rx": "(?P<owner>.+?)'s corpse crumbles to dust\\.",
+   "example": "Kasimir's corpse crumbles to dust.",
+   "seen": "C",
+   "prio": 40,
+   "rules": "1.20"
+  },
+  {
+   "name": "loot_no_corpse",
+   "cat": "loot",
+   "rx": "There is no corpse here to loot\\.",
+   "example": "There is no corpse here to loot.",
+   "seen": "C",
+   "prio": 40,
+   "rules": "1.20"
+  },
+  {
+   "name": "loot_no_such",
+   "cat": "loot",
+   "rx": "You don't see (?P<name>.+?)'s corpse here\\.",
+   "example": "You don't see zed's corpse here.",
+   "seen": "C",
+   "prio": 40,
+   "rules": "1.20"
+  }
+ ]
+}

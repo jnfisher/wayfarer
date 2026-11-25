@@ -697,7 +697,7 @@ fn unknown_and_other() {
 #[test]
 fn coins_on_the_floor_and_picked_up() {
     let got = line("You notice 12 gold crowns, 3 silver nobles, torch here.");
-    let GameEvent::RoomItems { coins, items } = &got[0] else {
+    let GameEvent::RoomItems { coins, items, .. } = &got[0] else {
         panic!("{got:?}")
     };
     assert_eq!(
@@ -917,6 +917,7 @@ fn row(
         resting,
         rank: Some(rank),
         invited: false,
+        guards: None,
     }
 }
 
@@ -966,6 +967,7 @@ fn party_leader() {
                 resting: false,
                 rank: None,
                 invited: true,
+                guards: None,
             },
             aldis(83, true, Rank::Front),
             G::PartyFollowerRemoved {
