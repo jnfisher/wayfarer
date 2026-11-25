@@ -361,6 +361,9 @@ pub struct Step {
     pub needs_empty: bool,
     /// An armed trap the traveller disarms first (`disarm trap <dir>`, C-117).
     pub disarm: bool,
+    /// A room command whose script waits this many seconds before it acts ([`Edge::delay_secs`]):
+    /// the look after the phrase waits for it.
+    pub delay_secs: u32,
 }
 
 impl Step {
@@ -377,6 +380,7 @@ impl Step {
             passable: e.passable() || e.sealed(),
             lever: e.lever.iter().map(|s| Step::through(s, t)).collect(),
             disarm: t.disarms(e),
+            delay_secs: e.delay_secs,
             needs_empty: e.needs_empty,
             levered: e.sealed()
                 && !e.levers.is_empty()
@@ -399,6 +403,7 @@ impl Step {
             lever: Vec::new(),
             levered: false,
             disarm: false,
+            delay_secs: 0,
             needs_empty: false,
         }
     }

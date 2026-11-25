@@ -271,6 +271,10 @@ pub struct Edge {
     /// Catacombs' passages open at `aim fork east` with the titanium fork). Empty for any other
     /// exit, and for phrases that ask for nothing.
     pub needs: Vec<i64>,
+    /// The seconds a room command's script waits before it acts (`adddelay`): the Darkwood
+    /// vortices teleport five seconds after `go vortex`, the prompt coming at once and the
+    /// room when they fire. 0 for an exit, and for a way with no wait.
+    pub delay_secs: u32,
     /// A Hidden exit that can be opened and whose own name (message `exitpar4`) is blank in all
     /// three texts: once open, the game lists it as an empty slot, `north, , west`, with no
     /// direction (C-076: the Labyrinth's `river` exit east, 1/1972).
@@ -467,17 +471,14 @@ pub fn spell_teleport(own_map: i64, raw: &str) -> Option<Key> {
 /// its pattern, a plain pattern (no wildcard) and only [`PLAIN_CLAUSES`] with one `teleport
 /// <room> <map>`, the room it puts the character in (on `map`, its own map when 0 or left
 /// out), gated by `minlevel` / `maxlevel`, and whether it needs the room clear of monsters
-/// (`nomonsters`, C-119). Lines to the same room with the same gate are one
+/// (`nomonsters`, C-119), with the seconds an `adddelay` makes the game wait before the rest
+/// of the line (the vortices' five). Lines to the same room with the same gate are one
 /// way with every pattern as a phrase, in text order. `spell_to`: where a spell puts its
 /// caster when all it does is teleport ([`spell_teleport`]); a `cast` of one is the line's
 /// teleport (C-086).
-pub fn room_commands(
-    map: i64,
-    text: &str,
-    spell_to: &dyn Fn(i64) -> Option<Key>,
-) -> Vec<(Key, Gate, Vec<String>, bool)> {
+pub fn room_commands(map: i64, text: &str, spell_to: &dyn Fn(i64) -> Option<Key>) -> Vec<Way> {
     let mut seen: Vec<String> = Vec::new();
-    let mut out: Vec<(Key, Gate, Vec<String>, bool)> = Vec::new();
+    let mut out: Vec<Way> = Vec::new();
     for line in text.lines() {
         let mut clauses = line.split(':');
         let pattern = clauses.next().unwrap_or("").trim().to_lowercase();
@@ -489,6 +490,7 @@ pub fn room_commands(
             continue;
         }
         let (mut to, mut min, mut max, mut plain) = (None, 0, 0, true);
+        let mut delay: u32 = 0;
         // `nomonsters` before another clause: the line stops while a monster is in the room
         // (as the last clause it never looks, `kb/navigation.md` "Text blocks").
         let mut empty = false;
@@ -511,6 +513,11 @@ pub fn room_commands(
                 },
                 "minlevel" => min = num(words.next()).unwrap_or(0),
                 "maxlevel" => max = num(words.next()).unwrap_or(0),
+                "adddelay" => {
+                    delay = num(words.next())
+                        .and_then(|n| u32::try_from(n).ok())
+                        .unwrap_or(0)
+                }
                 "nomonsters" => empty |= i < last,
                 k if PLAIN_CLAUSES.contains(&k) && k != "teleport" => {}
                 _ => plain = false,
@@ -524,20 +531,21 @@ pub fn room_commands(
         } else {
             Gate::Level { min, max }
         };
-        match out.iter_mut().find(|(t, g, _, _)| *t == to && *g == gate) {
-            Some((_, _, phrases, e)) => {
+        match out.iter_mut().find(|(t, g, ..)| *t == to && *g == gate) {
+            Some((_, _, phrases, e, _)) => {
                 phrases.push(pattern);
                 *e |= empty;
             }
-            None => out.push((to, gate, vec![pattern], empty)),
+            None => out.push((to, gate, vec![pattern], empty, delay)),
         }
     }
     out
 }
 
-/// A way through a room that is not an exit: where it goes, its gate, its phrases and whether it
-/// needs the room clear of monsters ([`room_commands`]).
-type Way = (Key, Gate, Vec<String>, bool);
+/// A way through a room that is not an exit: where it goes, its gate, its phrases, whether it
+/// needs the room clear of monsters, and the seconds its script waits before it acts
+/// ([`room_commands`]).
+type Way = (Key, Gate, Vec<String>, bool, u32);
 
 /// A monster's answer that opens an exit, as a Remote Action from the monster's room: the room
 /// and exit it acts on (`params[1]`: action tens, exit units) and the question to type.
@@ -753,6 +761,7 @@ impl RoomGraph {
                     Gate::Item { item: item.number },
                     phrases.clone(),
                     false,
+                    0,
                 ));
             }
         }
@@ -800,6 +809,7 @@ impl RoomGraph {
                             Gate::None,
                             vec![phrase.clone()],
                             false,
+                            0,
                         ));
                     }
                 }
@@ -915,6 +925,7 @@ impl RoomGraph {
                     phrases: texts,
                     unblock: Vec::new(),
                     needs: Vec::new(),
+                    delay_secs: 0,
                     lists_blank,
                     gate,
                     door,
@@ -961,6 +972,7 @@ impl RoomGraph {
                     phrases: vec![l.phrase.clone()],
                     unblock: Vec::new(),
                     needs: Vec::new(),
+                    delay_secs: 0,
                     lists_blank: false,
                     gate: Gate::None,
                     door: None,
@@ -974,7 +986,7 @@ impl RoomGraph {
                 });
                 next_dir += 1;
             }
-            for (dir, ((to, gate, phrases, empty), kind)) in (COMMAND_DIRS..).zip(ways) {
+            for (dir, ((to, gate, phrases, empty, delay), kind)) in (COMMAND_DIRS..).zip(ways) {
                 let Some(&to_ix) = index.get(&to) else {
                     dangling += 1;
                     continue;
@@ -988,6 +1000,7 @@ impl RoomGraph {
                     phrases,
                     unblock: Vec::new(),
                     needs: Vec::new(),
+                    delay_secs: delay,
                     lists_blank: false,
                     gate,
                     door: None,
@@ -1100,6 +1113,7 @@ impl RoomGraph {
                 phrases: vec![phrase.clone()],
                 unblock: Vec::new(),
                 needs: Vec::new(),
+                delay_secs: 0,
                 lists_blank: false,
                 gate: Gate::None,
                 door: None,
@@ -1356,6 +1370,7 @@ impl RoomGraph {
                 phrases: vec![phrase],
                 unblock: Vec::new(),
                 needs: Vec::new(),
+                delay_secs: 0,
                 lists_blank: false,
                 gate: Gate::None,
                 door: None,
@@ -1402,6 +1417,7 @@ impl RoomGraph {
                 phrases: Vec::new(),
                 unblock: Vec::new(),
                 needs: Vec::new(),
+                delay_secs: 0,
                 lists_blank: false,
                 gate: Gate::None,
                 door: None,
@@ -1507,10 +1523,12 @@ mod tests {
                 (1, 65),
                 Gate::None,
                 vec!["use chime".into(), "ring chime".into()],
-                false
+                false,
+                0
             )]
         );
-        // The vortex at 3:25: gated by level; the map left out is the room's own.
+        // The vortex at 3:25: gated by level; the map left out is the room's own; the game
+        // waits five seconds before it fires (`adddelay 5`).
         let vortex = "go vortex:adddelay 5:minlevel 20 1220:message 1205:teleport 681 3:message 1221\n\
                       enter vortex:adddelay 5:minlevel 20 1220:message 1205:teleport 681\n";
         assert_eq!(
@@ -1519,7 +1537,8 @@ mod tests {
                 (3, 681),
                 Gate::Level { min: 20, max: 0 },
                 vec!["go vortex".into(), "enter vortex".into()],
-                false
+                false,
+                5
             )]
         );
     }
@@ -1554,7 +1573,8 @@ mod tests {
                 (2, 1306),
                 Gate::None,
                 vec!["go hole".into(), "enter hole".into(), "crawl hole".into()],
-                false
+                false,
+                0
             )]
         );
         // A spell that also hurts is not only a teleport.

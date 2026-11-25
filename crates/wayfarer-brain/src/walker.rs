@@ -1188,7 +1188,10 @@ impl Walk {
                 Action::new(step.command.clone(), Expect::Prompt)
             }
             Doing::Move => Action::new(step.command.clone(), Expect::RoomSeen),
-            Doing::Arrive => Action::new("look", Expect::RoomSeen),
+            // After a phrase whose script waits (`adddelay`): the game acts and shows the
+            // room only then (the vortices' five seconds), so the look waits as long.
+            Doing::Arrive => Action::new("look", Expect::RoomSeen)
+                .after(std::time::Duration::from_secs(u64::from(step.delay_secs))),
             Doing::Open => Action::new(format!("open {dir}"), Expect::DoorOpened),
             // A key takes the word after its name as the direction; with none it unlocks nothing.
             Doing::UseKey => Action::new(

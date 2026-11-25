@@ -299,6 +299,7 @@ fn step_edge(graph: &RoomGraph, at: Key, to: Key, base: &str) -> Option<Edge> {
             phrases: vec![ph],
             unblock: Vec::new(),
             needs: Vec::new(),
+            delay_secs: 0,
             lists_blank: false,
             gate: Gate::None,
             door: None,

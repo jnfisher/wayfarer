@@ -45,6 +45,9 @@ pub struct Action {
     pub command: String,
     pub expect: Expect,
     pub timeout: Duration,
+    /// How long after it is queued it may go: a `look` after a phrase whose script waits
+    /// (`adddelay`) has nothing to see before then. Zero for every other action.
+    pub after: Duration,
 }
 
 impl Action {
@@ -53,7 +56,14 @@ impl Action {
             command: command.into(),
             expect,
             timeout: ACTION_TIMEOUT,
+            after: Duration::ZERO,
         }
+    }
+
+    /// This action, not to go before `after` has passed since it was queued.
+    pub fn after(mut self, after: Duration) -> Action {
+        self.after = after;
+        self
     }
 }
 
@@ -213,6 +223,8 @@ pub struct Executor {
     lost: u32,
     /// Lost and queued again since the caller last asked: the command and the try.
     relost: Option<(String, u32)>,
+    /// When the queued action with an `after` may go, once the caller first asked for it.
+    ready_at: Option<Instant>,
     /// The belief the last finished action's room left ([`Executor::take_belief`]).
     finished_belief: Option<Belief>,
 }
@@ -225,6 +237,7 @@ impl Default for Executor {
             lost: 0,
             relost: None,
             finished_belief: None,
+            ready_at: None,
         }
     }
 }
@@ -348,11 +361,20 @@ impl Executor {
     }
 
     /// The queued action's command, now in flight: the caller sends it. Only at a prompt
-    /// boundary in the realm, which the caller checks.
+    /// boundary in the realm, which the caller checks; and not before the action's `after`
+    /// has passed since it was first ready to go.
     pub fn take_ready(&mut self, now: Instant) -> Option<String> {
         let State::Queued(action) = &self.state else {
+            self.ready_at = None;
             return None;
         };
+        if action.after > Duration::ZERO {
+            let at = *self.ready_at.get_or_insert(now + action.after);
+            if now < at {
+                return None;
+            }
+        }
+        self.ready_at = None;
         let action = action.clone();
         let command = action.command.clone();
         self.state = State::InFlight(Flight::new(action, now));
@@ -483,6 +505,26 @@ impl Executor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_action_with_an_after_waits_from_when_it_is_first_asked_for() {
+        // A `look` after a vortex's `go vortex`: the script fires five seconds on.
+        let mut ex = Executor::default();
+        let t0 = Instant::now();
+        ex.submit(Action::new("look", Expect::RoomSeen).after(Duration::from_secs(5)))
+            .unwrap();
+        assert_eq!(ex.take_ready(t0), None);
+        assert_eq!(ex.take_ready(t0 + Duration::from_secs(4)), None);
+        assert_eq!(
+            ex.take_ready(t0 + Duration::from_secs(5)),
+            Some("look".to_owned())
+        );
+        assert!(ex.in_flight().is_some());
+        // One with none goes at once.
+        let mut ex = Executor::default();
+        ex.submit(Action::new("look", Expect::RoomSeen)).unwrap();
+        assert_eq!(ex.take_ready(t0), Some("look".to_owned()));
+    }
 
     #[test]
     fn an_attack_goes_whether_or_not_combat_is_engaged() {

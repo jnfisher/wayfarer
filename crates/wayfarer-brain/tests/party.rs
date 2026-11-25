@@ -78,6 +78,11 @@ struct World {
     mage: bool,
     /// What the game says to the leader's `sped lauren` in place of casting it.
     speed_refusal: Option<&'static str>,
+    /// Room commands whose script waits (`adddelay`): who typed one, where it takes them and
+    /// when it fires (C-121).
+    pending: Vec<(String, Key, tokio::time::Instant)>,
+    /// Those a delayed script has moved, with how many lines the brain had sent by then.
+    fired: Vec<(String, usize)>,
 }
 
 /// A room too dark to see, as the game shows it.
@@ -156,6 +161,11 @@ struct Gateway {
 
 impl Gateway {
     async fn start(brain: Brain) -> (Gateway, Run) {
+        Gateway::start_at(brain, ARENA).await
+    }
+
+    /// Both characters in `room` to begin with (the Arena unless a test says).
+    async fn start_at(brain: Brain, room: Key) -> (Gateway, Run) {
         let (to_gateway, rx) = mpsc::channel(4096);
         let (tx, from_gateway) = mpsc::channel(4096);
         let mut brain = brain;
@@ -169,7 +179,7 @@ impl Gateway {
             rx,
             logs: BTreeMap::new(),
             world: World {
-                rooms: BTreeMap::from([(LEADER.to_owned(), ARENA), (FOLLOWER.to_owned(), ARENA)]),
+                rooms: BTreeMap::from([(LEADER.to_owned(), room), (FOLLOWER.to_owned(), room)]),
                 ..World::default()
             },
             lines: Vec::new(),
@@ -180,7 +190,7 @@ impl Gateway {
                 s.to_owned(),
                 vec![Chunk {
                     seq: 1,
-                    text: shown(ARENA),
+                    text: shown(room),
                 }],
             );
         }
@@ -334,6 +344,30 @@ impl Gateway {
             }
             "n" if self.world.locked && self.world.rooms[session] == ARENA => {
                 me(said("The door is closed!"))
+            }
+            // A room command whose script waits (the Royal Palace kitchen's vortex, five
+            // seconds): the prompt at once, the room when it fires.
+            t if game::atlas()
+                .graph
+                .edges(self.world.rooms[session])
+                .iter()
+                .any(|e| e.kind.is_phrase() && e.taken_by(t) && e.delay_secs > 0) =>
+            {
+                let atlas = game::atlas();
+                let e = atlas
+                    .graph
+                    .edges(self.world.rooms[session])
+                    .iter()
+                    .find(|e| e.kind.is_phrase() && e.taken_by(t))
+                    .unwrap();
+                // A follower's own script fires a second after the leader's, as the live
+                // game showed the rooms a tick apart.
+                let skew = Duration::from_secs(u64::from(session != LEADER));
+                let at = tokio::time::Instant::now()
+                    + Duration::from_secs(u64::from(e.delay_secs))
+                    + skew;
+                self.world.pending.push((session.to_owned(), e.to, at));
+                me(said("You step into the swirling vortex..."))
             }
             "borrow skiff" | "go skiff" | "row skiff"
                 if self.world.rooms[session] == NEWHAVEN_DOCKS =>
@@ -544,6 +578,27 @@ impl Gateway {
     async fn next(&mut self) -> ToGateway {
         let msg = self.rx.recv().await.expect("the brain is running");
         self.seen.push(msg.clone());
+        // A delayed script that has fired: the room it took the character to.
+        let now = tokio::time::Instant::now();
+        let mut due = Vec::new();
+        self.world.pending.retain(|(s, to, at)| {
+            if now >= *at {
+                due.push((s.clone(), *to));
+                false
+            } else {
+                true
+            }
+        });
+        for (s, to) in due {
+            self.world.rooms.insert(s.clone(), to);
+            self.world.fired.push((s.clone(), self.lines.len()));
+            // The game's party does not survive the leader's teleport: the follower is
+            // dropped, to follow again where they both land.
+            if s == LEADER {
+                self.world.following = false;
+            }
+            self.tell(&s, &shown(to)).await;
+        }
         match &msg {
             ToGateway::HistoryRequest {
                 session, after_seq, ..
@@ -1196,6 +1251,21 @@ async fn on_1_20_the_leader_guards_the_follower_it_was_told_to() {
 }
 
 /// The notices a session's brain said, in order.
+/// The brain's warnings for `session`'s tile.
+fn warnings_of(g: &Gateway, session: &str) -> Vec<String> {
+    g.seen
+        .iter()
+        .filter_map(|m| match m {
+            ToGateway::Warning {
+                session: Some(s),
+                text,
+                ..
+            } if s == session => Some(text.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
 fn notices_of(g: &Gateway, session: &str) -> Vec<String> {
     g.seen
         .iter()
@@ -1591,6 +1661,94 @@ async fn a_follower_takes_a_room_command_exit_with_its_leader() {
             .any(|n| n == "`borrow skiff` with the party: Lauren"),
         "{:?}",
         notices_of(&g, LEADER)
+    );
+}
+
+/// The Royal Palace kitchen (3:668): `go vortex` there is a room command whose script waits
+/// five seconds (`adddelay 5`) before it teleports to the Black Wasteland (3:740).
+const PALACE_KITCHEN: Key = (3, 668);
+const WASTELAND_VORTEX: Key = (3, 740);
+
+/// C-121, the vortices (live, 2026-11-25): the leader's `go vortex` fires five seconds after
+/// the phrase, the prompt coming at once. The follower types it with the leader, and nobody
+/// looks or judges before the script has fired: the follower is not walked back through the
+/// vortex, types the phrase once, and both land in the Wasteland with the leader never held.
+#[tokio::test(start_paused = true)]
+async fn a_follower_crosses_a_delayed_room_command_with_its_leader_and_is_not_walked_back() {
+    let (mut g, _run) = Gateway::start_at(brain(None), PALACE_KITCHEN).await;
+    g.world.drag = true;
+    formed(&mut g).await;
+    // The vortex's room is a boss lair (the Lord of the Hunt): walk in, not one short.
+    g.send(ToClient::WalkTo {
+        session: LEADER.into(),
+        map: WASTELAND_VORTEX.0,
+        room: WASTELAND_VORTEX.1,
+        stop_short: Some(false),
+        fight: None,
+    })
+    .await;
+    g.play(14).await;
+    assert_eq!(
+        g.world.rooms[LEADER],
+        WASTELAND_VORTEX,
+        "lines {:?}\nwarnings {:?}\nnotices {:?}",
+        g.lines,
+        warnings_of(&g, LEADER),
+        notices_of(&g, LEADER)
+    );
+    assert_eq!(g.world.rooms[FOLLOWER], WASTELAND_VORTEX, "{:?}", g.lines);
+    // Each typed the phrase once.
+    let vortex: Vec<&str> = g
+        .lines
+        .iter()
+        .filter(|(_, t)| t == "go vortex")
+        .map(|(s, _)| s.as_str())
+        .collect();
+    assert_eq!(vortex, [LEADER, FOLLOWER], "{:?}", g.lines);
+    // The looks came after the script fired, not before.
+    for s in [LEADER, FOLLOWER] {
+        let fired = g
+            .world
+            .fired
+            .iter()
+            .find(|(f, _)| f == s)
+            .map(|(_, n)| *n)
+            .unwrap();
+        let phrase = g
+            .lines
+            .iter()
+            .position(|(f, t)| f == s && t == "go vortex")
+            .unwrap();
+        let look = g.lines[phrase..]
+            .iter()
+            .position(|(f, t)| f == s && t == "look")
+            .map(|i| phrase + i)
+            .unwrap_or_else(|| panic!("{s} never looked: {:?}", g.lines));
+        assert!(
+            look >= fired,
+            "{s} looked at line {look}, the vortex fired at {fired}: {:?}",
+            g.lines
+        );
+    }
+    // Nobody walked back, and the leader never waited.
+    let notices: Vec<String> = [LEADER, FOLLOWER]
+        .iter()
+        .flat_map(|s| notices_of(&g, s))
+        .collect();
+    assert!(
+        !notices
+            .iter()
+            .any(|n| n.starts_with("Walking back") || n.starts_with("Waiting for")),
+        "{notices:?}"
+    );
+    // And the party formed up again on the far side, nobody having typed the phrase twice.
+    g.play(12).await;
+    assert!(g.world.following, "{:?}", g.lines);
+    assert_eq!(
+        g.lines.iter().filter(|(_, t)| t == "go vortex").count(),
+        2,
+        "{:?}",
+        g.lines
     );
 }
 

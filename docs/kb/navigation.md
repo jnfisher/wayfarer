@@ -87,7 +87,7 @@ scripts (`LJNSPEC.C`). A client meets them as typed phrases that do something in
   pattern (spell, death, monster question, sysop) runs its lines the same way [C] `:2040-2113`.
 - **Clauses.** 42 keywords, each matched as a case-free prefix of the clause text in the order the
   engine tests them (so `nomonsters` is seen before `monsters` and every `teleport_<town>` form falls under
-  `teleport`); an unknown clause is skipped and the line goes on [C] `LJNSPEC.C:849-1790`. A condition
+  `teleport`); an unknown clause is skipped and the line goes on [C] `LJNSPEC.C:849-1790`. **`adddelay N`** [F live 2026-11-25]: the prompt returns at once and the rest of the line runs N seconds later; a `teleport` behind it moves the character then and shows the new room then (the Black Wasteland vortices, texts 700-706, `adddelay 5`). A `look` in between shows the old room, and a party that typed the phrase together is scattered in the game's eyes until it fires: each member is dropped from the party as it goes and has to `follow` again on the far side. A condition
   that fails shows its optional WCCMSG message (text 0 to the player, text 1 with his first name to
   the room) and stops the line. Worth knowing: `price` takes the coins silently; with the sysop's
   KID_GLOVES option on, items a line already took with `takeitem` are given back when a later `price`
