@@ -322,6 +322,7 @@ impl Traveller {
                 ExitType::Text
                 | ExitType::RoomCommand
                 | ExitType::ItemCommand
+                | ExitType::AskCommand
                 | ExitType::PathCommand => !e.command.is_empty(),
                 // Its phrases are typed and its sealed exit opened on the way; every other step
                 // the traveller must be able to take.

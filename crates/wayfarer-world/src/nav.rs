@@ -48,6 +48,9 @@ pub enum ExitType {
     /// potion of levitation at Mossy Cave, Waterfall), the game's own `use` command typed, with
     /// the item for a gate.
     ItemCommand,
+    /// Not an exit of the pack: a question to a monster of the room whose answer's script
+    /// teleports (`ask Balthazar journey`), typed where the monster spawns.
+    AskCommand,
     /// Not an exit of the pack: a phrase a MegaMud path types where the pack has no way
     /// through to the room its next step starts in (C-052).
     PathCommand,
@@ -110,6 +113,7 @@ impl ExitType {
         match self {
             ExitType::RoomCommand => "Room Command",
             ExitType::ItemCommand => "Item Command",
+            ExitType::AskCommand => "Ask Command",
             ExitType::PathCommand => "Path Command",
             ExitType::PathWindow => "Path Window",
             _ => mm::EXIT_TYPES[self as usize],
@@ -121,7 +125,11 @@ impl ExitType {
     pub fn is_phrase(self) -> bool {
         matches!(
             self,
-            ExitType::Text | ExitType::RoomCommand | ExitType::ItemCommand | ExitType::PathCommand
+            ExitType::Text
+                | ExitType::RoomCommand
+                | ExitType::ItemCommand
+                | ExitType::AskCommand
+                | ExitType::PathCommand
         )
     }
 
@@ -132,6 +140,7 @@ impl ExitType {
             self,
             ExitType::RoomCommand
                 | ExitType::ItemCommand
+                | ExitType::AskCommand
                 | ExitType::PathCommand
                 | ExitType::PathWindow
         )
@@ -143,6 +152,7 @@ impl ExitType {
             | ExitType::RemoteAction
             | ExitType::RoomCommand
             | ExitType::ItemCommand
+            | ExitType::AskCommand
             | ExitType::PathCommand
             | ExitType::PathWindow => Listing::Never,
             ExitType::Hidden | ExitType::Trap | ExitType::SpellTrap | ExitType::Timed => {
@@ -521,6 +531,57 @@ pub fn room_commands(
 /// needs the room clear of monsters ([`room_commands`]).
 type Way = (Key, Gate, Vec<String>, bool);
 
+/// A monster's answer that opens an exit, as a Remote Action from the monster's room: the room
+/// and exit it acts on (`params[1]`: action tens, exit units) and the question to type.
+struct AskLever {
+    to: Key,
+    params: [i64; 4],
+    phrase: String,
+}
+
+/// A `remoteaction <room> <msg> <action> <exit>` clause: the room it acts on, its message, the
+/// action and the exit.
+type Opener = (i64, i64, i64, i64);
+
+/// What an answer's script does for a route: its `remoteaction` clauses, whatever else the
+/// line checks, and the room a line of only `message`, `text`, `adddelay` and one `teleport
+/// <room> <map>` puts the asker in ([`room_commands`]' rule). The first line only.
+fn ask_script(script: &str) -> (Vec<Opener>, Option<Key>) {
+    let Some(line) = script.lines().find(|l| !l.trim().is_empty()) else {
+        return (Vec::new(), None);
+    };
+    let mut openers = Vec::new();
+    let (mut teleport, mut plain) = (None, true);
+    for clause in line.split(':') {
+        let mut words = clause.split_whitespace();
+        let Some(kw) = words.next().map(str::to_lowercase) else {
+            continue;
+        };
+        let mut num = || words.next().and_then(|w| w.parse::<i64>().ok());
+        match kw.as_str() {
+            "remoteaction" => {
+                if let (Some(room), Some(msg), Some(action), Some(exit)) =
+                    (num(), num(), num(), num())
+                    && (0..10).contains(&exit)
+                {
+                    openers.push((room, msg, action, exit));
+                }
+                plain = false;
+            }
+            "teleport" if teleport.is_none() => {
+                if let (Some(room), Some(map)) = (num(), num().filter(|&m| m != 0)) {
+                    teleport = Some((map, room));
+                } else {
+                    plain = false;
+                }
+            }
+            "message" | "text" | "adddelay" => {}
+            _ => plain = false,
+        }
+    }
+    (openers, teleport.filter(|_| plain))
+}
+
 /// Among a Remote Action's texts, the first `usable` one moved to the front; the rest keep their
 /// order ([`RoomGraph::load_with`]).
 fn prefer(mut texts: Vec<String>, usable: &dyn Fn(&str) -> bool) -> Vec<String> {
@@ -687,6 +748,55 @@ impl RoomGraph {
                 ));
             }
         }
+        // What the monsters answer when asked: a script that opens an exit (`remoteaction`) is
+        // a lever pulled by the question, in every room the monster spawns in (the shadow
+        // guards of 9/1423 open the door west to Morukai at `ask shadow guard morukai`; the
+        // Great Pyramid's sphinxes open the way up); one that only teleports is a way through
+        // from there (`ask Balthazar journey`). Conditions on an opener (a quest's ability) are
+        // the game's to judge: a lever is only pulled when the door refuses, and nothing is
+        // lost when the monster says no; a conditional teleport is left out, as a room
+        // command's is.
+        let mut ask_levers: HashMap<Key, Vec<AskLever>> = HashMap::new();
+        let mut ask_ways: HashMap<Key, Vec<Way>> = HashMap::new();
+        {
+            let asks = pack.monster_asks()?;
+            let asked: std::collections::HashSet<i64> = asks.iter().map(|a| a.monster).collect();
+            let mut homes: HashMap<i64, Vec<Key>> = HashMap::new();
+            for room in &rooms {
+                for m in monsters.spawn_pool(room) {
+                    if asked.contains(&m.number) {
+                        homes
+                            .entry(m.number)
+                            .or_default()
+                            .push((room.map, room.room));
+                    }
+                }
+            }
+            for ask in &asks {
+                let Some(rooms_of) = homes.get(&ask.monster) else {
+                    continue;
+                };
+                let phrase = format!("ask {} {}", ask.name, ask.keyword);
+                let (openers, teleport) = ask_script(&ask.script);
+                for &home in rooms_of {
+                    for &(room, msg, action, exit) in &openers {
+                        ask_levers.entry(home).or_default().push(AskLever {
+                            to: (home.0, room),
+                            params: [msg, action * 10 + exit, 0, 0],
+                            phrase: phrase.clone(),
+                        });
+                    }
+                    if let Some(to) = teleport {
+                        ask_ways.entry(home).or_default().push((
+                            to,
+                            Gate::None,
+                            vec![phrase.clone()],
+                            false,
+                        ));
+                    }
+                }
+            }
+        }
         let mut edges = Vec::with_capacity(exits.len());
         let mut nodes = Vec::with_capacity(rooms.len());
         let mut dangling = 0;
@@ -822,6 +932,39 @@ impl RoomGraph {
                 .collect();
             if let Some(more) = item_ways.get(&key) {
                 ways.extend(more.iter().map(|w| (w.clone(), ExitType::ItemCommand)));
+            }
+            if let Some(more) = ask_ways.get(&key) {
+                ways.extend(more.iter().map(|w| (w.clone(), ExitType::AskCommand)));
+            }
+            let mut next_dir = COMMAND_DIRS + ways.len() as u8;
+            // A monster's answer that opens an exit: a Remote Action from here on that exit,
+            // the question for its phrase, which the levers and blocked exits below pick up.
+            for l in ask_levers.get(&key).map(Vec::as_slice).unwrap_or_default() {
+                let Some(&to_ix) = index.get(&l.to) else {
+                    dangling += 1;
+                    continue;
+                };
+                edges.push(Edge {
+                    from: key,
+                    to: l.to,
+                    dir: next_dir,
+                    kind: ExitType::RemoteAction,
+                    command: l.phrase.clone(),
+                    phrases: vec![l.phrase.clone()],
+                    unblock: Vec::new(),
+                    needs: Vec::new(),
+                    lists_blank: false,
+                    gate: Gate::None,
+                    door: None,
+                    params: l.params,
+                    window: Vec::new(),
+                    lever: Vec::new(),
+                    levers: Vec::new(),
+                    levers_any_order: false,
+                    needs_empty: false,
+                    to_ix,
+                });
+                next_dir += 1;
             }
             for (dir, ((to, gate, phrases, empty), kind)) in (COMMAND_DIRS..).zip(ways) {
                 let Some(&to_ix) = index.get(&to) else {
@@ -1439,5 +1582,39 @@ mod item_script_tests {
         assert_eq!(item_teleport("roomitem 993 1834:teleport 1009"), None);
         assert_eq!(item_teleport("message 1835:teleport 1009 9"), None);
         assert_eq!(item_teleport(""), None);
+    }
+}
+
+#[cfg(test)]
+mod ask_script_tests {
+    use super::ask_script;
+
+    #[test]
+    fn an_answers_script_is_read_for_its_openers_and_its_teleport() {
+        // The shadow guard's: a quest flag checked, then the door of 1423 opened.
+        assert_eq!(
+            ask_script("checkability 133 4:remoteaction 1423 66 0 3:message 1841"),
+            (vec![(1423, 66, 0, 3)], None)
+        );
+        // Balthazar's: a plain teleport. The Grey Lord's code word: a teleport behind
+        // conditions, so no way; his `teleport` line is plain.
+        assert_eq!(
+            ask_script("teleport 2406 1:text 2897"),
+            (Vec::new(), Some((1, 2406)))
+        );
+        assert_eq!(
+            ask_script("evilaligned -50 839:goodaligned 29 839:checkability 127 2:teleport 224 1"),
+            (Vec::new(), None)
+        );
+        assert_eq!(
+            ask_script("teleport 224 1:message 837"),
+            (Vec::new(), Some((1, 224)))
+        );
+        // A sphinx: a spell cast, then the opener; the cast makes the line no teleport way.
+        assert_eq!(
+            ask_script("cast 687:remoteaction 1920 0 0 8"),
+            (vec![(1920, 0, 0, 8)], None)
+        );
+        assert_eq!(ask_script(""), (Vec::new(), None));
     }
 }
