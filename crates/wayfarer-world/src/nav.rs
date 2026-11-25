@@ -44,6 +44,10 @@ pub enum ExitType {
     /// Not an exit of the pack: a line of the room's command text that teleports (`ring chime`
     /// on Slum Street, C-052), the phrase typed.
     RoomCommand,
+    /// Not an exit of the pack: an item used where its fixture is, whose script teleports (the
+    /// potion of levitation at Mossy Cave, Waterfall), the game's own `use` command typed, with
+    /// the item for a gate.
+    ItemCommand,
     /// Not an exit of the pack: a phrase a MegaMud path types where the pack has no way
     /// through to the room its next step starts in (C-052).
     PathCommand,
@@ -105,6 +109,7 @@ impl ExitType {
     pub fn name(self) -> &'static str {
         match self {
             ExitType::RoomCommand => "Room Command",
+            ExitType::ItemCommand => "Item Command",
             ExitType::PathCommand => "Path Command",
             ExitType::PathWindow => "Path Window",
             _ => mm::EXIT_TYPES[self as usize],
@@ -116,7 +121,7 @@ impl ExitType {
     pub fn is_phrase(self) -> bool {
         matches!(
             self,
-            ExitType::Text | ExitType::RoomCommand | ExitType::PathCommand
+            ExitType::Text | ExitType::RoomCommand | ExitType::ItemCommand | ExitType::PathCommand
         )
     }
 
@@ -125,7 +130,10 @@ impl ExitType {
     pub fn is_command(self) -> bool {
         matches!(
             self,
-            ExitType::RoomCommand | ExitType::PathCommand | ExitType::PathWindow
+            ExitType::RoomCommand
+                | ExitType::ItemCommand
+                | ExitType::PathCommand
+                | ExitType::PathWindow
         )
     }
 
@@ -134,6 +142,7 @@ impl ExitType {
             ExitType::Text
             | ExitType::RemoteAction
             | ExitType::RoomCommand
+            | ExitType::ItemCommand
             | ExitType::PathCommand
             | ExitType::PathWindow => Listing::Never,
             ExitType::Hidden | ExitType::Trap | ExitType::SpellTrap | ExitType::Timed => {
@@ -248,6 +257,10 @@ pub struct Edge {
     /// Action exits that take its blocks off, in the order to type them ([`unblocking`]).
     /// Empty for any other exit, and for one its room's Remote Actions can't open.
     pub unblock: Vec<String>,
+    /// The items the `unblock` phrases ask for (`exitpar4` of the Remote Actions, carried; the
+    /// Catacombs' passages open at `aim fork east` with the titanium fork). Empty for any other
+    /// exit, and for phrases that ask for nothing.
+    pub needs: Vec<i64>,
     /// A Hidden exit that can be opened and whose own name (message `exitpar4`) is blank in all
     /// three texts: once open, the game lists it as an empty slot, `north, , west`, with no
     /// direction (C-076: the Labyrinth's `river` exit east, 1/1972).
@@ -504,6 +517,51 @@ pub fn room_commands(
     out
 }
 
+/// A way through a room that is not an exit: where it goes, its gate, its phrases and whether it
+/// needs the room clear of monsters ([`room_commands`]).
+type Way = (Key, Gate, Vec<String>, bool);
+
+/// Among a Remote Action's texts, the first `usable` one moved to the front; the rest keep their
+/// order ([`RoomGraph::load_with`]).
+fn prefer(mut texts: Vec<String>, usable: &dyn Fn(&str) -> bool) -> Vec<String> {
+    if let Some(i) = texts.iter().position(|t| usable(t)) {
+        texts[..=i].rotate_right(1);
+    }
+    texts
+}
+
+/// The item type of a drink (`kb/game-data.md` "Item types"), used with `drink` as well as `use`.
+const ITEM_DRINK: i64 = 5;
+
+/// What an item's script does when it is a teleport from a room with a fixture: the first line's
+/// `roomitem <item> <msg>` (the fixture that must be in the room, else the message) and its
+/// `teleport <room> <map>`, with only `message`, `text` and `adddelay` beside them. None for any
+/// other script (a chest's `random`, a deed's `giveitem`), or a teleport with no map or no
+/// fixture. The potion of levitation's: `roomitem 993 1834:message 1835:teleport 1009 9:message
+/// 1836`.
+pub fn item_teleport(text: &str) -> Option<(i64, Key)> {
+    let line = text.lines().find(|l| !l.trim().is_empty())?;
+    let (mut fixture, mut to) = (None, None);
+    for clause in line.split(':') {
+        let mut words = clause.split_whitespace();
+        let Some(kw) = words.next().map(str::to_lowercase) else {
+            continue;
+        };
+        let mut num = || words.next().and_then(|w| w.parse::<i64>().ok());
+        match kw.as_str() {
+            "roomitem" if fixture.is_none() => fixture = Some(num()?),
+            "teleport" if to.is_none() => {
+                let room = num()?;
+                let map = num().filter(|&m| m != 0)?;
+                to = Some((map, room));
+            }
+            "message" | "text" | "adddelay" => {}
+            _ => return None,
+        }
+    }
+    Some((fixture?, to?))
+}
+
 /// A set of directions (bit `d` for direction `d`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct DirSet(pub u16);
@@ -579,6 +637,15 @@ pub struct RoomGraph {
 impl RoomGraph {
     /// Read every room and exit of the pack once.
     pub fn load(pack: &WorldPack) -> Result<RoomGraph, Error> {
+        RoomGraph::load_with(pack, &|_| true)
+    }
+
+    /// [`RoomGraph::load`], preferring among a Remote Action's three texts the first that
+    /// `usable` accepts (else the first there is) for its phrase: the game reads a line as one
+    /// of its commands before it hears the room's exits, so a text that starts with a command
+    /// word (`use fork east`) does something else; the brain passes what it knows of the
+    /// commands, and `aim fork east` is typed instead.
+    pub fn load_with(pack: &WorldPack, usable: &dyn Fn(&str) -> bool) -> Result<RoomGraph, Error> {
         let monsters = Monsters::load(pack)?;
         let rooms = pack.all_rooms()?;
         let exits = pack.all_exits()?;
@@ -599,6 +666,27 @@ impl RoomGraph {
             .into_iter()
             .map(|(m, r, t)| ((m, r), t))
             .collect();
+        // The ways an item's script gives: used where its fixture is, it teleports (the potion
+        // of levitation at Mossy Cave, Waterfall goes up to the Catacombs' Dirt Path, which no
+        // exit of the pack reaches). A way from each room holding the fixture, with the item.
+        let mut item_ways: HashMap<Key, Vec<Way>> = HashMap::new();
+        for (item, text) in pack.item_scripts()? {
+            let Some((fixture, to)) = item_teleport(&text) else {
+                continue;
+            };
+            let mut phrases = vec![format!("use {}", item.name)];
+            if item.item_type == ITEM_DRINK {
+                phrases.push(format!("drink {}", item.name));
+            }
+            for room in pack.rooms_holding(fixture)? {
+                item_ways.entry(room).or_default().push((
+                    to,
+                    Gate::Item { item: item.number },
+                    phrases.clone(),
+                    false,
+                ));
+            }
+        }
         let mut edges = Vec::with_capacity(exits.len());
         let mut nodes = Vec::with_capacity(rooms.len());
         let mut dangling = 0;
@@ -640,6 +728,11 @@ impl RoomGraph {
                     }
                 } else {
                     Vec::new()
+                };
+                let texts = if kind == ExitType::RemoteAction {
+                    prefer(texts, usable)
+                } else {
+                    texts
                 };
                 let command = match kind {
                     ExitType::Text => texts.first().cloned().unwrap_or_default(),
@@ -703,6 +796,7 @@ impl RoomGraph {
                     command,
                     phrases: texts,
                     unblock: Vec::new(),
+                    needs: Vec::new(),
                     lists_blank,
                     gate,
                     door,
@@ -715,13 +809,21 @@ impl RoomGraph {
                     to_ix,
                 });
             }
-            // The ways through the room's command text, after its exits.
-            let ways = commands.get(&key).map_or_else(Vec::new, |t| {
-                room_commands(key.0, t, &|n| {
-                    spells.get(&n).and_then(|raw| spell_teleport(key.0, raw))
+            // The ways through the room's command text, after its exits, then the items' scripts.
+            let mut ways: Vec<(Way, ExitType)> = commands
+                .get(&key)
+                .map_or_else(Vec::new, |t| {
+                    room_commands(key.0, t, &|n| {
+                        spells.get(&n).and_then(|raw| spell_teleport(key.0, raw))
+                    })
                 })
-            });
-            for (dir, (to, gate, phrases, empty)) in (COMMAND_DIRS..).zip(ways) {
+                .into_iter()
+                .map(|w| (w, ExitType::RoomCommand))
+                .collect();
+            if let Some(more) = item_ways.get(&key) {
+                ways.extend(more.iter().map(|w| (w.clone(), ExitType::ItemCommand)));
+            }
+            for (dir, ((to, gate, phrases, empty), kind)) in (COMMAND_DIRS..).zip(ways) {
                 let Some(&to_ix) = index.get(&to) else {
                     dangling += 1;
                     continue;
@@ -730,10 +832,11 @@ impl RoomGraph {
                     from: key,
                     to,
                     dir,
-                    kind: ExitType::RoomCommand,
+                    kind,
                     command: phrases[0].clone(),
                     phrases,
                     unblock: Vec::new(),
+                    needs: Vec::new(),
                     lists_blank: false,
                     gate,
                     door: None,
@@ -754,47 +857,38 @@ impl RoomGraph {
             });
         }
         dangling += ex.count();
-        // The blocked Hidden exits: the phrases of their room's own Remote Actions (one that
-        // asks for an item, `exitpar4`, is left out).
-        let mut remote_phrases: HashMap<i64, Option<String>> = HashMap::new();
+        // The blocked Hidden exits: the phrases of their room's own Remote Actions, and the
+        // items those ask for (`exitpar4`: the Catacombs' titanium fork).
         for node in &nodes {
             let here = &edges[node.edges.start as usize..node.edges.end as usize];
-            let mut found: Vec<(usize, Vec<String>)> = Vec::new();
+            let mut found: Vec<(usize, Vec<String>, Vec<i64>)> = Vec::new();
             for (i, e) in here.iter().enumerate() {
                 if e.kind != ExitType::Hidden {
                     continue;
                 }
                 let mut phrases: Vec<(i64, String)> = Vec::new();
+                let mut needs: Vec<i64> = Vec::new();
                 for r in here.iter().filter(|r| {
                     r.kind == ExitType::RemoteAction
                         && r.to == r.from
                         && r.params[1] >= 0
                         && r.params[1] % 10 == i64::from(e.dir)
-                        && r.params[3] == 0
                 }) {
-                    let first = match remote_phrases.entry(r.params[0]) {
-                        Entry::Occupied(o) => o.get().clone(),
-                        Entry::Vacant(v) => v
-                            .insert(
-                                pack.message(r.params[0])?
-                                    .unwrap_or_default()
-                                    .into_iter()
-                                    .map(|t| t.trim().to_owned())
-                                    .find(|t| !t.is_empty()),
-                            )
-                            .clone(),
-                    };
-                    if let Some(p) = first {
-                        phrases.push((r.params[1] / 10, p));
+                    if let Some(p) = r.phrases.first() {
+                        phrases.push((r.params[1] / 10, p.clone()));
+                        if r.params[3] != 0 && !needs.contains(&r.params[3]) {
+                            needs.push(r.params[3]);
+                        }
                     }
                 }
                 let unblock = unblocking(e.params, &phrases);
                 if !unblock.is_empty() {
-                    found.push((node.edges.start as usize + i, unblock));
+                    found.push((node.edges.start as usize + i, unblock, needs));
                 }
             }
-            for (i, unblock) in found {
+            for (i, unblock, needs) in found {
                 edges[i].unblock = unblock;
+                edges[i].needs = needs;
             }
         }
         let mut by_name: HashMap<String, Vec<u32>> = HashMap::new();
@@ -854,6 +948,7 @@ impl RoomGraph {
                 command: phrase.clone(),
                 phrases: vec![phrase.clone()],
                 unblock: Vec::new(),
+                needs: Vec::new(),
                 lists_blank: false,
                 gate: Gate::None,
                 door: None,
@@ -1109,6 +1204,7 @@ impl RoomGraph {
                 command: phrase.clone(),
                 phrases: vec![phrase],
                 unblock: Vec::new(),
+                needs: Vec::new(),
                 lists_blank: false,
                 gate: Gate::None,
                 door: None,
@@ -1154,6 +1250,7 @@ impl RoomGraph {
                 command: w.file.clone(),
                 phrases: Vec::new(),
                 unblock: Vec::new(),
+                needs: Vec::new(),
                 lists_blank: false,
                 gate: Gate::None,
                 door: None,
@@ -1321,5 +1418,26 @@ mod tests {
         assert_eq!(s.len(), 3);
         assert_eq!(DirSet::from_names(["north", "hole"]), None);
         assert!(DirSet::from_names([]).unwrap().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod item_script_tests {
+    use super::item_teleport;
+
+    #[test]
+    fn an_item_script_is_read_for_its_fixture_and_teleport() {
+        // The potion of levitation's text block.
+        assert_eq!(
+            item_teleport("roomitem 993 1834:message 1835:teleport 1009 9:message 1836\n"),
+            Some((993, (9, 1009)))
+        );
+        // A chest's script opens at random; a deed's gives items; a teleport with no map or
+        // no fixture is left out.
+        assert_eq!(item_teleport("message 1421:message 1422:random 871"), None);
+        assert_eq!(item_teleport("message 2629:giveitem 844"), None);
+        assert_eq!(item_teleport("roomitem 993 1834:teleport 1009"), None);
+        assert_eq!(item_teleport("message 1835:teleport 1009 9"), None);
+        assert_eq!(item_teleport(""), None);
     }
 }

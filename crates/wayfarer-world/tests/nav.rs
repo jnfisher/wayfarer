@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 use std::time::Instant;
 
 use wayfarer_world::{
-    Belief, Category, DirSet, ExitType, How, Key, LockState, Monsters, RoomGraph, Traveller,
+    Belief, Category, DirSet, ExitType, Gate, How, Key, LockState, Monsters, RoomGraph, Traveller,
     WorldPack, huntable, layout, route, route_or_search, route_within,
 };
 
@@ -47,8 +47,9 @@ fn graph_loads_every_room_and_exit() {
     assert_eq!(g.len(), 26_720);
     // The pack's 62,352 exits and 45 ways through rooms' command texts: 40 that teleport
     // (C-052) and 5 that cast a spell that only teleports (C-086: the Dragon's Teeth holes at
-    // 2/115, 2/487 and 2/630, and the two organic chambers' `go hole`, 2/2366 and 2/2367).
-    assert_eq!(g.edge_count(), 62_397);
+    // 2/115, 2/487 and 2/630, and the two organic chambers' `go hole`, 2/2366 and 2/2367); and
+    // one way an item's script gives, the potion of levitation's at Mossy Cave, Waterfall.
+    assert_eq!(g.edge_count(), 62_398);
     // Into players' houses, which have no name: there, but never taken (C-053).
     assert_eq!(g.into_unnamed, 34);
     assert_eq!(g.dangling, 0);
@@ -1076,4 +1077,70 @@ fn a_go_to_searches_for_a_hidden_exit_when_that_is_the_short_way() {
         commands(&route_or_search(&g, temple, chamber, &unseen).unwrap()),
         commands(&go)
     );
+}
+
+#[test]
+fn a_blocked_passage_whose_phrase_asks_for_an_item_needs_it_carried() {
+    let (pack, g) = graph();
+    // The Catacombs' Broken Stairwell (9:1032): east is blocked, and the room's Remote Action
+    // opens it at the texts of message 1780, which asks for the titanium fork (item 983,
+    // `exitpar4`). The first text is `use fork east`.
+    let east = g.edge((9, 1032), 2).unwrap();
+    assert_eq!(east.kind, ExitType::Hidden);
+    assert_eq!(east.unblock, ["use fork east"]);
+    assert_eq!(east.needs, [983]);
+    assert!(!east.sealed());
+    // A loader told that `use` is a command word prefers the text that is not one.
+    let g2 = RoomGraph::load_with(&pack, &|p| !p.starts_with("use ")).unwrap();
+    assert_eq!(g2.edge((9, 1032), 2).unwrap().unblock, ["aim fork east"]);
+    assert_eq!(g2.edge((9, 1032), 2).unwrap().needs, [983]);
+    // Without the fork there is no way through; with it, the passage is one step, its phrase
+    // typed first.
+    let beyond = (9, 1049);
+    assert!(route_or_search(&g, (9, 1032), beyond, &Traveller::default()).is_none());
+    let with_fork = Traveller {
+        items: BTreeSet::from([983]),
+        ..Traveller::default()
+    };
+    let r = route_or_search(&g, (9, 1032), beyond, &with_fork).unwrap();
+    assert_eq!(commands(&r), ["e"]);
+    assert_eq!(r[0].unblock, ["use fork east"]);
+    // The phrases that ask for nothing still ask for nothing.
+    assert!(g.edge((1, 619), 3).unwrap().needs.is_empty());
+}
+
+#[test]
+fn an_items_script_that_teleports_is_a_way_from_the_rooms_holding_its_fixture() {
+    let (_, g) = graph();
+    // The potion of levitation (item 992): its spell runs a text block whose script, where the
+    // waterfall (item 993, a fixture of Mossy Cave, Waterfall 3:1) is, teleports to Waterfall,
+    // Dirt Path (9:1009) above the Catacombs, which no exit of the pack reaches.
+    let up: Vec<_> = g
+        .edges((3, 1))
+        .iter()
+        .filter(|e| e.kind == ExitType::ItemCommand)
+        .collect();
+    assert_eq!(up.len(), 1, "{up:?}");
+    assert_eq!(up[0].to, (9, 1009));
+    assert_eq!(up[0].command, "use potion of levitation");
+    assert_eq!(
+        up[0].phrases,
+        ["use potion of levitation", "drink potion of levitation"]
+    );
+    assert_eq!(up[0].gate, Gate::Item { item: 992 });
+    assert!(route(&g, (3, 1), (9, 1009), &Traveller::default()).is_none());
+    let with_potion = Traveller {
+        items: BTreeSet::from([992]),
+        ..Traveller::default()
+    };
+    let r = route(&g, (3, 1), (9, 1009), &with_potion).unwrap();
+    assert_eq!(commands(&r), ["use potion of levitation"]);
+    // The waterfall is in no other room, and no other item's script is such a way.
+    let ways: Vec<_> = g
+        .all_edges()
+        .iter()
+        .filter(|e| e.kind == ExitType::ItemCommand)
+        .collect();
+    assert_eq!(ways.len(), 1, "{ways:?}");
+    assert!(ways[0].kind.is_command() && ways[0].kind.is_phrase());
 }

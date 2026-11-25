@@ -127,6 +127,15 @@ pub fn room(k: Key) -> String {
     )
 }
 
+/// An inventory screen with `items`, as the game lists them ("padded vest (Torso), 3 potion of
+/// levitation"), then the prompt: what the character carries, for the exits that ask for an item.
+pub fn inventory(items: &str) -> String {
+    format!(
+        "\x1b[0;37;40m\x1b[79D\x1b[KYou are carrying {items}\r\nYou have no keys.\r\n\
+         Wealth: 0 copper farthings\r\nEncumbrance: 500/2400 - Light [20%]\r\n{PROMPT}"
+    )
+}
+
 /// A line of the game's, then the prompt.
 pub fn says(line: &str) -> String {
     format!("\x1b[1;31;40m{line}\r\n{PROMPT}")

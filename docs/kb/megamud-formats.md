@@ -51,6 +51,8 @@ the id to confirm each step. A client should do the same: id plus previous posit
 `routecheck.py` in the repo already implements this scheme. What's new here is the check over all
 1,957 files and the exit-type mapping derived from data rather than assumed.
 
+**Two rooms, one id** [C data, F John 2026-11-25]: rooms with the same title and the same exit pattern share an id, so a waypoint names them both. The White Jelly waypoint (`WJEL`) matches 9/117 and 9/146, both "Slimy Sewer Tunnel, Drainage Pipe" with one exit, at the two ends of the sewer; the jelly spawns only in 9/146 (`specmon` 471). A Go to by the waypoint's name picks the nearest room, which may be the wrong one; go by room number.
+
 ---
 
 ## 1. `.mp` path files (text, CRLF, `\x1a` EOF byte on about 70 files)

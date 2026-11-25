@@ -450,6 +450,89 @@ impl WorldPack {
             .optional()?)
     }
 
+    /// The items whose use runs a text block: an `ABL_ONETIMECAST` (43) ability casting a spell
+    /// whose `ABL_TEXTBLOCK` (148) ability names the block (`kb/navigation.md` "Text blocks":
+    /// the potion of levitation's script teleports; the chests' open at random). `(item, text)`,
+    /// by item number.
+    pub fn item_scripts(&self) -> Result<Vec<(Item, String)>, Error> {
+        const ONE_TIME_CAST: i64 = 43;
+        const TEXT_BLOCK: i64 = 148;
+        let pairs = |raw: &str| -> Vec<(i64, i64)> {
+            let v: Value = serde_json::from_str(raw).unwrap_or(Value::Null);
+            let nums = |k: &str| -> Vec<i64> {
+                v[k].as_array()
+                    .map(|a| a.iter().filter_map(Value::as_i64).collect())
+                    .unwrap_or_default()
+            };
+            nums("abilities")
+                .into_iter()
+                .zip(nums("abilvals"))
+                .collect()
+        };
+        // The abilities array alone, not every number in the record (`RoomGraph::load` is
+        // timed): a few dozen items have the ability.
+        let mut st = self.conn.prepare(
+            "SELECT number, name, type, weight, cost, currency, raw FROM items \
+             WHERE EXISTS (SELECT 1 FROM json_each(json_extract(raw, '$.abilities')) \
+                           WHERE value = ?1) \
+             ORDER BY number",
+        )?;
+        let items: Vec<Item> = st
+            .query_map([ONE_TIME_CAST], |r| {
+                Ok(Item {
+                    number: r.get(0)?,
+                    name: r.get(1)?,
+                    item_type: r.get(2)?,
+                    weight: r.get(3)?,
+                    cost: r.get(4)?,
+                    currency: r.get(5)?,
+                    raw: r.get(6)?,
+                })
+            })?
+            .collect::<Result<_, _>>()?;
+        let mut out = Vec::new();
+        for item in items {
+            let spells: Vec<i64> = pairs(&item.raw)
+                .into_iter()
+                .filter(|&(a, _)| a == ONE_TIME_CAST)
+                .map(|(_, v)| v)
+                .collect();
+            for n in spells {
+                let Some(spell) = self.spell(n)? else {
+                    continue;
+                };
+                for (a, v) in pairs(&spell.raw) {
+                    if a == TEXT_BLOCK
+                        && let Some(text) = self.text_block(v)?
+                    {
+                        out.push((item.clone(), text));
+                    }
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// The rooms holding item `item` as a placed or a hidden item (`items`, `hiditems`; the
+    /// fixtures a script checks with `roomitem`: the waterfall of Mossy Cave, Waterfall), in key
+    /// order.
+    pub fn rooms_holding(&self, item: i64) -> Result<Vec<Key>, Error> {
+        // The number as text first, which is cheap over every room; the JSON only on the rooms
+        // whose record holds those digits somewhere (`RoomGraph::load` is timed).
+        let mut st = self.conn.prepare_cached(
+            "SELECT map, room FROM rooms WHERE instr(raw, ?2) > 0 AND (\
+             EXISTS (SELECT 1 FROM json_each(json_extract(raw, '$.items')) WHERE value = ?1) \
+             OR EXISTS (SELECT 1 FROM json_each(json_extract(raw, '$.hiditems')) WHERE value = ?1)) \
+             ORDER BY map, room",
+        )?;
+        let rows = st
+            .query_map(params![item, item.to_string()], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+            })?
+            .collect::<Result<Vec<Key>, _>>()?;
+        Ok(rows)
+    }
+
     /// Every item a character can pick up (`gettable`), by number (C-102).
     pub fn gettable_items(&self) -> Result<Vec<Item>, Error> {
         let mut st = self.conn.prepare_cached(

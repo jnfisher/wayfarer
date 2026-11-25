@@ -125,6 +125,21 @@ pub(crate) fn why_unreachable(
         format!("the {door} {dir} of {at} would not open")
     } else if t.blocked.contains(&(e.from, e.dir)) {
         format!("the exit {dir} of {at} was refused")
+    } else if e.hidden() && e.needs.iter().any(|i| !t.items.contains(i)) {
+        // Its phrases ask for an item the character does not carry (the titanium fork).
+        let missing: Vec<String> = e
+            .needs
+            .iter()
+            .filter(|i| !t.items.contains(i))
+            .map(|i| {
+                keys.get(i)
+                    .map_or_else(|| "an item".to_owned(), |n| format!("the {n}"))
+            })
+            .collect();
+        format!(
+            "the hidden exit {dir} of {at} opens with {}, not carried",
+            missing.join(" and ")
+        )
     } else if e.sealed() {
         format!("the hidden exit {dir} of {at} is opened from elsewhere")
     } else if e.hidden() {
@@ -156,7 +171,10 @@ fn gate_need(
         Gate::Class { .. } => "is for another class".to_owned(),
         Gate::Race { .. } => "is for another race".to_owned(),
         Gate::Alignment { .. } => "is for another alignment".to_owned(),
-        Gate::Item { .. } => "needs an item".to_owned(),
+        Gate::Item { item } => match keys.get(&item) {
+            Some(name) => format!("needs the {name}"),
+            None => "needs an item".to_owned(),
+        },
         Gate::Toll { crowns } => format!("takes a toll of {crowns}"),
         Gate::Spell | Gate::Cast { .. } => "needs a spell".to_owned(),
         Gate::Key { item } => match keys.get(&item) {

@@ -308,14 +308,21 @@ impl Traveller {
                 }
                 ExitType::Hidden => {
                     let at = (e.from, e.dir);
+                    // Opening it may ask for an item (the Catacombs' titanium fork, `needs`):
+                    // carried, or allowed every item; one already showing needs nothing.
+                    let tools = e
+                        .needs
+                        .iter()
+                        .all(|i| self.items.contains(i) || self.allows(Category::Item));
                     e.passable()
-                        || self.allows(Category::Hidden)
                         || self.found.contains(&at)
-                        || self.searchable.contains(&at)
+                        || (tools
+                            && (self.allows(Category::Hidden) || self.searchable.contains(&at)))
                 }
-                ExitType::Text | ExitType::RoomCommand | ExitType::PathCommand => {
-                    !e.command.is_empty()
-                }
+                ExitType::Text
+                | ExitType::RoomCommand
+                | ExitType::ItemCommand
+                | ExitType::PathCommand => !e.command.is_empty(),
                 // Its phrases are typed and its sealed exit opened on the way; every other step
                 // the traveller must be able to take.
                 ExitType::PathWindow => e

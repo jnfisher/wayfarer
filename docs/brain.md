@@ -290,9 +290,24 @@ progress (after the move in flight).
   `press a`, `press t`, `press h`, typed in that order. Arriving at one that is not showing,
   the walker types its phrases ("Opening the hidden exit west: push switch"), then `look`s: it
   moves if the exit shows (`secret passage west`), else marks the exit refused for 10 minutes
-  and plans again ("the hidden exit west did not open").
+  and plans again ("the hidden exit west did not open"). A phrase may ask for an item
+  (`exitpar4` of the Remote Action; `Edge::needs`): the Catacombs' passages open at `aim fork
+  east` and the like with the titanium fork carried (as the inventory says, by name). Without
+  it the exit is no way through, and the go box's `?` says "the hidden exit east of Catacombs,
+  Broken Stairwell opens with the titanium fork, not carried". The phrase typed is the first of
+  the message's three texts that the game does not read as one of its commands: the game parses
+  a line as a command before it hears the room's exits, so `use fork east` is the USE command
+  and does nothing, and the brain types `aim fork east` (`RoomGraph::load_with`).
+- **Items whose script teleports** (`ExitType::ItemCommand`): an item used (`ABL_ONETIMECAST`)
+  that casts a spell that runs a text block (`ABL_TEXTBLOCK`) whose script is `roomitem
+  <fixture> <msg>` and `teleport <room> <map>` is a way through from every room holding the
+  fixture: the potion of levitation, used at Mossy Cave, Waterfall (3:1, where the waterfall
+  is), lands the character on Waterfall, Dirt Path (9:1009) above the Catacombs, which no exit
+  of the pack reaches. The walker types `use potion of levitation` (then `look`), with the
+  potion carried for a gate (`Gate::Item`); without it the `?` says "needs the potion of
+  levitation".
 - **Sealed hidden exits and path windows**: a blocked exit whose phrases are typed in other
-  rooms (or that asks for an item) is *sealed* (`Edge::sealed`): it is never searched for,
+  rooms is *sealed* (`Edge::sealed`): it is never searched for,
   whatever the character knows, and a route takes it only while an exits line shows it (opened
   by someone else; it counts as found until a line of its room no longer shows it). Where a
   verified MegaMud path opens one, the stretch of the path from the first phrase that opens it
