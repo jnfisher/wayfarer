@@ -1,5 +1,6 @@
 //! Reading a world pack. Opening is cheap: nothing is loaded until asked for.
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Row, params};
@@ -59,6 +60,17 @@ pub struct Monster {
     pub alignment: i64,
     /// The export's full record (JSON).
     pub raw: String,
+}
+
+/// One thing a monster can be asked about whose answer runs a script ([`WorldPack::monster_asks`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MonsterAsk {
+    pub monster: i64,
+    pub name: String,
+    /// The first keyword of the talk line, lower case: the word to put in the question.
+    pub keyword: String,
+    /// The script the answer links to, as its text block reads.
+    pub script: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -508,6 +520,86 @@ impl WorldPack {
                         out.push((item.clone(), text));
                     }
                 }
+            }
+        }
+        Ok(out)
+    }
+
+    /// What a monster answers when asked: for every monster with a talk block, each line
+    /// `KEYWORDS:answer` of it whose answer text links to a script (`kb/navigation.md` "ASK and
+    /// GREET": the answer's own link runs as a whole script), as the first keyword of the line
+    /// and the script's text; one per distinct script a monster has, the first line's keyword.
+    /// The shadow guard's `morukai`, `orfeo`, ... all run `remoteaction 1423 66 0 3`, which
+    /// opens the door west of 9/1423.
+    pub fn monster_asks(&self) -> Result<Vec<MonsterAsk>, Error> {
+        // Every text block once (`RoomGraph::load` is timed): its part 0's link and its text,
+        // the parts joined up to the first missing one as `text_block` does.
+        let mut blocks: HashMap<i64, (i64, String, i64)> = HashMap::new();
+        let mut st = self
+            .conn
+            .prepare("SELECT number, part, link, text FROM texts ORDER BY number, part")?;
+        for row in st.query_map([], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, String>(3)?,
+            ))
+        })? {
+            let (number, part, link, text) = row?;
+            match blocks.get_mut(&number) {
+                None if part == 0 => {
+                    blocks.insert(number, (link, text, 1));
+                }
+                Some((_, joined, next)) if part == *next => {
+                    joined.push_str(&text);
+                    *next += 1;
+                }
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        let mut st = self.conn.prepare(
+            "SELECT number, name, json_extract(raw, '$.talktext') FROM monsters \
+             WHERE json_extract(raw, '$.talktext') > 0 ORDER BY number",
+        )?;
+        let rows: Vec<(i64, String, i64)> = st
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<Result<_, _>>()?;
+        for (number, name, talk) in rows {
+            let Some((_, talk, _)) = blocks.get(&talk) else {
+                continue;
+            };
+            let mut scripts: Vec<i64> = Vec::new();
+            for line in talk.lines() {
+                let Some((keywords, answer)) = line.rsplit_once(':') else {
+                    continue;
+                };
+                let Ok(answer) = answer.trim().parse::<i64>() else {
+                    continue;
+                };
+                let keyword = keywords
+                    .split(',')
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .to_lowercase();
+                let Some(&(link, ..)) = blocks.get(&answer) else {
+                    continue;
+                };
+                if link <= 0 || keyword.is_empty() || scripts.contains(&link) {
+                    continue;
+                }
+                let Some((_, script, _)) = blocks.get(&link) else {
+                    continue;
+                };
+                scripts.push(link);
+                out.push(MonsterAsk {
+                    monster: number,
+                    name: name.clone(),
+                    keyword,
+                    script: script.clone(),
+                });
             }
         }
         Ok(out)

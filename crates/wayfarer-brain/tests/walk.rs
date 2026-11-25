@@ -1078,6 +1078,32 @@ async fn a_locked_gate_is_opened_by_its_lever_when_it_refuses() {
     assert_eq!(played, ["n", "e", "pull lever", "w", "n"]);
 }
 
+/// Morukai's door: west of the Ancient Darkwood Tree (9:1423) is a door no bash opens; the
+/// shadow guards there open it when asked about Morukai (live, 2026-11-25: `ask shadow guard
+/// orfeo`). The question is the door's lever, in its own room.
+const DARKWOOD_TREE: Key = (9, 1423);
+const MYSTICAL_CHAMBERS: Key = (9, 1425);
+
+#[tokio::test(start_paused = true)]
+async fn a_locked_door_is_opened_by_asking_the_monster_that_guards_it() {
+    let (mut g, run) = Game::start(SessionState::Realm, DARKWOOD_TREE).await;
+    g.output(&strength(50)).await;
+    g.expect("w", says("The door is closed!"));
+    g.expect(
+        "ask shadow guard morukai",
+        says("The shadow guard whispers \"You may pass.\""),
+    );
+    g.expect("w", room(MYSTICAL_CHAMBERS));
+    g.walk_to(MYSTICAL_CHAMBERS).await;
+    let said = g.walk_narrated("Arrived: Mystical Chambers").await;
+    assert!(
+        said.contains(&"The door west is opened by a lever: ask shadow guard morukai".to_owned()),
+        "{said:?}"
+    );
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["w", "ask shadow guard morukai", "w"]);
+}
+
 #[tokio::test(start_paused = true)]
 async fn a_gate_still_locked_after_its_lever_is_given_up() {
     let (mut g, run) = Game::start(SessionState::Realm, INNER_GATE).await;

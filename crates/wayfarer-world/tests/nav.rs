@@ -47,16 +47,24 @@ fn graph_loads_every_room_and_exit() {
     assert_eq!(g.len(), 26_720);
     // The pack's 62,352 exits and 45 ways through rooms' command texts: 40 that teleport
     // (C-052) and 5 that cast a spell that only teleports (C-086: the Dragon's Teeth holes at
-    // 2/115, 2/487 and 2/630, and the two organic chambers' `go hole`, 2/2366 and 2/2367); and
-    // one way an item's script gives, the potion of levitation's at Mossy Cave, Waterfall.
-    assert_eq!(g.edge_count(), 62_398);
+    // 2/115, 2/487 and 2/630, and the two organic chambers' `go hole`, 2/2366 and 2/2367); one
+    // way an item's script gives, the potion of levitation's at Mossy Cave, Waterfall; and what
+    // the monsters answer: 5 Remote Actions (the shadow guards' door, the sphinxes' ways up) and
+    // 6 teleports.
+    assert_eq!(g.edge_count(), 62_409);
     // Into players' houses, which have no name: there, but never taken (C-053).
     assert_eq!(g.into_unnamed, 34);
     assert_eq!(g.dangling, 0);
     // Every exit type name in the pack is known (load fails on one that isn't), and the
     // counts by type equal the pack's.
     let mut kinds = std::collections::BTreeMap::new();
-    for e in g.all_edges().iter().filter(|e| !e.kind.is_command()) {
+    // A monster's answer that opens an exit is a Remote Action too, numbered past the
+    // directions as the ways through are: not an exit of the pack.
+    for e in g
+        .all_edges()
+        .iter()
+        .filter(|e| !e.kind.is_command() && e.dir < 10)
+    {
         *kinds.entry(e.kind.name()).or_insert(0) += 1;
     }
     let exits = pack.all_exits().unwrap();
@@ -808,9 +816,10 @@ fn a_locked_door_a_lever_opens_carries_the_lever() {
             .collect();
         eprintln!("lever elsewhere: {:?} {} {:?}", e.from, e.dir, way);
     }
-    // 17 levers in the door's own room; four in another, two of them (C-120) reached through
-    // a hidden exit: the Grand Stair's gate (7:150) from its Guard Room, and one more.
-    assert_eq!((levers.len(), own), (21, 17));
+    // 18 levers in the door's own room (one of them a monster's answer: the shadow guards'
+    // door to Morukai, 9:1423); four in another, two of them (C-120) reached through a hidden
+    // exit: the Grand Stair's gate (7:150) from its Guard Room, and one more.
+    assert_eq!((levers.len(), own), (22, 18));
     assert!(
         levers
             .iter()
@@ -1143,4 +1152,55 @@ fn an_items_script_that_teleports_is_a_way_from_the_rooms_holding_its_fixture() 
         .collect();
     assert_eq!(ways.len(), 1, "{ways:?}");
     assert!(ways[0].kind.is_command() && ways[0].kind.is_phrase());
+}
+
+#[test]
+fn a_monsters_answer_that_opens_an_exit_is_its_lever() {
+    let (_, g) = graph();
+    // The Ancient Darkwood Tree (9:1423): west to Morukai's Mystical Chambers is a door no
+    // bash or pick opens (`exitpar2` -999). The shadow guards the room spawns answer `morukai`,
+    // `orfeo`, ... with a script that runs a Remote Action on that door: the question is the
+    // lever, in the door's own room.
+    let door = g.edge((9, 1423), 3).unwrap();
+    assert_eq!(door.kind, ExitType::Door);
+    let pulls: Vec<&str> = door.lever.iter().map(|e| e.command.as_str()).collect();
+    assert_eq!(pulls, ["ask shadow guard morukai"]);
+    let t = Traveller {
+        strength: Some(50),
+        ..Traveller::default()
+    };
+    assert_eq!(t.door_odds(door), Some(0));
+    assert!(t.can_take(door));
+    let r = route(&g, (9, 1423), (9, 1425), &t).unwrap();
+    assert_eq!(commands(&r), ["w"]);
+    assert_eq!(commands(&r[0].lever), ["ask shadow guard morukai"]);
+    // The Great Pyramid's stone sphinxes open the blocked way up of their room when asked the
+    // riddle's answer: the question is the exit's phrase.
+    assert_eq!(
+        g.edge((12, 1920), 8).unwrap().unblock,
+        ["ask stone sphinx fire"]
+    );
+    assert_eq!(
+        g.edge((12, 2001), 8).unwrap().unblock,
+        ["ask stone sphinx sun"]
+    );
+    // Balthazar (Fine Mansion, Study, 2:2577) sends the asker to the Silver River before the
+    // waterfall at `journey`, with no condition: a way through from his room.
+    let ways: Vec<_> = g
+        .all_edges()
+        .iter()
+        .filter(|e| e.kind == ExitType::AskCommand)
+        .collect();
+    assert_eq!(ways.len(), 6, "{ways:?}");
+    let journey = ways.iter().find(|e| e.from == (2, 2577)).unwrap();
+    assert_eq!(
+        (journey.to, journey.command.as_str()),
+        ((1, 2406), "ask Balthazar journey")
+    );
+    assert_eq!(
+        commands(&route(&g, (2, 2577), (1, 2406), &t).unwrap()),
+        ["ask Balthazar journey"]
+    );
+    // An answer with a condition (Jorah's transport: alignment and a quest flag) is no way.
+    assert!(!ways.iter().any(|e| e.from == (1, 2327)));
 }

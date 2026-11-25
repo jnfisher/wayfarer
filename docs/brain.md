@@ -209,7 +209,18 @@ progress (after the move in flight).
   or gate a lever in another room opens is taken whatever the odds, and the walker goes to the
   lever when the door refuses; the way to the lever may run through a hidden exit, searched for
   on the way (C-120: the Grand Stair's gate, 7/150, is opened from the Guard Room 7/152, three
-  steps off behind a hidden exit; the Black Fortress gatehouse's gate the same).
+  steps off behind a hidden exit; the Black Fortress gatehouse's gate the same). **A monster's
+  answer is a lever too**: when what a monster says to a question runs a script with a
+  `remoteaction` on an exit (`kb/navigation.md` "ASK and GREET"), the question is a Remote
+  Action from every room the monster spawns in (`WorldPack::monster_asks`,
+  `RoomGraph::load`): the shadow guards of the Ancient Darkwood Tree (9/1423) open the door
+  west to Morukai at `ask shadow guard morukai` ("The door west is opened by a lever: ask
+  shadow guard morukai"), the Great Pyramid's sphinxes the blocked way up of their room at the
+  riddle's answer (`ask stone sphinx fire`). A condition on the answer (a quest's ability) is
+  the game's to judge: the lever is only pulled when the door refuses, and a refusal costs the
+  walk nothing but the question. An answer that only teleports is a way through from the
+  monster's room (`ExitType::AskCommand`: `ask Balthazar journey` from the Fine Mansion's
+  Study to the Silver River); one behind conditions is left out, as a room command's is.
 - **One step at a time**: each move goes at a prompt, in the realm, and only once the room the
   last one led to has been seen and is the one the route expected. One line is in flight at a
   time: a re-sync waits for the walk's action and the walk for a re-sync command. A room that is
