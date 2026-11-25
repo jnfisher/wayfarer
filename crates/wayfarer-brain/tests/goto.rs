@@ -12,6 +12,7 @@ const CHIEFTAIN: Key = (1, 1865);
 const BY_CHIEFTAIN: Key = (1, 1864);
 const PASSAGE: Key = (1, 1863);
 const STONE_HALLWAY: Key = (1, 1297);
+const BROKEN_STAIRWELL: Key = (9, 1032);
 
 async fn find(g: &mut Game, query: &str) -> Vec<Found> {
     g.send(ToClient::Find {
@@ -48,6 +49,52 @@ async fn a_room_with_no_route_says_which_exit_stops_the_character() {
             .all(|w| *w == "the hidden exit south of Crypt, Small Chamber is not known"),
         "{whys:?}"
     );
+    g.close(run).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_room_behind_the_catacombs_passages_says_the_fork_is_needed() {
+    // From the Catacombs' Broken Stairwell (9:1032) the Shimmering Barrier lies behind blocked
+    // passages whose phrases ask for the titanium fork: with no fork carried there is no route
+    // and why names the fork; with it, there is a way.
+    let (mut g, run) = Game::start_with(
+        SessionState::Realm,
+        format!(
+            "{}{}",
+            inventory("padded vest (Torso)"),
+            room(BROKEN_STAIRWELL)
+        ),
+    )
+    .await;
+    let found = find(&mut g, "shimmering barrier").await;
+    let barrier = found
+        .iter()
+        .find(|f| f.name == "Catacombs, Shimmering Barrier")
+        .unwrap_or_else(|| panic!("{found:?}"));
+    assert!(barrier.rooms[0].no_route, "{barrier:?}");
+    let why = barrier.rooms[0].why.as_deref().unwrap_or_default();
+    assert!(
+        why.starts_with("the hidden exit ")
+            && why.ends_with(" opens with the titanium fork, not carried"),
+        "{why}"
+    );
+    g.close(run).await;
+
+    let (mut g, run) = Game::start_with(
+        SessionState::Realm,
+        format!(
+            "{}{}",
+            inventory("titanium fork (Weapon Hand)"),
+            room(BROKEN_STAIRWELL)
+        ),
+    )
+    .await;
+    let found = find(&mut g, "shimmering barrier").await;
+    let barrier = found
+        .iter()
+        .find(|f| f.name == "Catacombs, Shimmering Barrier")
+        .unwrap_or_else(|| panic!("{found:?}"));
+    assert!(!barrier.rooms[0].no_route, "{barrier:?}");
     g.close(run).await;
 }
 

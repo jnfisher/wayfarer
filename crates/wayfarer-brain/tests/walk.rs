@@ -735,6 +735,86 @@ async fn a_hidden_exit_a_phrase_opens_is_opened_with_it_not_searched_for() {
     assert_eq!(played, ["push switch", "look", "w"]);
 }
 
+const BROKEN_STAIRWELL: Key = (9, 1032);
+const CATACOMBS_BEYOND: Key = (9, 1049);
+const MOSSY_WATERFALL: Key = (3, 1);
+const DIRT_PATH_ABOVE: Key = (9, 1009);
+
+/// A walk until it arrives or gives up: what it said, and the last word.
+async fn walk_until_done(g: &mut Game) -> (Vec<String>, String) {
+    let mut said = Vec::new();
+    loop {
+        let n = g.walk_narration().await;
+        said.push(n.clone());
+        if n.starts_with("Arrived") || n.starts_with("Stopped") || n.starts_with("Not ") {
+            return (said, n);
+        }
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_blocked_passage_that_asks_for_the_titanium_fork_opens_with_it() {
+    // The Catacombs' Broken Stairwell (9:1032): east is blocked, and the room's action opens
+    // it with the titanium fork carried. Its message's first text, `use fork east`, is the
+    // game's USE command and does nothing; `aim fork east` opens the way (live, 2026-11-25).
+    let open =
+        room(BROKEN_STAIRWELL).replace("Obvious exits: ", "Obvious exits: crumbling hole east, ");
+    let (mut g, run) = Game::start_with(
+        SessionState::Realm,
+        format!(
+            "{}{}",
+            inventory("titanium fork (Weapon Hand), 3 potion of levitation"),
+            room(BROKEN_STAIRWELL)
+        ),
+    )
+    .await;
+    g.expect(
+        "aim fork east",
+        says("You aim the fork at the eastern wall, and it begins to vibrate!"),
+    );
+    g.expect("look", open);
+    g.expect("e", room(CATACOMBS_BEYOND));
+    g.walk_to(CATACOMBS_BEYOND).await;
+    let (said, end) = walk_until_done(&mut g).await;
+    assert_eq!(end, "Arrived: Catacombs", "{said:?}");
+    assert!(
+        said.iter()
+            .any(|s| s == "Opening the hidden exit east: aim fork east"),
+        "{said:?}"
+    );
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["aim fork east", "look", "e"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_potion_of_levitation_is_the_way_up_the_waterfall() {
+    // Mossy Cave, Waterfall (3:1): no exit goes up, but the potion of levitation's script,
+    // used where the waterfall is, lands the character on Waterfall, Dirt Path (9:1009) above
+    // the Catacombs (live, 2026-11-25).
+    let (mut g, run) = Game::start_with(
+        SessionState::Realm,
+        format!(
+            "{}{}",
+            inventory("3 potion of levitation"),
+            room(MOSSY_WATERFALL)
+        ),
+    )
+    .await;
+    g.expect(
+        "use potion of levitation",
+        says(
+            "A tingling sensation comes over you, and you begin to float upwards!\r\n\
+             You float up past the waterfall, and land far above at the river's edge.",
+        ),
+    );
+    g.expect("look", room(DIRT_PATH_ABOVE));
+    g.walk_to(DIRT_PATH_ABOVE).await;
+    let (said, end) = walk_until_done(&mut g).await;
+    assert_eq!(end, "Arrived: Waterfall, Dirt Path", "{said:?}");
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["use potion of levitation", "look"]);
+}
+
 #[tokio::test(start_paused = true)]
 async fn a_hidden_exit_opened_shows_by_its_own_name_and_is_walked() {
     // Like the Crypt's knight statue: `push eye` at the Mossy Cave's Rocky Outcropping (3:36)

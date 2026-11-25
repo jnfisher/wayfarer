@@ -117,7 +117,11 @@ impl Atlas {
     }
 
     pub fn load(pack: &WorldPack) -> Result<Atlas, wayfarer_world::Error> {
-        let mut graph = RoomGraph::load(pack)?;
+        // A Remote Action's phrase: among its message's texts, one the game does not read as a
+        // command of its own (`use fork east` is the USE command; `aim fork east` is heard).
+        let mut graph = RoomGraph::load_with(pack, &|phrase| {
+            crate::commands::classify(phrase).cmd.is_none()
+        })?;
         // What MegaMud's paths know: the phrases Text exits with a blank message take, and the
         // ways through the pack has no exit for (C-052).
         let knowledge = PathKnowledge::load(pack, &graph)?;
@@ -174,12 +178,16 @@ impl Atlas {
             .into_iter()
             .map(|i| (i.number, i.name))
             .collect();
+        // ... and the items the phrases that open a blocked exit ask for (the titanium fork).
         let wanted: std::collections::BTreeSet<i64> = graph
             .all_edges()
             .iter()
-            .filter_map(|e| match e.gate {
-                wayfarer_world::Gate::Item { item } => Some(item),
-                _ => None,
+            .flat_map(|e| {
+                let gate = match e.gate {
+                    wayfarer_world::Gate::Item { item } => Some(item),
+                    _ => None,
+                };
+                gate.into_iter().chain(e.needs.iter().copied())
             })
             .collect();
         for &n in &wanted {
