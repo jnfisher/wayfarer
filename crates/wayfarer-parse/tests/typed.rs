@@ -1177,3 +1177,27 @@ fn a_lost_action_is_confused_whatever_the_effect_says() {
         );
     }
 }
+
+#[test]
+fn a_spell_whose_own_line_opens_with_your_is_the_characters_cast() {
+    // A spell message's first text is the caster's line, and it need not start with "You":
+    // meteor swarm's is "Your streaking %s strikes %s for %d damage!", so Asa's casts were
+    // never counted and `spells.max_casts_per_monster` never changed her to the weapon
+    // (2026-11-26). The same spell lands up to four times a round.
+    assert_eq!(
+        line("Your streaking meteor swarm strikes orc fanatic for 32 damage!"),
+        [GameEvent::SpellCast {
+            spell: "meteor swarm".into(),
+            target: Some("orc fanatic".into()),
+            damage: 32
+        }]
+    );
+    assert_eq!(
+        line("Your mental blast strikes kobold for 12 damage!"),
+        [GameEvent::SpellCast {
+            spell: "mental blast".into(),
+            target: Some("kobold".into()),
+            damage: 12
+        }]
+    );
+}

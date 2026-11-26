@@ -114,6 +114,12 @@
   (spell, target, amount). Caster and room lines once per cast; General spells in the
   COL_SPELLGEN colour, others COL_SPELLOTH. Heal shows the **rolled** amount, not what was
   healed. [C] `LJNSPELL.C:269-461, :3895-3903, :6262`
+  The caster's text need not open "You": meteor swarm's (message 575) is "Your streaking %s
+  strikes %s for %d damage!" ("Your streaking meteor swarm strikes orc fanatic for 32
+  damage!"), mental blast's (115) and magma blast's (2324) "Your %s strikes %s for %d damage!";
+  many attack spells' (dragonfire, blazing comet) name no one at all and read as the room's
+  line does. Meteor swarm's energy is 250, so auto-combat lands it up to four times a round,
+  one line each. [C LJNSPELL.C, pack data; F live 2026-11-26]
 - **Lasting spells on a character** (player caster). Rounds = `duration + durinc*(L/durlvls)`
   (`L` held to `levelcap`); if that is below `durlvl*L` it is re-rolled from the old value up to
   `durlvl*L` inclusive; then multiplied by `(100 + "Alter spell duration")%`. A copy already on

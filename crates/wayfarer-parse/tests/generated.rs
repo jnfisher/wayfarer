@@ -25,13 +25,35 @@ fn registry_matches_the_prototype() {
         .collect();
     assert_eq!(got.len(), want.len());
     let mut generated = 0;
+    let mut own_casts = 0;
     for (p, w) in got.iter().zip(&want) {
         let what = format!("pattern {} ({} {:?})", w["order"], w["name"], w["text"]);
-        assert_eq!(p.name, w["name"].as_str().unwrap(), "{what}");
         assert_eq!(p.cat, w["cat"].as_str().unwrap(), "{what}");
         assert_eq!(p.prio as i64, w["prio"].as_i64().unwrap(), "{what}");
-        assert_eq!(p.spec as u64, w["spec"].as_u64().unwrap(), "{what}");
         assert_eq!(p.key.as_deref(), w["key"].as_str(), "{what}");
+        // wayfarer's own reading, kept from the prototype's: a spell message's first text that
+        // opens "Your ..." is the caster's line ("Your streaking %s strikes %s for %d damage!"
+        // is meteor swarm landing), where the prototype saw the room's or the target's text.
+        // Its captures are the caster's (spell, target, dmg), so its regex differs too.
+        if p.name == "spell_cast_you"
+            && w["name"] != "spell_cast_you"
+            && p.template
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Your "))
+        {
+            own_casts += 1;
+            assert_eq!(p.template.as_deref(), w["text"].as_str(), "{what}");
+            assert_eq!(p.msgnum.map(i64::from), w["msgnum"].as_i64(), "{what}");
+            assert!(
+                p.regex().is_some(),
+                "{what}: does not compile: {}",
+                p.source
+            );
+            generated += 1;
+            continue;
+        }
+        assert_eq!(p.name, w["name"].as_str().unwrap(), "{what}");
+        assert_eq!(p.spec as u64, w["spec"].as_u64().unwrap(), "{what}");
         assert!(
             p.regex().is_some(),
             "{what}: does not compile: {}",
@@ -78,6 +100,10 @@ fn registry_matches_the_prototype() {
         }
     }
     assert_eq!(generated, 6443);
+    assert_eq!(
+        own_casts, 16,
+        "the spell texts opening \"Your \" the prototype misread"
+    );
 }
 
 #[test]

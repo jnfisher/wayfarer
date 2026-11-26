@@ -1,5 +1,6 @@
 # KB changelog
 
+- **2026-11-26**: `spells.md` Casting, Messages: the cast message's first text is the caster's own line and need not open "You": meteor swarm's is "Your streaking meteor swarm strikes orc fanatic for 32 damage!", mental blast's and magma blast's "Your %s strikes"; at energy 250 meteor swarm lands up to four times a round, one line each [C LJNSPELL.C, pack data; F live 2026-11-26] (wayfarer: the parser now reads those as the character's casts, so `spells.max_casts_per_monster` counts them).
 - **2026-11-26**: `navigation.md` Text blocks, Clauses: `adddelay N` corrected: the line runs on at once (the teleport is immediate, no room shown) and it is the character's next lines that are held N seconds, answered then [C quicksilver source, F live].
 - **2026-11-25**: `quicksilver-1.20.md` for 1.20.7 [C server source, John's notes]: corpses replace death piles and the LOOT command with its seven lines (`loot_took` is the stock `took_item`); GUARD lasts like a rank and PARTY shows the ward (`Brannoc Stone guards Mirelle`), `guard_resting` gone; monster fear is 2 rounds, no forced move, 2 immune after; HELP 1.20's new text.
 - **2026-11-25**: `navigation.md` Text blocks, Clauses: `adddelay N` runs the rest of the line N seconds after the prompt, the vortices' teleport and room with it; a party typing it together is scattered until it fires [F live].
