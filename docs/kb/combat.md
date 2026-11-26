@@ -234,6 +234,17 @@ LJNSPELL.C:48). Every timer runs 11 rounds.
   LJNCOMBT.C:2385-2405). [C]
 - **A repeat of ATTACK / BASH / a spell** while queued is the command path again, so `*Combat
   Engaged*` and "moves to attack" appear again (`restart_autocombat`, LJNACMB.C:470-482).
+- **The order within a round, and going to the end of it.** Quicksilver keeps the queued
+  players in a ring (`VecDeque`) with a round-end marker: a round runs the ring front to back
+  up to the marker, each player's attack queuing them again behind it, so the order players
+  engaged in is the order they act in, round after round. An attack or cast typed with a target
+  while queued first frees the player's every slot (`kill_autocombat`, `*Combat Off*`) and then
+  engages anew at the back (`engage`: `push_back`), so the player acts after everyone already
+  queued; a cast typed with a monster target engages the same way and shows the room `<Name>
+  moves to cast <spell> upon <monster>.` (the attack's `<Name> moves to attack <monster>.`).
+  An attack spell typed engages only: the casts come with the rounds. [C quicksilver
+  `combat/autocombat.rs` `engage`, `do_autocombat`; `commands/combat.rs`, `commands/cast.rs`
+  `stop_autocombat`; F live 2026-11-26]
   `BREAK` is the deliberate stop that also tells the room: you get `*Combat Off*`, they get
   `<Name> breaks off combat.` (LJNCMDS.C:748-752, LJNACMB.C:152-165); other stops show you only
   `*Combat Off*`. [C]

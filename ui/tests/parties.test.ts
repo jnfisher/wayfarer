@@ -11,6 +11,7 @@ import {
   newDraft,
   partySessions,
   guardsOff,
+  setAttackLast,
   setGuard,
   setLeader,
   toDef,
@@ -104,7 +105,7 @@ describe("the panel's lines", () => {
 describe("drafts", () => {
   it("starts a new party with a free leader and takes up to five followers", () => {
     const d = newDraft(sessions, party());
-    expect(d).toEqual({ id: "", leader: "penny", followers: [], guards: [] });
+    expect(d).toEqual({ id: "", leader: "penny", followers: [], guards: [], attack_last: null });
     expect(draftProblem(d)).toBe("tick at least one follower");
     const one = toggleFollower(d, "lauren");
     expect(one.followers).toEqual(["lauren"]);
@@ -116,12 +117,24 @@ describe("drafts", () => {
   });
 
   it("a new leader stops following", () => {
-    const d = { id: "", leader: "penny", followers: ["lauren", "faye"], guards: [] };
-    expect(setLeader(d, "lauren")).toEqual({ id: "", leader: "lauren", followers: ["faye"], guards: [] });
+    const d = { id: "", leader: "penny", followers: ["lauren", "faye"], guards: [], attack_last: null };
+    expect(setLeader(d, "lauren")).toEqual({ id: "", leader: "lauren", followers: ["faye"], guards: [], attack_last: null });
+  });
+
+  it("the member that attacks last: one of the party, gone with it, sent only when set (C-132)", () => {
+    let d: Draft = { id: "p", leader: "penny", followers: ["lauren", "faye"], guards: [], attack_last: null };
+    expect(setAttackLast(d, "manuel").attack_last).toBeNull();
+    d = setAttackLast(d, "faye");
+    expect(toDef(d)).toEqual({ id: "p", leader: "penny", followers: ["lauren", "faye"], attack_last: "faye" });
+    d = toggleFollower(d, "faye");
+    expect(d.attack_last).toBeNull();
+    d = setAttackLast(d, "penny");
+    expect(setLeader(d, "lauren").attack_last).toBeNull();
+    expect(toDef(setAttackLast(d, null))).toEqual({ id: "p", leader: "penny", followers: ["lauren"] });
   });
 
   it("guard pairs: one ward a guard, gone with a member, sent only when set (1.20)", () => {
-    let d: Draft = { id: "p", leader: "penny", followers: ["lauren", "faye"], guards: [] };
+    let d: Draft = { id: "p", leader: "penny", followers: ["lauren", "faye"], guards: [], attack_last: null };
     expect(toDef(d)).toEqual({ id: "p", leader: "penny", followers: ["lauren", "faye"] });
     d = setGuard(d, "penny", "lauren");
     d = setGuard(d, "faye", "lauren");

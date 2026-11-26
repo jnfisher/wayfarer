@@ -10,4 +10,10 @@ export type PartyDef = { id: string, leader: string, followers: Array<string>,
  * Who guards whom (Quicksilver 1.20 `guard`, C-068): the player's choice, members of
  * this party. Left out when there are none.
  */
-guards?: Array<GuardPair>, };
+guards?: Array<GuardPair>, 
+/**
+ * The member that attacks last (C-132): the player's choice, a member of this party. When
+ * another member engages, it sends its own attack or cast again, which puts it behind
+ * them in the round. Left out when there is none.
+ */
+attack_last?: string, };

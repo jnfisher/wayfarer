@@ -1758,7 +1758,8 @@ screen usually comes first). The data is `crates/wayfarer-world/data/quicksilver
   casts of the attack spell at one monster to spend a little mana on each fight: auto-combat
   casts the spell every round on its own, so after that many casts (counted from the game's
   own cast lines, a failed cast too; a spell that lands several times a round, as meteor swarm
-  does up to four times, counts each landing) Fight sends the attack command at the same monster
+  does up to four times, counts each landing; the party member that attacks last, "Parties",
+  spends such a spell only on what the monster has left) Fight sends the attack command at the same monster
   (`a rat`), which carries the fight on with the weapon, for the rest of that monster's
   fight, whatever the mana. A heal in the middle does not start the count again; a new
   monster does. A cast line counts as the character's own combat, so a
@@ -1901,6 +1902,21 @@ three in a row hold it for five minutes and its tile is told once. A pair the pl
 away (or a member leaving the party, or the party deleted) sends a plain `guard` once to stop;
 a `guard` the player typed with no pair is left alone. Each member's status carries what it
 guards and who guards it, as the game said.
+
+**Attacking last** (C-132). A party definition may name one member that attacks last
+(`attack_last`, a session id; the Parties panel's "attacks last" pick). The game runs a round's
+players in the order they engaged, and an attack or cast typed into a running fight frees the
+player's slot and queues it anew at the end (`kb/combat.md` "How a fight runs"). So while that
+member fights, each engage line of another member's that comes after its own attack went
+(`Riley moves to attack orc.`, `Asa moves to cast meteor swarm upon orc.`, within 4 s) has its
+Fight send the fight's attack or cast again, once per line ("Fight: Riley engaged, attacking
+last"), and the `*Combat Off*` the game prints for the restart is taken for what it is. The
+point is a spell that lands several times a round: a meteor swarm that goes after the melee
+spends four mana on the one strike that finishes the monster instead of all four. Nothing goes
+again for a backstab opening, for a line older than the round, or for a member the party has
+not got; a member moved out of the party or leaving it stops being the one. One a party: a
+second such member would only make the two chase each other to the end of the ring. The
+player's choice, as the guards are; nothing is picked for them.
 
 **The game's party.** Each session keeps its party as the game last showed it: whom it
 follows, the last whole `par` screen's rows (name, class, mana and HP per cent, the rest mark,

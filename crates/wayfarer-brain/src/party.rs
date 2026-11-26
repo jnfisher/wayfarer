@@ -100,6 +100,11 @@ pub(crate) enum PartyRole {
         /// What the gated exits check of each follower in the realm: its routes take only the
         /// exits every one of them may take.
         gates: Vec<wayfarer_world::Passer>,
+        /// It attacks last (C-132): when one of `others` engages, its Fight sends its attack
+        /// or cast again, which puts it behind them in the round.
+        last: bool,
+        /// The other members in the realm, by in-game first name in lower case.
+        others: Vec<String>,
     },
     Follower {
         party: String,
@@ -127,6 +132,10 @@ pub(crate) enum PartyRole {
         rest: Option<String>,
         /// The other members with it (the leader among them), for its heals.
         mates: Vec<Mate>,
+        /// It attacks last (C-132), after any of `others` that engages.
+        last: bool,
+        /// The other members in the realm, by in-game first name in lower case.
+        others: Vec<String>,
     },
 }
 
@@ -236,6 +245,20 @@ impl PartyRole {
         match self {
             PartyRole::Leader { mates, .. } | PartyRole::Follower { mates, .. } => mates,
             PartyRole::None => &[],
+        }
+    }
+
+    /// The other members in the realm, by first name in lower case, when this member attacks
+    /// last (C-132): its Fight sends its attack again when one of them engages.
+    pub fn attack_last(&self) -> Option<&[String]> {
+        match self {
+            PartyRole::Leader {
+                last: true, others, ..
+            }
+            | PartyRole::Follower {
+                last: true, others, ..
+            } => Some(others),
+            _ => None,
         }
     }
 
@@ -698,6 +721,7 @@ impl Parties {
                         .into_iter()
                         .map(|(guard, ward)| wayfarer_proto::GuardPair { guard, ward })
                         .collect(),
+                    attack_last: r.attack_last,
                 })
                 .collect(),
             ..Parties::default()
@@ -777,6 +801,13 @@ impl Parties {
                 return Err(format!("{} guards one member at most", p.guard));
             }
         }
+        // The member that attacks last (C-132) is one of this party.
+        if let Some(s) = &def.attack_last
+            && *s != def.leader
+            && !def.followers.contains(s)
+        {
+            return Err(format!("{s} attacks last but is not in the party"));
+        }
         if def.id.is_empty() {
             def.id = self.new_id();
         }
@@ -818,6 +849,13 @@ impl Parties {
             other
                 .guards
                 .retain(|p| still.contains(&p.guard) && still.contains(&p.ward));
+            if other
+                .attack_last
+                .as_ref()
+                .is_some_and(|s| !still.contains(s))
+            {
+                other.attack_last = None;
+            }
             if other.followers.len() != n {
                 if other.followers.is_empty() {
                     emptied.push(other.id.clone());
@@ -893,6 +931,9 @@ impl Parties {
             self.unguard.insert(p.guard.clone());
         }
         d.guards.retain(|p| p.guard != session && p.ward != session);
+        if d.attack_last.as_deref() == Some(session) {
+            d.attack_last = None;
+        }
         self.leaving.insert(session.to_owned());
         self.sent = None;
         if d.followers.is_empty() {
@@ -1055,6 +1096,17 @@ impl Parties {
             let blank = MemberInfo::default();
             let l = m.get(&def.leader).unwrap_or(&blank);
             let lfirst = l.name.as_deref().map(first);
+            // The members in the realm by first name, for the one that attacks last (C-132).
+            let others = |me: &str| -> Vec<String> {
+                std::iter::once(&def.leader)
+                    .chain(&def.followers)
+                    .filter(|s| s.as_str() != me)
+                    .filter_map(|s| m.get(s))
+                    .filter(|i| i.realm)
+                    .filter_map(|i| i.name.as_deref())
+                    .map(|n| first(n).to_lowercase())
+                    .collect()
+            };
             plan.roles.insert(
                 def.leader.clone(),
                 PartyRole::Leader {
@@ -1070,6 +1122,8 @@ impl Parties {
                         .filter(|i| i.realm)
                         .map(|i| i.passer)
                         .collect(),
+                    last: def.attack_last.as_deref() == Some(def.leader.as_str()),
+                    others: others(&def.leader),
                 },
             );
             // A Text exit or a room command the leader typed (`go vortex`, C-121): the
@@ -1378,6 +1432,8 @@ impl Parties {
                         stash,
                         rest: None,
                         mates: Vec::new(),
+                        last: def.attack_last.as_deref() == Some(f.as_str()),
+                        others: others(f),
                     },
                 );
                 if fi
@@ -1641,6 +1697,7 @@ mod tests {
             leader: leader.into(),
             followers: followers.iter().map(|f| (*f).to_owned()).collect(),
             guards: Vec::new(),
+            attack_last: None,
         }
     }
 
@@ -1817,6 +1874,8 @@ mod tests {
                 stash: None,
                 rest: None,
                 mates: Vec::new(),
+                last: false,
+                others: vec!["penny".into()],
             }
         );
         p.sent("lauren", "follow penny", now);
@@ -2195,6 +2254,7 @@ mod tests {
             leader: "penny".into(),
             followers: vec!["lauren".into()],
             guards: Vec::new(),
+            attack_last: None,
         }]);
         // In the same room; Penny's `par` shows her alone, and Lauren was refused her `follow`.
         let mut m = two(now, &[]);
@@ -2996,5 +3056,35 @@ mod tests {
         // Lauren leaves: both pairs go.
         p.leave("lauren").unwrap().unwrap();
         assert!(p.defs()[0].guards.is_empty());
+    }
+
+    #[test]
+    fn the_member_that_attacks_last_is_one_of_the_party_and_its_role_says_so() {
+        let mut p = Parties::default();
+        let mut d = def("penny", &["lauren", "faye"]);
+        d.attack_last = Some("manuel".into());
+        assert!(
+            p.save(d.clone(), &known())
+                .unwrap_err()
+                .contains("attacks last but is not in the party")
+        );
+        d.attack_last = Some("faye".into());
+        p.save(d, &known()).unwrap();
+        assert_eq!(p.defs()[0].attack_last.as_deref(), Some("faye"));
+        // Faye leaves: nobody attacks last.
+        p.leave("faye").unwrap().unwrap();
+        assert_eq!(p.defs()[0].attack_last, None);
+        // The role of the one that attacks last names the others in the realm (C-132).
+        let now = Instant::now();
+        let mut d = def("penny", &["lauren"]);
+        d.attack_last = Some("lauren".into());
+        p.save(d, &known()).unwrap();
+        let m = two(now, &[]);
+        let plan = p.plan(&m, now);
+        assert_eq!(
+            plan.roles["lauren"].attack_last(),
+            Some(&["penny".to_owned()][..])
+        );
+        assert_eq!(plan.roles["penny"].attack_last(), None);
     }
 }

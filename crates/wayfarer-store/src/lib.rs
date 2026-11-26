@@ -154,6 +154,8 @@ const MIGRATIONS: &[&str] = &[
          tally TEXT NOT NULL,
          PRIMARY KEY (session, at)
      );",
+    // 18: the member of each party that attacks last (C-132), by session id; empty is none.
+    "ALTER TABLE parties ADD COLUMN attack_last TEXT NOT NULL DEFAULT '';",
 ];
 
 /// The items a bot collects as stored: a `count name` pair a line (C-102).
@@ -383,6 +385,8 @@ pub struct PartyRecord {
     pub followers: Vec<String>,
     /// Who guards whom (Quicksilver 1.20): (guard, ward) by session id.
     pub guards: Vec<(String, String)>,
+    /// The member that attacks last (C-132), by session id.
+    pub attack_last: Option<String>,
 }
 
 /// What a run's events count.
@@ -767,8 +771,8 @@ impl Store {
     /// Keep a party, replacing the one with its id.
     pub fn save_party(&self, p: &PartyRecord, at: i64) -> Result<()> {
         self.conn.execute(
-            "INSERT OR REPLACE INTO parties (id, leader, followers, guards, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT OR REPLACE INTO parties (id, leader, followers, guards, attack_last, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 p.id,
                 p.leader,
@@ -778,6 +782,7 @@ impl Store {
                     .map(|(g, w)| format!("{g} {w}"))
                     .collect::<Vec<_>>()
                     .join("\n"),
+                p.attack_last.as_deref().unwrap_or(""),
                 at
             ],
         )?;
@@ -786,9 +791,9 @@ impl Store {
 
     /// The parties, by id.
     pub fn parties(&self) -> Result<Vec<PartyRecord>> {
-        let mut q = self
-            .conn
-            .prepare("SELECT id, leader, followers, guards FROM parties ORDER BY id")?;
+        let mut q = self.conn.prepare(
+            "SELECT id, leader, followers, guards, attack_last FROM parties ORDER BY id",
+        )?;
         let rows = q.query_map([], |r| {
             Ok(PartyRecord {
                 id: r.get(0)?,
@@ -805,6 +810,7 @@ impl Store {
                     .filter_map(|l| l.split_once(' '))
                     .map(|(g, w)| (g.to_owned(), w.to_owned()))
                     .collect(),
+                attack_last: Some(r.get::<_, String>(4)?).filter(|s| !s.is_empty()),
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
