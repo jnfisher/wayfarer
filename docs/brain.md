@@ -1757,7 +1757,8 @@ screen usually comes first). The data is `crates/wayfarer-world/data/quicksilver
 - **Casts per monster.** `spells.max_casts_per_monster` (0, the default, is no limit) caps the
   casts of the attack spell at one monster to spend a little mana on each fight: auto-combat
   casts the spell every round on its own, so after that many casts (counted from the game's
-  own cast lines, a failed cast too) Fight sends the attack command at the same monster
+  own cast lines, a failed cast too; a spell that lands several times a round, as meteor swarm
+  does up to four times, counts each landing) Fight sends the attack command at the same monster
   (`a rat`), which carries the fight on with the weapon, for the rest of that monster's
   fight, whatever the mana. A heal in the middle does not start the count again; a new
   monster does. A cast line counts as the character's own combat, so a

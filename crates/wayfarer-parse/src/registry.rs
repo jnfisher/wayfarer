@@ -493,12 +493,18 @@ impl Registry {
                 .extend(["punches", "kicks", "jumpkicks", "attacks"].map(String::from));
             verbs.miss.insert("swing at".into());
             verbs.miss3.insert("swings at".into());
-            // spell cast texts to caster / target / room (LJNSPELL.C:297-420)
+            // spell cast texts to caster / target / room (LJNSPELL.C:297-420). The first text
+            // is the caster's own line, and it need not start with "You": meteor swarm's is
+            // "Your streaking %s strikes %s for %d damage!" (mental blast's and magma blast's
+            // open the same way), which the prototype read as the room's text, so Asa's casts
+            // were never counted (2026-11-26). A first text opening "Your " is the caster's;
+            // the rest is the prototype's reading, which `tests/generated.rs` holds to.
             let you = Regex::new(r"\byou(?:r)?\b").expect("compiles");
             for &n in &w.spell_msgs {
                 if let Some(m) = msg(n) {
-                    for t in m {
-                        let role = if t.starts_with("You ") {
+                    for (i, t) in m.iter().enumerate() {
+                        let own = t.starts_with("You ") || (i == 0 && t.starts_with("Your "));
+                        let role = if own {
                             "spell_cast_you"
                         } else if you.is_match(t) {
                             "spell_cast_on_you"
