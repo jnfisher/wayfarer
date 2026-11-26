@@ -86,6 +86,9 @@ struct World {
     /// Those a room command's script has teleported, with how many lines the brain had sent
     /// by then.
     fired: Vec<(String, usize)>,
+    /// A monster in the Arena (C-132): `look` shows it there, and `a <word>` engages it
+    /// (`*Combat Engaged*`; the other one there sees `<Name> moves to attack <monster>.`).
+    monster: Option<&'static str>,
 }
 
 /// A room too dark to see, as the game shows it.
@@ -309,12 +312,30 @@ impl Gateway {
                     ),
                 ]
             }
+            t if t.starts_with("a ")
+                && self.world.rooms[session] == ARENA
+                && let Some(mon) = self.world.monster =>
+            {
+                let mut v = me(game::arena::line(game::arena::ENGAGED, 35));
+                if self.world.rooms[other] == ARENA {
+                    v.push((
+                        other.to_owned(),
+                        format!(
+                            "\x1b[79D\x1b[K\x1b[0;33m{} moves to attack {mon}.\r\n{PROMPT}",
+                            first(session)
+                        ),
+                    ));
+                }
+                v
+            }
             "look"
                 if self.world.together
                     && self.world.rooms[session] == ARENA
                     && self.world.rooms[other] == ARENA =>
             {
-                me(game::arena::arena(&[first(other)], 35))
+                let mut here = vec![first(other)];
+                here.extend(self.world.monster);
+                me(game::arena::arena(&here, 35))
             }
             "look" if self.world.dark.contains(&self.world.rooms[session]) => me(dark_room()),
             "look" => me(shown(self.world.rooms[session])),
@@ -713,6 +734,7 @@ fn party() -> PartyDef {
         leader: LEADER.into(),
         followers: vec![FOLLOWER.into()],
         guards: Vec::new(),
+        attack_last: None,
     }
 }
 
@@ -2129,4 +2151,53 @@ async fn a_spell_the_game_will_not_cast_on_a_player_is_dropped_with_a_notice() {
         })
         .collect();
     assert_eq!(notices.len(), 1, "{:?}", g.seen);
+}
+
+// Over a second: the party forms up and fights twice over, with and without the member that
+// attacks last.
+#[tokio::test(start_paused = true)]
+async fn the_member_that_attacks_last_attacks_again_when_another_engages() {
+    // Attacking last (C-132): the follower is the party's member that attacks last. It engages
+    // the rat first; when the leader's engage line reaches it, it sends its attack again, which
+    // puts it behind the leader in the game's round. The leader, not marked, sends nothing more
+    // for the follower's line; and with nobody marked, neither does the follower.
+    for last in [true, false] {
+        let (mut g, _run) = Gateway::start(brain(None)).await;
+        g.world.together = true;
+        let mut def = party();
+        if last {
+            def.attack_last = Some(FOLLOWER.into());
+        }
+        for s in [LEADER, FOLLOWER] {
+            g.bot(s, BotAction::Start).await;
+        }
+        g.send(ToClient::PartySave { party: def }).await;
+        g.member(FOLLOWER, MemberState::Joined).await;
+        g.play(2).await;
+        g.world.monster = Some("giant rat");
+        // The rat comes in: the follower sees it first and attacks; the leader attacks when
+        // the follower's engage line, or the rat's arrival, reaches it.
+        let arrives = said("A giant rat moves into the room from the north.");
+        g.tell(FOLLOWER, &arrives).await;
+        g.play(1).await;
+        g.tell(LEADER, &arrives).await;
+        g.play(2).await;
+        let attacks: Vec<&str> = g
+            .lines
+            .iter()
+            .filter(|(_, l)| l == "a rat")
+            .map(|(s, _)| s.as_str())
+            .collect();
+        if last {
+            assert_eq!(attacks, [FOLLOWER, LEADER, FOLLOWER], "attacking last");
+            let said = notices_of(&g, FOLLOWER);
+            assert!(
+                said.iter()
+                    .any(|n| n == "Fight: Penny engaged, attacking last"),
+                "{said:?}"
+            );
+        } else {
+            assert_eq!(attacks, [FOLLOWER, LEADER], "nobody attacks last");
+        }
+    }
 }

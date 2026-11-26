@@ -170,6 +170,8 @@ export interface Draft {
   followers: string[];
   /** Who guards whom (Quicksilver 1.20 `guard`, C-068). */
   guards: GuardPair[];
+  /** The member that attacks last (C-132), or null for nobody. */
+  attack_last: string | null;
 }
 
 export function draftOf(p: PartyStatus): Draft {
@@ -178,19 +180,24 @@ export function draftOf(p: PartyStatus): Draft {
     leader: p.party.leader,
     followers: [...p.party.followers],
     guards: (p.party.guards ?? []).map((g) => ({ ...g })),
+    attack_last: p.party.attack_last ?? null,
   };
 }
 
 /** A new party: led by the first character in no party, else the first. */
 export function newDraft(sessions: SessionInfo[], parties: PartyStatus[]): Draft {
   const free = sessions.find((s) => !partyOf(parties, s.id));
-  return { id: "", leader: (free ?? sessions[0])?.id ?? "", followers: [], guards: [] };
+  return { id: "", leader: (free ?? sessions[0])?.id ?? "", followers: [], guards: [], attack_last: null };
 }
 
-/** The guard pairs whose two are still in the party. */
+/** The guard pairs whose two are still in the party, and the one attacking last while it is. */
 function keptGuards(d: Draft): Draft {
   const members = new Set([d.leader, ...d.followers]);
-  return { ...d, guards: d.guards.filter((g) => members.has(g.guard) && members.has(g.ward)) };
+  return {
+    ...d,
+    guards: d.guards.filter((g) => members.has(g.guard) && members.has(g.ward)),
+    attack_last: d.attack_last && members.has(d.attack_last) ? d.attack_last : null,
+  };
 }
 
 /** Tick or untick a follower; the leader can't follow, and five is the most. */
@@ -217,6 +224,17 @@ export function wardOf(d: Draft, guard: string): string {
   return d.guards.find((g) => g.guard === guard)?.ward ?? "";
 }
 
+/** `session` attacks last, or nobody (null): one a party (C-132). */
+export function setAttackLast(d: Draft, session: string | null): Draft {
+  const members = [d.leader, ...d.followers];
+  return { ...d, attack_last: session && members.includes(session) ? session : null };
+}
+
+/** Why a party has a member that attacks last, for the control's title. */
+export const ATTACK_LAST_TITLE =
+  "Attacks after the others each round: when another member engages, it sends its attack again, " +
+  "so a spell that lands several times (meteor swarm) spends only what the monster has left";
+
 /** Guards can be set when every member's server is known to play Quicksilver 1.20; else why
  * not. */
 export function guardsOff(d: Draft, characters: Record<string, CharacterState | undefined>): string | null {
@@ -235,6 +253,7 @@ export function draftProblem(d: Draft): string | null {
 export function toDef(d: Draft): PartyDef {
   const def: PartyDef = { id: d.id, leader: d.leader, followers: [...d.followers] };
   if (d.guards.length) def.guards = d.guards.map((g) => ({ ...g }));
+  if (d.attack_last) def.attack_last = d.attack_last;
   return def;
 }
 

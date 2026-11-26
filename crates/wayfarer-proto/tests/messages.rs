@@ -646,6 +646,7 @@ fn brain_messages() -> Vec<(ToGateway, &'static str)> {
                         leader: "kasimir".into(),
                         followers: vec!["isolde".into(), "brynja".into()],
                         guards: Vec::new(),
+                        attack_last: None,
                     },
                     members: vec![
                         MemberStatus {
@@ -953,6 +954,7 @@ fn control_messages() -> Vec<(ToGateway, &'static str)> {
                     leader: "kasimir".into(),
                     followers: vec!["isolde".into(), "brynja".into()],
                     guards: Vec::new(),
+                    attack_last: None,
                 },
             },
             r#"{"type":"party_save","party":{"id":"","leader":"kasimir","followers":["isolde","brynja"]}}"#,

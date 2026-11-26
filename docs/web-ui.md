@@ -398,6 +398,11 @@ nobody / Lauren / Faye`, one ward each; set it and save. It is greyed with "1.20
 until every member's server is known to play 1.20. A member's state line then says
 `guarding Lauren` or `guarded by Penny`, as the game said.
 
+Under the guards, **attacks last** (C-132): one member or nobody; set it and save. That member
+sends its attack again whenever another member engages, so it acts after them in each round:
+for a caster whose spell lands several times a round (meteor swarm), so that it spends only
+what the monster has left ([brain.md](brain.md) "Parties").
+
 Under each follower is its state: `joined`, `not joined yet: forming up` (in the leader's
 room) or `: in another room`, `away: its bot is not running` (or not in the realm),
 `separated`, `walking to Penny (4 rooms)`, `resting 62%`, or `can't reach Penny: ...` with the

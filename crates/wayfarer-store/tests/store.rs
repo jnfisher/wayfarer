@@ -433,6 +433,7 @@ fn parties_round_trip_and_are_replaced_by_id() {
         leader: "penny".into(),
         followers: vec!["lauren".into(), "faye".into()],
         guards: vec![("penny".into(), "faye".into())],
+        attack_last: Some("lauren".into()),
     };
     store.save_party(&penny, T0).unwrap();
     drop(store);
@@ -441,6 +442,7 @@ fn parties_round_trip_and_are_replaced_by_id() {
     let fewer = PartyRecord {
         followers: vec!["faye".into()],
         guards: Vec::new(),
+        attack_last: None,
         ..penny
     };
     store.save_party(&fewer, T0 + 5).unwrap();

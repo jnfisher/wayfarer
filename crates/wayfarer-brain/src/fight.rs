@@ -130,7 +130,20 @@ pub(crate) struct Fight {
     area_spent: bool,
     /// Afraid ("You are too afraid!"): no attack or cast before then (C-108).
     afraid_until: Option<Instant>,
+    /// A party member's engage line (`Riley moves to attack orc`, `Asa moves to cast meteor
+    /// swarm upon orc`): who, and when it came. For the member that attacks last (C-132).
+    mate_engaged: Option<(String, Instant)>,
+    /// The attack or cast this fight runs on, as last sent, and when: what attacking last
+    /// sends again.
+    last_attack: Option<(String, Instant)>,
+    /// The attack was sent again to attack last; the `*Combat Off*` the game prints for the
+    /// restart has not come yet.
+    restarted: bool,
 }
+
+/// How long a party member's engage line has the member that attacks last send its attack
+/// again: within the round (5 s) it came in.
+const MATE_ENGAGED_FOR: Duration = Duration::from_secs(4);
 
 /// A name as the game shows it (`lauren` is Lauren).
 fn capitalized(name: &str) -> String {
@@ -221,6 +234,9 @@ impl Mode for Fight {
             if let Some(step) = self.heal_mates(v) {
                 return step;
             }
+            if let Some(step) = self.attack_last_now(v) {
+                return step;
+            }
             if let Some(step) = self.after_backstab(v) {
                 return step;
             }
@@ -266,7 +282,7 @@ impl Mode for Fight {
                     self.spell_hold = Some(v.now + SPELL_HOLD);
                 }
                 if let Some((s, n)) = self.area_open(v) {
-                    return self.open_area(&s, n, "Fight");
+                    return self.open_area(&s, n, "Fight", v.now);
                 }
                 let spell = if (self.backstab && self.sneaking)
                     || self.weapon_only
@@ -285,10 +301,14 @@ impl Mode for Fight {
                 match spell {
                     // Cast out of combat, the spell engages and auto-combat casts it every
                     // round while the mana lasts (`kb/spells.md`).
-                    Some(s) => Step::send(
-                        Action::new(format!("{} {}", s.short, attack_word(&t)), Expect::Engaged),
-                        format!("Fight: {t} with {}", s.name),
-                    ),
+                    Some(s) => {
+                        let line = format!("{} {}", s.short, attack_word(&t));
+                        self.last_attack = Some((line.clone(), v.now));
+                        Step::send(
+                            Action::new(line, Expect::Engaged),
+                            format!("Fight: {t} with {}", s.name),
+                        )
+                    }
                     // Any sneaker may try it: only a backstab weapon or bare hands backstab,
                     // any other weapon strikes a normal blow (`kb/classes/ninja.md`).
                     // Only while believed sneaking: a sneak that failed opens with the attack
@@ -301,13 +321,11 @@ impl Mode for Fight {
                             format!("Fight: {t} (backstab)"),
                         )
                     }
-                    None => Step::send(
-                        Action::new(
-                            format!("{} {}", v.attack_command(), attack_word(&t)),
-                            Expect::Engaged,
-                        ),
-                        format!("Fight: {t}"),
-                    ),
+                    None => {
+                        let line = format!("{} {}", v.attack_command(), attack_word(&t));
+                        self.last_attack = Some((line.clone(), v.now));
+                        Step::send(Action::new(line, Expect::Engaged), format!("Fight: {t}"))
+                    }
                 }
             }
             None => Step::wait("Fight: nothing to fight"),
@@ -318,6 +336,12 @@ impl Mode for Fight {
         match ev {
             GameEvent::Other(e) if e.name == "too_afraid" => {
                 self.afraid_until = Some(now + AFRAID_WAIT);
+            }
+            // Someone engaged a monster here: a party member's, for attacking last (C-132).
+            GameEvent::Other(e) if matches!(e.name.as_str(), "attacks_other" | "casts_upon") => {
+                if let Some(who) = e.text("who") {
+                    self.mate_engaged = Some((who.trim().to_owned(), now));
+                }
             }
             // The end of the fight our own heal caused: the monster is still there, so no
             // `look`; the next step attacks it again, before the next round's swings.
@@ -330,6 +354,8 @@ impl Mode for Fight {
                 self.target = None;
                 self.stall = Stall::default();
             }
+            // And for the attack sent again to attack last (C-132): the fight goes on.
+            GameEvent::CombatOff if std::mem::take(&mut self.restarted) => {}
             // A kill in an area fight: auto-combat goes on casting at the rest.
             GameEvent::ExpGain { .. } if self.area.is_some() => {
                 self.target = None;
@@ -352,6 +378,9 @@ impl Mode for Fight {
                 self.target = None;
                 self.look = true;
                 self.stall = Stall::default();
+                self.mate_engaged = None;
+                self.last_attack = None;
+                self.restarted = false;
             }
             GameEvent::YouDoNotSee { .. } | GameEvent::NoEffect => self.refused(),
             // Blind: the refusals that came before it knew (Lexi, 2026-11-11: "You do not see
@@ -387,6 +416,9 @@ impl Mode for Fight {
                 self.target = None;
                 self.look = false;
                 self.stall = Stall::default();
+                self.mate_engaged = None;
+                self.last_attack = None;
+                self.restarted = false;
             }
             GameEvent::YouHit { target, .. } => {
                 self.bs_struck |= self.opened_bs;
@@ -567,6 +599,7 @@ impl Fight {
         self.stall = Stall::default();
         self.spell_fight = false;
         let attack = format!("{} {}", v.attack_command(), attack_word(&first));
+        self.last_attack = Some((attack.clone(), v.now));
         let why = match from {
             Some(from) => format!("Fight: {first} is here: switching from {from}"),
             None => format!("Fight: {first} is here: switching to it"),
@@ -601,6 +634,7 @@ impl Fight {
         self.bs_struck = false;
         let t = self.target.clone()?;
         let attack = format!("{} {}", v.attack_command(), attack_word(&t));
+        self.last_attack = Some((attack.clone(), v.now));
         Some(Step::send(
             Action::new(attack, Expect::Engaged),
             format!("Fight: backstab done, now {}", v.attack_command()),
@@ -621,9 +655,39 @@ impl Fight {
         self.weapon_only = true;
         self.spell_fight = false;
         let attack = format!("{} {}", v.attack_command(), attack_word(&t));
+        self.last_attack = Some((attack.clone(), v.now));
         Some(Step::send(
             Action::new(attack, Expect::Engaged),
             format!("Fight: {why}, now the weapon"),
+        ))
+    }
+
+    /// Attacking last (C-132): a party member engaged after this fight's attack went, so the
+    /// attack goes again. The game frees the character's slot in its auto-combat ring and
+    /// queues it anew, behind everyone already queued (`kb/combat.md` "How a fight runs"), so
+    /// it acts after that member in the round: a meteor swarm then lands only what the monster
+    /// has left. Nothing goes again for a line older than the round, for one that came before
+    /// the attack, or for a member the party has not got.
+    fn attack_last_now(&mut self, v: &View) -> Option<Step> {
+        let (who, at) = self.mate_engaged.clone()?;
+        let Some(others) = v.party.attack_last() else {
+            self.mate_engaged = None;
+            return None;
+        };
+        if !others.iter().any(|n| n.eq_ignore_ascii_case(&who)) {
+            self.mate_engaged = None;
+            return None;
+        }
+        let (line, sent) = self.last_attack.clone()?;
+        self.mate_engaged = None;
+        if sent > at || v.now > at + MATE_ENGAGED_FOR {
+            return None;
+        }
+        self.last_attack = Some((line.clone(), v.now));
+        self.restarted = true;
+        Some(Step::send(
+            Action::new(line, Expect::Engaged),
+            format!("Fight: {who} engaged, attacking last"),
         ))
     }
 
@@ -660,9 +724,10 @@ impl Fight {
 
     /// Cast `spell` at the room: out of combat it engages everything there and auto-combat
     /// casts it every round (`kb/aoe-grinding.md` §2).
-    fn open_area(&mut self, spell: &SpellDef, n: usize, mode: &str) -> Step {
+    fn open_area(&mut self, spell: &SpellDef, n: usize, mode: &str, now: Instant) -> Step {
         self.area = Some(spell.clone());
         self.spell_fight = false;
+        self.last_attack = Some((spell.short.clone(), now));
         Step::send(
             Action::new(spell.short.clone(), Expect::Engaged),
             format!("{mode}: {n} monsters, casting {}", spell.name),
@@ -680,7 +745,7 @@ impl Fight {
         let Some(area) = self.area.as_ref().map(|a| a.name.clone()) else {
             let (s, n) = self.area_open(v)?;
             self.switched = true;
-            return Some(self.open_area(&s, n, "Fight"));
+            return Some(self.open_area(&s, n, "Fight", v.now));
         };
         let max = v.max_area_casts();
         let why = if max > 0 && self.area_casts >= max {
@@ -715,6 +780,7 @@ impl Fight {
                 v.attack_command().to_owned(),
             ),
         };
+        self.last_attack = Some((line.clone(), v.now));
         Some(Step::send(
             Action::new(line, Expect::Engaged),
             format!("Fight: {why}, now {t} with {how}"),

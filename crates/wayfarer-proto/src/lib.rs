@@ -933,6 +933,12 @@ pub struct PartyDef {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<GuardPair>>", optional)]
     pub guards: Vec<GuardPair>,
+    /// The member that attacks last (C-132): the player's choice, a member of this party. When
+    /// another member engages, it sends its own attack or cast again, which puts it behind
+    /// them in the round. Left out when there is none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub attack_last: Option<SessionId>,
 }
 
 /// One member of a party guarding another (Quicksilver 1.20): monster blows aimed at the ward

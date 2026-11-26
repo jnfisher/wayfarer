@@ -109,6 +109,30 @@ describe("PartiesPanel", () => {
     expect(onsend).toHaveBeenCalledTimes(1);
   });
 
+  it("picks the member that attacks last and saves it with the party (C-132)", async () => {
+    const onsave = vi.fn();
+    const parties: PartyStatus[] = [
+      {
+        party: { id: "party-1", leader: "penny", followers: ["lauren"] },
+        members: [
+          { session: "penny", state: "joined" },
+          { session: "lauren", state: "joined" },
+        ],
+      },
+    ];
+    render(PartiesPanel, { sessions, parties, attached: true, onsave, ondelete: vi.fn() });
+    const pick = screen.getByLabelText("Attacks last in Penny's party") as HTMLSelectElement;
+    expect(pick.value).toBe("");
+    await fireEvent.change(pick, { target: { value: "lauren" } });
+    await fireEvent.click(screen.getByText("save"));
+    expect(onsave).toHaveBeenCalledWith({ id: "party-1", leader: "penny", followers: ["lauren"], attack_last: "lauren" });
+    // Unticking the member takes it out of the pick.
+    await fireEvent.click(screen.getByLabelText("Lauren"));
+    await fireEvent.click(screen.getByLabelText("Faye"));
+    await fireEvent.click(screen.getByText("save"));
+    expect(onsave).toHaveBeenLastCalledWith({ id: "party-1", leader: "penny", followers: ["faye"] });
+  });
+
   it("teleports the party with sysop goto from its dropdown (C-080)", async () => {
     const onsysgoto = vi.fn();
     const parties: PartyStatus[] = [

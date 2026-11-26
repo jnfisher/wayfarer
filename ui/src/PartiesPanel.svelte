@@ -5,6 +5,7 @@
   // form a stuck party (or all of them) up again at once. The **send** box types one line into
   // every member at once ("go hole", "ask wounded annora").
   import {
+    ATTACK_LAST_TITLE,
     MAX_FOLLOWERS,
     activityLine,
     draftOf,
@@ -14,6 +15,7 @@
     memberLine,
     namesOf,
     newDraft,
+    setAttackLast,
     setGuard,
     setLeader,
     toDef,
@@ -153,6 +155,19 @@
       {/each}
       {#if off}<li class="dim">guards: {off}</li>{/if}
     </ul>
+    <label class="last" title={ATTACK_LAST_TITLE}>
+      attacks last
+      <select
+        aria-label="Attacks last in {names[d.leader] ?? d.leader}'s party"
+        value={d.attack_last ?? ""}
+        onchange={(e) => edit(setAttackLast(d, (e.currentTarget as HTMLSelectElement).value || null))}
+      >
+        <option value="">nobody</option>
+        {#each [d.leader, ...d.followers] as s (s)}
+          <option value={s}>{names[s] ?? s}</option>
+        {/each}
+      </select>
+    </label>
   {/if}
 {/snippet}
 
@@ -348,11 +363,15 @@
   .party .acts {
     padding: 2px 0 0;
   }
-  .goto {
+  .goto,
+  .last {
     display: flex;
     gap: 1ch;
     align-items: baseline;
     padding: 2px 0 0;
+  }
+  .last {
+    color: var(--dim);
   }
   button {
     font: inherit;
