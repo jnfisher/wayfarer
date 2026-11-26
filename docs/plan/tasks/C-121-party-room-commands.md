@@ -45,10 +45,15 @@ members issue the command simultaneously."
 
 ## Design notes
 
-- `Session::note_party_command` from `apply` (after a walker action goes) and `sent` (a line
-  the player typed); `MemberInfo::command: Option<(Key, String, u64)>`.
-- `Parties::commanded` per leader (number, when, followers sent); `Parties::pending` per
-  follower, a queue the plan sends one line at a time and `sent` pops.
+- `Session::note_party_command` from `sent` only (every line that goes out, the walker's or
+  the player's), not from `apply` as well: a line the executor held back (a fight) was noted
+  twice, as two commands, and the followers went through twice (2026-11-26).
+  `MemberInfo::command: Option<LeaderCommand>` (room, phrase, number, the script's wait).
+- `Parties::commanded` per leader (number, when, followers sent and when each was);
+  `Parties::pending` per follower, a queue the plan sends one line at a time and `sent` pops.
+  A follower is crossing from its send until it has seen a room after the wait, or for the
+  window after the wait; the leader is held for it, and `Session::stop_walk` keeps the
+  walker's queued look after a phrase (`Walker::arriving`).
 - `Plan::notices` beside `notes`: a notice, not a warning.
 
 ## Done when
@@ -67,3 +72,7 @@ members issue the command simultaneously."
 - The first cut checked the follower's room only at the tick the leader typed, and the
   follower's belief was still one room back: nothing went, and the follower reached the pier
   only by the separation walk half a minute later. Hence the ten-second window.
+- The second cut read `adddelay 5` as the teleport firing five seconds after the phrase.
+  quicksilver teleports at once and holds the character's lines for the five seconds
+  (`kb/navigation.md` Clauses); the look after the wait is right either way, but a follower's
+  crossing ends with its look, not with a clock, and the leader waits for it.

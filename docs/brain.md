@@ -1935,18 +1935,27 @@ own, one at a time:
   leader types that takes such an exit out of its believed room, its walk's or the player's,
   is typed at once by every follower in its party in the game and in that room, as its own
   line between its bot's actions, then a `look` where it took it; the leader's tile says who
-  went ("`go vortex` with the party: Asa, Rocco"). A script may wait before it acts
-  (`adddelay`: the vortices teleport five seconds after the phrase, the prompt coming at once
-  and the room when they fire; `Edge::delay_secs`), so the look after such a phrase, the
-  leader's and the followers', waits that long. For ten seconds plus the wait, a follower sent
-  after the phrase is *crossing*: whatever the beliefs and the game's party say meanwhile (the
-  game drops the followers and the beliefs move one at a time), it is not left behind, not
-  separated and not walked back, the leader is not held for it, and its tile says "going
-  through `go vortex`"; it forms up again where it lands. Before this, a follower seen in the
-  old room with the leader already across was walked back through the vortex, and one whose
-  belief lagged typed the phrase twice and came out alone in the Darkwood Forest (Sasha's
-  party, 2026-11-25). One still elsewhere after the window, or one the exit refuses (a level
-  gate), is separated as below and walks back.
+  went ("`go vortex` with the party: Asa, Rocco"). The phrase is noted as it goes out, not
+  when the walker queues it: noted at both, a fight that held the leader's own line back for
+  three seconds made two commands of one, and the followers went through twice and came back
+  (Sasha's party, 2026-11-26). The game drops a follower the moment its leader teleports, so
+  one that was in the party is sent after it even if the game has already dropped it. A
+  script may hold the character (`adddelay`: quicksilver teleports at once, shows no room,
+  and holds the character's next lines for five seconds; `Edge::delay_secs`), so the look
+  after such a phrase, the leader's and the followers', waits that long. A follower sent after
+  the phrase is *crossing* until it has seen a room after the wait (its look, or any line of
+  its own the game answers once it lets it type), or for ten seconds after the wait:
+  whatever the beliefs and the game's party say meanwhile (the beliefs move one at a time), it
+  is not left behind, not separated, not walked back and not formed up, its tile says "going
+  through `go vortex`", and the leader waits for it ("Waiting for Lauren to catch up"; a Go
+  to in progress stops where it is and goes on once the party has formed up again; the look
+  after its own phrase still goes, or its belief would stay in the room it left). Once it has
+  looked it forms up where it landed, or, still on the near side (a level gate refused it),
+  is separated as below and walks back. Before this, a follower seen in the old room with the
+  leader already across was walked back through the vortex, one whose belief lagged typed the
+  phrase twice and came out alone in the Darkwood Forest (2026-11-25), and the leader, not
+  held for a crossing follower, walked four rooms on alone and formed the party up again only
+  when the followers caught up (2026-11-26).
 - **Followers don't walk.** A follower's own `run_loop`, `walk_loop` and `walk_to` are refused
   with a warning ("following Penny: it goes where the party goes"). Its errands run: pick up all
   and equip all where it stands, in the party; one that walks (train, recover the pile, buy

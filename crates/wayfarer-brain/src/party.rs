@@ -41,13 +41,14 @@ const RANK_EVERY: Duration = Duration::from_secs(10);
 const COMMAND_PATIENCE: Duration = Duration::from_secs(20);
 /// How long after the leader typed a room command its followers may still be sent after it: a
 /// follower's belief lags the game's drag by a tick or so, so it is not in the room yet when
-/// the leader types (C-121). For as long, plus the script's own wait (`adddelay`), a follower
-/// sent after it is crossing: not left behind, not separated, not walked back, whatever the
-/// beliefs say meanwhile (the vortices teleport five seconds after the phrase, and the party
-/// is scattered in the game's eyes until then). One still elsewhere after this is separated
-/// as ever.
+/// the leader types (C-121). A follower sent after it is crossing until it has seen a room
+/// after the script's wait (`adddelay`: the vortices hold the character's commands for five
+/// seconds, so its `look` is answered only then), or for this long after the wait: not left
+/// behind, not separated, not walked back, not formed up, whatever the beliefs and the game's
+/// party say meanwhile (each teleport drops its character from the party), and the leader
+/// waits for it. One still elsewhere once it has looked is separated as ever.
 const COMMAND_WINDOW: Duration = Duration::from_secs(10);
-/// How long after a delayed script fires the follower's `look` goes: the room comes with it.
+/// How long after a delayed script's wait the follower's `look` goes: the room comes with it.
 const LOOK_MARGIN: Duration = Duration::from_secs(1);
 
 /// A Text exit's or a room command's phrase a leader typed (C-121): the room it typed it in,
@@ -61,12 +62,12 @@ pub(crate) struct LeaderCommand {
 }
 
 /// A leader's last room command as the coordinator follows it up: the followers sent after
-/// it so far, and when it was first seen (C-121).
+/// it so far and when each was, and when it was first seen (C-121).
 #[derive(Debug, Clone)]
 struct Commanded {
     seq: u64,
     since: Instant,
-    sent: BTreeSet<String>,
+    sent: BTreeMap<String, Instant>,
     delay: Duration,
     phrase: String,
 }
@@ -1074,14 +1075,16 @@ impl Parties {
             // A Text exit or a room command the leader typed (`go vortex`, C-121): the
             // game's follow moves nobody through it, so every follower in the leader's party
             // in the game and in that room types the same phrase, and looks where it took it
-            // once the script has acted (its `adddelay`). A follower's belief may lag the drag
-            // by a tick, so the room is checked for [`COMMAND_WINDOW`]; one still elsewhere
-            // after that and the wait is separated as ever.
+            // once the script's wait is over (its `adddelay`). A follower's belief may lag the
+            // drag by a tick, so the room is checked for [`COMMAND_WINDOW`]; one still
+            // elsewhere once it has looked is separated as ever. The game drops a follower
+            // the moment its leader teleports, before this tick may come: one that was in
+            // the party goes too.
             if let Some(cmd) = &l.command {
                 let fresh_entry = || Commanded {
                     seq: cmd.seq,
                     since: now,
-                    sent: BTreeSet::new(),
+                    sent: BTreeMap::new(),
                     delay: cmd.delay,
                     phrase: cmd.phrase.clone(),
                 };
@@ -1103,8 +1106,9 @@ impl Parties {
                             (Some(a), Some(b)) if a.eq_ignore_ascii_case(b)
                         );
                         let there = fi.room == Some(cmd.room) || fi.rooms.contains(&cmd.room);
-                        if fi.realm && fi.running && follows && there && !entry.sent.contains(f) {
-                            entry.sent.insert(f.clone());
+                        let with = follows || self.was_joined.contains(f);
+                        if fi.realm && fi.running && with && there && !entry.sent.contains_key(f) {
+                            entry.sent.insert(f.clone(), now);
                             let q = self.pending.entry(f.clone()).or_default();
                             q.push_back(Queued {
                                 line: cmd.phrase.clone(),
@@ -1128,13 +1132,28 @@ impl Parties {
                     }
                 }
             }
-            // The followers crossing after the leader's phrase: for the window and the
-            // script's wait, their beliefs and the game's party say nothing yet.
+            // The followers crossing after the leader's phrase: until one has seen a room
+            // after the script's wait (its look after it, or any answered once the game lets
+            // it type again), or for the window after the wait, its belief and the game's
+            // party say nothing yet.
             let (crossing, crossing_phrase): (BTreeSet<String>, String) = self
                 .commanded
                 .get(&def.leader)
-                .filter(|c| now < c.since + COMMAND_WINDOW + c.delay)
-                .map_or_else(Default::default, |c| (c.sent.clone(), c.phrase.clone()));
+                .map_or_else(Default::default, |c| {
+                    let still = c
+                        .sent
+                        .iter()
+                        .filter(|(f, at)| {
+                            let fired = **at + c.delay;
+                            now < fired + COMMAND_WINDOW
+                                && !m
+                                    .get(f.as_str())
+                                    .is_some_and(|i| i.room_seen_at.is_some_and(|t| t > fired))
+                        })
+                        .map(|(f, _)| f.clone())
+                        .collect();
+                    (still, c.phrase.clone())
+                });
             // The followers walking back, by name, for the leader's hold.
             let mut waiting: Vec<String> = Vec::new();
             // The followers still hiding their coins for the leader's stash round (C-093).
@@ -1226,8 +1245,10 @@ impl Parties {
                     self.apart.remove(f);
                     let together = same_room(fi, l);
                     // Forming waits for a `par` that shows the party as it is (after a
-                    // restart, for one): a formed party gets no invites.
+                    // restart, for one): a formed party gets no invites. Not while the
+                    // follower crosses: the game is holding its lines, and the beliefs lag.
                     if together
+                        && !crossing.contains(f)
                         && l.game.as_of.is_some()
                         && !owe_par
                         && let (Some(lfirst), Some(ffirst)) = (lfirst, ffirst)
@@ -1262,11 +1283,13 @@ impl Parties {
                     // Dropped by the game (an exit refused it, a flee, a stun), or added with
                     // `party_join`: it walks back to the leader, and the leader waits. Not
                     // while it crosses after the leader's phrase: the game drops it and the
-                    // beliefs go one at a time; it forms up again where it lands.
+                    // beliefs go one at a time; it forms up again where it lands, and the
+                    // leader waits there for it (Sasha walked four rooms on alone, 2026-11-26).
                     if self.was_joined.contains(f) && !crossing.contains(f) {
                         self.walk_in.insert(f.clone());
                     }
                     if crossing.contains(f) {
+                        waiting.push(ffirst.map_or_else(|| f.clone(), str::to_owned));
                         (
                             MemberState::NotJoined,
                             Some(format!("going through `{crossing_phrase}`")),
@@ -1877,15 +1900,11 @@ mod tests {
         );
     }
 
-    /// C-121, the Black Wasteland's vortices (live, 2026-11-25): the leader's `go vortex`
-    /// fires five seconds after the phrase. Meanwhile the game drops the followers and the
-    /// beliefs move one at a time, so a follower looked separated and was walked back through
-    /// the vortex, and another typed the phrase twice. A follower sent after the phrase is
-    /// crossing for the window and the wait: not separated, not walked back, its look after
-    /// the wait; the leader is not held for it. After that, one still elsewhere walks back.
-    #[tokio::test]
-    async fn a_follower_sent_through_a_delayed_room_command_crosses_before_it_is_judged() {
-        let now = Instant::now();
+    /// C-121, the vortices: the leader typed the phrase; the follower, still listed and
+    /// following as the coordinator sees it, is sent after it, and the line is recorded as
+    /// sent. A second on, the game has teleported the leader and dropped the follower from
+    /// the party, and the follower still believes itself in the vortex's room.
+    fn vortex_crossing(now: Instant) -> (Parties, BTreeMap<String, MemberInfo>) {
         let mut p = Parties::default();
         p.save(def("penny", &["lauren"]), &known()).unwrap();
         let mut m = two(now, &["Lauren Phillips"]);
@@ -1900,8 +1919,6 @@ mod tests {
         let plan = p.plan(&m, now);
         assert_eq!(lines(&plan), [("lauren", "go vortex")]);
         p.sent("lauren", "go vortex", now);
-        // A second on: the game moved the leader and dropped the follower from the party; the
-        // follower still believes itself in the old room.
         let t1 = now + Duration::from_secs(1);
         {
             let penny = m.get_mut("penny").unwrap();
@@ -1910,10 +1927,55 @@ mod tests {
             penny.game.as_of = Some(t1);
             m.get_mut("lauren").unwrap().game.following = None;
         }
+        (p, m)
+    }
+
+    /// The game drops a follower the moment its leader teleports, and the coordinator may
+    /// see that before it sees the phrase (live, 2026-11-26): one that was in the party is
+    /// sent after the leader all the same.
+    #[tokio::test]
+    async fn a_follower_the_game_dropped_at_the_leaders_teleport_is_sent_after_it() {
+        let now = Instant::now();
+        let mut p = Parties::default();
+        p.save(def("penny", &["lauren"]), &known()).unwrap();
+        let mut m = two(now, &["Lauren Phillips"]);
+        m.get_mut("lauren").unwrap().game.following = Some("Penny".into());
+        assert!(p.plan(&m, now).lines.is_empty());
+        {
+            let penny = m.get_mut("penny").unwrap();
+            penny.command = Some(LeaderCommand {
+                room: (1, 1),
+                phrase: "go vortex".into(),
+                seq: 1,
+                delay: Duration::from_secs(5),
+            });
+            penny.room = Some((3, 740));
+            penny.game.members.retain(|r| r.name != "Lauren Phillips");
+            penny.game.as_of = Some(now);
+            m.get_mut("lauren").unwrap().game.following = None;
+        }
+        let plan = p.plan(&m, now);
+        assert_eq!(lines(&plan), [("lauren", "go vortex")]);
+        assert!(plan.roles["lauren"].rejoin().is_none(), "{:?}", plan.roles);
+    }
+
+    /// C-121, the Black Wasteland's vortices (live, 2026-11-25 and 26): the game teleports at
+    /// the phrase, holds the character's lines for five seconds (`adddelay 5`) and drops it
+    /// from the party, so the beliefs move one at a time, each as its look is answered. A
+    /// follower sent after the phrase is crossing until it has seen a room after the wait:
+    /// not separated, not walked back, not formed up, its look after the wait, and the leader
+    /// waits for it (Sasha walked four rooms on alone). Once it has looked, it forms up where
+    /// it landed.
+    #[tokio::test]
+    async fn a_follower_sent_through_a_delayed_room_command_crosses_until_it_has_looked() {
+        let now = Instant::now();
+        let (mut p, mut m) = vortex_crossing(now);
+        // A second on: no rejoin, no look, no follow; "going through"; the leader waits.
+        let t1 = now + Duration::from_secs(1);
         let plan = p.plan(&m, t1);
         assert!(plan.roles["lauren"].rejoin().is_none(), "{:?}", plan.roles);
         assert!(
-            !lines(&plan).contains(&("lauren", "look")),
+            lines(&plan).iter().all(|(s, _)| *s == "penny"),
             "{:?}",
             plan.lines
         );
@@ -1924,23 +1986,82 @@ mod tests {
                 Some("going through `go vortex`".to_owned())
             )
         );
-        assert!(
-            matches!(&plan.roles["penny"], PartyRole::Leader { hold: None, .. }),
+        assert_eq!(
+            plan.roles["penny"].hold(),
+            Some("Waiting for Lauren to catch up"),
             "{:?}",
             plan.roles["penny"]
         );
         // Six seconds on, the look goes.
         let t6 = now + Duration::from_secs(6);
+        let plan = p.plan(&m, t6);
         assert!(
-            lines(&p.plan(&m, t6)).contains(&("lauren", "look")),
+            lines(&plan).contains(&("lauren", "look")),
             "{:?}",
-            p.plan(&m, t6).lines
+            plan.lines
         );
         p.sent("lauren", "look", t6);
-        // The window and the wait over, one still on the near side is separated and walks
-        // back to the leader.
-        let t16 = now + Duration::from_secs(16);
-        let plan = p.plan(&m, t16);
+        // Its answer shows the Wasteland: the crossing is over, and the two form up there, the
+        // leader still waiting.
+        {
+            let lauren = m.get_mut("lauren").unwrap();
+            lauren.room = Some((3, 740));
+            lauren.room_seen_at = Some(t6 + Duration::from_millis(500));
+        }
+        let t7 = now + Duration::from_secs(7);
+        let plan = p.plan(&m, t7);
+        assert_eq!(
+            state(&plan, 1),
+            (MemberState::NotJoined, Some("forming up".to_owned()))
+        );
+        assert!(
+            lines(&plan).contains(&("lauren", "follow penny")),
+            "{:?}",
+            plan.lines
+        );
+        assert!(plan.roles["lauren"].rejoin().is_none(), "{:?}", plan.roles);
+        assert_eq!(
+            plan.roles["penny"].hold(),
+            Some("Waiting for Lauren to catch up")
+        );
+    }
+
+    /// The follower's look after the wait shows it still on the near side (the exit refused
+    /// it): the crossing is over at once, and it walks back to the leader.
+    #[tokio::test]
+    async fn a_follower_still_on_the_near_side_after_its_look_walks_back() {
+        let now = Instant::now();
+        let (mut p, mut m) = vortex_crossing(now);
+        let t6 = now + Duration::from_secs(6);
+        assert!(lines(&p.plan(&m, t6)).contains(&("lauren", "look")));
+        p.sent("lauren", "look", t6);
+        m.get_mut("lauren").unwrap().room_seen_at = Some(t6 + Duration::from_millis(500));
+        let plan = p.plan(&m, now + Duration::from_secs(7));
+        assert_eq!(
+            plan.roles["lauren"].rejoin(),
+            Some((3, 740)),
+            "{:?}",
+            plan.roles
+        );
+        assert!(
+            plan.roles["penny"].hold().is_some(),
+            "{:?}",
+            plan.roles["penny"]
+        );
+    }
+
+    /// No room seen after the wait (it landed in the dark, or its look was lost): the window
+    /// after the wait over, the follower is judged on its belief, and walks back.
+    #[tokio::test]
+    async fn a_follower_that_never_looked_is_judged_after_the_window() {
+        let now = Instant::now();
+        let (mut p, m) = vortex_crossing(now);
+        let t6 = now + Duration::from_secs(6);
+        assert!(lines(&p.plan(&m, t6)).contains(&("lauren", "look")));
+        p.sent("lauren", "look", t6);
+        let plan = p.plan(&m, now + Duration::from_secs(14));
+        assert!(plan.roles["lauren"].rejoin().is_none(), "{:?}", plan.roles);
+        let plan = p.plan(&m, now + Duration::from_secs(16));
         assert_eq!(
             plan.roles["lauren"].rejoin(),
             Some((3, 740)),
