@@ -2150,6 +2150,10 @@ impl Session {
         {
             self.own.pop_front();
         }
+        // A room command out of this room by a party's leader, whoever typed it: noted once,
+        // as it goes. Noting it when the walker queued it as well sent the followers through
+        // the vortex twice when a fight held the leader's own line back (2026-11-26).
+        self.note_party_command(text);
         if self.own.front().is_some_and(|(c, _)| c == text) {
             // Ours; the parser and the position were told when it went.
             self.own.pop_front();
@@ -2161,7 +2165,6 @@ impl Session {
         if let Some(atlas) = &self.atlas {
             self.position.sent(atlas, text);
         }
-        self.note_party_command(text);
         self.last_sent = now;
         match &mut self.resync {
             Resync::Waiting { typed, .. } => *typed = true,
@@ -3357,11 +3360,15 @@ impl Session {
         if self.owner == Some(Owner::Walker) && self.executor.drop_ahead() {
             self.walker.ahead_dropped();
         }
-        if self.executor.in_flight().is_none() && self.owner == Some(Owner::Walker) {
+        // The look after a phrase that went is kept, queued as it may be for the script's
+        // wait: without it the belief stays in the room the phrase left (a teleport shows no
+        // room), and a party would walk back to it.
+        let arriving = self.owner == Some(Owner::Walker) && self.walker.arriving();
+        if self.executor.in_flight().is_none() && self.owner == Some(Owner::Walker) && !arriving {
             self.executor.cancel();
             self.owner = None;
         }
-        let busy = self.executor.in_flight().is_some();
+        let busy = self.executor.in_flight().is_some() || arriving;
         let next = self.walker.stop(why, busy);
         self.apply(next, out);
     }
@@ -4260,11 +4267,9 @@ impl Session {
         self.map_dirty |= next.route_changed;
         let ahead = next.ahead;
         if let Some(action) = next.action {
-            let command = action.command.clone();
             match self.executor.submit(action) {
                 Ok(()) => {
                     self.owner = Some(Owner::Walker);
-                    self.note_party_command(&command);
                 }
                 Err(guard) => {
                     out.push(self.warning(&format!("refused: {}", guard.describe())));

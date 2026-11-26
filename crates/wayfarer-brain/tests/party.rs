@@ -78,10 +78,13 @@ struct World {
     mage: bool,
     /// What the game says to the leader's `sped lauren` in place of casting it.
     speed_refusal: Option<&'static str>,
-    /// Room commands whose script waits (`adddelay`): who typed one, where it takes them and
-    /// when it fires (C-121).
-    pending: Vec<(String, Key, tokio::time::Instant)>,
-    /// Those a delayed script has moved, with how many lines the brain had sent by then.
+    /// Those whose lines the game holds, as a room command's `adddelay` does, and until when
+    /// (C-121): a line typed meanwhile is answered when the hold ends.
+    held_until: BTreeMap<String, tokio::time::Instant>,
+    /// The lines held: who typed each, the line, and when it is answered.
+    delayed: Vec<(String, String, tokio::time::Instant)>,
+    /// Those a room command's script has teleported, with how many lines the brain had sent
+    /// by then.
     fired: Vec<(String, usize)>,
 }
 
@@ -346,7 +349,9 @@ impl Gateway {
                 me(said("The door is closed!"))
             }
             // A room command whose script waits (the Royal Palace kitchen's vortex, five
-            // seconds): the prompt at once, the room when it fires.
+            // seconds), as quicksilver runs `adddelay`: the teleport at once and no room
+            // shown, the character's lines held for the wait, and the party over the moment
+            // one of them is teleported away from the other.
             t if game::atlas()
                 .graph
                 .edges(self.world.rooms[session])
@@ -360,14 +365,25 @@ impl Gateway {
                     .iter()
                     .find(|e| e.kind.is_phrase() && e.taken_by(t))
                     .unwrap();
-                // A follower's own script fires a second after the leader's, as the live
-                // game showed the rooms a tick apart.
-                let skew = Duration::from_secs(u64::from(session != LEADER));
-                let at = tokio::time::Instant::now()
-                    + Duration::from_secs(u64::from(e.delay_secs))
-                    + skew;
-                self.world.pending.push((session.to_owned(), e.to, at));
-                me(said("You step into the swirling vortex..."))
+                self.world.rooms.insert(session.to_owned(), e.to);
+                self.world
+                    .fired
+                    .push((session.to_owned(), self.lines.len()));
+                self.world.held_until.insert(
+                    session.to_owned(),
+                    tokio::time::Instant::now() + Duration::from_secs(u64::from(e.delay_secs)),
+                );
+                let mut out = me(said(
+                    "You step into the swirling vortex, and find yourself... elsewhere.",
+                ));
+                if self.world.following {
+                    self.world.following = false;
+                    out.push((
+                        FOLLOWER.to_owned(),
+                        said(&format!("You are no longer following {}.", first(LEADER))),
+                    ));
+                }
+                out
             }
             "borrow skiff" | "go skiff" | "row skiff"
                 if self.world.rooms[session] == NEWHAVEN_DOCKS =>
@@ -578,26 +594,19 @@ impl Gateway {
     async fn next(&mut self) -> ToGateway {
         let msg = self.rx.recv().await.expect("the brain is running");
         self.seen.push(msg.clone());
-        // A delayed script that has fired: the room it took the character to.
+        // Lines the game held (a room command's wait) whose hold is over: answered now.
         let now = tokio::time::Instant::now();
         let mut due = Vec::new();
-        self.world.pending.retain(|(s, to, at)| {
+        self.world.delayed.retain(|(s, t, at)| {
             if now >= *at {
-                due.push((s.clone(), *to));
+                due.push((s.clone(), t.clone()));
                 false
             } else {
                 true
             }
         });
-        for (s, to) in due {
-            self.world.rooms.insert(s.clone(), to);
-            self.world.fired.push((s.clone(), self.lines.len()));
-            // The game's party does not survive the leader's teleport: the follower is
-            // dropped, to follow again where they both land.
-            if s == LEADER {
-                self.world.following = false;
-            }
-            self.tell(&s, &shown(to)).await;
+        for (s, t) in due {
+            self.answer_now(&s, &t).await;
         }
         match &msg {
             ToGateway::HistoryRequest {
@@ -626,15 +635,26 @@ impl Gateway {
                     text: text.clone(),
                 })
                 .await;
-                let answers = self.answer(session, text);
-                for (i, (s, t)) in answers.into_iter().enumerate() {
-                    let t = if i == 0 { format!("{text}\r\n{t}") } else { t };
-                    self.tell(&s, &t).await;
+                match self.world.held_until.get(session).copied() {
+                    Some(at) if now < at => {
+                        self.world.delayed.push((session.clone(), text.clone(), at));
+                    }
+                    _ => self.answer_now(session, text).await,
                 }
             }
             _ => {}
         }
         msg
+    }
+
+    /// The game's answer to `text` from `session`, told to each one as the game would, the
+    /// line echoed before its answer.
+    async fn answer_now(&mut self, session: &str, text: &str) {
+        let answers = self.answer(session, text);
+        for (i, (s, t)) in answers.into_iter().enumerate() {
+            let t = if i == 0 { format!("{text}\r\n{t}") } else { t };
+            self.tell(&s, &t).await;
+        }
     }
 
     async fn until<T>(&mut self, mut want: impl FnMut(&ToGateway) -> Option<T>) -> T {
@@ -1664,40 +1684,45 @@ async fn a_follower_takes_a_room_command_exit_with_its_leader() {
     );
 }
 
-/// The Royal Palace kitchen (3:668): `go vortex` there is a room command whose script waits
-/// five seconds (`adddelay 5`) before it teleports to the Black Wasteland (3:740).
+/// The Royal Palace kitchen (3:668): `go vortex` there is a room command whose script holds
+/// the character for five seconds (`adddelay 5`) as it teleports it to the Black Wasteland
+/// (3:740), whose southeast is 3:719.
 const PALACE_KITCHEN: Key = (3, 668);
-const WASTELAND_VORTEX: Key = (3, 740);
+const WASTELAND_ON: Key = (3, 719);
 
-/// C-121, the vortices (live, 2026-11-25): the leader's `go vortex` fires five seconds after
-/// the phrase, the prompt coming at once. The follower types it with the leader, and nobody
-/// looks or judges before the script has fired: the follower is not walked back through the
-/// vortex, types the phrase once, and both land in the Wasteland with the leader never held.
+/// C-121, the vortices (live, 2026-11-25 and 26): the game teleports at the phrase, holds the
+/// character's lines for five seconds and drops it from the party; the room comes with the
+/// look after. The follower types the phrase once, with the leader; nobody looks or judges
+/// before the hold is over; the follower is not walked back through the vortex; the leader
+/// waits on the far side instead of walking on alone (Sasha went four rooms on); and the party
+/// forms up there and goes on together.
 #[tokio::test(start_paused = true)]
-async fn a_follower_crosses_a_delayed_room_command_with_its_leader_and_is_not_walked_back() {
+async fn a_follower_crosses_a_delayed_room_command_with_its_leader_who_waits_for_it() {
     let (mut g, _run) = Gateway::start_at(brain(None), PALACE_KITCHEN).await;
     g.world.drag = true;
     formed(&mut g).await;
-    // The vortex's room is a boss lair (the Lord of the Hunt): walk in, not one short.
+    // Through the vortex's room (a boss lair, the Lord of the Hunt: walked into, not stopped
+    // short of) and one room on.
     g.send(ToClient::WalkTo {
         session: LEADER.into(),
-        map: WASTELAND_VORTEX.0,
-        room: WASTELAND_VORTEX.1,
+        map: WASTELAND_ON.0,
+        room: WASTELAND_ON.1,
         stop_short: Some(false),
         fight: None,
     })
     .await;
-    g.play(14).await;
+    g.play(30).await;
     assert_eq!(
         g.world.rooms[LEADER],
-        WASTELAND_VORTEX,
+        WASTELAND_ON,
         "lines {:?}\nwarnings {:?}\nnotices {:?}",
         g.lines,
         warnings_of(&g, LEADER),
         notices_of(&g, LEADER)
     );
-    assert_eq!(g.world.rooms[FOLLOWER], WASTELAND_VORTEX, "{:?}", g.lines);
-    // Each typed the phrase once.
+    assert_eq!(g.world.rooms[FOLLOWER], WASTELAND_ON, "{:?}", g.lines);
+    assert!(g.world.following, "{:?}", g.lines);
+    // Each typed the phrase once, the leader first.
     let vortex: Vec<&str> = g
         .lines
         .iter()
@@ -1705,7 +1730,7 @@ async fn a_follower_crosses_a_delayed_room_command_with_its_leader_and_is_not_wa
         .map(|(s, _)| s.as_str())
         .collect();
     assert_eq!(vortex, [LEADER, FOLLOWER], "{:?}", g.lines);
-    // The looks came after the script fired, not before.
+    // The looks were typed after the teleport (the hold answers them when it ends).
     for s in [LEADER, FOLLOWER] {
         let fired = g
             .world
@@ -1726,29 +1751,51 @@ async fn a_follower_crosses_a_delayed_room_command_with_its_leader_and_is_not_wa
             .unwrap_or_else(|| panic!("{s} never looked: {:?}", g.lines));
         assert!(
             look >= fired,
-            "{s} looked at line {look}, the vortex fired at {fired}: {:?}",
+            "{s} looked at line {look}, teleported at {fired}: {:?}",
             g.lines
         );
     }
-    // Nobody walked back, and the leader never waited.
+    // The leader moved on only once the follower had looked and was following again.
+    let phrase = g
+        .lines
+        .iter()
+        .position(|(f, t)| f == FOLLOWER && t == "go vortex")
+        .unwrap();
+    let after = |who: &str, what: &str| {
+        g.lines[phrase..]
+            .iter()
+            .position(|(f, t)| f == who && t == what)
+            .map(|i| phrase + i)
+            .unwrap_or_else(|| panic!("{who} never sent {what:?} after the phrase: {:?}", g.lines))
+    };
+    let (look, follow, on) = (
+        after(FOLLOWER, "look"),
+        after(FOLLOWER, "follow penny"),
+        after(LEADER, "se"),
+    );
+    assert!(
+        look < on && follow < on,
+        "the leader went on at line {on}, the follower looked at {look} and followed at {follow}: {:?}",
+        g.lines
+    );
+    // Meanwhile the follower's tile said so.
+    assert!(
+        g.seen
+            .iter()
+            .any(|m| matches!(m, ToGateway::Parties { parties }
+            if parties.iter().any(|p| p.members.iter().any(|ms| ms.session == FOLLOWER
+                && ms.detail.as_deref() == Some("going through `go vortex`"))))),
+        "{:?}",
+        g.lines
+    );
+    // Nobody walked back.
     let notices: Vec<String> = [LEADER, FOLLOWER]
         .iter()
         .flat_map(|s| notices_of(&g, s))
         .collect();
     assert!(
-        !notices
-            .iter()
-            .any(|n| n.starts_with("Walking back") || n.starts_with("Waiting for")),
+        !notices.iter().any(|n| n.starts_with("Walking back")),
         "{notices:?}"
-    );
-    // And the party formed up again on the far side, nobody having typed the phrase twice.
-    g.play(12).await;
-    assert!(g.world.following, "{:?}", g.lines);
-    assert_eq!(
-        g.lines.iter().filter(|(_, t)| t == "go vortex").count(),
-        2,
-        "{:?}",
-        g.lines
     );
 }
 

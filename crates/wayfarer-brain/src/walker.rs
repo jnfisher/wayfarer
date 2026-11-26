@@ -403,6 +403,12 @@ impl Walker {
         self.walk.is_some()
     }
 
+    /// The walk's phrase went and its look where it took the character is the action queued
+    /// (`Doing::Arrive`): a stop keeps that look, or the position is lost.
+    pub fn arriving(&self) -> bool {
+        self.walk.as_ref().is_some_and(|w| w.doing == Doing::Arrive)
+    }
+
     /// A game event: what the shop says to the walk's `buy`.
     pub fn heard(&mut self, ev: &GameEvent) {
         let Some(w) = &mut self.walk else {
