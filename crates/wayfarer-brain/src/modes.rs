@@ -191,6 +191,21 @@ impl Presence {
             // showed (it came in by a text the parser missed, or before the last look) is here
             // all the same (C-090).
             GameEvent::Intercept { monster, .. } => self.seen_fighting(atlas, monster),
+            // A monster's spell that hurt the character (`Nanati sorceress fires a sunbolt at
+            // you for 73 damage!`) is its attack (C-133): a caster that never claws was no
+            // attacker before, and in the dark nothing else names it.
+            GameEvent::Other(e)
+                if e.name == "spell_cast_on_you" && e.text("dmg").is_some_and(|d| d != "0") =>
+            {
+                if let Some(name) = e.text("caster").and_then(|c| attacker_name(atlas, c))
+                    && !self.is_player(atlas, &name)
+                {
+                    if !self.attackers.iter().any(|a| a.eq_ignore_ascii_case(&name)) {
+                        self.attackers.push(name.clone());
+                    }
+                    self.seen_fighting(atlas, &name);
+                }
+            }
             GameEvent::Other(e) => {
                 let field = match e.name.as_str() {
                     "mon_hits_other" | "mon_miss_other" => "mon",
@@ -209,11 +224,7 @@ impl Presence {
     /// A monster seen fighting in the room (`The ice golem pounds Rocco`, `Rocco moves to
     /// attack ice golem`): here, if no monster here is already called that.
     fn seen_fighting(&mut self, atlas: &Atlas, name: &str) {
-        let name = name.trim();
-        let name = ["The ", "the ", "An ", "an ", "A ", "a "]
-            .iter()
-            .find_map(|a| name.strip_prefix(a))
-            .unwrap_or(name);
+        let name = monster_named(name);
         if name.is_empty() || atlas.monsters.by_name(name).is_empty() || self.is_player(atlas, name)
         {
             return;
@@ -226,6 +237,32 @@ impl Presence {
             self.here.push(name.to_owned());
         }
     }
+}
+
+/// A monster's name as a line gives it, without its article: `The ice golem` is the ice golem.
+fn monster_named(name: &str) -> &str {
+    let name = name.trim();
+    ["The ", "the ", "An ", "an ", "A ", "a "]
+        .iter()
+        .find_map(|a| name.strip_prefix(a))
+        .unwrap_or(name)
+}
+
+/// A monster's name as a spell line opens with it (`Nanati shadow fires a darkbolt at you`):
+/// the game capitalises it there, the monsters' names do not, so it is given as the names have
+/// it; `None` for a name no monster has (a player's).
+fn attacker_name(atlas: &Atlas, raw: &str) -> Option<String> {
+    let name = monster_named(raw);
+    let known = atlas.monsters.by_name(name);
+    if known.is_empty() {
+        return None;
+    }
+    if known.iter().any(|m| m.name == name) {
+        return Some(name.to_owned());
+    }
+    let mut chars = name.chars();
+    let first = chars.next()?;
+    Some(first.to_lowercase().chain(chars).collect())
 }
 
 impl Presence {
@@ -1457,6 +1494,33 @@ impl Bot {
         self.learned.push(name);
     }
 
+    /// Blind and hit by `name`, whose name the game refuses (C-133): the bot leaves as Flee
+    /// does, whatever the HP; a follower in a party stays with it (C-074), a boss fight is
+    /// never left (C-100).
+    fn cornered(&mut self, name: String, says: &mut Vec<Say>) {
+        if self.boss {
+            self.narrate(
+                format!("Blind: {name} hits me and I cannot reach it (boss fight: not leaving)"),
+                says,
+            );
+        } else if self.in_party {
+            self.narrate(
+                format!("Blind: {name} hits me and I cannot reach it; staying with the party"),
+                says,
+            );
+        } else {
+            self.narrate(
+                format!("Blind: {name} hits me and I cannot reach it; leaving"),
+                says,
+            );
+            if self.running() {
+                self.flee.run_from(format!(
+                    "Fleeing: blind, {name} hits me and I cannot reach it"
+                ));
+            }
+        }
+    }
+
     /// What the store keeps of the bot.
     pub fn record(&self) -> BotRecord {
         let state = match self.state {
@@ -1936,7 +2000,13 @@ impl Bot {
                 BotMode::Stash => self.stash.step(v),
                 BotMode::Bless => self.bless.step(v),
                 BotMode::Sneak => self.sneak.step(v),
-                BotMode::Fight => self.fight.step(v),
+                BotMode::Fight => {
+                    let step = self.fight.step(v);
+                    if let Some(name) = self.fight.take_cornered() {
+                        self.cornered(name, &mut says);
+                    }
+                    step
+                }
                 BotMode::Task if let Some(to) = v.party.rejoin().filter(|k| v.room != Some(*k)) => {
                     let leader = v.party.following().unwrap_or("the leader");
                     Step::walk(to, format!("Walking back to {leader}"))

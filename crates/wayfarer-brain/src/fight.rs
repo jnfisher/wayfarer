@@ -31,6 +31,11 @@ pub const BLIND_LOOK: std::time::Duration = std::time::Duration::from_secs(10);
 /// The same while something attacks it: back in the fight soon after it sees (C-108; Penny,
 /// in a darkbolt's darkness, came back up to 10 s after it lifted).
 pub const BLIND_LOOK_ATTACKED: std::time::Duration = std::time::Duration::from_secs(3);
+/// Blind, how many times an attack on one monster may come back as speech (`You say "bash
+/// shadow"`: nothing of that name is here) before the name is left alone until it sees again.
+/// A monster that is here is attacked by name in the dark; one that keeps hitting it while
+/// its name is refused is out of reach, and the character runs (C-133).
+pub const BLIND_SAID_TRIES: u32 = 2;
 /// Rounds of the character's own swings in a row that did no damage, one of them a glance at
 /// least, with nobody else damaging the target meanwhile, before the fight is a stalemate:
 /// 50 seconds (C-091; four rounds gave up high-AC monsters on a run of bad luck).
@@ -82,6 +87,20 @@ pub(crate) struct Fight {
     blind: bool,
     /// While blind and out of combat, when it last looked to see whether it can.
     blind_look: Option<Instant>,
+    /// Blind by a curse ("You are blind." in place of the room): no attack by name goes, the
+    /// game refuses them all. Not set in the dark, where a look says only that the room is dark
+    /// and an attack on a monster that is there goes (C-133).
+    cursed: bool,
+    /// An attack came back as speech: look once, now, to learn whether it is a curse or the
+    /// dark, before attacking by name again.
+    blind_check: bool,
+    /// Blind, the monsters whose attack came back as speech, and how often: at
+    /// [`BLIND_SAID_TRIES`] the name is left alone until it sees again (C-133).
+    blind_said: BTreeMap<String, u32>,
+    /// Blind and hit by a monster it cannot reach (its name refused that often): for the bot
+    /// to run from, once per blindness.
+    cornered: Option<String>,
+    cornered_told: bool,
     /// The attacks on each monster that timed out.
     timeouts: BTreeMap<String, u32>,
     stall: Stall,
@@ -256,16 +275,39 @@ impl Mode for Fight {
             return Step::wait(format!("Fight: {t}"));
         }
         if self.blind {
-            if self.blind_look_due(v) {
-                self.blind_look = Some(v.now);
-                return Step::send(
-                    Action::new("look", Expect::RoomSeen),
-                    "Fight: blind, looking whether it can see",
-                );
+            // Blind, it still knows what hits it and what came in: the game takes an attack by
+            // name in a room it cannot see when the monster is there (silver-mirror,
+            // 2026-11-27: `bash shadow` engaged in a globe of darkness; the one that came back
+            // as speech named a shadow already dead). So it attacks what it can name, and
+            // looks only when it has nothing to go for (C-133).
+            if self.cursed || self.blind_check || self.choose(v).is_none() {
+                // Hit by what it cannot reach: the attacker's name came back as speech that
+                // often, so nothing it can name is here, yet it is still being hit. The bot
+                // runs; a minute of bolts is not waited out (Rocco and Sasha, 2026-11-27). Not
+                // for a curse ("You are blind."): the character sees nothing at all then and
+                // waits for it to lift, as it did before (C-108).
+                if !self.cornered_told
+                    && !self.cursed
+                    && !self.blind_check
+                    && let Some(who) = v.presence.attackers.first()
+                    && self
+                        .blind_said
+                        .get(who)
+                        .is_some_and(|&n| n >= BLIND_SAID_TRIES)
+                {
+                    self.cornered_told = true;
+                    self.cornered = Some(who.clone());
+                }
+                if std::mem::take(&mut self.blind_check) || self.blind_look_due(v) {
+                    self.blind_look = Some(v.now);
+                    return Step::send(
+                        Action::new("look", Expect::RoomSeen),
+                        "Fight: blind, looking whether it can see",
+                    );
+                }
+                return Step::wait("Fight: blind, waiting to see again");
             }
-            return Step::wait("Fight: blind, waiting to see again");
-        }
-        if self.look {
+        } else if self.look {
             // `look`, not an empty line: an empty line shows the room only in statline FULL
             // modes (`kb/screen-parsing.md`).
             return Step::send(
@@ -390,13 +432,19 @@ impl Mode for Fight {
                     tracing::info!(unskipped = ?self.skip, "blind: nothing is skipped until it sees again");
                 }
                 self.blind = true;
+                self.cursed = true;
+                self.blind_check = false;
                 self.skip.clear();
                 self.timeouts.clear();
             }
             // A room shown: it sees again.
             GameEvent::RoomTitle { .. } | GameEvent::AlsoHere { .. } => {
                 self.blind = false;
+                self.cursed = false;
+                self.blind_check = false;
                 self.blind_look = None;
+                self.blind_said.clear();
+                self.cornered_told = false;
             }
             // A cast at the target, hit or missed: counted for the limit.
             GameEvent::SpellCast { .. } | GameEvent::CastFailed { .. } if self.spell_fight => {
@@ -456,8 +504,11 @@ impl Mode for Fight {
                             .is_some_and(|w| msg.ends_with(&w.to_lowercase()))
                     }) =>
             {
+                if let Some(t) = self.target.take() {
+                    *self.blind_said.entry(t).or_default() += 1;
+                }
+                self.blind_check = !self.blind;
                 self.blind = true;
-                self.target = None;
                 self.look = false;
             }
             GameEvent::Other(e) => {
@@ -832,14 +883,32 @@ impl Fight {
         rules: &MonsterRules,
         presence: &'a Presence,
     ) -> Option<&'a str> {
+        // Blind, a name refused as speech that often is not here (C-133).
+        let said: BTreeSet<String> = self
+            .blind_said
+            .iter()
+            .filter(|(_, n)| **n >= BLIND_SAID_TRIES)
+            .map(|(name, _)| name.clone())
+            .collect();
+        let skip = if said.is_empty() {
+            std::borrow::Cow::Borrowed(&self.skip)
+        } else {
+            std::borrow::Cow::Owned(self.skip.union(&said).cloned().collect())
+        };
         target(
             &atlas.monsters,
             rules,
             &presence.here,
             &presence.attackers,
-            &self.skip,
+            &skip,
             &presence.colours,
         )
+    }
+
+    /// Blind and hit by a monster whose name the game refuses (C-133), once per blindness: the
+    /// bot runs from it.
+    pub fn take_cornered(&mut self) -> Option<String> {
+        self.cornered.take()
     }
 
     /// Whether it would take the character with `presence` in the room: a monster it would
@@ -857,6 +926,8 @@ impl Fight {
             }
             self.skip.clear();
             self.timeouts.clear();
+            self.blind_said.clear();
+            self.cornered_told = false;
             self.skip_room = room;
         }
     }
