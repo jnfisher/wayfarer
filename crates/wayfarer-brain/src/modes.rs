@@ -1240,9 +1240,9 @@ impl Bot {
         self.sneak.take_broken() && settings.bool("movement.sneak")
     }
 
-    /// The character is in `room` now: a move with no `Sneaking...` shown ends the sneak.
-    pub fn sneak_arrived(&mut self, room: Option<Key>) {
-        self.sneak.arrived(room);
+    /// The character took a move: a move with no `Sneaking...` shown ends the sneak (C-133).
+    pub fn sneak_moved(&mut self) {
+        self.sneak.moved();
     }
 
     /// Whether the lasting spell `short` is believed on.
@@ -1849,7 +1849,6 @@ impl Bot {
         }
         // A sneaker opens with a backstab (C-048); not sneaking after all, `bs` is a plain
         // attack, which is fine.
-        self.sneak.arrived(v.room);
         self.fight.set_backstab(
             crate::sneak::Sneak::enabled(v) && v.settings.bool("combat.backstab"),
             self.sneak.on(),

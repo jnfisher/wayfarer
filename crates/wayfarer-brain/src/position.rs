@@ -95,6 +95,10 @@ pub(crate) struct Position {
     pub traces: Vec<serde_json::Value>,
     /// The next room seen with a title is placed afresh ([`Position::afresh`]).
     afresh: bool,
+    /// The last [`Position::event`] completed a move the character typed (a direction that
+    /// went), as against a `look` or a status line: the sneak reads this to tell a move with
+    /// no `Sneaking...` from a look, even where the belief does not know the room (C-133).
+    just_moved: bool,
     /// The phrase of the move in flight came back as speech (`You say "go hole"`): the
     /// character did not move (C-086). Cleared by the next move sent.
     spoken: Option<String>,
@@ -180,9 +184,17 @@ impl Position {
                 && self.exits.is_some_and(|e| e.contains(dir)))
     }
 
+    /// Whether the last [`Position::event`] completed a move the character typed, cleared by
+    /// the read. The sneak uses it to spot a move that showed no `Sneaking...` without needing
+    /// to know the room (C-133).
+    pub fn took_move(&mut self) -> bool {
+        std::mem::take(&mut self.just_moved)
+    }
+
     /// Read one typed event at `now`; the room, when this event completed one. A room seen
     /// moves the belief through the move in flight first (if there was one), then narrows it.
     pub fn event(&mut self, atlas: &Atlas, ev: &GameEvent, now: Instant) -> Option<RoomSeen> {
+        self.just_moved = false;
         let seen = match ev {
             GameEvent::RoomTitle { title } => {
                 self.title_pending = Some(title.clone());
@@ -300,6 +312,7 @@ impl Position {
             _ => return None,
         };
         let moved = self.moving.pop_front();
+        self.just_moved = moved.is_some();
         if let Some(m) = &moved {
             self.belief.moved(&atlas.graph, &m.command);
         }

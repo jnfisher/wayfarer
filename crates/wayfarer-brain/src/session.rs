@@ -952,6 +952,11 @@ impl Session {
                 Some(atlas) => self.position.event(atlas, &typed, now),
                 None => None,
             };
+            // A move the character typed went (a direction that completed), as against a look:
+            // a move with no `Sneaking...` ends the sneak, even where the belief is lost (C-133).
+            if self.position.took_move() {
+                self.bot.sneak_moved();
+            }
             // Moved into a room it cannot see: nothing of the old room is here (C-108).
             if seen.as_ref().is_some_and(|s| s.dark)
                 && was_at.is_some()
@@ -1090,9 +1095,8 @@ impl Session {
         if combat && self.walker.walking() {
             self.stop_walk("combat started", out);
         }
-        // The game noticed a sneaking move, or a move showed no `Sneaking...` (C-048): the
-        // bot's walk stops, and it sneaks again before the next one.
-        self.bot.sneak_arrived(self.position.best());
+        // A move showed no `Sneaking...` (C-048, C-133): the bot's walk stops, and it sneaks
+        // again before the next one. The move itself is spotted in the event loop above.
         if self.bot.sneak_broken(&self.settings) && self.walker.walking() && self.bot_walk {
             self.stop_walk("the sneak failed", out);
         }
@@ -4793,7 +4797,8 @@ impl Session {
                             self.bot.monster_behind(k);
                         }
                     }
-                    self.bot.sneak_arrived(self.position.best());
+                    // The move's `Sneaking...` (or its absence) was read in the event loop
+                    // (C-133); here we only act on a break to re-sneak before the next step.
                     if self.bot_walk
                         && self.walker.walking()
                         && self.bot.sneak_broken(&self.settings)

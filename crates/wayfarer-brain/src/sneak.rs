@@ -18,7 +18,6 @@ use std::time::Duration;
 
 use tokio::time::Instant;
 use wayfarer_parse::typed::{GameEvent, Rest};
-use wayfarer_world::Key;
 
 use crate::executor::{Action, Confirmed, Expect, Outcome, Refused};
 use crate::modes::{Mode, Step, View};
@@ -45,9 +44,7 @@ pub(crate) struct Sneak {
     sent_at: Option<Instant>,
     /// The game said the sneak ended: a walk in progress stops to sneak again.
     broken: bool,
-    /// The room the character was last known in, and whether `Sneaking...` has shown since
-    /// it got there (the next move's sign).
-    room: Option<Key>,
+    /// Whether `Sneaking...` has shown since the last move (the next move's sign).
     heard: bool,
 }
 
@@ -91,22 +88,17 @@ impl Sneak {
         self.wait_until.filter(|&t| t > now)
     }
 
-    /// The character is in `room` now. A move made while believed sneaking that showed no
-    /// `Sneaking...` means the sneak had already ended: counted as a failed attempt. A new room
-    /// ends the wait after a refusal: whatever the game counted against the sneak was left
-    /// behind (C-122).
-    pub fn arrived(&mut self, room: Option<Key>) {
-        let Some(room) = room else {
-            return;
-        };
-        if self.room == Some(room) {
-            return;
-        }
-        if self.room.is_some() && self.on && !self.heard {
+    /// The character took a move (a direction that went). A move believed sneaking that showed
+    /// no `Sneaking...` means the sneak had ended: a failed attempt. A move also ends the wait
+    /// after a refusal (C-122). Driven by the move itself, not the room key, so it works where
+    /// the belief does not know the room (terse corridors, a maze): C-133, Penny the Gypsy
+    /// walked a long way unsneaked while her position was unknown, since the old room-change
+    /// check never fired.
+    pub fn moved(&mut self) {
+        if self.on && !self.heard {
             self.off();
             self.failed();
         }
-        self.room = Some(room);
         self.heard = false;
         self.wait_until = None;
     }
@@ -225,35 +217,31 @@ mod tests {
     fn a_refusal_waits_two_seconds_or_until_the_next_room() {
         let now = Instant::now();
         let mut s = Sneak::default();
-        s.arrived(Some((1, 1)));
         s.on_event(&GameEvent::SneakRefused, now);
         assert_eq!(NOT_NOW, Duration::from_secs(2));
         assert_eq!(s.wake(now), Some(now + NOT_NOW));
         assert_eq!(s.wake(now + NOT_NOW), None);
         // The party moved on: the monster or the attack the game counted is behind.
         s.on_event(&GameEvent::SneakRefused, now);
-        s.arrived(Some((1, 2)));
+        s.moved();
         assert_eq!(s.wake(now), None);
-        // The same room again is no move.
+        // No move: the wait still holds.
         s.on_event(&GameEvent::SneakRefused, now);
-        s.arrived(Some((1, 2)));
         assert_eq!(s.wake(now), Some(now + NOT_NOW));
     }
 
     #[test]
     fn a_move_without_sneaking_shown_means_the_sneak_failed() {
         let now = Instant::now();
-        let (a, b, c): (Key, Key, Key) = ((1, 1), (1, 2), (1, 3));
         let mut s = Sneak::default();
-        s.arrived(Some(a));
         s.on_event(&GameEvent::SneakAttempt { failed: false }, now);
         // The move shows `Sneaking...`: still on.
         s.on_event(&GameEvent::StillSneaking, now);
-        s.arrived(Some(b));
+        s.moved();
         assert!(s.on() && !s.take_broken());
-        // The next shows nothing: the move before it failed, or something ended the sneak.
-        s.arrived(None);
-        s.arrived(Some(c));
+        // The next move shows nothing: the move before it failed, or something ended the sneak.
+        // No room key is needed: this holds even where the belief is lost (C-133).
+        s.moved();
         assert!(!s.on() && s.take_broken());
         assert_eq!(s.fails, 1);
     }

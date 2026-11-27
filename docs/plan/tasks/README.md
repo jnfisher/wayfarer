@@ -90,6 +90,7 @@ Cards don't repeat these:
 | 21 | Blessings on party members: a character keeps a Self-or-Single spell on another of ours, picked per spell in the Blessings panel; the target's own lines say when it is on (C-131) | 2026-11-22, at John's request: Asa is to keep speed on Riley |
 | 22 | A party member that attacks last: when another member engages, it sends its attack again and so acts after them in the round, picked in the Parties panel (C-132) | 2026-11-26, at John's request: Asa's meteor swarm is to finish the monster, not open on it |
 | 23 | Never stand still and die in the dark: in a globe of darkness the bot attacks what hits it by name instead of only looking, and when the attacker is out of reach (its name keeps coming back as speech) it runs; a monster's damaging spell makes its caster an attacker (C-133) | 2026-11-27, after Rocco and Sasha died to nanati shadows' darkness while a sorceress bolted them |
+| 24 | Sneaking is driven by the move, not the room: a sneaker whose position belief is unknown (terse corridors, a maze) keeps sneaking instead of believing itself sneaking for ever and walking plain (C-134) | 2026-11-27, after Penny the Gypsy walked the sewers unsneaked while lost |
 
 ## Index (wave 1, M0)
 
@@ -323,6 +324,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-131](C-131-blessings-on-party-members.md) | Blessings on party members: a character keeps a lasting spell on another of ours, picked per spell in the Blessings panel | A | M | C-047, C-043, C-109 | |
 | [C-132](C-132-attack-last.md) | A party member that attacks last: its attack goes again when another member engages, so it acts after them in the round | A | S | C-039, C-068 | |
 | [C-133](C-133-fight-in-the-dark.md) | Never stand still and die in the dark: the bot attacks what hits it by name in a globe of darkness, runs when the attacker is out of reach, and treats a damaging monster spell as an attack | A | S | C-108, C-091 | |
+| [C-134](C-134-sneak-when-lost.md) | Sneaking keys off the move, not a change of room, so a sneaker whose position is unknown keeps sneaking instead of walking plain | A | S | C-048, C-122 | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or
