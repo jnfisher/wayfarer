@@ -20,7 +20,7 @@ use tokio::time::Instant;
 use wayfarer_parse::typed::{GameEvent, Rest};
 
 use crate::executor::{Action, Confirmed, Expect, Outcome, Refused};
-use crate::modes::{Mode, Step, View};
+use crate::modes::{Mode, Presence, Step, View};
 
 /// Failed attempts in a row before the bot moves on unsneaked.
 pub const TRIES: u32 = 5;
@@ -60,11 +60,22 @@ impl Sneak {
     }
 
     fn may_try(&self, v: &View) -> bool {
-        Self::enabled(v)
-            && !self.on
-            && !self.gave_up
-            && self.wait_until.is_none_or(|t| v.now >= t)
-            && v.presence.here.is_empty()
+        Self::enabled(v) && self.clear_to_try(&v.presence.here, v.now)
+    }
+
+    /// Not sneaking, not given up, no wait after a refusal, and no monster in the room: an
+    /// attempt with one there fails, so the bot never makes one.
+    fn clear_to_try(&self, here: &[String], now: Instant) -> bool {
+        !self.on && !self.gave_up && self.wait_until.is_none_or(|t| now >= t) && here.is_empty()
+    }
+
+    /// A walk under way that set off unsneaked (a monster in the room, the wait after `You may
+    /// not sneak right now!`) stops where the character can sneak (C-135): the first room
+    /// with no monster in it and nothing attacking, so the bot sneaks there and walks on. Before,
+    /// nothing stopped such a walk, and it went unsneaked to its end (Penny, 46 steps back
+    /// from a rest after one refusal).
+    pub fn due(&self, presence: &Presence, now: Instant) -> bool {
+        self.clear_to_try(&presence.here, now) && presence.attackers.is_empty()
     }
 
     /// The bot is about to move the character itself: sneak first.
@@ -167,7 +178,9 @@ impl Mode for Sneak {
                 self.gave_up = false;
                 self.fails = 0;
             }
+            // Every cast ends sneaking (`kb/spells.md`), a blessing's as much as an attack's.
             GameEvent::SpellCast { .. }
+            | GameEvent::YouCast { .. }
             | GameEvent::CastFailed { .. }
             | GameEvent::YouKilled
             | GameEvent::Resting { .. }
@@ -244,6 +257,52 @@ mod tests {
         s.moved();
         assert!(!s.on() && s.take_broken());
         assert_eq!(s.fails, 1);
+    }
+
+    /// C-135: a blessing ends the sneak as any cast does, and says so, so a walk stops to sneak.
+    #[test]
+    fn a_cast_that_does_no_damage_ends_the_sneak() {
+        let now = Instant::now();
+        let mut s = Sneak::default();
+        s.on_event(&GameEvent::SneakAttempt { failed: false }, now);
+        s.on_event(
+            &GameEvent::YouCast {
+                spell: "blur".into(),
+            },
+            now,
+        );
+        assert!(!s.on() && s.take_broken());
+    }
+
+    /// C-135: due where an attempt may go: not with a monster here or attacking, not in the
+    /// wait after a refusal, not when sneaking or given up.
+    #[test]
+    fn due_only_in_a_clear_room_with_nothing_holding_the_attempt() {
+        let now = Instant::now();
+        let mut s = Sneak::default();
+        let clear = Presence::default();
+        assert!(s.due(&clear, now));
+        let mut monster = Presence::default();
+        monster.here.push("violet spore".into());
+        assert!(!s.due(&monster, now));
+        let mut attacked = Presence::default();
+        attacked.attackers.push("thug".into());
+        assert!(!s.due(&attacked, now));
+        // Refused: not until the wait ends, or the next move.
+        s.on_event(&GameEvent::SneakRefused, now);
+        assert!(!s.due(&clear, now));
+        assert!(s.due(&clear, now + NOT_NOW));
+        s.moved();
+        assert!(s.due(&clear, now));
+        s.on_event(&GameEvent::SneakAttempt { failed: false }, now);
+        assert!(!s.due(&clear, now));
+        let mut s = Sneak {
+            gave_up: true,
+            ..Sneak::default()
+        };
+        assert!(!s.due(&clear, now));
+        s.gave_up = false;
+        assert!(s.due(&clear, now));
     }
 
     #[test]

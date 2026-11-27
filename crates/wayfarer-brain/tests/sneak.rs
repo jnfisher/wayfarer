@@ -194,3 +194,36 @@ async fn a_move_that_shows_no_sneaking_is_followed_by_another_sneak() {
         ["st", "look", "sneak", "w", "w", "sneak", "d"]
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_walk_that_set_off_unsneaked_stops_to_sneak_in_the_first_clear_room() {
+    // C-135: refused at the start (`You may not sneak right now!`), the walk sets off
+    // unsneaked; before, it went so to its end. Now the first room with no monster in it
+    // stops it, and the bot sneaks there before the next move.
+    let settings = test_settings(SNEAK);
+    let clock = Arc::new(FixedClock(UNIX_EPOCH + Duration::from_secs(T0)));
+    let brain = Brain::new(world(), clock, None).with_settings(settings);
+    let (mut g, run) = Game::start_brain(SessionState::Realm, room(VILLAGE_ENTRANCE), brain).await;
+    g.idle(Duration::from_secs(20)).await;
+    g.expect("st", status(35));
+    g.expect("look", room(VILLAGE_ENTRANCE));
+    g.expect("sneak", line("You may not sneak right now!", 35));
+    g.expect("w", room(NARROW_PATH));
+    g.expect("sneak", attempt(35));
+    g.expect("w", sneaking(&room(NARROW_ROAD)));
+    g.expect("d", sneaking(&arena(&[], 35)));
+    g.send(ToClient::RunLoop {
+        session: ID.into(),
+        id: "1:2140:8:doors:0".into(),
+        skip: Some(vec![key((1, 2156))]),
+    })
+    .await;
+    g.narrated("Stopped walking: clear to sneak").await;
+    g.narrated("Stop 1/3 cleared: nothing there").await;
+    g.freeze();
+    let (_, played) = g.close(run).await;
+    assert_eq!(
+        &played[..7],
+        ["st", "look", "sneak", "w", "sneak", "w", "d"]
+    );
+}

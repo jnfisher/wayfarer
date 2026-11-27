@@ -1093,6 +1093,28 @@ fn the_characters_own_cast_is_no_blow() {
 }
 
 #[test]
+fn a_cast_that_does_no_damage_is_the_characters_cast() {
+    // C-135: a blessing's line, generic (message 17) or the spell's own, is a cast: every cast
+    // ends sneaking, so the bot must see it.
+    for (l, spell) in [
+        ("You cast blur on Penny!", "blur"),
+        ("You cast speed on yourself!", "speed"),
+        (
+            "You cast ethereal shield, and a shimmering field forms about you.",
+            "ethereal shield",
+        ),
+    ] {
+        assert_eq!(
+            line(l),
+            [GameEvent::YouCast {
+                spell: spell.into()
+            }],
+            "{l}"
+        );
+    }
+}
+
+#[test]
 fn an_attack_spell_landing_is_the_characters_cast() {
     // Message 18 ("You cast %s on %s for %d damage!") is a monster's hit message too, and wins
     // over `you_cast_generic`: the line is still the character's cast, and counts as one (faye's
