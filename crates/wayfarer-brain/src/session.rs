@@ -519,6 +519,12 @@ const OWN_COMBAT: [&str; 10] = [
 ];
 
 impl Session {
+    /// A walk of the bot's that set off unsneaked can sneak here (C-135).
+    fn sneak_due(&self) -> bool {
+        self.bot
+            .sneak_due(&self.settings, &self.presence, self.clock.instant())
+    }
+
     /// A session the brain has just learned of: its history up to now is fed silently. A bot
     /// the store has running or paused for it is resumed once that is done. Its monster rules
     /// are the store's, with *ignore* for each of `ignore` (`--ignore`) as the player's.
@@ -1099,6 +1105,10 @@ impl Session {
         // again before the next one. The move itself is spotted in the event loop above.
         if self.bot.sneak_broken(&self.settings) && self.walker.walking() && self.bot_walk {
             self.stop_walk("the sneak failed", out);
+        }
+        // A walk that set off unsneaked stops in the first clear room to sneak (C-135).
+        if self.walker.walking() && self.bot_walk && self.sneak_due() {
+            self.stop_walk("clear to sneak", out);
         }
         self.bot_held(out);
         self.drive(now, out);
@@ -4804,6 +4814,9 @@ impl Session {
                         && self.bot.sneak_broken(&self.settings)
                     {
                         self.stop_walk("the sneak failed", out);
+                    }
+                    if self.bot_walk && self.walker.walking() && self.sneak_due() {
+                        self.stop_walk("clear to sneak", out);
                     }
                     // A pause asked for while the walker's action was in flight.
                     let says = self.bot.settle();

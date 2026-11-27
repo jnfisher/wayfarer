@@ -1605,7 +1605,7 @@ Gypsy, walked a long way unsneaked in the sewers until a teleport put her back o
 character sneaking after an attempt with no failure and after each `Sneaking...`, and stops
 believing it on a move without one, the failure the character noticed (`You don't think
 you're sneaking.` on the same line), `You are no longer sneaking.`, `You make a sound as you
-enter the room!`, a fight, a cast, a rest or a death. It never tries to sneak with a monster
+enter the room!`, a fight, a cast (a blessing's too, C-135), a rest or a death. It never tries to sneak with a monster
 in the room (`kb/classes/ninja.md`: the chance falls by one for every other player and monster
 there; a fight comes first anyway).
 
@@ -1619,6 +1619,11 @@ there; a fight comes first anyway).
   walk in progress stops
   when a move shows no `Sneaking...` or the game says the sneak ended, and the bot sneaks again
   before going on; a sneaker's moves are not pipelined, so no move has gone ahead by then. A
+  walk that set off unsneaked (a monster in the room, or the wait after `You may not sneak
+  right now!`) keeps going through rooms with monsters in them, where an attempt would fail,
+  and stops in the first room with none and nothing attacking, narrated "Stopped walking:
+  clear to sneak"; the bot sneaks there and walks on (C-135; before, such a walk went
+  unsneaked to its end: Penny walked 46 rooms back from a rest after one refusal). A
   failure found by a move counts as a failed attempt. After five failures in a row it moves on
   unsneaked, with a warning, until the next fight.
 - **A follower**, which the game moves with its leader, sneaks whenever it is with the party

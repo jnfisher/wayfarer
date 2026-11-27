@@ -457,6 +457,12 @@ pub enum GameEvent {
         target: Option<String>,
         damage: i64,
     },
+    /// The character's own cast that did no damage: a blessing or a heal, by the spell's own
+    /// message (`You cast ethereal shield, and a shimmering field forms about you.`) or the
+    /// generic one (`You cast blur on Penny!`, message 17, which reads as `mon_hits_you`).
+    YouCast {
+        spell: String,
+    },
     /// `no_mana`: `You do not have enough mana to cast that spell.`
     NoMana,
     /// `already_this_round`: one general spell per round.
@@ -925,7 +931,9 @@ impl GameEvent {
                         target: ev.text("s2").map(str::to_owned).filter(|t| !t.is_empty()),
                         damage,
                     },
-                    None => G::Other(ev.clone()),
+                    None => G::YouCast {
+                        spell: text(ev, "mon"),
+                    },
                 }
             }
             "mon_hits_you"
@@ -1190,7 +1198,9 @@ impl GameEvent {
                         .filter(|t| !t.is_empty()),
                     damage,
                 },
-                None => G::Other(ev.clone()),
+                None => G::YouCast {
+                    spell: text(ev, "spell"),
+                },
             },
             "no_mana" => G::NoMana,
             "already_this_round" => G::AlreadyCast,

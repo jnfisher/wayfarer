@@ -1240,6 +1240,19 @@ impl Bot {
         self.sneak.take_broken() && settings.bool("movement.sneak")
     }
 
+    /// A walk of the bot's own (never Flee's) that set off unsneaked stops here so the bot
+    /// sneaks first: the room is clear and nothing holds the attempt (C-135).
+    pub fn sneak_due(
+        &self,
+        settings: &wayfarer_settings::Settings,
+        presence: &Presence,
+        now: Instant,
+    ) -> bool {
+        settings.bool("movement.sneak")
+            && self.acting != Some(BotMode::Flee)
+            && self.sneak.due(presence, now)
+    }
+
     /// The character took a move: a move with no `Sneaking...` shown ends the sneak (C-133).
     pub fn sneak_moved(&mut self) {
         self.sneak.moved();
