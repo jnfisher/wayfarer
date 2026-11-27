@@ -1597,7 +1597,11 @@ move before it: a move made while sneaking, the character's own or its leader's,
 `Sneaking...` before the game rolls for it, and a failed roll ends the sneak silently. So
 `Sneaking...` means the character was still sneaking when the move began (this move may still
 have been seen), and a move without it means the sneak had already ended: the move before it
-failed, or something else ended it. Only Perfect Stealth makes a move sure. The bot believes the
+failed, or something else ended it. Only Perfect Stealth makes a move sure. This hangs on the
+move itself, not on knowing the room it reached, so it still works where the belief does not
+know the room (terse corridors, a maze): before, the check keyed on a change of room, so a
+character walking lost believed itself sneaking for ever and stopped trying (C-133; Penny, a
+Gypsy, walked a long way unsneaked in the sewers until a teleport put her back on a known room). The bot believes the
 character sneaking after an attempt with no failure and after each `Sneaking...`, and stops
 believing it on a move without one, the failure the character noticed (`You don't think
 you're sneaking.` on the same line), `You are no longer sneaking.`, `You make a sound as you
