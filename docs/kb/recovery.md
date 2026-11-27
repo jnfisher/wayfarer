@@ -93,6 +93,24 @@ Everything below is from `slow_update_character` (LJNBKGND.C:1555-1725), the med
   (Arlysia 17:2439, Nekojin 12:49); Eternal Fire +200 for 9,999 (an alignment-quest step,
   Neutral only). The skull mask, flametongue, golden belt, golden broadsword, carved ivory mask
   and mithril-runed tunic give light but are Magical.
+- **Globe of darkness** (spell 440; the nanati shadows' `globe`, the dark-elf queen's): a cast
+  bubble of darkness, not a curse. On each target it puts **Alter User Light −9999** (plus −5
+  defence, −15 AV) for its duration, enough to black out any lit room, so the victim sees "The
+  room is pitch black - you can't see anything" where the room was. Room lines on the cast and
+  the lift: "A bubble of pure darkness appears and begins to expand!", "You are enveloped in
+  darkness!", then "The unnatural darkness lifts." when it wears off (message 1312; the
+  dark-elf queen's "Darkness is everywhere, suffocating you like a cloak!" is message 2675).
+  Duration is counted in spell rounds on the 3 s medium cycle: the shadows' globe (duration 20)
+  lasts about **a minute**, the generic `darkness` (933, duration 20) the same, `infernal
+  darkness` (1102, L50, duration 80) about four minutes; recasting does not extend it, it runs
+  from the first. **Nothing dispels it**: cure blindness (spell 87), blessed vision and
+  merciful grace only strip the "Blind User" ability (107), which the globe does not carry;
+  it is a light penalty, so only light fights it, and −9999 is past any torch, lantern,
+  starlight or balanced sight. The only ways out are **waiting it out** or **killing the
+  caster**. It is darkness, not blindness: a monster that is in the room can still be attacked
+  by name in the dark (`bash shadow` engages), so the bot fights what it can name and runs only
+  when the attacker's name keeps coming back as speech (it is out of reach). [C quicksilver
+  `display/light.rs`, pack spell data; F live silver-mirror 2026-11-27] (wayfarer C-133).
 - Policy: always carry a light; light it on entering a room darker than −150 or on seeing a
   darkness message; rebuy when it burns out. [C]
 - `search` needs sight too: in a room too dark to see it prints only the darkness line and

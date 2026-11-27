@@ -89,6 +89,7 @@ Cards don't repeat these:
 | 20 | Two things seen on the live host: the colour of a name in `Also here:` tells its alignment and settles a name with two records (C-129); a locked door or gate with a key in `exitpar4` is routed through and opened with the key (C-130) | 2026-11-22, after Asa would not fight the asylum's crazed lunatic and Lexi had "no route" to the dread mystic with the skeleton key in hand |
 | 21 | Blessings on party members: a character keeps a Self-or-Single spell on another of ours, picked per spell in the Blessings panel; the target's own lines say when it is on (C-131) | 2026-11-22, at John's request: Asa is to keep speed on Riley |
 | 22 | A party member that attacks last: when another member engages, it sends its attack again and so acts after them in the round, picked in the Parties panel (C-132) | 2026-11-26, at John's request: Asa's meteor swarm is to finish the monster, not open on it |
+| 23 | Never stand still and die in the dark: in a globe of darkness the bot attacks what hits it by name instead of only looking, and when the attacker is out of reach (its name keeps coming back as speech) it runs; a monster's damaging spell makes its caster an attacker (C-133) | 2026-11-27, after Rocco and Sasha died to nanati shadows' darkness while a sorceress bolted them |
 
 ## Index (wave 1, M0)
 
@@ -321,6 +322,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-130](C-130-keyed-doors-and-gates.md) | A locked door or gate with a key in `exitpar4` is routed through and opened with that key | A | S | C-091, C-118 | |
 | [C-131](C-131-blessings-on-party-members.md) | Blessings on party members: a character keeps a lasting spell on another of ours, picked per spell in the Blessings panel | A | M | C-047, C-043, C-109 | |
 | [C-132](C-132-attack-last.md) | A party member that attacks last: its attack goes again when another member engages, so it acts after them in the round | A | S | C-039, C-068 | |
+| [C-133](C-133-fight-in-the-dark.md) | Never stand still and die in the dark: the bot attacks what hits it by name in a globe of darkness, runs when the attacker is out of reach, and treats a damaging monster spell as an attack | A | S | C-108, C-091 | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or

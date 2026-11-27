@@ -476,36 +476,91 @@ async fn a_blind_character_skips_nothing_and_looks_until_it_sees() {
     assert_eq!(played, ["st", "look", "a rat", "look", "look", "a rat"]);
 }
 
-/// C-108: in the dark with something attacking (a nanati shadow's darkbolt: "The room is pitch
-/// black - you can't see anything", only for her), it looks every few seconds, not every ten,
-/// so it is back in the fight soon after the darkness lifts.
+/// C-133: in the dark (a globe of darkness: "The room is pitch black - you can't see anything"
+/// in place of the room) it still attacks what hits it by name: the game engages when the
+/// monster is there, so it does not wait out the darkness looking (silver-mirror, 2026-11-27:
+/// `bash shadow` engaged in a globe of darkness, but the bot only looked for a minute). The
+/// second `look` returns the darkness, not a room, and it attacks all the same.
 #[tokio::test(start_paused = true)]
-async fn blind_and_attacked_it_looks_again_within_a_few_seconds() {
-    let (mut g, run) = in_arena(&[]).await;
-    start(&mut g, &["large giant rat"], 35).await;
+async fn in_the_dark_it_attacks_what_hits_it_by_name() {
     let dark = "The room is pitch black - you can't see anything";
+    let (mut g, run) = in_arena(&["large giant rat"]).await;
+    start(&mut g, &["large giant rat"], 35).await;
+    // The first attack comes back as speech (the room cannot be seen); a look still shows only
+    // the dark, and it attacks the rat it knows is here all the same.
     g.expect("a rat", line("You say \"a rat\"", 35));
     g.expect("look", line(dark, 35));
-    g.expect("look", line(dark, 35));
-    g.narrated("Fight: blind, waiting to see again").await;
-    g.output(&line("The large giant rat lunges at you!", 33))
-        .await;
-    let looks = |g: &Game| {
-        g.seen
-            .iter()
-            .filter(|m| matches!(m, ToGateway::InputLine { text, .. } if text == "look"))
-            .count()
-    };
-    let before = looks(&g);
-    g.idle(Duration::from_secs(4)).await;
-    assert_eq!(
-        looks(&g),
-        before + 1,
-        "looked again within 4 s while attacked: {:?}",
-        game::arena::notices(&g.seen)
-    );
+    g.expect("a rat", line(ENGAGED, 35));
+    let mut attacks = 0;
+    g.until(|m| match m {
+        ToGateway::InputLine { text, .. } if text == "a rat" => {
+            attacks += 1;
+            (attacks == 2).then_some(())
+        }
+        _ => None,
+    })
+    .await;
     g.freeze();
-    g.close(run).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "look", "a rat"]);
+}
+
+/// C-133: in the dark, hit by a monster whose name keeps coming back as speech (nothing it can
+/// name is here, so it is out of reach), the bot runs instead of looking until the darkness
+/// lifts. Rocco and Sasha took a minute of a nanati sorceress's bolts each while looking and
+/// died (2026-11-27). A `*Combat Off*` is not awaited: it leaves whatever the HP, as a
+/// stalemate does.
+#[tokio::test(start_paused = true)]
+async fn blind_and_hit_by_what_it_cannot_reach_it_leaves() {
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 35).await;
+    g.narrated("Waiting here").await;
+    // A nanati shadow bolts it from the dark: an attacker it cannot name (every `a shadow`
+    // comes back as speech). Two tries, then it runs.
+    g.output(&line(
+        "Nanati shadow fires a darkbolt at you for 6 damage!",
+        30,
+    ))
+    .await;
+    g.expect("a shadow", line("You say \"a shadow\"", 30));
+    g.expect("a shadow", line("You say \"a shadow\"", 30));
+    g.expect("u", at_hp(&room(NARROW_ROAD), 30));
+    g.narrated("Blind: nanati shadow hits me and I cannot reach it; leaving")
+        .await;
+    // Drive until it takes the exit (the flee's first hop), then stop.
+    g.until(|m| match m {
+        ToGateway::InputLine { text, .. } if text == "u" => Some(()),
+        _ => None,
+    })
+    .await;
+    g.freeze();
+    let (_, played) = g.close(run).await;
+    // Two tries at the shadow, then away through the exit, whatever the HP.
+    assert_eq!(played.iter().filter(|c| *c == "a shadow").count(), 2);
+    assert!(played.contains(&"u".to_owned()), "{played:?}");
+}
+
+/// C-133: a monster's spell that hurts the character (`Nanati shadow fires a darkbolt at you
+/// for 6 damage!`) makes the caster an attacker, so it is fought by name even though no blow
+/// of its ever landed. A nanati sorceress bolted Rocco and Sasha from the same room for a
+/// minute and was never fought, because her spell lines were not read as attacks (2026-11-27).
+#[tokio::test(start_paused = true)]
+async fn a_monsters_damaging_spell_makes_the_caster_an_attacker() {
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &[], 35).await;
+    g.narrated("Waiting here").await;
+    g.expect("a shadow", line(ENGAGED, 29));
+    g.output(&line(
+        "Nanati shadow fires a darkbolt at you for 6 damage!",
+        29,
+    ))
+    .await;
+    g.narrated("Fight: nanati shadow").await;
+    // Let the engage settle before the test tears down.
+    g.idle(Duration::from_secs(1)).await;
+    g.freeze();
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a shadow"]);
 }
 
 #[tokio::test(start_paused = true)]
