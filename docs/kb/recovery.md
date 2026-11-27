@@ -109,7 +109,10 @@ Everything below is from `slow_update_character` (LJNBKGND.C:1555-1725), the med
   starlight or balanced sight. The only ways out are **waiting it out** or **killing the
   caster**. It is darkness, not blindness: a monster that is in the room can still be attacked
   by name in the dark (`bash shadow` engages), so the bot fights what it can name and runs only
-  when the attacker's name keeps coming back as speech (it is out of reach). [C quicksilver
+  when the attacker's name keeps coming back as speech (it is out of reach). A monster that
+  dies or leaves cannot be re-seen in the dark (the next `look` shows only the darkness), so its
+  attack comes back as speech too; after two such tries the bot treats it as gone and the loop
+  or Go to walks on, rather than standing over the ghost until the darkness lifts. [C quicksilver
   `display/light.rs`, pack spell data; F live silver-mirror 2026-11-27] (wayfarer C-133).
 - Policy: always carry a light; light it on entering a room darker than −150 or on seeing a
   darkness message; rebuy when it burns out. [C]
