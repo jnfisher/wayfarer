@@ -850,3 +850,43 @@ async fn with_stashing_off_nothing_is_hidden() {
     let (seen, _) = g.close(run).await;
     assert!(!sent(&seen).iter().any(|l| l.starts_with("hide")));
 }
+
+/// C-133: a globe of darkness falls while the bot fights; the monster dies but no fresh room
+/// view clears it in the dark. Its attack comes back as speech twice, so it is a ghost: the
+/// room is quiet and the loop walks on, instead of standing in the dark over a dead nanati for
+/// the whole minute (Rocco, 2026-11-27).
+#[tokio::test(start_paused = true)]
+async fn in_the_dark_a_ghost_target_does_not_hold_the_loop() {
+    let (mut g, run) = ready_at(VILLAGE_ENTRANCE).await;
+    let dark = "The room is pitch black - you can't see anything";
+    g.expect("w", room(NARROW_PATH));
+    g.expect("w", room(NARROW_ROAD));
+    g.expect("d", arena(&["large giant rat"], 35));
+    // Darkness falls as it reaches the rat: the attack comes back as speech, a look shows only
+    // the dark, the second attack is speech too.
+    g.expect("a rat", says("You say \"a rat\""));
+    g.expect("look", says(dark));
+    g.expect("a rat", says("You say \"a rat\""));
+    // A ghost now: on to the next stop.
+    g.expect("n", says("The door is closed!"));
+    g.expect("bash n", says("You bashed the door open."));
+    g.expect("n", dungeon_entrance());
+    g.run_loop(&[SMALL_CAVERN]).await;
+    g.narrated("Fight: large giant rat").await;
+    // The ghost no longer holds the room: the stop is cleared and the loop walks on.
+    g.narrated("Stop 1/3 cleared: nothing there").await;
+    g.narrated("Arrived: Dungeon, Entrance").await;
+    g.freeze();
+    let (seen, played) = g.close(run).await;
+    assert!(
+        played.contains(&"bash n".to_owned()),
+        "walked on: {played:?}"
+    );
+    assert!(
+        notices(&seen)
+            .iter()
+            .any(|n| n == "Loop Newhaven: to stop 2/3 Dungeon, Entrance (one step, one door)"),
+        "{:?}",
+        notices(&seen)
+    );
+}

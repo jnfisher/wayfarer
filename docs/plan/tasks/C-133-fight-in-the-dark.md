@@ -49,6 +49,12 @@ as attacks, so even a working attack-in-the-dark would not have gone for her.
   and looks until it lifts, and does not attack by name or flee on this account.
 - A monster's damaging spell (`spell_cast_on_you` with `dmg` > 0) makes its caster an attacker,
   by the monsters' own name for it, so a caster that never lands a blow is fought and fled from.
+- **A dead or departed target does not hold the bot.** In the dark no fresh room view clears a
+  monster, so when the one it was fighting dies its attack comes back as speech too. After two
+  tries that name is a ghost: a ghost in the room (`here`) no longer counts as a fight here, so
+  the room goes quiet and the loop or Go to walks on. An attacker still counts, ghost or not:
+  something hitting it is fought if it can be named, fled from if not. (Rocco stood over a dead
+  nanati for a whole globe of darkness, 2026-11-27.)
 
 ## Design notes
 

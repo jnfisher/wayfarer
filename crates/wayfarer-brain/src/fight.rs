@@ -207,6 +207,16 @@ impl Fight {
         ))
     }
 
+    /// Blind, a monster whose attack kept coming back as speech (`You say "bash shadow"`) is a
+    /// ghost: it died or left, but in the dark no fresh room view clears it (C-133). Matched by
+    /// its attack word, so `nasty nanati bladesman` and `nanati bladesman` are the one ghost.
+    fn is_ghost(&self, name: &str) -> bool {
+        let word = attack_word(name);
+        self.blind_said
+            .iter()
+            .any(|(n, &c)| c >= BLIND_SAID_TRIES && attack_word(n).eq_ignore_ascii_case(word))
+    }
+
     /// Blind and out of combat: whether to look again now ([`BLIND_LOOK`], or
     /// [`BLIND_LOOK_ATTACKED`] while something attacks it).
     fn blind_look_due(&self, v: &View) -> bool {
@@ -228,11 +238,20 @@ impl Mode for Fight {
             return Some("in combat".to_owned());
         }
         if self.blind {
-            // Nothing to aim at. A fight going on in the room (something attacks it, or a blow
-            // heard put a monster here): it stays with it, looking now and then, ready when it
-            // sees again. Quiet: the loop goes on blind (a move that goes shows where it is),
-            // and with nothing else to do it looks now and then ([`Fight::blind_look`]) (C-108).
-            let fight_here = !v.presence.attackers.is_empty() || !v.presence.here.is_empty();
+            // A fight going on in the room (something attacks it, or a blow heard put a monster
+            // here): it stays with it, looking now and then, ready when it sees again. Quiet:
+            // the loop goes on blind (a move that goes shows where it is), and with nothing else
+            // to do it looks now and then ([`Fight::blind_look`]) (C-108). A monster that kept
+            // coming back as speech is a ghost (it died or moved; in the dark no fresh room view
+            // clears it): a ghost in the room does not count, so once only ghosts are left the
+            // room is quiet and the loop or Go to walks on instead of standing there (C-133;
+            // Rocco waited out a whole globe of darkness over a dead nanati, 2026-11-27). An
+            // attacker always counts, ghost or not: something hitting it must be dealt with,
+            // fought if it can be named, fled from if not (the cornered flee). A curse sees
+            // nothing at all, so it waits on anything here.
+            let real_here = |n: &String| self.cursed || !self.is_ghost(n);
+            let fight_here =
+                !v.presence.attackers.is_empty() || v.presence.here.iter().any(real_here);
             return fight_here.then(|| "blind, a fight here".to_owned());
         }
         if self.look {
