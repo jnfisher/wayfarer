@@ -1302,6 +1302,20 @@ impl RoomGraph {
     /// (`use chime` is the USE command; `ring chime` reaches the script). With none, the room
     /// command can't be taken. Returns how many have a phrase.
     pub fn choose_phrases(&mut self, reads_as_command: impl Fn(&str) -> bool) -> usize {
+        self.choose_phrases_or(reads_as_command, |_| false)
+    }
+
+    /// [`RoomGraph::choose_phrases`], and for a room command none of whose phrases escapes the
+    /// command parser, the first `falls_through` accepts: a command that hands a name it finds
+    /// nothing by to the room's command text. LOOK does (`cmd_look`, `LJNCMDA.C:1225-1250`), and
+    /// READ of no item it carries looks instead (`LJNCMDB.C:325-355`), so the Tower bedroom's
+    /// `read book` (10/235) runs its script and takes the character down to the Glacial Cavern,
+    /// the only way there; every one of its phrases opens with READ or LOOK.
+    pub fn choose_phrases_or(
+        &mut self,
+        reads_as_command: impl Fn(&str) -> bool,
+        falls_through: impl Fn(&str) -> bool,
+    ) -> usize {
         let mut usable = 0;
         for e in self
             .edges
@@ -1312,6 +1326,7 @@ impl RoomGraph {
                 .phrases
                 .iter()
                 .find(|p| !reads_as_command(p))
+                .or_else(|| e.phrases.iter().find(|p| falls_through(p)))
                 .cloned()
                 .unwrap_or_default();
             usable += usize::from(!e.command.is_empty());

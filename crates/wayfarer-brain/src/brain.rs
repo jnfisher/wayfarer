@@ -128,8 +128,17 @@ impl Atlas {
         graph.learn_phrases(&knowledge);
         let crossings = graph.learn_crossings(&knowledge);
         // A room command's phrase must not read as one of the game's commands, or the game
-        // never gets to the room's script.
-        graph.choose_phrases(|p| crate::commands::classify(p).cmd.is_some());
+        // never gets to the room's script; failing that, LOOK or READ, which hand a name they
+        // find nothing by to the script (the Tower bedroom's `read book`).
+        graph.choose_phrases_or(
+            |p| crate::commands::classify(p).cmd.is_some(),
+            |p| {
+                matches!(
+                    crate::commands::classify(p).cmd,
+                    Some(crate::commands::Cmd::Look | crate::commands::Cmd::Read)
+                ) && p.split_whitespace().nth(1).is_some()
+            },
+        );
         // Again, so the paths' steps see the crossings as the ways through they take.
         let knowledge = if crossings > 0 {
             PathKnowledge::load(pack, &graph)?
