@@ -263,6 +263,12 @@ impl Mode for Recover {
             self.rests = 0;
             return Step::wait(format!("Recover: resting to {}% in {here}", v.rest_until()));
         }
+        // A fight is going on here, the party's or anyone's, though nothing attacks the
+        // character: no rest starts, nor a walk away to one, until it is over (C-136; Rocco lay
+        // down to rest in the Volcanic Chamber with four dragons burning his party).
+        if let Some(m) = v.presence.fight_here() {
+            return Step::wait(format!("Recover: not resting while {m} fights here"));
+        }
         // Every walk out was stopped on the way (a fight) and a quiet room is still near:
         // resting here goes against the quiet-room rule (`kb/pitfalls.md` 20, 24). Said once.
         let against_the_rule = self.walks_out >= WALKS

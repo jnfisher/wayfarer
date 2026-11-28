@@ -91,6 +91,7 @@ Cards don't repeat these:
 | 22 | A party member that attacks last: when another member engages, it sends its attack again and so acts after them in the round, picked in the Parties panel (C-132) | 2026-11-26, at John's request: Asa's meteor swarm is to finish the monster, not open on it |
 | 23 | Never stand still and die in the dark: in a globe of darkness the bot attacks what hits it by name instead of only looking, and when the attacker is out of reach (its name keeps coming back as speech) it runs; a monster's damaging spell makes its caster an attacker (C-133) | 2026-11-27, after Rocco and Sasha died to nanati shadows' darkness while a sorceress bolted them |
 | 24 | Sneaking is driven by the move, not the room: a sneaker whose position belief is unknown (terse corridors, a maze) keeps sneaking instead of believing itself sneaking for ever and walking plain (C-134); a walk that set off unsneaked stops in the first clear room to sneak, and a blessing's cast ends the sneak belief (C-135) | 2026-11-27, after Penny the Gypsy walked the sewers unsneaked while lost, and still 110 of 285 moves on the Salamander Tubes |
+| 25 | An attack names the monster it means: the word sent picks out the target from the others in the room; a monster the weapon cannot hurt is fought with the spell; a fight in the room holds off a rest and still gets the heals (C-136) | 2026-11-28, after four melee bots skipped every dragon in the Volcanic Chamber because `a dragon` always reached the adult, Rocco lay down to rest and Sasha stood by |
 
 ## Index (wave 1, M0)
 
@@ -326,6 +327,7 @@ everyone goes for Thrag first, and after `river` the bot knows the Labyrinth's e
 | [C-133](C-133-fight-in-the-dark.md) | Never stand still and die in the dark: the bot attacks what hits it by name in a globe of darkness, runs when the attacker is out of reach, and treats a damaging monster spell as an attack | A | S | C-108, C-091 | |
 | [C-134](C-134-sneak-when-lost.md) | Sneaking keys off the move, not a change of room, so a sneaker whose position is unknown keeps sneaking instead of walking plain | A | S | C-048, C-122 | |
 | [C-135](C-135-sneak-in-the-first-clear-room.md) | A walk that set off unsneaked stops in the first clear room to sneak; a cast that does no damage ends the sneak | A | S | C-048, C-134 | |
+| [C-136](C-136-attack-word-that-names-the-target.md) | An attack names the monster it means; a monster the weapon cannot hurt is fought with the spell; a fight in the room holds off a rest and still gets the heals | A | S | C-091, C-133 | |
 
 Wave 16 (2026-11-10) comes from the party's run to Chancellor Annora and on to Rhudaur:
 - Go to found no route to Annora (1:1333), because the Monastery's Inner Gate can't be bashed or

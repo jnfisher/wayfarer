@@ -89,6 +89,9 @@ struct World {
     /// A monster in the Arena (C-132): `look` shows it there, and `a <word>` engages it
     /// (`*Combat Engaged*`; the other one there sees `<Name> moves to attack <monster>.`).
     monster: Option<&'static str>,
+    /// Those whose weapon does nothing to the monster: their attack on it is answered `Your
+    /// weapon has no effect against this monster!` (C-136).
+    no_effect: BTreeSet<String>,
 }
 
 /// A room too dark to see, as the game shows it.
@@ -311,6 +314,12 @@ impl Gateway {
                         said(&format!("{} casts minor healing on you!", first(session))),
                     ),
                 ]
+            }
+            t if t.starts_with("a ")
+                && self.world.monster.is_some()
+                && self.world.no_effect.contains(session) =>
+            {
+                me(said("Your weapon has no effect against this monster!"))
             }
             t if t.starts_with("a ")
                 && self.world.rooms[session] == ARENA
@@ -2200,4 +2209,40 @@ async fn the_member_that_attacks_last_attacks_again_when_another_engages() {
             assert_eq!(attacks, [FOLLOWER, LEADER], "nobody attacks last");
         }
     }
+}
+
+/// C-136, the Volcanic Chamber (silver-mirror, 2026-11-28): Sasha's weapon did nothing to the
+/// adult red dragon, so she had nothing to fight, and she stood by while it burned Lexi and
+/// Asa: out of combat, a heal was Recover's, and Recover heals only in a quiet room. With a
+/// fight going on in the room, the healer whose weapon cannot hurt the monster heals the
+/// member it is hurting.
+#[tokio::test(start_paused = true)]
+async fn a_healer_out_of_the_fight_heals_a_member_fighting_in_the_room() {
+    let (mut g, _run) = Gateway::start(brain(None)).await;
+    g.world.cleric = true;
+    g.world.together = true;
+    formed(&mut g).await;
+    g.play(2).await;
+    g.world.monster = Some("giant rat");
+    g.world.no_effect.insert(FOLLOWER.to_owned());
+    let arrives = said("A giant rat moves into the room from the north.");
+    g.tell(FOLLOWER, &arrives).await;
+    g.tell(LEADER, &arrives).await;
+    g.play(3).await;
+    // 15 of 35 is 42%: under the heal-a-member line in a fight.
+    g.world.hp.insert(LEADER.to_owned(), 15);
+    g.tell(LEADER, &said("Health:    15/35    [42%]")).await;
+    g.until(|m| match m {
+        ToGateway::InputLine { session, text } if session == FOLLOWER && text == "mihe penny" => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+    let said = notices_of(&g, FOLLOWER);
+    assert!(
+        said.iter()
+            .any(|n| n == "Fight: casting minor healing on penny"),
+        "{said:?}"
+    );
 }

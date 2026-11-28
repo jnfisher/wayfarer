@@ -35,6 +35,21 @@ For the full formulas, see `test/play/notes/combat.md` (with source references).
   listed first in the here-names colour, an outlaw with a `*`. [C] (first noted [F, John];
   wayfarer C-129)
 
+## Naming a monster [C LJNUTIL.C:4016-4060 `ljnsame`; F live silver-mirror 2026-11-28]
+- A typed name (`a dragon`, `bs young red`, `mmis rat`) matches a monster when it is the start
+  of the name from one of its words on, case not counting (kernel `sameto` against the whole
+  name, then from each later word). So `dra`, `dragon`, `red dragon` and `young red` all match
+  `nasty young red dragon`; `oung` does not. Several words may be typed.
+- The room's monsters are tried in slot order, the order `Also here:` lists them, and **the
+  first that matches is the one attacked**. With `adult red dragon, young red dragon, ...` in
+  the room, `a dragon` is always the adult's: four bots meaning the young, fat baby and nasty
+  young dragons each got the adult's `Your weapon has no effect against this monster!`
+  (silver-mirror, 2026-11-28). A word that picks out a later one: one no monster before it
+  answers to (`young`, `fat`, `nasty`).
+- An arrival takes the room's first free slot, so after a kill a newcomer can be listed ahead
+  of monsters that were there before it (the function after `ljnsame`, the room's
+  `NROOMMONS` slots). [C]
+
 ## What attacks you [C LJNBKGND.C:2683-2942]
 - Monsters of the four evil alignments attack players they can see; Good, Lawful Good and Neutral
   ones never start a fight; guards go for outlaws (40+ EP), Lawful Evil monsters leave outlaws alone
