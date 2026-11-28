@@ -333,6 +333,43 @@ async fn after_the_most_casts_the_attack_command_takes_over_in_the_fight() {
     );
 }
 
+/// C-136: the weapon has no effect on it (Riley, Rocco and Sasha on the adult red dragon,
+/// silver-mirror 2026-11-28): a character with an attack spell goes on with the spell, its
+/// casts or no casts, instead of leaving the monster alone.
+#[tokio::test(start_paused = true)]
+async fn a_monster_the_weapon_does_nothing_to_is_fought_with_the_spell() {
+    let (mut g, run) = in_arena_with(
+        &["large giant rat"],
+        "[spells]\nmax_casts_per_monster = 2\n",
+    )
+    .await;
+    start_caster(&mut g, "Mage", &MAGE_SPELLS, &["large giant rat"], 35, 20).await;
+    g.expect("mmis rat", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat with magic missile")
+        .await;
+    g.expect(
+        "a rat",
+        line("Your weapon has no effect against this monster!", 35),
+    );
+    g.expect("look", arena(&["large giant rat"], 35));
+    g.expect("mmis rat", line(ENGAGED, 35));
+    g.round(CAST, 35).await;
+    g.round(CAST, 35).await;
+    g.narrated("Fight: large giant rat with magic missile (the weapon has no effect)")
+        .await;
+    // Two more casts: no weapon this time.
+    g.round(CAST, 35).await;
+    g.round(CAST, 35).await;
+    g.idle(Duration::from_secs(1)).await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(
+        played,
+        [
+            "st", "look", "spells", "mmis rat", "a rat", "look", "mmis rat"
+        ]
+    );
+}
+
 const DRUID_SPELLS: [(i32, i32, &str, &str); 1] = [(8, 5, "strk", "stonestrike")];
 
 #[tokio::test(start_paused = true)]

@@ -51,9 +51,62 @@ pub fn hp_percent(hp: Option<i32>, hp_max: Option<i32>) -> Option<i32> {
     }
 }
 
-/// The word an attack names a monster by: its last (`large giant rat` is `a rat`).
+/// A name's last word (`large giant rat` is `rat`): what the dark's ghosts are matched by
+/// (C-133), and the word an attack sends when nothing before the monster shares it.
 pub fn attack_word(name: &str) -> &str {
     name.split_whitespace().last().unwrap_or(name)
+}
+
+/// Whether the game takes `typed` for the monster `name` (`ljnsame`, `kb/combat.md` "Naming a
+/// monster"): `typed` is the start of the name from one of its words on, case not counting.
+/// So `young red` is `nasty young red dragon`, and `oung` is not.
+pub fn names(typed: &str, name: &str) -> bool {
+    let (typed, name) = (typed.trim().to_lowercase(), name.to_lowercase());
+    if typed.is_empty() {
+        return false;
+    }
+    let mut rest = name.as_str();
+    loop {
+        if rest.starts_with(&typed) {
+            return true;
+        }
+        match rest.find(char::is_whitespace) {
+            Some(i) => rest = rest[i..].trim_start(),
+            None => return false,
+        }
+    }
+}
+
+/// The word an attack on `name` sends in `room` (C-136): the game gives an attack to the first
+/// monster in the room its word fits, so `a dragon` beside an adult red dragon listed first is
+/// the adult's, whatever the bot meant. The last word when no monster before it in the room
+/// answers to that (`large giant rat` is `rat`, as it always was); else the shortest run of
+/// whole words in the name that none before it answers to, on a tie the later one. When every
+/// run fits one before it (the same name twice), the last word: the first of the two is as
+/// good.
+pub fn target_word(name: &str, room: &[String]) -> String {
+    let words: Vec<&str> = name.split_whitespace().collect();
+    let last = attack_word(name).to_owned();
+    let before: &[String] = room
+        .iter()
+        .position(|n| n.eq_ignore_ascii_case(name))
+        .map_or(room, |i| &room[..i]);
+    if !before.iter().any(|n| names(&last, n)) {
+        return last;
+    }
+    let mut best: Option<String> = None;
+    for start in (0..words.len()).rev() {
+        for end in (start + 1)..=words.len() {
+            let run = words[start..end].join(" ");
+            if before.iter().any(|n| names(&run, n)) {
+                continue;
+            }
+            if best.as_ref().is_none_or(|b| run.len() < b.len()) {
+                best = Some(run);
+            }
+        }
+    }
+    best.unwrap_or(last)
 }
 
 /// The alignments of `ALIGNMENTS`: Good, Evil, Chaotic Evil, Neutral, Lawful Good, Neutral
@@ -517,5 +570,62 @@ mod tests {
     fn the_attack_word_is_the_last() {
         assert_eq!(attack_word("large giant rat"), "rat");
         assert_eq!(attack_word("kobold"), "kobold");
+    }
+
+    fn s(v: &[&str]) -> Vec<String> {
+        v.iter().map(|n| (*n).to_owned()).collect()
+    }
+
+    /// The Volcanic Chamber (silver-mirror, 2026-11-28): `a dragon` was the adult's for every
+    /// one of them.
+    fn chamber() -> Vec<String> {
+        s(&[
+            "adult red dragon",
+            "young red dragon",
+            "red dragon hatchling",
+            "fat baby red dragon",
+            "nasty young red dragon",
+        ])
+    }
+
+    #[test]
+    fn the_word_picks_out_the_target_from_those_before_it() {
+        let room = chamber();
+        let words: Vec<String> = room.iter().map(|n| target_word(n, &room)).collect();
+        assert_eq!(words, ["dragon", "young", "hatchling", "fat", "nasty"]);
+        // Each reaches the one it was made for: the first in the room the game takes it for.
+        for (n, w) in room.iter().zip(&words) {
+            let first = room.iter().find(|m| names(w, m));
+            assert_eq!(first, Some(n), "{w}");
+        }
+    }
+
+    #[test]
+    fn a_lone_name_keeps_its_last_word() {
+        assert_eq!(
+            target_word("large giant rat", &s(&["large giant rat"])),
+            "rat"
+        );
+        assert_eq!(target_word("large giant rat", &[]), "rat");
+        assert_eq!(
+            target_word("large giant rat", &s(&["kobold", "large giant rat"])),
+            "rat"
+        );
+        // The same name twice: the first of them is the one reached, and as good.
+        let twins = s(&["young red dragon", "young red dragon"]);
+        assert_eq!(target_word("young red dragon", &twins), "dragon");
+        // An earlier name that only some words fit: a later run picks it out.
+        let rats = s(&["giant rat", "large giant rat"]);
+        assert_eq!(target_word("large giant rat", &rats), "large");
+    }
+
+    #[test]
+    fn matching_is_from_any_word_start_like_the_game() {
+        assert!(names("young red", "nasty young red dragon"));
+        assert!(names("Dra", "adult red dragon"));
+        assert!(names("dragon", "red dragon hatchling"));
+        assert!(!names("oung", "young red dragon"));
+        assert!(!names("red young", "nasty young red dragon"));
+        assert!(!names("", "kobold"));
     }
 }

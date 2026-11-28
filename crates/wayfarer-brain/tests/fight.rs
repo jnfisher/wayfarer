@@ -1527,3 +1527,72 @@ async fn a_shared_name_the_view_did_not_colour_is_not_fought_and_said_once() {
         .collect();
     assert_eq!(said.len(), 1, "{:?}", notices(&seen));
 }
+
+/// C-136, the Volcanic Chamber (silver-mirror, 2026-11-28): `a dragon` went to the adult red
+/// dragon, listed first, whatever the bot meant; its "no effect" skipped every dragon in turn.
+/// Here the weapon does nothing to the large giant rat, and the fat giant rat after it is
+/// attacked by a word that is its own (`a fat`), not `a rat`, which is the large one's.
+#[tokio::test(start_paused = true)]
+async fn no_effect_on_the_first_does_not_skip_the_others() {
+    let (mut g, run) = in_arena(&[]).await;
+    let both = ["large giant rat", "fat giant rat"];
+    start(&mut g, &both, 35).await;
+    g.expect(
+        "a rat",
+        line("Your weapon has no effect against this monster!", 35),
+    );
+    g.expect("look", arena(&both, 35));
+    g.expect("a fat", line(ENGAGED, 35));
+    g.narrated("Fight: fat giant rat").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "look", "a fat"]);
+}
+
+/// C-136: the bot's word picks out the monster in the room. Rocco's `bash dragon` at the young
+/// red dragon was the adult's; with the fat giant rat listed first, the large one is `a large`.
+#[tokio::test(start_paused = true)]
+async fn the_attack_word_picks_out_the_target_from_those_listed_before_it() {
+    let (mut g, run) = in_arena(&[]).await;
+    let both = ["fat giant rat", "large giant rat"];
+    start(&mut g, &both, 35).await;
+    g.expect(
+        "a rat",
+        line("Your weapon has no effect against this monster!", 35),
+    );
+    g.expect("look", arena(&both, 35));
+    g.expect("a large", line(ENGAGED, 35));
+    g.narrated("Fight: large giant rat").await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "look", "a large"]);
+}
+
+/// C-136: Rocco lay down to rest in the Volcanic Chamber, nothing attacking him, while the
+/// dragons his weapon could not hurt burned the rest of the party. With a monster here that
+/// was seen fighting, no rest starts; once it is dead, the rest goes.
+#[tokio::test(start_paused = true)]
+async fn no_rest_starts_while_a_fight_goes_on_in_the_room() {
+    let (mut g, run) = in_arena(&[]).await;
+    start(&mut g, &["large giant rat"], 20).await;
+    g.expect(
+        "a rat",
+        line("Your weapon has no effect against this monster!", 20),
+    );
+    g.expect("look", arena(&["large giant rat"], 20));
+    g.output(&line("Rocco moves to attack large giant rat.", 20))
+        .await;
+    g.narrated("Recover: not resting while large giant rat fights here")
+        .await;
+    // Nor a walk away to rest (these settings rest in a quiet room).
+    g.idle(Duration::from_secs(30)).await;
+    // The party kills it: the fight is over, and Recover goes to rest.
+    g.expect("u", room(NARROW_ROAD));
+    g.output(&line(
+        "The giant rat falls to the ground with a tortured squeak.",
+        20,
+    ))
+    .await;
+    g.narrated("Recover: walking to Newhaven, Narrow Road to rest (Newhaven, Arena spawns)")
+        .await;
+    let (_, played) = g.close(run).await;
+    assert_eq!(played, ["st", "look", "a rat", "look", "u"]);
+}

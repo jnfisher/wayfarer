@@ -45,6 +45,10 @@ pub(crate) struct Presence {
     /// Attackers the monster rules ignore, set aside by [`Presence::heeded`] for the modes;
     /// always empty in the session's own presence.
     pub ignored: Vec<String>,
+    /// Monsters here seen fighting someone (`The young red dragon rips Lexi`, `Riley moves to
+    /// attack adult red dragon`), whoever they fight: a fight is going on in the room while
+    /// one of them is still here (C-136).
+    fighting: Vec<String>,
     /// The players of the last `Also here:`.
     players: Vec<String>,
     /// Players a PvP line showed attacking the character.
@@ -80,6 +84,7 @@ impl Presence {
     pub fn moved_unseen(&mut self) {
         self.shown = None;
         self.here.clear();
+        self.fighting.clear();
         self.colours.clear();
         self.players.clear();
         self.floor.clear();
@@ -160,6 +165,7 @@ impl Presence {
                     let pvp = &self.pvp;
                     self.attackers
                         .retain(|a| here.contains(a) || pvp.contains(a));
+                    self.fighting.retain(|f| here.contains(f));
                 }
             }
             // A player's blow can read like a monster's: not an attack without a PvP line.
@@ -233,9 +239,25 @@ impl Presence {
             n.eq_ignore_ascii_case(name)
                 || policy::is_one_of(&atlas.monsters, n, &[name.to_owned()])
         };
-        if !self.here.iter().any(known) {
-            self.here.push(name.to_owned());
+        let here = match self.here.iter().find(|n| known(n)) {
+            Some(n) => n.clone(),
+            None => {
+                self.here.push(name.to_owned());
+                name.to_owned()
+            }
+        };
+        if !self.fighting.contains(&here) {
+            self.fighting.push(here);
         }
+    }
+
+    /// A monster here that was seen fighting (C-136): the party, or anyone, is in a fight in
+    /// this room though nothing attacks the character. None once they have all died or gone.
+    pub fn fight_here(&self) -> Option<&str> {
+        self.fighting
+            .iter()
+            .find(|f| self.here.contains(f))
+            .map(String::as_str)
     }
 }
 

@@ -17,7 +17,7 @@ use wayfarer_parse::typed::GameEvent;
 use crate::brain::Atlas;
 use crate::executor::{Action, Expect, Outcome, Refused};
 use crate::modes::{Mode, Presence, Step, View};
-use crate::policy::{attack_word, hostile, is_first, target};
+use crate::policy::{attack_word, hostile, is_first, target, target_word};
 use crate::spellcraft::PartyCast;
 use wayfarer_world::{MonsterRules, SpellDef};
 
@@ -81,6 +81,13 @@ pub(crate) struct Fight {
     skip: BTreeSet<String>,
     /// The room the skips were made in; leaving it clears them.
     skip_room: Option<wayfarer_world::Key>,
+    /// Monsters here the weapon has no effect on (`Your weapon has no effect against this
+    /// monster!`): fought with the attack spell while there is one to cast, else left alone
+    /// like a skip, while the character stays in `skip_room` (C-136).
+    weapon_proof: BTreeSet<String>,
+    /// The word the last attack named its monster by (C-136): what a reply taken for speech
+    /// ends with.
+    sent: Option<String>,
     /// The character is blind ("You are blind.", a black curse): it cannot see a target, so
     /// the game answers an attack with "You do not see …" or takes it for speech. Nothing is
     /// skipped for that; a room shown again means it sees (C-094).
@@ -189,6 +196,19 @@ pub(crate) fn cast_step(cast: &PartyCast, mode: &str) -> Step {
 }
 
 impl Fight {
+    /// The word an attack on `t` sends (C-136): one no monster listed before it answers to, so
+    /// the game gives the attack to `t` and not to the first that shares its name's last word.
+    fn word(&mut self, v: &View, t: &str) -> String {
+        let word = target_word(t, &v.presence.here);
+        self.sent = Some(word.clone());
+        word
+    }
+
+    /// Whether an attack spell would go now: one to cast, and no hold after a refusal.
+    fn spell_ready(&self, v: &View) -> bool {
+        !self.spell_hold.is_some_and(|t| v.now < t) && v.attack_spell().is_some()
+    }
+
     /// Whether it believes the character blind (or in the dark): nothing to aim at.
     pub fn blind(&self) -> bool {
         self.blind
@@ -257,7 +277,13 @@ impl Mode for Fight {
         if self.look {
             return Some("looking for the next".to_owned());
         }
-        self.choose(v).map(|t| format!("{t} is here"))
+        if let Some(t) = self.choose(v) {
+            return Some(format!("{t} is here"));
+        }
+        // Nothing here it can hurt, but the party is fighting here: its heals are still the
+        // fight's (C-136; Sasha stood by while dragons burned Lexi and Asa).
+        self.heal_by(v)
+            .map(|who| format!("a fight here, {who} hurt"))
     }
 
     fn step(&mut self, v: &View) -> Step {
@@ -333,6 +359,17 @@ impl Mode for Fight {
                 Action::new("look", Expect::RoomSeen),
                 "Fight: looking for the next",
             );
+        } else if self.choose(v).is_none() && self.heal_by(v).is_some() {
+            // The party's fight goes on here without the character: a heal, between rounds.
+            // Not engaged, so no `*Combat Off*` of ours follows the cast.
+            let step = match self.heal(v) {
+                Some(step) => Some(step),
+                None => self.heal_mates(v),
+            };
+            if let Some(step) = step {
+                self.healed = false;
+                return step;
+            }
         }
         match self.choose(v) {
             Some(t) => {
@@ -345,30 +382,33 @@ impl Mode for Fight {
                 if let Some((s, n)) = self.area_open(v) {
                     return self.open_area(&s, n, "Fight", v.now);
                 }
-                let spell = if (self.backstab && self.sneaking)
-                    || self.weapon_only
-                    || self.spell_hold.is_some_and(|t| v.now < t)
-                {
-                    None
-                } else {
-                    v.attack_spell()
-                };
                 if self.cast_target.as_deref() != Some(t.as_str()) {
                     self.casts = 0;
                     self.weapon_only = false;
                     self.cast_target = Some(t.clone());
                 }
+                // The weapon does nothing to it: the spell, backstab or not (C-136).
+                let proof = self.weapon_proof.contains(&t);
+                let spell = if self.spell_hold.is_some_and(|t| v.now < t)
+                    || (!proof && ((self.backstab && self.sneaking) || self.weapon_only))
+                {
+                    None
+                } else {
+                    v.attack_spell()
+                };
                 self.spell_fight = spell.is_some();
                 match spell {
                     // Cast out of combat, the spell engages and auto-combat casts it every
                     // round while the mana lasts (`kb/spells.md`).
                     Some(s) => {
-                        let line = format!("{} {}", s.short, attack_word(&t));
+                        let line = format!("{} {}", s.short, self.word(v, &t));
                         self.last_attack = Some((line.clone(), v.now));
-                        Step::send(
-                            Action::new(line, Expect::Engaged),
-                            format!("Fight: {t} with {}", s.name),
-                        )
+                        let why = if proof {
+                            format!("Fight: {t} with {} (the weapon has no effect)", s.name)
+                        } else {
+                            format!("Fight: {t} with {}", s.name)
+                        };
+                        Step::send(Action::new(line, Expect::Engaged), why)
                     }
                     // Any sneaker may try it: only a backstab weapon or bare hands backstab,
                     // any other weapon strikes a normal blow (`kb/classes/ninja.md`).
@@ -378,12 +418,12 @@ impl Mode for Fight {
                         self.opened_bs = true;
                         self.bs_struck = false;
                         Step::send(
-                            Action::new(format!("bs {}", attack_word(&t)), Expect::Engaged),
+                            Action::new(format!("bs {}", self.word(v, &t)), Expect::Engaged),
                             format!("Fight: {t} (backstab)"),
                         )
                     }
                     None => {
-                        let line = format!("{} {}", v.attack_command(), attack_word(&t));
+                        let line = format!("{} {}", v.attack_command(), self.word(v, &t));
                         self.last_attack = Some((line.clone(), v.now));
                         Step::send(Action::new(line, Expect::Engaged), format!("Fight: {t}"))
                     }
@@ -443,7 +483,8 @@ impl Mode for Fight {
                 self.last_attack = None;
                 self.restarted = false;
             }
-            GameEvent::YouDoNotSee { .. } | GameEvent::NoEffect => self.refused(),
+            GameEvent::YouDoNotSee { .. } => self.refused(false),
+            GameEvent::NoEffect => self.refused(true),
             // Blind: the refusals that came before it knew (Lexi, 2026-11-11: "You do not see
             // shaman here!", then "You are blind.") were the blindness too.
             GameEvent::Blind => {
@@ -518,9 +559,9 @@ impl Mode for Fight {
                 if e.name == "you_say"
                     && self.target.as_deref().is_some_and(|t| {
                         let msg = e.text("msg").unwrap_or_default().to_lowercase();
-                        t.split_whitespace()
-                            .last()
-                            .is_some_and(|w| msg.ends_with(&w.to_lowercase()))
+                        // The word the attack went with (C-136), else the name's last.
+                        let word = self.sent.as_deref().unwrap_or_else(|| attack_word(t));
+                        msg.ends_with(&word.to_lowercase())
                     }) =>
             {
                 if let Some(t) = self.target.take() {
@@ -556,7 +597,7 @@ impl Mode for Fight {
                 self.healed = false;
                 self.switched = false;
             }
-            (Expect::Engaged, Outcome::Refused(Refused::Target)) => self.refused(),
+            (Expect::Engaged, Outcome::Refused(Refused::Target)) => self.refused(false),
             (Expect::Engaged, Outcome::Refused(Refused::Spell)) => {
                 self.spell_refused = true;
                 self.area = None;
@@ -591,6 +632,22 @@ fn spell_fight_is_over(max: u32, spell_fight: bool, casts: u32, switched: bool) 
 }
 
 impl Fight {
+    /// A fight is going on in the room though the character is out of it (C-136), and a heal
+    /// is due: who for (`itself`, or a member's name).
+    fn heal_by(&self, v: &View) -> Option<String> {
+        v.presence.fight_here()?;
+        if self.heal_ready.is_some_and(|t| v.now < t) {
+            return None;
+        }
+        if v.hp.is_some_and(|hp| hp < v.heal_in_combat_below()) && v.heal_spell().is_some() {
+            return Some("itself".to_owned());
+        }
+        match v.party_heal(v.member_heal_in_combat(), v.heal_in_combat_below())? {
+            PartyCast::On(_, who) => Some(capitalized(&who)),
+            PartyCast::Party(_) => Some("the party".to_owned()),
+        }
+    }
+
     /// A heal on the character in a fight, when HP is below the line and a spell and the
     /// mana for one are there. The cast ends auto-combat (`kb/spells.md`); Fight looks and
     /// engages again.
@@ -653,7 +710,9 @@ impl Fight {
             .chain(&v.presence.attackers)
             .map(String::as_str)
             .filter(|n| {
-                !self.skip.contains(*n) && hostile(&v.atlas.monsters, n, v.presence.hint(n))
+                !self.skip.contains(*n)
+                    && !self.weapon_proof.contains(*n)
+                    && hostile(&v.atlas.monsters, n, v.presence.hint(n))
             })
             .find(|n| is_first(&v.atlas.monsters, v.rules, n));
         let Some(first) = first else {
@@ -668,7 +727,7 @@ impl Fight {
         self.switched_to = Some(first.clone());
         self.stall = Stall::default();
         self.spell_fight = false;
-        let attack = format!("{} {}", v.attack_command(), attack_word(&first));
+        let attack = format!("{} {}", v.attack_command(), self.word(v, &first));
         self.last_attack = Some((attack.clone(), v.now));
         let why = match from {
             Some(from) => format!("Fight: {first} is here: switching from {from}"),
@@ -703,7 +762,7 @@ impl Fight {
         self.opened_bs = false;
         self.bs_struck = false;
         let t = self.target.clone()?;
-        let attack = format!("{} {}", v.attack_command(), attack_word(&t));
+        let attack = format!("{} {}", v.attack_command(), self.word(v, &t));
         self.last_attack = Some((attack.clone(), v.now));
         Some(Step::send(
             Action::new(attack, Expect::Engaged),
@@ -713,6 +772,10 @@ impl Fight {
 
     fn weapon_now(&mut self, v: &View) -> Option<Step> {
         let t = self.target.clone().unwrap_or_else(|| "it".to_owned());
+        // The weapon does nothing to it: the spell goes on, casts or no casts (C-136).
+        if self.weapon_proof.contains(&t) {
+            return None;
+        }
         let why = if spell_fight_is_over(v.max_casts(), self.spell_fight, self.casts, self.switched)
         {
             format!("{} casts at {t}", self.casts)
@@ -724,7 +787,7 @@ impl Fight {
         self.switched = true;
         self.weapon_only = true;
         self.spell_fight = false;
-        let attack = format!("{} {}", v.attack_command(), attack_word(&t));
+        let attack = format!("{} {}", v.attack_command(), self.word(v, &t));
         self.last_attack = Some((attack.clone(), v.now));
         Some(Step::send(
             Action::new(attack, Expect::Engaged),
@@ -833,7 +896,8 @@ impl Fight {
         self.target = Some(t.clone());
         self.stall = Stall::default();
         self.switched = true;
-        let spell = if self.weapon_only || self.spell_hold.is_some_and(|h| v.now < h) {
+        let proof = self.weapon_proof.contains(&t);
+        let spell = if self.spell_hold.is_some_and(|h| v.now < h) || (self.weapon_only && !proof) {
             None
         } else {
             v.attack_spell()
@@ -844,9 +908,9 @@ impl Fight {
         }
         self.spell_fight = spell.is_some();
         let (line, how) = match spell {
-            Some(s) => (format!("{} {}", s.short, attack_word(&t)), s.name.clone()),
+            Some(s) => (format!("{} {}", s.short, self.word(v, &t)), s.name.clone()),
             None => (
-                format!("{} {}", v.attack_command(), attack_word(&t)),
+                format!("{} {}", v.attack_command(), self.word(v, &t)),
                 v.attack_command().to_owned(),
             ),
         };
@@ -869,7 +933,8 @@ impl Fight {
     /// `kb/grouping.md` §9) and its own rules would fight it; else its own pick.
     fn choose<'a>(&self, v: &View<'a>) -> Option<&'a str> {
         // A monster to attack first (a boss) comes before the leader's target too (C-075).
-        if let Some(own) = self.pick(v.atlas, v.rules, v.presence)
+        let spell = self.spell_ready(v);
+        if let Some(own) = self.pick(v.atlas, v.rules, v.presence, spell)
             && is_first(&v.atlas.monsters, v.rules, own)
         {
             return Some(own);
@@ -890,10 +955,11 @@ impl Fight {
                 &v.presence.colours,
             )
             .is_some()
+            && (spell || !self.weapon_proof.contains(name))
         {
             return Some(name);
         }
-        self.pick(v.atlas, v.rules, v.presence)
+        self.pick(v.atlas, v.rules, v.presence, spell)
     }
 
     fn pick<'a>(
@@ -901,13 +967,16 @@ impl Fight {
         atlas: &Atlas,
         rules: &MonsterRules,
         presence: &'a Presence,
+        spell: bool,
     ) -> Option<&'a str> {
-        // Blind, a name refused as speech that often is not here (C-133).
+        // Blind, a name refused as speech that often is not here (C-133). One the weapon does
+        // nothing to, with no spell to cast at it (C-136).
         let said: BTreeSet<String> = self
             .blind_said
             .iter()
             .filter(|(_, n)| **n >= BLIND_SAID_TRIES)
             .map(|(name, _)| name.clone())
+            .chain(self.weapon_proof.iter().filter(|_| !spell).cloned())
             .collect();
         let skip = if said.is_empty() {
             std::borrow::Cow::Borrowed(&self.skip)
@@ -933,7 +1002,7 @@ impl Fight {
     /// Whether it would take the character with `presence` in the room: a monster it would
     /// attack, or anything attacking.
     pub fn would_fight(&self, atlas: &Atlas, rules: &MonsterRules, presence: &Presence) -> bool {
-        !presence.attackers.is_empty() || self.pick(atlas, rules, presence).is_some()
+        !presence.attackers.is_empty() || self.pick(atlas, rules, presence, true).is_some()
     }
 
     /// The bot's tick: in another room than the skips were made in, they go (a monster
@@ -944,6 +1013,7 @@ impl Fight {
                 tracing::info!(skipped = ?self.skip, "left the room: the skips go");
             }
             self.skip.clear();
+            self.weapon_proof.clear();
             self.timeouts.clear();
             self.blind_said.clear();
             self.cornered_told = false;
@@ -968,13 +1038,22 @@ impl Fight {
     }
 
     /// The game refused the target: leave it alone in this room, and look again. Blind, the
-    /// refusal is the blindness, not the monster: nothing is skipped.
-    fn refused(&mut self) {
+    /// refusal is the blindness, not the monster: nothing is skipped. `no_effect`: the weapon
+    /// does nothing to it (C-136), so it is fought with the attack spell if there is one, else
+    /// left alone; a second "no effect" leaves it alone. The word the attack went with picks
+    /// out the target in the room ([`target_word`]), so the refusal is the target's.
+    fn refused(&mut self, no_effect: bool) {
+        self.sent = None;
         if let Some(t) = self.target.take()
             && !self.blind
         {
-            tracing::info!(target = %t, "refused: skipped in this room");
-            self.skip.insert(t);
+            if no_effect && !self.weapon_proof.contains(&t) {
+                tracing::info!(target = %t, "the weapon has no effect: the spell, or skipped");
+                self.weapon_proof.insert(t);
+            } else {
+                tracing::info!(target = %t, "refused: skipped in this room");
+                self.skip.insert(t);
+            }
         }
         self.look = true;
         self.stall = Stall::default();
