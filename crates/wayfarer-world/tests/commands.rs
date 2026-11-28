@@ -193,3 +193,21 @@ fn a_room_command_behind_a_quest_check_is_a_way_the_game_judges() {
     assert_eq!(cmds, ["w", "go portal", "w", "w"]);
     assert_eq!(r[3].lever.len(), 1);
 }
+
+/// The Tower bedroom (10/235): `read book` teleports to the Glacial Cavern's staircase (15/740),
+/// the only way into the Glacial and Black Ice Caverns, and every phrase of its room command
+/// opens with READ or LOOK. Those hand a name they find nothing by to the room's command text,
+/// so the phrase is taken; with nothing to fall back on there was no route there at all.
+#[test]
+fn a_room_command_read_or_looked_at_is_taken_when_no_other_phrase_is() {
+    const BEDROOM: (i64, i64) = (10, 235);
+    const STAIRCASE: (i64, i64) = (15, 740);
+    let (_, mut g) = graph();
+    let t = Traveller::default();
+    g.choose_phrases(game_command);
+    assert!(route(&g, BEDROOM, STAIRCASE, &t).is_none());
+    let looks = |p: &str| ["look", "l", "read"].contains(&p.split(' ').next().unwrap_or(""));
+    g.choose_phrases_or(game_command, looks);
+    let r = route(&g, BEDROOM, STAIRCASE, &t).expect("down by the book");
+    assert_eq!(r[0].command, "read book");
+}

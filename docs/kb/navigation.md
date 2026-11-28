@@ -79,6 +79,16 @@ scripts (`LJNSPEC.C`). A client meets them as typed phrases that do something in
   a living player's line is tried against the room's Text and Remote Action exits, then against the
   room's command text, then as the name of a spell in his spellbook, and only then becomes speech
   [C] `LJNPEND.C:245-458`. Room scripts and text exits work for `hp > 0` only [C] `:271`.
+- **Commands that hand the line to the room's command text.** A few commands try it themselves
+  when they find nothing by the name typed, so a phrase that opens with them still runs the
+  script: LOOK of a name nothing in the room or inventory has (after the shop's items and the
+  coins) [C] `LJNCMDA.C:1225-1250`; READ of an item the character does not carry, which looks
+  instead [C] `LJNCMDB.C:325-355`; USE of an item it does not carry [C] `LJNCMDB.C:340-355`;
+  and BUY outside a shop [C] `LJNCMDA.C:2305-2325`. Remote Actions and Text exits get no such
+  second chance: `use fork east` with the fork carried is the USE command (Remote Action, above).
+  The Tower bedroom's book (10/235: `read book`, `read red book`, `look book`, `l book`;
+  teleport 740 15) is the only way into the Glacial Cavern and, by its crystal (15/772, `touch
+  crystal`, teleport 773 15), the Black Ice Cavern [C data; F silver-mirror 2026-11-28].
 - **Items with a script** [C data, F John 2026-11-25]: an item with `ABL_ONETIMECAST` (43) casts a spell on use, and a spell with `ABL_TEXTBLOCK` (148) runs a text block as a script with no pattern (the whole line is clauses). 50-odd items do: the chests open at `random`, the deeds `giveitem`; the **potion of levitation** (item 992, `use` or `drink`) runs block 1421, `roomitem 993 1834:message 1835:teleport 1009 9:message 1836`: with the waterfall (item 993, a hidden fixture of 3/1 Mossy Cave, Waterfall) in the room it teleports the drinker to 9/1009 Waterfall, Dirt Path ("You float up past the waterfall, and land far above at the river's edge."), elsewhere "You quaff the bubbling white potion, but nothing happens." That is the only way into the Catacombs pocket (173 rooms: Waterfall Dirt Path, Crumbling Ruin, Catacombs, Amethyst Cave): no exit of the stock data enters it, and 9/1009 `down` leaves it to 3/1. Four exits of the stock data are zeroed (room 0, type 0) with a leftover `exitpar1` 9: 3/1 up, 6/94 north, 2/2565 north, 2/2659 east, the crossings to map 9 the data switched off. quicksilver runs these scripts (`scripts/mod.rs`, keyword `teleport`). wayfarer makes the item's script a way through (`ExitType::ItemCommand`).
 - **Command text format.** `pattern:clause:clause...` per line; the pattern is a wildcard match against
   the whole typed line (no abbreviations: "sit throne" and "sit on throne" are two lines). Matching lines
